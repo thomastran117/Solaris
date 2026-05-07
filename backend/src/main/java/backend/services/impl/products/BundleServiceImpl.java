@@ -1,10 +1,16 @@
 package backend.services.impl.products;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import backend.services.impl.SingleFlightCache;
 
 import backend.dtos.requests.product.BundleItemRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
@@ -44,18 +50,24 @@ public class BundleServiceImpl implements BundleService {
     private final ProductVariantRepository variantRepository;
     private final CompanyRepository companyRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final SingleFlightCache singleFlightCache;
+    private final long cacheTtl;
 
     public BundleServiceImpl(
             BundleRepository bundleRepository,
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
             CompanyRepository companyRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            SingleFlightCache singleFlightCache,
+            @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl) {
         this.bundleRepository = bundleRepository;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.companyRepository = companyRepository;
         this.eventPublisher = eventPublisher;
+        this.singleFlightCache = singleFlightCache;
+        this.cacheTtl = cacheTtl;
     }
 
     // --- Owner-authenticated CRUD ---
@@ -95,6 +107,7 @@ public class BundleServiceImpl implements BundleService {
 
         ProductBundle saved = bundleRepository.save(bundle);
         eventPublisher.publishEvent(new BundleIndexEvent(saved));
+        evictAfterCommit(() -> singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*"));
         return toResponse(saved);
     }
 
@@ -139,6 +152,10 @@ public class BundleServiceImpl implements BundleService {
 
         ProductBundle saved = bundleRepository.save(bundle);
         eventPublisher.publishEvent(new BundleIndexEvent(saved));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("bundle:" + companyId + ":" + bundleId);
+            singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*");
+        });
         return toResponse(saved);
     }
 
@@ -152,31 +169,67 @@ public class BundleServiceImpl implements BundleService {
 
         bundleRepository.delete(bundle);
         eventPublisher.publishEvent(new BundleRemoveEvent(bundleId));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("bundle:" + companyId + ":" + bundleId);
+            singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*");
+        });
     }
 
     // --- Public read ---
 
     @Override
+    public List<BundleResponse> compareBundles(long companyId, List<Long> ids) {
+        if (ids == null || ids.size() < 2 || ids.size() > 4) {
+            throw new BadRequestException("Comparison requires between 2 and 4 bundle IDs");
+        }
+        String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
+        String cacheKey = "bundles:compare:" + companyId + ":" + sortedIds;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(ids, companyId);
+            if (bundles.isEmpty()) {
+                throw new ResourceNotFoundException("No bundles found for the given IDs in this company");
+            }
+            return bundles.stream().map(this::toResponse).toList();
+        }, new TypeReference<List<BundleResponse>>() {});
+    }
+
+    @Override
     public PagedResponse<BundleResponse> listBundles(long companyId, ProductStatus status, int page, int size) {
-        if (size > 50) size = 50;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        // Public endpoint — always restrict to ACTIVE bundles regardless of requested status.
-        return new PagedResponse<>(
-                bundleRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable)
-                        .map(this::toResponse));
+        final int clampedSize = Math.min(size, 50);
+        String cacheKey = "bundles:list:" + companyId + ":" + page + ":" + clampedSize;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+            // Public endpoint — always restrict to ACTIVE bundles regardless of requested status.
+            return new PagedResponse<>(
+                    bundleRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable)
+                            .map(this::toResponse));
+        }, new TypeReference<PagedResponse<BundleResponse>>() {});
     }
 
     @Override
     public BundleResponse getBundle(long companyId, long bundleId) {
-        ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
-        if (bundle.getStatus() != ProductStatus.ACTIVE) {
-            throw new ResourceNotFoundException("Bundle not found with id: " + bundleId);
-        }
-        return toResponse(bundle);
+        String cacheKey = "bundle:" + companyId + ":" + bundleId;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
+            if (bundle.getStatus() != ProductStatus.ACTIVE) {
+                throw new ResourceNotFoundException("Bundle not found with id: " + bundleId);
+            }
+            return toResponse(bundle);
+        }, BundleResponse.class);
     }
 
     // --- Helpers ---
+
+    private void evictAfterCommit(Runnable eviction) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { eviction.run(); }
+            });
+        } else {
+            eviction.run();
+        }
+    }
 
     private void assertOwnership(long companyId, long ownerId) {
         companyRepository.findByIdAndOwnerId(companyId, ownerId)

@@ -36,4 +36,6 @@ public class ProductResponse {
     private boolean listed;
     private Instant createdAt;
     private Instant updatedAt;
+    private Double avgRating;
+    private Long reviewCount;
 }

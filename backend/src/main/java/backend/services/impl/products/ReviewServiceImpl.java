@@ -1,9 +1,15 @@
 package backend.services.impl.products;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import backend.services.impl.SingleFlightCache;
 
 import backend.dtos.requests.review.CreateReviewRequest;
 import backend.dtos.requests.review.UpdateReviewRequest;
@@ -38,42 +44,54 @@ public class ReviewServiceImpl implements ReviewService {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final ActivityEventPublisher activityEventPublisher;
+    private final SingleFlightCache singleFlightCache;
+    private final long cacheTtl;
+    private final long cacheTtlShort;
 
     public ReviewServiceImpl(
             ProductReviewRepository reviewRepository,
             ProductRepository productRepository,
             UserRepository userRepository,
             OrderRepository orderRepository,
-            ActivityEventPublisher activityEventPublisher) {
+            ActivityEventPublisher activityEventPublisher,
+            SingleFlightCache singleFlightCache,
+            @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
+            @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
         this.reviewRepository = reviewRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.activityEventPublisher = activityEventPublisher;
+        this.singleFlightCache = singleFlightCache;
+        this.cacheTtl = cacheTtl;
+        this.cacheTtlShort = cacheTtlShort;
     }
 
     @Override
     public PagedResponse<ReviewResponse> getReviews(long companyId, long productId, int page, int size, String sort, String direction) {
         resolveProduct(companyId, productId);
-
-        if (size > 50) size = 50;
-
+        final int clampedSize = Math.min(size, 50);
         String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
-        Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDir, sortField));
-
-        return new PagedResponse<>(
-                reviewRepository.findAllByProductIdAndStatus(productId, ReviewStatus.PUBLISHED, pageable)
-                        .map(this::toResponse)
-        );
+        String sortDir = "asc".equalsIgnoreCase(direction) ? "asc" : "desc";
+        String cacheKey = "reviews:" + companyId + ":" + productId + ":" + page + ":" + clampedSize + ":" + sortField + ":" + sortDir;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            Pageable pageable = PageRequest.of(page, clampedSize,
+                    Sort.by("asc".equals(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC, sortField));
+            return new PagedResponse<>(
+                    reviewRepository.findAllByProductIdAndStatus(productId, ReviewStatus.PUBLISHED, pageable)
+                            .map(this::toResponse));
+        }, new TypeReference<PagedResponse<ReviewResponse>>() {});
     }
 
     @Override
     public ReviewResponse getMyReview(long companyId, long productId, long userId) {
         resolveProduct(companyId, productId);
-        ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
-        return toResponse(review);
+        String cacheKey = "review:me:" + companyId + ":" + productId + ":" + userId;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
+            ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
+            return toResponse(review);
+        }, ReviewResponse.class);
     }
 
     @Override
@@ -106,6 +124,10 @@ public class ReviewServiceImpl implements ReviewService {
                     userId, null, productId, marketplaceId, type, Instant.now()));
         }
 
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("reviews:" + companyId + ":" + productId + ":*");
+            singleFlightCache.evict("review:me:" + companyId + ":" + productId + ":" + userId);
+        });
         return response;
     }
 
@@ -119,7 +141,12 @@ public class ReviewServiceImpl implements ReviewService {
         if (request.getTitle() != null) review.setTitle(request.getTitle());
         if (request.getBody() != null) review.setBody(request.getBody());
 
-        return toResponse(reviewRepository.save(review));
+        ReviewResponse result = toResponse(reviewRepository.save(review));
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("reviews:" + companyId + ":" + productId + ":*");
+            singleFlightCache.evict("review:me:" + companyId + ":" + productId + ":" + userId);
+        });
+        return result;
     }
 
     @Override
@@ -128,6 +155,20 @@ public class ReviewServiceImpl implements ReviewService {
         ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
         reviewRepository.delete(review);
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("reviews:" + companyId + ":" + productId + ":*");
+            singleFlightCache.evict("review:me:" + companyId + ":" + productId + ":" + userId);
+        });
+    }
+
+    private void evictAfterCommit(Runnable eviction) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { eviction.run(); }
+            });
+        } else {
+            eviction.run();
+        }
     }
 
     private Product resolveProduct(long companyId, long productId) {

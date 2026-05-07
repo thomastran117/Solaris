@@ -131,6 +131,11 @@ export default function Navbar() {
                   Dashboard
                 </NavLink>
               )}
+              {accessToken && (
+                <NavLink to="/compare" className={navLinkClass}>
+                  Compare
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

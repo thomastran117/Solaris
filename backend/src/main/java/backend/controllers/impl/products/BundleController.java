@@ -18,6 +18,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/companies/{companyId}/bundles")
 public class BundleController {
@@ -69,6 +71,13 @@ public class BundleController {
             @PathVariable long bundleId) {
         bundleService.deleteBundle(companyId, bundleId, resolveUserId());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/compare")
+    public ResponseEntity<List<BundleResponse>> compareBundles(
+            @PathVariable long companyId,
+            @RequestParam List<Long> ids) {
+        return ResponseEntity.ok(bundleService.compareBundles(companyId, ids));
     }
 
     private long resolveUserId() {

@@ -60,11 +60,19 @@ import backend.repositories.ProductAttributeRepository;
 import backend.repositories.ProductImageRepository;
 import backend.repositories.ProductOptionRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.ProductReviewRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.repositories.specifications.ProductSpecification;
 import backend.services.intf.products.ProductService;
 import org.springframework.context.ApplicationEventPublisher;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import backend.services.impl.SingleFlightCache;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
@@ -87,12 +95,16 @@ public class ProductServiceImpl implements ProductService {
     private final ProductOptionRepository productOptionRepository;
     private final ProductVariantRepository productVariantRepository;
     private final ProductAttributeRepository productAttributeRepository;
+    private final ProductReviewRepository productReviewRepository;
     private final BundleRepository bundleRepository;
     private final PromotionRuleRepository promotionRuleRepository;
     private final MarketplaceProfileRepository marketplaceProfileRepository;
     private final MarketplaceVendorRepository marketplaceVendorRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ElasticsearchOperations elasticsearchOperations;
+    private final SingleFlightCache singleFlightCache;
+    private final long cacheTtl;
+    private final long cacheTtlShort;
 
     public ProductServiceImpl(
             ProductRepository productRepository,
@@ -101,24 +113,32 @@ public class ProductServiceImpl implements ProductService {
             ProductOptionRepository productOptionRepository,
             ProductVariantRepository productVariantRepository,
             ProductAttributeRepository productAttributeRepository,
+            ProductReviewRepository productReviewRepository,
             BundleRepository bundleRepository,
             PromotionRuleRepository promotionRuleRepository,
             MarketplaceProfileRepository marketplaceProfileRepository,
             MarketplaceVendorRepository marketplaceVendorRepository,
             ApplicationEventPublisher eventPublisher,
-            ElasticsearchOperations elasticsearchOperations) {
+            ElasticsearchOperations elasticsearchOperations,
+            SingleFlightCache singleFlightCache,
+            @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
+            @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
         this.productRepository = productRepository;
         this.companyRepository = companyRepository;
         this.productImageRepository = productImageRepository;
         this.productOptionRepository = productOptionRepository;
         this.productVariantRepository = productVariantRepository;
         this.productAttributeRepository = productAttributeRepository;
+        this.productReviewRepository = productReviewRepository;
         this.bundleRepository = bundleRepository;
         this.promotionRuleRepository = promotionRuleRepository;
         this.marketplaceProfileRepository = marketplaceProfileRepository;
         this.marketplaceVendorRepository = marketplaceVendorRepository;
         this.eventPublisher = eventPublisher;
         this.elasticsearchOperations = elasticsearchOperations;
+        this.singleFlightCache = singleFlightCache;
+        this.cacheTtl = cacheTtl;
+        this.cacheTtlShort = cacheTtlShort;
     }
 
     @Override
@@ -140,88 +160,98 @@ public class ProductServiceImpl implements ProductService {
             String direction) {
 
         assertCompanyExists(companyId);
+        final int clampedSize = Math.min(size, 50);
+        String cacheKey = String.format("products:search:%d:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%d:%d:%s:%s",
+                companyId, q, category, brand, minPrice, maxPrice, featured,
+                status, listed, discountCategory, hasDiscount, page, clampedSize, sort, direction);
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
+            Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
 
-        if (size > 50) size = 50;
+            // --- Elasticsearch path ---
+            try {
+                BoolQuery.Builder bq = new BoolQuery.Builder()
+                        .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery());
 
-        String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
-        Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDir, sortField));
+                if (q != null && !q.isBlank()) {
+                    bq.must(MultiMatchQuery.of(mm -> mm
+                            .fields("name^3", "description", "brand^2", "category", "tags")
+                            .query(q))._toQuery());
+                }
+                if (status           != null) bq.filter(TermQuery.of(t -> t.field("status").value(status.name()))._toQuery());
+                if (category         != null) bq.filter(TermQuery.of(t -> t.field("category").value(category))._toQuery());
+                if (brand            != null) bq.filter(TermQuery.of(t -> t.field("brand").value(brand))._toQuery());
+                if (featured         != null) bq.filter(TermQuery.of(t -> t.field("featured").value(featured))._toQuery());
+                if (listed           != null) bq.filter(TermQuery.of(t -> t.field("listed").value(listed))._toQuery());
+                if (discountCategory != null) bq.filter(TermQuery.of(t -> t.field("discountCategories").value(discountCategory.trim().toLowerCase()))._toQuery());
+                if (hasDiscount      != null) bq.filter(TermQuery.of(t -> t.field("hasActiveDiscount").value(hasDiscount))._toQuery());
+                if (minPrice != null || maxPrice != null) {
+                    final Double minVal = minPrice != null ? minPrice.doubleValue() : null;
+                    final Double maxVal = maxPrice != null ? maxPrice.doubleValue() : null;
+                    bq.filter(co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery.of(r -> r.number(n -> {
+                        n.field("price");
+                        if (minVal != null) n.gte(minVal);
+                        if (maxVal != null) n.lte(maxVal);
+                        return n;
+                    }))._toQuery());
+                }
 
-        // --- Elasticsearch path ---
-        try {
-            BoolQuery.Builder bq = new BoolQuery.Builder()
-                    .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery());
+                NativeQuery esQuery = NativeQuery.builder()
+                        .withQuery(bq.build()._toQuery())
+                        .withPageable(pageable)
+                        .build();
 
-            if (q != null && !q.isBlank()) {
-                bq.must(MultiMatchQuery.of(mm -> mm
-                        .fields("name^3", "description", "brand^2", "category", "tags")
-                        .query(q))._toQuery());
+                SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
+                List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
+
+                Map<Long, Product> productMap = productRepository
+                        .findAllByIdInAndCompanyId(ids, companyId)
+                        .stream()
+                        .collect(Collectors.toMap(Product::getId, p -> p));
+
+                List<ProductResponse> content = ids.stream()
+                        .filter(productMap::containsKey)
+                        .map(id -> toResponse(productMap.get(id)))
+                        .toList();
+
+                return new PagedResponse<>(new PageImpl<>(content, pageable, hits.getTotalHits()));
+
+            } catch (Exception e) {
+                log.warn("[SEARCH] Elasticsearch unavailable, falling back to database: {}", e.getMessage());
             }
-            if (status           != null) bq.filter(TermQuery.of(t -> t.field("status").value(status.name()))._toQuery());
-            if (category         != null) bq.filter(TermQuery.of(t -> t.field("category").value(category))._toQuery());
-            if (brand            != null) bq.filter(TermQuery.of(t -> t.field("brand").value(brand))._toQuery());
-            if (featured         != null) bq.filter(TermQuery.of(t -> t.field("featured").value(featured))._toQuery());
-            if (listed           != null) bq.filter(TermQuery.of(t -> t.field("listed").value(listed))._toQuery());
-            if (discountCategory != null) bq.filter(TermQuery.of(t -> t.field("discountCategories").value(discountCategory.trim().toLowerCase()))._toQuery());
-            if (hasDiscount      != null) bq.filter(TermQuery.of(t -> t.field("hasActiveDiscount").value(hasDiscount))._toQuery());
-            if (minPrice != null || maxPrice != null) {
-                final Double minVal = minPrice != null ? minPrice.doubleValue() : null;
-                final Double maxVal = maxPrice != null ? maxPrice.doubleValue() : null;
-                bq.filter(co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery.of(r -> r.number(n -> {
-                    n.field("price");
-                    if (minVal != null) n.gte(minVal);
-                    if (maxVal != null) n.lte(maxVal);
-                    return n;
-                }))._toQuery());
-            }
 
-            NativeQuery esQuery = NativeQuery.builder()
-                    .withQuery(bq.build()._toQuery())
-                    .withPageable(pageable)
-                    .build();
-
-            SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
-            List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
-
-            Map<Long, Product> productMap = productRepository
-                    .findAllByIdInAndCompanyId(ids, companyId)
-                    .stream()
-                    .collect(Collectors.toMap(Product::getId, p -> p));
-
-            List<ProductResponse> content = ids.stream()
-                    .filter(productMap::containsKey)
-                    .map(id -> toResponse(productMap.get(id)))
-                    .toList();
-
-            return new PagedResponse<>(new PageImpl<>(content, pageable, hits.getTotalHits()));
-
-        } catch (Exception e) {
-            log.warn("[SEARCH] Elasticsearch unavailable, falling back to database: {}", e.getMessage());
-        }
-
-        // --- JPA fallback ---
-        return new PagedResponse<>(
-                productRepository
-                        .findAll(ProductSpecification.withFilters(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount), pageable)
-                        .map(this::toResponse)
-        );
+            // --- JPA fallback ---
+            return new PagedResponse<>(
+                    productRepository
+                            .findAll(ProductSpecification.withFilters(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount), pageable)
+                            .map(this::toResponse)
+            );
+        }, new TypeReference<PagedResponse<ProductResponse>>() {});
     }
 
     @Override
     public ProductResponse getProduct(long companyId, long productId) {
         assertCompanyExists(companyId);
-        Product product = productRepository.findByIdAndCompanyId(productId, companyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-        return toResponse(product);
+        String cacheKey = "product:" + companyId + ":" + productId;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            Product product = productRepository.findByIdAndCompanyId(productId, companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+            return toResponse(product);
+        }, ProductResponse.class);
     }
 
     @Override
     public List<ProductResponse> getProductsByIds(long companyId, List<Long> ids) {
         assertCompanyExists(companyId);
-        return productRepository.findAllByIdInAndCompanyId(ids, companyId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
+        String cacheKey = "products:batch:" + companyId + ":" + sortedIds;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () ->
+                productRepository.findAllByIdInAndCompanyId(ids, companyId)
+                        .stream()
+                        .map(this::toResponse)
+                        .toList(),
+                new TypeReference<List<ProductResponse>>() {});
     }
 
     @Override
@@ -256,6 +286,10 @@ public class ProductServiceImpl implements ProductService {
 
         Product saved = productRepository.save(product);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
         return toResponse(saved);
     }
 
@@ -303,6 +337,17 @@ public class ProductServiceImpl implements ProductService {
 
         Product saved = productRepository.save(product);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
+        final Long marketplaceId = saved.getMarketplaceId();
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (marketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + marketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + marketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + marketplaceId + ":*");
+            }
+        });
         return toResponse(saved);
     }
 
@@ -318,9 +363,20 @@ public class ProductServiceImpl implements ProductService {
             throw new ConflictException("Product is part of one or more bundles. Remove it from all bundles before deleting.");
         }
 
+        final Long marketplaceId = product.getMarketplaceId();
         promotionRuleRepository.removeProductFromAllRules(productId);
         productRepository.delete(product);
-        eventPublisher.publishEvent(new ProductRemoveEvent(productId, product.getMarketplaceId()));
+        eventPublisher.publishEvent(new ProductRemoveEvent(productId, marketplaceId));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (marketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + marketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + marketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + marketplaceId + ":*");
+            }
+        });
     }
 
     @Override
@@ -367,6 +423,10 @@ public class ProductServiceImpl implements ProductService {
             results.add(toResponse(saved));
         }
 
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
         return results;
     }
 
@@ -387,6 +447,18 @@ public class ProductServiceImpl implements ProductService {
         for (Product p : products) {
             eventPublisher.publishEvent(new ProductRemoveEvent(p.getId(), p.getMarketplaceId()));
         }
+        final List<Long> deletedIds = products.stream().map(Product::getId).toList();
+        final List<Long> affectedMarketplaces = products.stream()
+                .map(Product::getMarketplaceId).filter(Objects::nonNull).distinct().toList();
+        evictAfterCommit(() -> {
+            for (Long id : deletedIds) singleFlightCache.evict("product:" + companyId + ":" + id);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            for (Long mpId : affectedMarketplaces) {
+                singleFlightCache.evictByPattern("marketplace:search:" + mpId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + mpId + ":*");
+            }
+        });
     }
 
     // --- Images ---
@@ -428,6 +500,10 @@ public class ProductServiceImpl implements ProductService {
             productRepository.save(product);
         }
 
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
         return toImageResponse(saved);
     }
 
@@ -448,6 +524,10 @@ public class ProductServiceImpl implements ProductService {
         List<ProductImage> remaining = productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(productId);
         product.setThumbnailUrl(remaining.isEmpty() ? null : remaining.get(0).getImageUrl());
         productRepository.save(product);
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
     }
 
     @Override
@@ -494,6 +574,10 @@ public class ProductServiceImpl implements ProductService {
         }
         productRepository.save(product);
 
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
         return reordered.stream()
                 .map(this::toImageResponse)
                 .toList();
@@ -531,7 +615,12 @@ public class ProductServiceImpl implements ProductService {
         option.setName(request.getName());
         option.setPosition(optionCount);
 
-        return toOptionResponse(productOptionRepository.save(option));
+        ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return result;
     }
 
     @Override
@@ -547,7 +636,12 @@ public class ProductServiceImpl implements ProductService {
 
         if (request.getName() != null) option.setName(request.getName());
 
-        return toOptionResponse(productOptionRepository.save(option));
+        ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return result;
     }
 
     @Override
@@ -562,6 +656,10 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Option not found with id: " + optionId));
 
         productOptionRepository.delete(option);
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
     }
 
     // --- Variants ---
@@ -610,7 +708,12 @@ public class ProductServiceImpl implements ProductService {
         variant.setOption3(request.getOption3());
         variant.setDisplayOrder(request.getDisplayOrder());
 
-        return toVariantResponse(productVariantRepository.save(variant));
+        ProductVariantResponse result = toVariantResponse(productVariantRepository.save(variant));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return result;
     }
 
     @Override
@@ -641,7 +744,12 @@ public class ProductServiceImpl implements ProductService {
         if (request.getOption3() != null) variant.setOption3(request.getOption3());
         if (request.getDisplayOrder() != null) variant.setDisplayOrder(request.getDisplayOrder());
 
-        return toVariantResponse(productVariantRepository.save(variant));
+        ProductVariantResponse result = toVariantResponse(productVariantRepository.save(variant));
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return result;
     }
 
     @Override
@@ -656,6 +764,10 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
 
         productVariantRepository.delete(variant);
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
     }
 
     // --- Attributes ---
@@ -691,10 +803,15 @@ public class ProductServiceImpl implements ProductService {
                 })
                 .toList();
 
-        return productAttributeRepository.saveAll(attributes)
+        List<ProductAttributeResponse> result = productAttributeRepository.saveAll(attributes)
                 .stream()
                 .map(this::toAttrResponse)
                 .toList();
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return result;
     }
 
     // --- Marketplace catalog ---
@@ -709,11 +826,14 @@ public class ProductServiceImpl implements ProductService {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
-        if (size > 50) size = 50;
-
+        final int clampedSize = Math.min(size, 50);
+        String cacheKey = String.format("marketplace:search:%d:%s:%s:%s:%s:%s:%s:%s:%d:%d:%s:%s",
+                marketplaceId, q, category, brand, minPrice, maxPrice, featured,
+                vendorId, page, clampedSize, sort, direction);
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
         String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
         Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDir, sortField));
+        Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
 
         // --- Elasticsearch path ---
         try {
@@ -778,45 +898,52 @@ public class ProductServiceImpl implements ProductService {
         Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
         Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
         return new PagedResponse<>(productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()))));
+        }, new TypeReference<PagedResponse<MarketplaceCatalogProductResponse>>() {});
     }
 
     @Override
     @Transactional(readOnly = true)
     public MarketplaceCatalogProductResponse getMarketplaceProduct(long marketplaceId, long productId) {
-        Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
-        Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, List.of(product));
-        return toCatalogResponse(product, vendorMap.get(product.getCompany().getId()));
+        String cacheKey = "marketplace:product:" + marketplaceId + ":" + productId;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
+            Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, List.of(product));
+            return toCatalogResponse(product, vendorMap.get(product.getCompany().getId()));
+        }, MarketplaceCatalogProductResponse.class);
     }
 
     @Override
     @Transactional(readOnly = true)
     public VendorStorefrontResponse getVendorStorefront(long marketplaceId, long vendorId) {
-        MarketplaceVendor vendor = marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, marketplaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Vendor not found in this marketplace"));
+        String cacheKey = "marketplace:storefront:" + marketplaceId + ":" + vendorId;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            MarketplaceVendor vendor = marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, marketplaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Vendor not found in this marketplace"));
 
-        long vendorCompanyId = vendor.getVendorCompany().getId();
-        List<Product> allVendorProducts = productRepository.findMarketplaceListed(marketplaceId).stream()
-                .filter(p -> p.getCompany().getId() == vendorCompanyId)
-                .toList();
+            long vendorCompanyId = vendor.getVendorCompany().getId();
+            List<Product> allVendorProducts = productRepository.findMarketplaceListed(marketplaceId).stream()
+                    .filter(p -> p.getCompany().getId() == vendorCompanyId)
+                    .toList();
 
-        List<MarketplaceCatalogProductResponse> featured = allVendorProducts.stream()
-                .filter(Product::isFeatured)
-                .limit(10)
-                .map(p -> toCatalogResponse(p, vendor))
-                .toList();
+            List<MarketplaceCatalogProductResponse> featured = allVendorProducts.stream()
+                    .filter(Product::isFeatured)
+                    .limit(10)
+                    .map(p -> toCatalogResponse(p, vendor))
+                    .toList();
 
-        return new VendorStorefrontResponse(
-                vendor.getId(),
-                marketplaceId,
-                vendor.getVendorCompany().getName(),
-                vendor.getVendorCompany().getDescription(),
-                vendor.getVendorCompany().getLogoUrl(),
-                vendor.getTier().name(),
-                vendor.getStatus().name(),
-                featured,
-                allVendorProducts.size()
-        );
+            return new VendorStorefrontResponse(
+                    vendor.getId(),
+                    marketplaceId,
+                    vendor.getVendorCompany().getName(),
+                    vendor.getVendorCompany().getDescription(),
+                    vendor.getVendorCompany().getLogoUrl(),
+                    vendor.getTier().name(),
+                    vendor.getStatus().name(),
+                    featured,
+                    allVendorProducts.size()
+            );
+        }, VendorStorefrontResponse.class);
     }
 
     @Override
@@ -837,15 +964,42 @@ public class ProductServiceImpl implements ProductService {
             throw new ForbiddenException("Your company is not an approved vendor in this marketplace");
         }
 
+        final Long oldMarketplaceId = product.getMarketplaceId();
         product.setMarketplaceId(listing ? request.getMarketplaceId() : null);
         product.setMarketplaceListed(listing);
 
         Product saved = productRepository.save(product);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
+        final Long newMarketplaceId = saved.getMarketplaceId();
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (oldMarketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + oldMarketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + oldMarketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + oldMarketplaceId + ":*");
+            }
+            if (newMarketplaceId != null && !newMarketplaceId.equals(oldMarketplaceId)) {
+                singleFlightCache.evict("marketplace:product:" + newMarketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + newMarketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + newMarketplaceId + ":*");
+            }
+        });
         return toResponse(saved);
     }
 
     // --- Helpers ---
+
+    private void evictAfterCommit(Runnable eviction) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { eviction.run(); }
+            });
+        } else {
+            eviction.run();
+        }
+    }
 
     private void assertCompanyExists(long companyId) {
         if (!companyRepository.existsById(companyId)) {
@@ -960,6 +1114,17 @@ public class ProductServiceImpl implements ProductService {
                 .map(this::toAttrResponse)
                 .toList();
 
+        return toResponseWithRating(product, images, options, variants, attributes, null, 0L);
+    }
+
+    private ProductResponse toResponseWithRating(
+            Product product,
+            List<ProductImageResponse> images,
+            List<ProductOptionResponse> options,
+            List<ProductVariantResponse> variants,
+            List<ProductAttributeResponse> attributes,
+            Double avgRating,
+            Long reviewCount) {
         return new ProductResponse(
                 product.getId(),
                 product.getCompany().getId(),
@@ -986,7 +1151,55 @@ public class ProductServiceImpl implements ProductService {
                 product.isPurchasable(),
                 product.isListed(),
                 product.getCreatedAt(),
-                product.getUpdatedAt()
+                product.getUpdatedAt(),
+                avgRating,
+                reviewCount
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductResponse> compareProducts(long companyId, List<Long> ids) {
+        if (ids == null || ids.size() < 2 || ids.size() > 4) {
+            throw new BadRequestException("Comparison requires between 2 and 4 product IDs");
+        }
+        assertCompanyExists(companyId);
+        String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
+        String cacheKey = "products:compare:" + companyId + ":" + sortedIds;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
+            List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
+            if (products.isEmpty()) {
+                throw new ResourceNotFoundException("No products found for the given IDs in this company");
+            }
+            List<Long> foundIds = products.stream().map(Product::getId).toList();
+            Map<Long, double[]> ratingMap = buildRatingMap(foundIds);
+
+            return products.stream().map(p -> {
+                double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
+                Double avgRating = stats[1] > 0 ? stats[0] : null;
+                Long reviewCount = (long) stats[1];
+                List<ProductImageResponse> images = p.getImages().stream().map(this::toImageResponse).toList();
+                List<ProductOptionResponse> options = p.getOptions().stream().map(this::toOptionResponse).toList();
+                List<ProductVariantResponse> variants = p.getVariants().stream().map(this::toVariantResponse).toList();
+                List<ProductAttributeResponse> attributes = p.getAttributes().stream().map(this::toAttrResponse).toList();
+                return toResponseWithRating(p, images, options, variants, attributes, avgRating, reviewCount);
+            }).toList();
+        }, new TypeReference<List<ProductResponse>>() {});
+    }
+
+    private Map<Long, double[]> buildRatingMap(List<Long> productIds) {
+        Map<Long, double[]> map = new java.util.HashMap<>();
+        try {
+            List<Object[]> rows = productReviewRepository.findAverageRatingsByProductIds(productIds);
+            for (Object[] row : rows) {
+                long productId = ((Number) row[0]).longValue();
+                double avg = ((Number) row[1]).doubleValue();
+                double count = ((Number) row[2]).doubleValue();
+                map.put(productId, new double[]{avg, count});
+            }
+        } catch (Exception e) {
+            log.warn("[COMPARE] Failed to load ratings: {}", e.getMessage());
+        }
+        return map;
     }
 }

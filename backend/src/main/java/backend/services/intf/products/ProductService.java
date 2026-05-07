@@ -76,4 +76,7 @@ public interface ProductService {
 
     /** Vendor lists or unlists one of their products on a marketplace. */
     ProductResponse updateMarketplaceListing(long companyId, long productId, long ownerId, UpdateMarketplaceListingRequest request);
+
+    /** Returns 2–4 products enriched with rating data for side-by-side comparison. */
+    List<ProductResponse> compareProducts(long companyId, List<Long> ids);
 }

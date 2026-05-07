@@ -474,6 +474,21 @@ public class ProductController {
         }
     }
 
+    // --- Compare ---
+
+    @GetMapping("/compare")
+    public ResponseEntity<List<ProductResponse>> compareProducts(
+            @PathVariable long companyId,
+            @RequestParam List<Long> ids) {
+        try {
+            return ResponseEntity.ok(productService.compareProducts(companyId, ids));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @PostMapping("/reindex")
     @RequireAuth
     public ResponseEntity<Void> triggerReindex(@PathVariable long companyId) {
