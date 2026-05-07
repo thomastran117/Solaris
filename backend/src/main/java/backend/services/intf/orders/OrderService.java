@@ -17,7 +17,9 @@ import backend.models.enums.RiskReviewStatus;
 public interface OrderService {
     OrderResponse createOrder(long userId, CreateOrderRequest request);
     OrderResponse getOrder(long orderId, long userId);
+    OrderResponse getLatestOrder(long userId);
     PagedResponse<OrderResponse> getOrders(long userId, OrderStatus status, int page, int size, String sort, String direction);
+    OrderResponse reorderOrder(long orderId, long userId);
     OrderResponse cancelOrder(long orderId, long userId);
     void handlePaymentSuccess(String paymentIntentId);
     void handlePaymentFailure(String paymentIntentId);

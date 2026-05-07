@@ -84,6 +84,19 @@ public class OrderController {
         }
     }
 
+    @GetMapping("/latest")
+    @RequireAuth
+    public ResponseEntity<OrderResponse> getLatestOrder() {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.ok(orderService.getLatestOrder(userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @GetMapping("/{id}")
     @RequireAuth
     public ResponseEntity<OrderResponse> getOrder(@PathVariable long id) {
@@ -103,6 +116,19 @@ public class OrderController {
         try {
             long userId = resolveUserId();
             return ResponseEntity.ok(orderService.cancelOrder(id, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{id}/reorder")
+    @RequireAuth
+    public ResponseEntity<OrderResponse> reorderOrder(@PathVariable long id) {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.status(HttpStatus.CREATED).body(orderService.reorderOrder(id, userId));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

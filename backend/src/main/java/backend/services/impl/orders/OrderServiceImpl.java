@@ -866,6 +866,48 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getLatestOrder(long userId) {
+        Order order = orderRepository.findFirstByUserIdOrderByCreatedAtDesc(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("No orders found"));
+        return toResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse reorderOrder(long orderId, long userId) {
+        Order original = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        List<CreateOrderRequest.OrderItemRequest> itemRequests = original.getItems().stream()
+                .filter(item -> item.getProduct() != null || item.getBundle() != null)
+                .map(item -> {
+                    CreateOrderRequest.OrderItemRequest req = new CreateOrderRequest.OrderItemRequest();
+                    if (item.getBundle() != null) {
+                        req.setBundleId(item.getBundle().getId());
+                    } else {
+                        req.setProductId(item.getProduct().getId());
+                        if (item.getVariant() != null) {
+                            req.setVariantId(item.getVariant().getId());
+                        }
+                    }
+                    req.setQuantity(item.getQuantity());
+                    return req;
+                })
+                .collect(Collectors.toList());
+
+        if (itemRequests.isEmpty()) {
+            throw new BadRequestException("None of the items in this order are available for re-order");
+        }
+
+        CreateOrderRequest reorderRequest = new CreateOrderRequest();
+        reorderRequest.setItems(itemRequests);
+        reorderRequest.setCurrency(original.getCurrency());
+
+        return createOrder(userId, reorderRequest);
+    }
+
+    @Override
     public PagedResponse<OrderResponse> getOrders(long userId, OrderStatus status, int page, int size, String sort, String direction) {
         if (size > 50) size = 50;
 

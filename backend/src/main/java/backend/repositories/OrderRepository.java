@@ -22,6 +22,10 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findAllByUserId(long userId, Pageable pageable);
     Optional<Order> findByIdAndUserId(long id, long userId);
+    Optional<Order> findFirstByUserIdOrderByCreatedAtDesc(long userId);
+
+    @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.id = :id AND o.user.id = :userId")
+    Optional<Order> findByIdAndUserIdWithItems(@Param("id") long id, @Param("userId") long userId);
 
     /** Total orders placed by this user — feeds CouponAbuseEvaluator's first-order heuristic. */
     long countByUserId(long userId);
