@@ -52,6 +52,9 @@ public class EmailSender {
                 sendCreditIssuedEmail(e.toEmail(), e.firstName(), e.amountCents(), e.reason());
             case EmailEvent.ReplacementOrderEmail e ->
                 sendReplacementOrderEmail(e.toEmail(), e.firstName(), e.replacementOrder());
+            case EmailEvent.BackInStockEmail e ->
+                sendBackInStockEmail(e.toEmail(), e.firstName(), e.productId(), e.productName(),
+                        e.variantId(), e.variantTitle(), e.productUrl());
         }
     }
 
@@ -232,6 +235,38 @@ public class EmailSender {
             """.formatted(greeting, formatted, reasonLine);
         sendMimeMessage(toEmail, "You've received " + formatted + " in store credit — ShopWave",
                 wrapInShell("Store Credit", body));
+    }
+
+    private void sendBackInStockEmail(String toEmail, String firstName,
+                                      long productId, String productName,
+                                      Long variantId, String variantTitle,
+                                      String productUrl) {
+        String greeting = firstName != null ? "Hi " + firstName + "," : "Hi,";
+        String itemLine = variantTitle != null
+                ? productName + " &mdash; <strong>" + variantTitle + "</strong>"
+                : "<strong>" + productName + "</strong>";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Good news — it's back in stock!
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.06em;
+                         text-transform:uppercase;color:#93C5FD;">Product</p>
+              <p style="margin:6px 0 0 0;font-size:16px;color:#0F172A;font-weight:600;line-height:1.4;">%s</p>
+              <span style="display:inline-block;margin-top:10px;padding:4px 12px;
+                           background:#22C55E;border-radius:20px;font-size:12px;
+                           font-weight:700;color:#ffffff;letter-spacing:0.04em;">
+                In Stock
+              </span>
+            </div>
+            <p style="margin:16px 0 0 0;font-size:14px;color:#475569;line-height:1.7;">
+              Grab it before it sells out again — stock is limited.
+            </p>
+            %s
+            """.formatted(greeting, itemLine, primaryButton(productUrl, "Shop Now"));
+        sendMimeMessage(toEmail, "Back in stock: " + productName + " — ShopWave",
+                wrapInShell("Back in Stock", body));
     }
 
     private void sendReplacementOrderEmail(String toEmail, String firstName, OrderResponse replacementOrder) {

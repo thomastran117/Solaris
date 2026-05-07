@@ -36,8 +36,10 @@ import backend.repositories.UserRepository;
 import backend.models.enums.AdjustmentReason;
 import backend.repositories.specifications.AdjustmentSpecification;
 import backend.repositories.specifications.InventorySpecification;
+import backend.events.inventory.StockRestoredEvent;
 import backend.services.intf.CacheService;
 import backend.services.intf.inventory.InventoryService;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -72,6 +74,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final UserRepository userRepository;
     private final CacheService cacheService;
     private final StockAlertService stockAlertService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public InventoryServiceImpl(
             ProductRepository productRepository,
@@ -80,7 +83,8 @@ public class InventoryServiceImpl implements InventoryService {
             InventoryAdjustmentRepository adjustmentRepository,
             UserRepository userRepository,
             CacheService cacheService,
-            StockAlertService stockAlertService) {
+            StockAlertService stockAlertService,
+            ApplicationEventPublisher eventPublisher) {
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.companyRepository = companyRepository;
@@ -88,6 +92,7 @@ public class InventoryServiceImpl implements InventoryService {
         this.userRepository = userRepository;
         this.cacheService = cacheService;
         this.stockAlertService = stockAlertService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -252,6 +257,10 @@ public class InventoryServiceImpl implements InventoryService {
                 stockAlertService.checkAndAlert(
                         productId, product.getName(), null, null,
                         previousStock + delta, product.getLowStockThreshold());
+            }
+
+            if (previousStock == 0 && delta > 0) {
+                eventPublisher.publishEvent(new StockRestoredEvent(productId, null, 0L));
             }
 
             product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -648,6 +657,10 @@ public class InventoryServiceImpl implements InventoryService {
                         productId, product.getName(),
                         variantId, variant.getSku(),
                         previousStock + delta, variant.getLowStockThreshold());
+            }
+
+            if (previousStock == 0 && delta > 0) {
+                eventPublisher.publishEvent(new StockRestoredEvent(productId, variantId, variantId));
             }
 
             return toInventoryItemResponse(product);

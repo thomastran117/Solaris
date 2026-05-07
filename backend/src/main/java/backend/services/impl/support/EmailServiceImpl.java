@@ -73,6 +73,15 @@ public class EmailServiceImpl implements EmailService {
         publish(new EmailEvent.ReplacementOrderEmail(toEmail, firstName, replacementOrder));
     }
 
+    @Override
+    public void sendBackInStockEmail(String toEmail, String firstName,
+                                     long productId, String productName,
+                                     Long variantId, String variantTitle,
+                                     String productUrl) {
+        publish(new EmailEvent.BackInStockEmail(toEmail, firstName, productId, productName,
+                variantId, variantTitle, productUrl));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

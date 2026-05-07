@@ -33,8 +33,10 @@ import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.RestockRequestRepository;
 import backend.repositories.UserRepository;
+import backend.events.inventory.StockRestoredEvent;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.inventory.RestockService;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.UUID;
 
@@ -61,6 +63,7 @@ public class RestockServiceImpl implements RestockService {
     private final backend.services.intf.CacheService cacheService;
     private final StockAlertService stockAlertService;
     private final OrderService orderService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RestockServiceImpl(
             RestockRequestRepository restockRepository,
@@ -73,7 +76,8 @@ public class RestockServiceImpl implements RestockService {
             InventoryAdjustmentRepository adjustmentRepository,
             backend.services.intf.CacheService cacheService,
             StockAlertService stockAlertService,
-            OrderService orderService) {
+            OrderService orderService,
+            ApplicationEventPublisher eventPublisher) {
         this.restockRepository = restockRepository;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
@@ -85,6 +89,7 @@ public class RestockServiceImpl implements RestockService {
         this.cacheService = cacheService;
         this.stockAlertService = stockAlertService;
         this.orderService = orderService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -314,6 +319,11 @@ public class RestockServiceImpl implements RestockService {
             rr.setStatus(RestockStatus.RECEIVED);
             rr.setReceivedQty(receivedQty);
             rr.setReceivedAt(java.time.Instant.now());
+
+            if (previousStock == 0) {
+                long variantRefValue = variantId != null ? variantId : 0L;
+                eventPublisher.publishEvent(new StockRestoredEvent(productId, variantId, variantRefValue));
+            }
 
             // Trigger backorder fulfillment FIFO
             orderService.fulfillPendingBackorders(productId, variantId, receivedQty, locationId);

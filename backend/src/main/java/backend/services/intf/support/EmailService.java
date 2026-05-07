@@ -86,4 +86,21 @@ public interface EmailService {
      * Sent asynchronously with exponential backoff retries.
      */
     void sendReplacementOrderEmail(String toEmail, String firstName, OrderResponse replacementOrder);
+
+    /**
+     * Notifies a customer that a product (or specific variant) they subscribed to is back in stock.
+     * Sent asynchronously with exponential backoff retries.
+     *
+     * @param toEmail      the customer's email address
+     * @param firstName    the customer's first name (may be null)
+     * @param productId    the product ID
+     * @param productName  the product name
+     * @param variantId    null for product-level; variant ID for variant-level
+     * @param variantTitle null for product-level; human-readable variant label (e.g. "Black / 32GB")
+     * @param productUrl   the frontend URL to the product page
+     */
+    void sendBackInStockEmail(String toEmail, String firstName,
+                              long productId, String productName,
+                              Long variantId, String variantTitle,
+                              String productUrl);
 }
