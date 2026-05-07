@@ -28,6 +28,15 @@ export default function LoginPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const fetchAndStoreCompanyId = async () => {
+    try {
+      const res = await api.get<{ id: number }>("/companies/mine");
+      dispatch(setCredentials({ companyId: res.data.id }));
+    } catch {
+      // No company yet — companyId stays null; DashboardPage handles this.
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -38,7 +47,7 @@ export default function LoginPage() {
       });
       const { token, email, usertype } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype }));
-
+      await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {
       console.error("Login failed", err);
@@ -107,6 +116,7 @@ export default function LoginPage() {
       const res = await api.post("/auth/google", { idToken });
       const { token, email, usertype } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype }));
+      await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {
       console.error("Google login failed", err);

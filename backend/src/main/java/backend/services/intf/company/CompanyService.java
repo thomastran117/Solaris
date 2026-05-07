@@ -17,4 +17,5 @@ public interface CompanyService {
     CompanyResponse updateCompany(long companyId, long ownerId, UpdateCompanyRequest request);
     void deleteCompany(long companyId, long ownerId);
     PresignUploadResponse generateLogoUploadUrl(long companyId, long ownerId, String contentType);
+    CompanyResponse getMyCompany(long ownerId);
 }

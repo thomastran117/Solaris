@@ -126,6 +126,11 @@ export default function Navbar() {
               <NavLink to="/browse" className={navLinkClass}>
                 Browse
               </NavLink>
+              {accessToken && (
+                <NavLink to="/dashboard" className={navLinkClass}>
+                  Dashboard
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

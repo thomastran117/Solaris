@@ -157,6 +157,15 @@ public class CompanyServiceImpl implements CompanyService {
         return storageService.generatePresignedUrl(UploadFolder.COMPANY_LOGO, ownerId, contentType);
     }
 
+    @Override
+    public CompanyResponse getMyCompany(long ownerId) {
+        return companyRepository.findAllByOwnerId(ownerId)
+                .stream()
+                .findFirst()
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("No company found for this user"));
+    }
+
     private CompanyResponse toResponse(Company company) {
         return new CompanyResponse(
                 company.getId(),

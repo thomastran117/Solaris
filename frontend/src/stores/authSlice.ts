@@ -4,12 +4,14 @@ interface AuthState {
   accessToken: string | null;
   email: string | null;
   role: string | null;
+  companyId: number | null;
 }
 
 const initialState: AuthState = {
   accessToken: null,
   email: null,
   role: null,
+  companyId: null,
 };
 
 const authSlice = createSlice({
@@ -22,6 +24,7 @@ const authSlice = createSlice({
         accessToken?: string | null;
         email?: string | null;
         role?: string | null;
+        companyId?: number | null;
       }>
     ) => {
       if (action.payload.accessToken !== undefined) {
@@ -33,11 +36,15 @@ const authSlice = createSlice({
       if (action.payload.role !== undefined) {
         state.role = action.payload.role;
       }
+      if (action.payload.companyId !== undefined) {
+        state.companyId = action.payload.companyId;
+      }
     },
     clearCredentials: (state) => {
       state.accessToken = null;
       state.email = null;
       state.role = null;
+      state.companyId = null;
     },
   },
 });

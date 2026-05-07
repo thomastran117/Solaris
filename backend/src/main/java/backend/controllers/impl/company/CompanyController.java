@@ -53,6 +53,19 @@ public class CompanyController {
         }
     }
 
+    @GetMapping("/mine")
+    @RequireAuth
+    public ResponseEntity<CompanyResponse> getMyCompany() {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.ok(companyService.getMyCompany(userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @GetMapping("/{id}")
     @RequireAuth
     public ResponseEntity<CompanyResponse> getCompany(@PathVariable long id) {
