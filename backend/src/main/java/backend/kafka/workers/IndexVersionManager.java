@@ -1,5 +1,6 @@
 package backend.kafka.workers;
 
+import backend.configurations.search.SearchIndexSettings;
 import backend.models.core.IndexVersion;
 import backend.repositories.IndexVersionRepository;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -32,10 +33,13 @@ public class IndexVersionManager {
 
     private final ElasticsearchClient esClient;
     private final IndexVersionRepository versionRepository;
+    private final SearchIndexSettings searchIndexSettings;
 
-    public IndexVersionManager(ElasticsearchClient esClient, IndexVersionRepository versionRepository) {
+    public IndexVersionManager(ElasticsearchClient esClient, IndexVersionRepository versionRepository,
+                                SearchIndexSettings searchIndexSettings) {
         this.esClient = esClient;
         this.versionRepository = versionRepository;
+        this.searchIndexSettings = searchIndexSettings;
     }
 
     /**
@@ -50,7 +54,9 @@ public class IndexVersionManager {
             boolean aliasExists = esClient.indices().existsAlias(a -> a.name(alias)).value();
             if (!aliasExists) {
                 String indexName = alias + "_v1";
-                esClient.indices().create(c -> c.index(indexName));
+                esClient.indices().create(c -> c
+                        .index(indexName)
+                        .settings(searchIndexSettings.buildSettings()));
                 esClient.indices().putAlias(a -> a.index(indexName).name(alias));
                 saveVersion(alias, 1, indexName);
                 log.info("[INDEX VERSION] Created index '{}' with alias '{}'", indexName, alias);
@@ -85,7 +91,9 @@ public class IndexVersionManager {
 
             log.info("[INDEX VERSION] Rolling over '{}': {} → {}", alias, oldIndexName, newIndexName);
 
-            esClient.indices().create(c -> c.index(newIndexName));
+            esClient.indices().create(c -> c
+                    .index(newIndexName)
+                    .settings(searchIndexSettings.buildSettings()));
 
             esClient.reindex(r -> r
                     .source(s -> s.index(oldIndexName))

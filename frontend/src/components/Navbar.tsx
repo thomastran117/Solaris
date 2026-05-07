@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { FaSearch, FaUserCircle } from "react-icons/fa";
+import { FaUserCircle } from "react-icons/fa";
 import { useNavigate, NavLink } from "react-router-dom";
+import SearchBar from "./search/SearchBar";
 import { useSelector, useDispatch } from "react-redux";
 import type { RootState, AppDispatch } from "../stores";
 import { clearCredentials } from "../stores/authSlice";
@@ -181,21 +182,12 @@ export default function Navbar() {
             </div>
 
             {/* Search bar */}
-            <form className="flex items-center mt-4 lg:mt-0 lg:ml-6">
-              <div className="relative flex rounded overflow-hidden border border-gray-600">
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="bg-gray-800 text-white px-3 py-1 focus:outline-none w-36 sm:w-48"
-                />
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 px-3 py-1"
-                >
-                  <FaSearch />
-                </button>
-              </div>
-            </form>
+            <div className="mt-4 lg:mt-0 lg:ml-6 w-48 sm:w-64">
+              <SearchBar
+                onSearch={(q) => navigate(`/browse?q=${encodeURIComponent(q)}`)}
+                placeholder="Search…"
+              />
+            </div>
 
             {/* User/Login */}
             <div className="relative mt-4 lg:mt-0 lg:ml-6">

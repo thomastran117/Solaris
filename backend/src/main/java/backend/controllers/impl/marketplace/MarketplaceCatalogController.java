@@ -1,6 +1,6 @@
 package backend.controllers.impl.marketplace;
 
-import backend.dtos.responses.general.PagedResponse;
+import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.events.activity.ActivityType;
@@ -62,7 +62,7 @@ public class MarketplaceCatalogController {
     }
 
     @GetMapping("/products")
-    public ResponseEntity<PagedResponse<MarketplaceCatalogProductResponse>> searchCatalog(
+    public ResponseEntity<CatalogSearchResponse> searchCatalog(
             @PathVariable long marketplaceId,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String category,

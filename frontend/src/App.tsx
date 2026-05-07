@@ -9,6 +9,7 @@ import AuthCallback from "./pages/AuthCallback";
 import HelloTestPage from "./pages/HelloTestPage";
 import DashboardPage from "./pages/DashboardPage";
 import ComparisonPage from "./pages/ComparisonPage";
+import BrowsePage from "./pages/BrowsePage";
 import ProductPage from "./pages/ProductPage";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -45,6 +46,7 @@ function App() {
             />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/compare" element={<ComparisonPage />} />
+            <Route path="/browse" element={<BrowsePage />} />
             <Route path="/products/:id" element={<ProductPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />

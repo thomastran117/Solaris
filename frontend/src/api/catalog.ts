@@ -1,4 +1,5 @@
 import api from "../api";
+import type { CatalogSearchResponse, SearchSuggestionsResponse } from "../types/search";
 
 export interface CatalogProduct {
   id: number;
@@ -65,7 +66,13 @@ export interface CatalogSearchParams {
 
 export const catalogApi = {
   search: (marketplaceId: number, params: CatalogSearchParams = {}) =>
-    api.get<CatalogPagedResponse>(`/marketplaces/${marketplaceId}/catalog/products`, { params }),
+    api.get<CatalogSearchResponse>(`/marketplaces/${marketplaceId}/catalog/products`, { params }),
+
+  getSuggestions: (marketplaceId: number, q: string, limit = 8) =>
+    api.get<SearchSuggestionsResponse>(
+      `/marketplaces/${marketplaceId}/catalog/search/suggestions`,
+      { params: { q, limit } }
+    ),
 
   getProduct: (marketplaceId: number, productId: number) =>
     api.get<CatalogProduct>(`/marketplaces/${marketplaceId}/catalog/products/${productId}`),

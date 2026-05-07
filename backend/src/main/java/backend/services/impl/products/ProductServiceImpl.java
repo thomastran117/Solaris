@@ -1,8 +1,11 @@
 package backend.services.impl.products;
 
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
+import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregation;
+import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -31,7 +34,11 @@ import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
 import backend.dtos.responses.general.PagedResponse;
+import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
+import backend.dtos.responses.search.FacetBucket;
+import backend.dtos.responses.search.PriceRangeBucket;
+import backend.dtos.responses.search.SearchFacets;
 import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
@@ -177,7 +184,8 @@ public class ProductServiceImpl implements ProductService {
                 if (q != null && !q.isBlank()) {
                     bq.must(MultiMatchQuery.of(mm -> mm
                             .fields("name^3", "description", "brand^2", "category", "tags")
-                            .query(q))._toQuery());
+                            .query(q)
+                            .fuzziness("AUTO"))._toQuery());
                 }
                 if (status           != null) bq.filter(TermQuery.of(t -> t.field("status").value(status.name()))._toQuery());
                 if (category         != null) bq.filter(TermQuery.of(t -> t.field("category").value(category))._toQuery());
@@ -818,7 +826,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<MarketplaceCatalogProductResponse> searchMarketplaceCatalog(
+    public CatalogSearchResponse searchMarketplaceCatalog(
             long marketplaceId, String q, String category, String brand,
             BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, Long vendorId,
             int page, int size, String sort, String direction) {
@@ -846,7 +854,8 @@ public class ProductServiceImpl implements ProductService {
             if (q != null && !q.isBlank()) {
                 bq.must(MultiMatchQuery.of(mm -> mm
                         .fields("name^3", "description", "brand^2", "category", "tags", "vendorName")
-                        .query(q))._toQuery());
+                        .query(q)
+                        .fuzziness("AUTO"))._toQuery());
             }
             if (category != null) bq.filter(TermQuery.of(t -> t.field("category").value(category))._toQuery());
             if (brand    != null) bq.filter(TermQuery.of(t -> t.field("brand").value(brand))._toQuery());
@@ -866,6 +875,15 @@ public class ProductServiceImpl implements ProductService {
             NativeQuery esQuery = NativeQuery.builder()
                     .withQuery(bq.build()._toQuery())
                     .withPageable(pageable)
+                    .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
+                    .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
+                    .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
+                            .field("price")
+                            .ranges(rb -> rb.to(25.0),
+                                    rb -> rb.from(25.0).to(50.0),
+                                    rb -> rb.from(50.0).to(100.0),
+                                    rb -> rb.from(100.0).to(200.0),
+                                    rb -> rb.from(200.0)))))
                     .build();
 
             SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
@@ -881,7 +899,8 @@ public class ProductServiceImpl implements ProductService {
                     .map(id -> toCatalogResponse(productMap.get(id), vendorMap.get(productMap.get(id).getCompany().getId())))
                     .toList();
 
-            return new PagedResponse<>(new PageImpl<>(content, pageable, hits.getTotalHits()));
+            SearchFacets facets = extractFacets(hits);
+            return new CatalogSearchResponse(new PageImpl<>(content, pageable, hits.getTotalHits()), facets);
 
         } catch (Exception e) {
             log.warn("[CATALOG SEARCH] Elasticsearch unavailable: {}", e.getMessage());
@@ -897,8 +916,10 @@ public class ProductServiceImpl implements ProductService {
         // --- JPA fallback (unfiltered, no active search filters) ---
         Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
         Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
-        return new PagedResponse<>(productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()))));
-        }, new TypeReference<PagedResponse<MarketplaceCatalogProductResponse>>() {});
+        return new CatalogSearchResponse(
+                productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()))),
+                new SearchFacets(List.of(), List.of(), List.of()));
+        }, new TypeReference<CatalogSearchResponse>() {});
     }
 
     @Override
@@ -1046,6 +1067,48 @@ public class ProductServiceImpl implements ProductService {
 
     private ProductAttributeResponse toAttrResponse(ProductAttribute attr) {
         return new ProductAttributeResponse(attr.getId(), attr.getName(), attr.getValue(), attr.getDisplayOrder());
+    }
+
+    private SearchFacets extractFacets(SearchHits<?> hits) {
+        if (hits.getAggregations() == null) {
+            return new SearchFacets(List.of(), List.of(), List.of());
+        }
+        try {
+            ElasticsearchAggregations aggs = (ElasticsearchAggregations) hits.getAggregations();
+            Map<String, ElasticsearchAggregation> aggMap = aggs.aggregations();
+
+            List<FacetBucket> categories = aggMap.containsKey("categories")
+                    ? aggMap.get("categories").aggregation().getAggregate().sterms().buckets().array().stream()
+                            .filter(b -> b.key() != null && !b.key().isBlank())
+                            .map(b -> new FacetBucket(b.key(), b.docCount()))
+                            .toList()
+                    : List.of();
+
+            List<FacetBucket> brands = aggMap.containsKey("brands")
+                    ? aggMap.get("brands").aggregation().getAggregate().sterms().buckets().array().stream()
+                            .filter(b -> b.key() != null && !b.key().isBlank())
+                            .map(b -> new FacetBucket(b.key(), b.docCount()))
+                            .toList()
+                    : List.of();
+
+            List<PriceRangeBucket> priceRanges = aggMap.containsKey("price_ranges")
+                    ? aggMap.get("price_ranges").aggregation().getAggregate().range().buckets().array().stream()
+                            .filter(b -> b.docCount() > 0)
+                            .map(b -> new PriceRangeBucket(formatPriceLabel(b.from(), b.to()), b.from(), b.to(), b.docCount()))
+                            .toList()
+                    : List.of();
+
+            return new SearchFacets(categories, brands, priceRanges);
+        } catch (Exception e) {
+            log.warn("[SEARCH] Failed to extract facets: {}", e.getMessage());
+            return new SearchFacets(List.of(), List.of(), List.of());
+        }
+    }
+
+    private static String formatPriceLabel(Double from, Double to) {
+        if (from == null || from == 0.0) return "Under $" + to.intValue();
+        if (to == null) return "$" + from.intValue() + "+";
+        return "$" + from.intValue() + " – $" + to.intValue();
     }
 
     private Map<Long, MarketplaceVendor> buildVendorMap(long marketplaceId, List<Product> products) {

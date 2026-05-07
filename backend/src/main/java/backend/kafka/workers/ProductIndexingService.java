@@ -326,6 +326,10 @@ public class ProductIndexingService implements ApplicationRunner {
         String vendorName = null;
         try { vendorName = p.getCompany().getName(); } catch (Exception ignored) {}
 
+        String nameCompletion = p.getName() != null
+                ? p.getName() + (p.getBrand() != null ? " " + p.getBrand() : "")
+                : null;
+
         return new ProductDocument(
                 p.getId(),
                 companyId,
@@ -339,6 +343,7 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getCategory(),
                 p.getBrand(),
                 p.getTags(),
+                nameCompletion,
                 p.getStatus() != null ? p.getStatus().name() : null,
                 p.isFeatured(),
                 p.isListed(),

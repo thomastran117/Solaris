@@ -36,10 +36,10 @@ public class ProductDocument {
     /** True when the vendor has enabled this product for marketplace display. */
     private boolean marketplaceListed;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
     private String name;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
     private String description;
 
     @Field(type = FieldType.Keyword)
@@ -51,8 +51,11 @@ public class ProductDocument {
     @Field(type = FieldType.Keyword)
     private String brand;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
     private String tags;
+
+    @Field(type = FieldType.Text, analyzer = "autocomplete_index", searchAnalyzer = "autocomplete_search")
+    private String nameCompletion;
 
     @Field(type = FieldType.Keyword)
     private String status;

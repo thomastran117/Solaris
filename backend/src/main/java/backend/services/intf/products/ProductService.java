@@ -13,6 +13,7 @@ import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
 import backend.dtos.responses.general.PagedResponse;
+import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
 import backend.dtos.responses.product.ProductImageResponse;
@@ -63,7 +64,7 @@ public interface ProductService {
     // -------------------------------------------------------------------------
 
     /** Cross-vendor product search for a marketplace storefront. Only returns ACTIVE + marketplaceListed=true products. */
-    PagedResponse<MarketplaceCatalogProductResponse> searchMarketplaceCatalog(
+    CatalogSearchResponse searchMarketplaceCatalog(
             long marketplaceId, String q, String category, String brand,
             BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, Long vendorId,
             int page, int size, String sort, String direction);
