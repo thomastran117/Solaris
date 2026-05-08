@@ -4,20 +4,31 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import backend.services.intf.CacheService;
 
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Cache-aside layer with single-flight deduplication: when multiple threads concurrently miss the
- * same Redis key, only one proceeds to the DB loader; the rest coalesce on its CompletableFuture.
- * Redis failures on the write path are swallowed so they never break a read.
+ * Cache-aside layer with two stampede-prevention mechanisms:
+ *
+ * 1. Single-flight deduplication — on a cold miss, only one thread loads from DB;
+ *    concurrent waiters coalesce on its CompletableFuture.
+ *
+ * 2. Probabilistic early refresh (XFetch-style) — on a cache hit whose remaining TTL
+ *    is within the configured early window, a background thread proactively reloads
+ *    the value before it expires, keeping keys perpetually warm under traffic.
+ *    The calling thread always returns the cached value immediately with zero added latency.
  */
 @Component
 public class SingleFlightCache {
@@ -26,11 +37,35 @@ public class SingleFlightCache {
 
     private final CacheService cacheService;
     private final ObjectMapper objectMapper;
+    private final ThreadPoolTaskExecutor cacheRefreshExecutor;
+
+    // Single-flight: tracks in-progress DB loads for cold misses
     private final ConcurrentHashMap<String, CompletableFuture<Optional<String>>> inFlight = new ConcurrentHashMap<>();
 
-    public SingleFlightCache(CacheService cacheService, ObjectMapper objectMapper) {
+    // Early refresh: prevents submitting duplicate background refresh tasks per JVM
+    private final ConcurrentHashMap<String, Boolean> refreshInFlight = new ConcurrentHashMap<>();
+
+    // Stable per-instance identity used as distributed lock owner token
+    private final String instanceId = UUID.randomUUID().toString();
+
+    @Value("${app.cache.early-refresh.check-sample-rate:0.1}")
+    private double checkSampleRate;
+
+    @Value("${app.cache.early-refresh.fraction:0.20}")
+    private double earlyRefreshFraction;
+
+    @Value("${app.cache.early-refresh.distributed-lock-enabled:true}")
+    private boolean distributedLockEnabled;
+
+    @Value("${app.cache.early-refresh.lock-ttl-seconds:30}")
+    private long lockTtlSeconds;
+
+    public SingleFlightCache(CacheService cacheService,
+                             ObjectMapper objectMapper,
+                             @Qualifier("cacheRefreshExecutor") ThreadPoolTaskExecutor cacheRefreshExecutor) {
         this.cacheService = cacheService;
         this.objectMapper = objectMapper;
+        this.cacheRefreshExecutor = cacheRefreshExecutor;
     }
 
     public <T> T getOrLoad(String key, long ttlSeconds, Supplier<T> loader, Class<T> type) {
@@ -60,7 +95,10 @@ public class SingleFlightCache {
     private <T> T getOrLoad(String key, long ttlSeconds, Supplier<T> loader, Function<String, T> deserializer) {
         // Fast path: Redis hit
         String raw = safeGet(key);
-        if (raw != null) return deserializer.apply(raw);
+        if (raw != null) {
+            maybeScheduleEarlyRefresh(key, ttlSeconds, loader);
+            return deserializer.apply(raw);
+        }
 
         // Single-flight: register or coalesce
         CompletableFuture<Optional<String>> mine = new CompletableFuture<>();
@@ -76,6 +114,7 @@ public class SingleFlightCache {
             raw = safeGet(key);
             if (raw != null) {
                 mine.complete(Optional.of(raw));
+                maybeScheduleEarlyRefresh(key, ttlSeconds, loader);
                 return deserializer.apply(raw);
             }
 
@@ -95,6 +134,86 @@ public class SingleFlightCache {
             throw e;
         } finally {
             inFlight.remove(key, mine);
+        }
+    }
+
+    /**
+     * Hot-path entry point for early refresh. Cost to the calling thread:
+     * one ThreadLocalRandom call + one ConcurrentHashMap lookup + one executor submit (10% of hits).
+     * All I/O (TTL check, DB load, cache write) happens in a background thread.
+     */
+    private <T> void maybeScheduleEarlyRefresh(String key, long ttlSeconds, Supplier<T> loader) {
+        if (ThreadLocalRandom.current().nextDouble() >= checkSampleRate) return;
+
+        // Per-JVM dedup: skip if a refresh task is already queued or running for this key
+        if (refreshInFlight.putIfAbsent(key, Boolean.TRUE) != null) return;
+
+        try {
+            cacheRefreshExecutor.execute(() -> checkTtlAndRefresh(key, ttlSeconds, loader));
+        } catch (Exception e) {
+            // DiscardPolicy shouldn't throw, but guard the cleanup regardless
+            refreshInFlight.remove(key);
+        }
+    }
+
+    /**
+     * Background task: checks remaining TTL, applies XFetch-style probability, and if it fires,
+     * reloads from DB and resets the cache TTL to the full configured value.
+     */
+    private <T> void checkTtlAndRefresh(String key, long ttlSeconds, Supplier<T> loader) {
+        boolean lockAcquired = false;
+        try {
+            long remaining;
+            try {
+                remaining = cacheService.getTtlSeconds(key);
+            } catch (Exception e) {
+                log.warn("[CACHE] getTtl error for key {}: {}", key, e.getMessage());
+                return;
+            }
+
+            // Key gone (-2) or has no expiry (-1) — nothing to do
+            if (remaining <= 0) return;
+
+            double earlyWindow = earlyRefreshFraction * ttlSeconds;
+            if (earlyWindow <= 0 || remaining >= earlyWindow) return;
+
+            // Linear ramp: p = 0 at window boundary, p = 1 at remaining = 0
+            double p = 1.0 - (remaining / earlyWindow);
+            if (ThreadLocalRandom.current().nextDouble() >= p) return;
+
+            if (distributedLockEnabled) {
+                String lockKey = "refresh-lock:" + key;
+                try {
+                    lockAcquired = cacheService.tryLock(lockKey, instanceId, lockTtlSeconds);
+                } catch (Exception e) {
+                    log.warn("[CACHE] tryLock error for key {}: {}", key, e.getMessage());
+                    return;
+                }
+                if (!lockAcquired) return;
+            }
+
+            log.debug("[CACHE] Early refresh for key {} (remaining={}s)", key, remaining);
+            T value = loader.get();
+            String json = toJson(value);
+            if (json != null) {
+                try {
+                    cacheService.set(key, json, ttlSeconds);
+                } catch (Exception e) {
+                    log.warn("[CACHE] Early refresh write error for key {}: {}", key, e.getMessage());
+                }
+            }
+
+        } catch (Exception e) {
+            log.warn("[CACHE] Early refresh error for key {}: {}", key, e.getMessage());
+        } finally {
+            refreshInFlight.remove(key);
+            if (lockAcquired) {
+                try {
+                    cacheService.unlock("refresh-lock:" + key, instanceId);
+                } catch (Exception e) {
+                    log.warn("[CACHE] Unlock error for key {}: {}", key, e.getMessage());
+                }
+            }
         }
     }
 

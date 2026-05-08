@@ -80,19 +80,19 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
 
                 if (hits.getAggregations() != null) {
                     ElasticsearchAggregations aggs = (ElasticsearchAggregations) hits.getAggregations();
-                    Map<String, ElasticsearchAggregation> aggMap = aggs.aggregations();
+                    Map<String, ElasticsearchAggregation> aggMap = aggs.aggregationsAsMap();
 
                     if (aggMap.containsKey("categories")) {
                         categories = aggMap.get("categories").aggregation().getAggregate()
                                 .sterms().buckets().array().stream()
-                                .map(b -> b.key())
+                                .map(b -> b.key().stringValue())
                                 .filter(k -> k != null && !k.isBlank())
                                 .toList();
                     }
                     if (aggMap.containsKey("brands")) {
                         brands = aggMap.get("brands").aggregation().getAggregate()
                                 .sterms().buckets().array().stream()
-                                .map(b -> b.key())
+                                .map(b -> b.key().stringValue())
                                 .filter(k -> k != null && !k.isBlank())
                                 .toList();
                     }

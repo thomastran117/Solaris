@@ -879,11 +879,11 @@ public class ProductServiceImpl implements ProductService {
                     .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
                     .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
                             .field("price")
-                            .ranges(rb -> rb.to(25.0),
-                                    rb -> rb.from(25.0).to(50.0),
-                                    rb -> rb.from(50.0).to(100.0),
-                                    rb -> rb.from(100.0).to(200.0),
-                                    rb -> rb.from(200.0)))))
+                            .ranges(rb -> rb.to(25.0))
+                            .ranges(rb -> rb.from(25.0).to(50.0))
+                            .ranges(rb -> rb.from(50.0).to(100.0))
+                            .ranges(rb -> rb.from(100.0).to(200.0))
+                            .ranges(rb -> rb.from(200.0)))))
                     .build();
 
             SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
@@ -1075,19 +1075,19 @@ public class ProductServiceImpl implements ProductService {
         }
         try {
             ElasticsearchAggregations aggs = (ElasticsearchAggregations) hits.getAggregations();
-            Map<String, ElasticsearchAggregation> aggMap = aggs.aggregations();
+            Map<String, ElasticsearchAggregation> aggMap = aggs.aggregationsAsMap();
 
             List<FacetBucket> categories = aggMap.containsKey("categories")
                     ? aggMap.get("categories").aggregation().getAggregate().sterms().buckets().array().stream()
-                            .filter(b -> b.key() != null && !b.key().isBlank())
-                            .map(b -> new FacetBucket(b.key(), b.docCount()))
+                            .filter(b -> b.key().stringValue() != null && !b.key().stringValue().isBlank())
+                            .map(b -> new FacetBucket(b.key().stringValue(), b.docCount()))
                             .toList()
                     : List.of();
 
             List<FacetBucket> brands = aggMap.containsKey("brands")
                     ? aggMap.get("brands").aggregation().getAggregate().sterms().buckets().array().stream()
-                            .filter(b -> b.key() != null && !b.key().isBlank())
-                            .map(b -> new FacetBucket(b.key(), b.docCount()))
+                            .filter(b -> b.key().stringValue() != null && !b.key().stringValue().isBlank())
+                            .map(b -> new FacetBucket(b.key().stringValue(), b.docCount()))
                             .toList()
                     : List.of();
 
