@@ -12,37 +12,41 @@ public class SearchIndexSettings {
         return IndexSettings.of(s -> s
                 .analysis(a -> a
                         .filter("synonym_filter", f -> f
-                                .synonymGraph(sg -> sg
-                                        .synonyms(List.of(
-                                                "laptop, notebook, computer",
-                                                "shoes, sneakers, trainers",
-                                                "tv, television, screen",
-                                                "phone, smartphone, mobile",
-                                                "headphones, earphones, earbuds",
-                                                "jacket, coat, outerwear",
-                                                "sofa, couch, settee",
-                                                "fridge, refrigerator",
-                                                "tshirt, t-shirt, tee",
-                                                "pants, trousers, jeans",
-                                                "watch, timepiece",
-                                                "bag, handbag, purse, tote",
-                                                "camera, dslr, mirrorless",
-                                                "desk, table, workstation",
-                                                "chair, seat, stool",
-                                                "bicycle, bike, cycle",
-                                                "running, jogging",
-                                                "gaming, games, gamer",
-                                                "wireless, bluetooth",
-                                                "organic, natural",
-                                                "kids, children, child, toddler",
-                                                "sale, discount, clearance, deals"
-                                        ))
+                                .definition(d -> d
+                                        .synonymGraph(sg -> sg
+                                                .synonyms(List.of(
+                                                        "laptop, notebook, computer",
+                                                        "shoes, sneakers, trainers",
+                                                        "tv, television, screen",
+                                                        "phone, smartphone, mobile",
+                                                        "headphones, earphones, earbuds",
+                                                        "jacket, coat, outerwear",
+                                                        "sofa, couch, settee",
+                                                        "fridge, refrigerator",
+                                                        "tshirt, t-shirt, tee",
+                                                        "pants, trousers, jeans",
+                                                        "watch, timepiece",
+                                                        "bag, handbag, purse, tote",
+                                                        "camera, dslr, mirrorless",
+                                                        "desk, table, workstation",
+                                                        "chair, seat, stool",
+                                                        "bicycle, bike, cycle",
+                                                        "running, jogging",
+                                                        "gaming, games, gamer",
+                                                        "wireless, bluetooth",
+                                                        "organic, natural",
+                                                        "kids, children, child, toddler",
+                                                        "sale, discount, clearance, deals"
+                                                ))
+                                        )
                                 )
                         )
                         .filter("autocomplete_filter", f -> f
-                                .edgeNgram(en -> en
-                                        .minGram(1)
-                                        .maxGram(20)
+                                .definition(d -> d
+                                        .edgeNgram(en -> en
+                                                .minGram(1)
+                                                .maxGram(20)
+                                        )
                                 )
                         )
                         .analyzer("product_search", an -> an
