@@ -107,23 +107,13 @@ export interface AdjustPointsRequest {
   reason?: string;
 }
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
-}
-
 export const loyaltyApi = {
   // Customer self-service
   getAccount: (companyId: number) =>
     api.get<LoyaltyAccount>(`/loyalty/account`, { params: { companyId } }),
 
   getTransactions: (companyId: number, page = 0, size = 20) =>
-    api.get<PagedResponse<LoyaltyTransaction>>(`/loyalty/transactions`, {
+    api.get<LoyaltyTransaction[]>(`/loyalty/transactions`, {
       params: { companyId, page, size },
     }),
 

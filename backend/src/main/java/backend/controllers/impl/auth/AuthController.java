@@ -10,11 +10,16 @@ import backend.services.intf.auth.OAuthService;
 import backend.utilities.intf.Logger;
 import backend.dtos.requests.auth.SignupRequest;
 import backend.dtos.responses.auth.AuthResponse;
+import backend.dtos.responses.auth.DeviceVerificationRequiredResponse;
+import backend.dtos.responses.auth.TokenResponse;
 import backend.dtos.responses.device.DeviceResponse;
 import backend.dtos.responses.general.MessageResponse;
 import backend.dtos.requests.auth.LoginRequest;
 import backend.exceptions.http.AppHttpException;
+import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.exceptions.http.ServiceUnavaliableException;
+import backend.exceptions.http.UnauthorizedException;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.models.other.OAuthUser;
 import backend.security.oauth.InvalidOAuthTokenException;
@@ -63,10 +68,7 @@ public class AuthController {
                     request.getEmail(), request.getPassword());
 
             if (attempt.deviceVerificationRequired()) {
-                return ResponseEntity.ok(Map.of(
-                        "status", "DEVICE_VERIFICATION_REQUIRED",
-                        "message", "A verification email has been sent to your inbox. Please verify this device to continue."
-                ));
+                return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
             }
             return buildLoginResponse(attempt.loginResult(), response);
         } catch (AppHttpException e) {
@@ -158,7 +160,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<TokenResponse> refreshToken(HttpServletRequest request, HttpServletResponse response) {
         String refreshToken = null;
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
@@ -169,27 +171,23 @@ public class AuthController {
             }
         }
 
-        try {
-            AuthService.RefreshResult result = authService.refresh(refreshToken);
+        AuthService.RefreshResult result = authService.refresh(refreshToken);
 
-            ResponseCookie cookie = ResponseCookie.from("refreshToken", result.refreshToken())
-                .httpOnly(true)
-                .secure(false)
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(7 * 24 * 60 * 60)
-                .build();
+        ResponseCookie cookie = ResponseCookie.from("refreshToken", result.refreshToken())
+            .httpOnly(true)
+            .secure(false)
+            .sameSite("Lax")
+            .path("/")
+            .maxAge(7 * 24 * 60 * 60)
+            .build();
 
-            response.addHeader("Set-Cookie", cookie.toString());
+        response.addHeader("Set-Cookie", cookie.toString());
 
-            return ResponseEntity.ok(Map.of(
-                    "accessToken", result.accessToken(),
-                    "tokenType", "Bearer",
-                    "expiresIn", result.expiresInSeconds()
-            ));
-        } catch (org.springframework.web.server.ResponseStatusException e) {
-            return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", e.getReason()));
-        }
+        return ResponseEntity.ok(new TokenResponse(
+                result.accessToken(),
+                "Bearer",
+                result.expiresInSeconds()
+        ));
     }
 
     @PostMapping("/logout")
@@ -221,7 +219,7 @@ public class AuthController {
     public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Missing idToken"));
+            throw new BadRequestException("Missing idToken");
         }
 
         try {
@@ -230,16 +228,13 @@ public class AuthController {
             AuthService.LoginAttemptResult attempt = authService.googleAuthenicate(oauthUser.email());
 
             if (attempt.deviceVerificationRequired()) {
-                return ResponseEntity.ok(Map.of(
-                        "status", "DEVICE_VERIFICATION_REQUIRED",
-                        "message", "A verification email has been sent to your inbox. Please verify this device to continue."
-                ));
+                return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
             }
             return buildLoginResponse(attempt.loginResult(), response);
         } catch (OAuthProviderNotConfiguredException e) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", "Google sign-in is not available on this server"));
+            throw new ServiceUnavaliableException("Google sign-in is not available on this server");
         } catch (InvalidOAuthTokenException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired Google token"));
+            throw new UnauthorizedException("Invalid or expired Google token");
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -251,23 +246,20 @@ public class AuthController {
     public ResponseEntity<?> appleLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Missing idToken"));
+            throw new BadRequestException("Missing idToken");
         }
 
         try {
             AuthService.LoginAttemptResult attempt = authService.appleAuthenticate(idTokenString);
 
             if (attempt.deviceVerificationRequired()) {
-                return ResponseEntity.ok(Map.of(
-                        "status", "DEVICE_VERIFICATION_REQUIRED",
-                        "message", "A verification email has been sent to your inbox. Please verify this device to continue."
-                ));
+                return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
             }
             return buildLoginResponse(attempt.loginResult(), response);
         } catch (OAuthProviderNotConfiguredException e) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", "Apple sign-in is not available on this server"));
+            throw new ServiceUnavaliableException("Apple sign-in is not available on this server");
         } catch (InvalidOAuthTokenException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired Apple token"));
+            throw new UnauthorizedException("Invalid or expired Apple token");
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -279,23 +271,20 @@ public class AuthController {
     public ResponseEntity<?> microsoftLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Missing idToken"));
+            throw new BadRequestException("Missing idToken");
         }
 
         try {
             AuthService.LoginAttemptResult attempt = authService.microsoftAuthenticate(idTokenString);
 
             if (attempt.deviceVerificationRequired()) {
-                return ResponseEntity.ok(Map.of(
-                        "status", "DEVICE_VERIFICATION_REQUIRED",
-                        "message", "A verification email has been sent to your inbox. Please verify this device to continue."
-                ));
+                return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
             }
             return buildLoginResponse(attempt.loginResult(), response);
         } catch (OAuthProviderNotConfiguredException e) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", "Microsoft sign-in is not available on this server"));
+            throw new ServiceUnavaliableException("Microsoft sign-in is not available on this server");
         } catch (InvalidOAuthTokenException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired Microsoft token"));
+            throw new UnauthorizedException("Invalid or expired Microsoft token");
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

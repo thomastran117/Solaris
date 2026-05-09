@@ -56,16 +56,6 @@ export interface VendorAdjustment {
   createdAt: string;
 }
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
-}
-
 export interface VendorAdjustmentRequest {
   amountCents: number;
   currency: string;
@@ -77,7 +67,7 @@ export const payoutApi = {
     api.get<VendorBalance>(`/vendors/${vendorId}/balance`),
 
   listPayouts: (vendorId: number, status?: string, page = 0, size = 20) =>
-    api.get<PagedResponse<VendorPayout>>(`/vendors/${vendorId}/payouts`, {
+    api.get<VendorPayout[]>(`/vendors/${vendorId}/payouts`, {
       params: { status, page, size },
     }),
 

@@ -56,16 +56,6 @@ export interface VendorSLABreach {
   createdAt: string;
 }
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
-}
-
 export const slaApi = {
   // Policy management (operator)
   createPolicy: (marketplaceId: number, data: CreateSLAPolicyRequest) =>
@@ -79,7 +69,7 @@ export const slaApi = {
 
   // Metrics (vendor + operator)
   listMetrics: (marketplaceId: number, vendorId: number, page = 0, size = 30) =>
-    api.get<PagedResponse<VendorSLAMetric>>(
+    api.get<VendorSLAMetric[]>(
       `/marketplaces/${marketplaceId}/vendors/${vendorId}/sla/metrics`,
       { params: { page, size } }
     ),
@@ -91,7 +81,7 @@ export const slaApi = {
 
   // Breaches (vendor + operator)
   listBreaches: (marketplaceId: number, vendorId: number, page = 0, size = 20) =>
-    api.get<PagedResponse<VendorSLABreach>>(
+    api.get<VendorSLABreach[]>(
       `/marketplaces/${marketplaceId}/vendors/${vendorId}/sla/breaches`,
       { params: { page, size } }
     ),

@@ -56,16 +56,6 @@ export interface CommissionRecord {
   computedAt: string;
 }
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
-}
-
 export interface ShipSubOrderRequest {
   trackingNumber: string;
   carrier: string;
@@ -78,7 +68,7 @@ export interface CancelSubOrderRequest {
 
 export const subOrderApi = {
   list: (vendorId: number, status?: string, page = 0, size = 20) =>
-    api.get<PagedResponse<SubOrder>>(`/vendors/${vendorId}/sub-orders`, {
+    api.get<SubOrder[]>(`/vendors/${vendorId}/sub-orders`, {
       params: { status, page, size },
     }),
 

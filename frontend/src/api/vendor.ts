@@ -1,16 +1,6 @@
 import api from "../api";
 import type { MarketplaceVendor } from "../stores/vendorSlice";
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
-}
-
 export interface VendorDocument {
   id: number;
   marketplaceVendorId: number;
@@ -99,7 +89,7 @@ export const vendorApi = {
     api.get<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/me`),
 
   list: (marketplaceId: number, status?: string, page = 0, size = 20) =>
-    api.get<PagedResponse<MarketplaceVendor>>(`/marketplaces/${marketplaceId}/vendors`, {
+    api.get<MarketplaceVendor[]>(`/marketplaces/${marketplaceId}/vendors`, {
       params: { status, page, size },
     }),
 

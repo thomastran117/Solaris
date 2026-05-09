@@ -1,7 +1,8 @@
-import axios from "axios";
+import axios, { AxiosError, AxiosResponse } from "axios";
 import { store } from "./stores";
 import { setCredentials, clearCredentials } from "./stores/authSlice";
 import Environment from "./configuration/Environment";
+import type { ApiEnvelope, ApiError, ApiMeta } from "./types/api";
 
 const api = axios.create({
   baseURL: Environment.backend_url,
@@ -22,10 +23,42 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Unwraps the standard ApiResponse envelope so call sites can keep using `resp.data`
+// as the payload. Pagination metadata is exposed on `resp.meta`.
+function isEnvelope(value: unknown): value is ApiEnvelope<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "success" in value &&
+    "data" in value &&
+    "error" in value
+  );
+}
+
+function unwrapEnvelope(response: AxiosResponse): AxiosResponse {
+  if (isEnvelope(response.data)) {
+    const env = response.data;
+    response.data = env.data;
+    (response as AxiosResponse & { meta: ApiMeta | null }).meta = env.meta;
+    (response as AxiosResponse & { apiMessage: string }).apiMessage = env.message;
+  }
+  return response;
+}
+
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  (response) => unwrapEnvelope(response),
+  async (error: AxiosError) => {
+    // Surface the typed envelope error so callers can read err.apiError.code etc.
+    const env = error.response?.data;
+    if (isEnvelope(env)) {
+      (error as AxiosError & { apiError: ApiError | null }).apiError = env.error;
+      (error as AxiosError & { apiMessage: string }).apiMessage = env.message;
+    }
+
+    const originalRequest = error.config as
+      | (typeof error.config & { _retry?: boolean })
+      | undefined;
+    if (!originalRequest) return Promise.reject(error);
 
     const status = error.response?.status;
     if ((status === 401 || status === 403) && !originalRequest._retry) {
@@ -39,12 +72,14 @@ api.interceptors.response.use(
             { withCredentials: true }
           )
           .then((resp) => {
-            const newToken: string = resp.data.accessToken;
+            // Refresh goes through raw axios (no interceptors), so unwrap by hand.
+            const payload = isEnvelope(resp.data) ? resp.data.data : resp.data;
+            const newToken: string = payload?.accessToken;
             store.dispatch(
               setCredentials({
                 accessToken: newToken,
-                email: resp.data.email ?? null,
-                role: resp.data.role ?? null,
+                email: payload?.email ?? null,
+                role: payload?.role ?? null,
               })
             );
             return newToken;
