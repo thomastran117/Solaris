@@ -11,6 +11,9 @@ import DashboardPage from "./pages/DashboardPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import BrowsePage from "./pages/BrowsePage";
 import ProductPage from "./pages/ProductPage";
+import SavedListsPage from "./pages/SavedListsPage";
+import SavedListDetailPage from "./pages/SavedListDetailPage";
+import PublicSavedListPage from "./pages/PublicSavedListPage";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
@@ -48,6 +51,9 @@ function App() {
             <Route path="/compare" element={<ComparisonPage />} />
             <Route path="/browse" element={<BrowsePage />} />
             <Route path="/products/:id" element={<ProductPage />} />
+            <Route path="/lists" element={<SavedListsPage />} />
+            <Route path="/lists/:id" element={<SavedListDetailPage />} />
+            <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>

@@ -137,6 +137,11 @@ export default function Navbar() {
                   Compare
                 </NavLink>
               )}
+              {accessToken && (
+                <NavLink to="/lists" className={navLinkClass}>
+                  My Lists
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

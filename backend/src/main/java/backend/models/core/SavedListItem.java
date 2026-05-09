@@ -13,20 +13,20 @@ import java.time.Instant;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "wishlist_items", indexes = {
-        @Index(name = "idx_wi_wishlist_id", columnList = "wishlist_id"),
-        @Index(name = "idx_wi_product_id", columnList = "product_id")
+@Table(name = "saved_list_items", indexes = {
+        @Index(name = "idx_sli_list_id", columnList = "saved_list_id"),
+        @Index(name = "idx_sli_product_id", columnList = "product_id")
 })
 @EntityListeners(AuditingEntityListener.class)
-public class WishlistItem {
+public class SavedListItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "wishlist_id", nullable = false)
-    private Wishlist wishlist;
+    @JoinColumn(name = "saved_list_id", nullable = false)
+    private SavedList savedList;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
@@ -35,6 +35,18 @@ public class WishlistItem {
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "variant_id", nullable = true)
     private ProductVariant variant;
+
+    @Column(nullable = false)
+    private int quantity = 1;
+
+    @Column(length = 500)
+    private String note;
+
+    @Column(nullable = false)
+    private boolean purchased = false;
+
+    @Column(name = "purchased_at")
+    private Instant purchasedAt;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

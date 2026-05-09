@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
@@ -7,9 +7,9 @@ import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag } from "lu
 import { catalogApi } from "../api/catalog";
 import SearchBar from "../components/search/SearchBar";
 import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel";
+import ProductCard from "../components/product/ProductCard";
 import type { RootState } from "../stores";
 import type { SearchFacets } from "../types/search";
-import type { CatalogProduct } from "../api/catalog";
 
 const useAnims = () => {
   const prefersReducedMotion = useReducedMotion();
@@ -31,50 +31,6 @@ const SORT_OPTIONS = [
 ] as const;
 
 const EMPTY_FACETS: SearchFacets = { categories: [], brands: [], priceRanges: [] };
-
-function ProductCard({ product, variants }: { product: CatalogProduct; variants: Variants }) {
-  const thumbnailUrl = product.thumbnailUrl ?? product.images?.[0]?.imageUrl;
-  const effectivePrice = product.price;
-  const currency = product.currency?.toUpperCase() ?? "USD";
-
-  return (
-    <Link to={`/products/${product.id}`} className="group block">
-      <motion.div
-        variants={variants}
-        whileHover={{ y: -4 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm hover:shadow-md transition-shadow overflow-hidden"
-      >
-        <div className="aspect-square bg-white/[0.04] flex items-center justify-center overflow-hidden">
-          {thumbnailUrl ? (
-            <img
-              src={thumbnailUrl}
-              alt={product.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            />
-          ) : (
-            <ShoppingBag className="w-10 h-10 text-white/20" />
-          )}
-        </div>
-        <div className="p-4">
-          {product.category && (
-            <p className="text-xs uppercase tracking-[0.15em] font-semibold text-sky-200/70 mb-1 truncate">
-              {product.category}
-            </p>
-          )}
-          <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2 mb-1">
-            {product.name}
-          </h3>
-          {product.brand && (
-            <p className="text-xs text-white/50 mb-2">{product.brand}</p>
-          )}
-          <p className="text-base font-extrabold text-white">
-            {currency} {effectivePrice.toFixed(2)}
-          </p>
-        </div>
-      </motion.div>
-    </Link>
-  );
-}
 
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();

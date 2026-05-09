@@ -2,8 +2,8 @@ package backend.events.activity;
 
 public enum ActivityType {
     VIEW,
-    WISHLIST_ADD,
-    WISHLIST_REMOVE,
+    SAVED_LIST_ADD,
+    SAVED_LIST_REMOVE,
     ORDER,
     REVIEW_POSITIVE,
     REVIEW_NEGATIVE,

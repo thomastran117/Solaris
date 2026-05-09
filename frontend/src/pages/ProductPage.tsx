@@ -3,11 +3,13 @@ import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package } from "lucide-react";
+import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
+import SaveToListModal from "../components/savedlist/SaveToListModal";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
+import { useNavigate } from "react-router-dom";
 
 const useAnims = () => {
   const prefersReducedMotion = useReducedMotion();
@@ -36,6 +38,8 @@ export default function ProductPage() {
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: product, isLoading, isError } = useQuery({
     queryKey: ["product", marketplaceId, productId],
@@ -253,14 +257,25 @@ export default function ProductPage() {
             {/* CTA area */}
             <div className="flex flex-col gap-3 mt-auto pt-2">
               {!unavailable ? (
-                /* In stock → Add to Cart */
-                <button
-                  disabled
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  Add to Cart
-                </button>
+                /* In stock → Add to Cart + Save to list */
+                <div className="flex gap-2">
+                  <button
+                    disabled
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    Add to Cart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (accessToken ? setSaveOpen(true) : navigate("/login"))}
+                    aria-label="Save to list"
+                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
+                  >
+                    <Bookmark className="w-4 h-4" />
+                    Save
+                  </button>
+                </div>
               ) : (
                 /* Out of stock → Notify Me */
                 accessToken ? (
@@ -303,6 +318,13 @@ export default function ProductPage() {
           </motion.div>
         )}
       </div>
+
+      <SaveToListModal
+        open={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        productId={product.id}
+        productName={product.name}
+      />
     </div>
   );
 }

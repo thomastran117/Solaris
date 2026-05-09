@@ -16,11 +16,12 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "wishlists", indexes = {
-        @Index(name = "idx_wishlist_user_id", columnList = "user_id")
+@Table(name = "saved_lists", indexes = {
+        @Index(name = "idx_saved_list_user_id", columnList = "user_id"),
+        @Index(name = "idx_saved_list_share_slug", columnList = "share_slug")
 })
 @EntityListeners(AuditingEntityListener.class)
-public class Wishlist {
+public class SavedList {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,11 +34,21 @@ public class Wishlist {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SavedListType type = SavedListType.WISHLIST;
+
+    @Column(length = 500)
+    private String description;
+
     @Column(nullable = false)
     private boolean isPublic = false;
 
-    @OneToMany(mappedBy = "wishlist", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<WishlistItem> items = new ArrayList<>();
+    @Column(name = "share_slug", unique = true, length = 16)
+    private String shareSlug;
+
+    @OneToMany(mappedBy = "savedList", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SavedListItem> items = new ArrayList<>();
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
