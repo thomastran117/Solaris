@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -64,6 +65,12 @@ public class UpdateProductRequest {
     private String weightUnit;
 
     private ProductStatus status;
+
+    /**
+     * Required (and must be in the future) when {@link #status} is set to
+     * {@link ProductStatus#SCHEDULED}. Cleared automatically when status moves to any other value.
+     */
+    private Instant scheduledPublishAt;
 
     private Boolean featured;
 

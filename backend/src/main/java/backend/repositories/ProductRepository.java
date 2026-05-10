@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import jakarta.persistence.LockModeType;
 
 import backend.models.core.Product;
+import backend.models.enums.ProductStatus;
 import backend.repositories.projections.DailyDemandProjection;
 import backend.repositories.projections.ProductDemandProjection;
 import backend.repositories.projections.ProductSalesProjection;
@@ -288,4 +289,16 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
               AND o.created_at >= :since
             """)
     List<Long> findDistinctCompanyIdsWithPaidOrdersSince(@Param("since") Instant since);
+
+    /**
+     * Used by {@code ProductSchedulingWorker} to find scheduled products whose publish time has arrived.
+     * Hits the {@code idx_products_status_scheduled_publish_at} index. JOIN FETCH on company so the
+     * subsequent indexing call doesn't trigger a LazyInitializationException.
+     */
+    @Query("SELECT p FROM Product p JOIN FETCH p.company "
+            + "WHERE p.status = :status AND p.scheduledPublishAt IS NOT NULL AND p.scheduledPublishAt <= :now")
+    Page<Product> findDueForPublishing(
+            @Param("status") ProductStatus status,
+            @Param("now") Instant now,
+            Pageable pageable);
 }

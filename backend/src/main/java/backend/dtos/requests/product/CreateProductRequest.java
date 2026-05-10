@@ -3,11 +3,13 @@ package backend.dtos.requests.product;
 import backend.annotations.safeIdentifier.SafeIdentifier;
 import backend.annotations.safeRichText.SafeRichText;
 import backend.annotations.safeText.SafeText;
+import backend.models.enums.ProductStatus;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -69,4 +71,14 @@ public class CreateProductRequest {
     private boolean purchasable = true;
 
     private boolean listed = true;
+
+    /**
+     * Optional initial lifecycle status. When omitted, the service defaults to {@link ProductStatus#DRAFT}.
+     * If set to {@link ProductStatus#SCHEDULED}, {@link #scheduledPublishAt} must also be supplied
+     * and be in the future.
+     */
+    private ProductStatus status;
+
+    /** Required (and must be in the future) when {@link #status} is {@link ProductStatus#SCHEDULED}. */
+    private Instant scheduledPublishAt;
 }

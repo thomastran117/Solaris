@@ -10,6 +10,7 @@ import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 @Document(indexName = "products")
@@ -59,6 +60,14 @@ public class ProductDocument {
 
     @Field(type = FieldType.Keyword)
     private String status;
+
+    /** Set on products with status SCHEDULED. Used by vendor admin filtering. */
+    @Field(type = FieldType.Date)
+    private Instant scheduledPublishAt;
+
+    /** Set the first time the product transitioned to ACTIVE. */
+    @Field(type = FieldType.Date)
+    private Instant publishedAt;
 
     private boolean featured;
 

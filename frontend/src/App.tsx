@@ -14,6 +14,8 @@ import ProductPage from "./pages/ProductPage";
 import SavedListsPage from "./pages/SavedListsPage";
 import SavedListDetailPage from "./pages/SavedListDetailPage";
 import PublicSavedListPage from "./pages/PublicSavedListPage";
+import AdminProductsPage from "./pages/admin/AdminProductsPage";
+import AdminProductEditor from "./pages/admin/AdminProductEditor";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
@@ -54,6 +56,9 @@ function App() {
             <Route path="/lists" element={<SavedListsPage />} />
             <Route path="/lists/:id" element={<SavedListDetailPage />} />
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
+            <Route path="/admin/products" element={<AdminProductsPage />} />
+            <Route path="/admin/products/new" element={<AdminProductEditor />} />
+            <Route path="/admin/products/:id" element={<AdminProductEditor />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>

@@ -26,7 +26,8 @@ import java.util.List;
 @Table(name = "products", indexes = {
         @Index(name = "idx_product_company", columnList = "company_id"),
         @Index(name = "idx_product_sku_company", columnList = "sku, company_id", unique = true),
-        @Index(name = "idx_product_marketplace", columnList = "marketplace_id")
+        @Index(name = "idx_product_marketplace", columnList = "marketplace_id"),
+        @Index(name = "idx_products_status_scheduled_publish_at", columnList = "status, scheduled_publish_at")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class Product {
@@ -131,6 +132,17 @@ public class Product {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ProductStatus status = ProductStatus.DRAFT;
+
+    /**
+     * When {@link #status} is {@link ProductStatus#SCHEDULED}, the product flips to
+     * {@link ProductStatus#ACTIVE} at or after this instant via {@code ProductSchedulingWorker}.
+     */
+    @Column(name = "scheduled_publish_at", nullable = true)
+    private Instant scheduledPublishAt;
+
+    /** Set the first time the product transitions to {@link ProductStatus#ACTIVE}. */
+    @Column(name = "published_at", nullable = true)
+    private Instant publishedAt;
 
     @Column(nullable = false)
     private boolean featured = false;

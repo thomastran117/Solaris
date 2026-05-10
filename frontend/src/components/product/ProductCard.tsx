@@ -20,6 +20,17 @@ export default function ProductCard({ product, variants }: Props) {
   const thumbnailUrl = product.thumbnailUrl ?? product.images?.[0]?.imageUrl;
   const effectivePrice = product.price;
   const currency = product.currency?.toUpperCase() ?? "USD";
+  const promo = product.activePromotion;
+  const showStrikethrough =
+    !!promo || (product.compareAtPrice != null && product.compareAtPrice > effectivePrice);
+  const saleLabel =
+    promo?.percentOff != null
+      ? `-${Math.round(promo.percentOff)}%`
+      : promo?.amountOff != null
+      ? `-${currency} ${promo.amountOff.toFixed(2)}`
+      : promo
+      ? "Sale"
+      : null;
 
   function handleBookmarkClick(e: MouseEvent) {
     e.preventDefault();
@@ -49,6 +60,12 @@ export default function ProductCard({ product, variants }: Props) {
             <Bookmark className="w-4 h-4" />
           </button>
 
+          {saleLabel && (
+            <span className="absolute top-2 left-2 z-10 inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold tracking-wide bg-blue-500/15 border border-white/10 text-sky-200 backdrop-blur">
+              {saleLabel}
+            </span>
+          )}
+
           <div className="aspect-square bg-white/[0.04] flex items-center justify-center overflow-hidden">
             {thumbnailUrl ? (
               <img
@@ -72,9 +89,16 @@ export default function ProductCard({ product, variants }: Props) {
             {product.brand && (
               <p className="text-xs text-white/50 mb-2">{product.brand}</p>
             )}
-            <p className="text-base font-extrabold text-white">
-              {currency} {effectivePrice.toFixed(2)}
-            </p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-base font-extrabold text-white">
+                {currency} {effectivePrice.toFixed(2)}
+              </p>
+              {showStrikethrough && product.compareAtPrice != null && (
+                <p className="text-xs font-medium text-white/45 line-through">
+                  {currency} {product.compareAtPrice.toFixed(2)}
+                </p>
+              )}
+            </div>
           </div>
         </motion.div>
       </Link>

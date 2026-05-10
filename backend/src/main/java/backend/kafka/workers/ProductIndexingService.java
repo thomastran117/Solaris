@@ -345,6 +345,8 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getTags(),
                 nameCompletion,
                 p.getStatus() != null ? p.getStatus().name() : null,
+                p.getScheduledPublishAt(),
+                p.getPublishedAt(),
                 p.isFeatured(),
                 p.isListed(),
                 p.getPrice(),

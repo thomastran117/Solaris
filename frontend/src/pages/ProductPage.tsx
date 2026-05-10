@@ -121,6 +121,27 @@ export default function ProductPage() {
   const hasVariants = product.variants.length > 0;
   const price = selectedVariant?.price ?? product.price;
   const currency = product.currency?.toUpperCase() ?? "USD";
+  const promo = product.activePromotion;
+  const showStrikethrough =
+    !!promo || (product.compareAtPrice != null && product.compareAtPrice > product.price);
+  const saleLabel =
+    promo?.percentOff != null
+      ? `-${Math.round(promo.percentOff)}%`
+      : promo?.amountOff != null
+      ? `-${currency} ${promo.amountOff.toFixed(2)}`
+      : promo
+      ? "Sale"
+      : null;
+  // Show "Sale ends …" only when the window closes within the next 14 days — beyond that
+  // the deadline is too far off to feel urgent and the line just adds noise.
+  const saleEndsLabel = (() => {
+    if (!promo?.endDate) return null;
+    const end = new Date(promo.endDate);
+    const ms = end.getTime() - Date.now();
+    const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+    if (ms <= 0 || ms > fourteenDaysMs) return null;
+    return end.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  })();
 
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden">
@@ -191,10 +212,27 @@ export default function ProductPage() {
             )}
 
             {/* Price */}
-            <p className="text-2xl font-extrabold text-white">
-              {currency}{" "}
-              {typeof price === "number" ? price.toFixed(2) : "—"}
-            </p>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <p className="text-2xl font-extrabold text-white">
+                  {currency}{" "}
+                  {typeof price === "number" ? price.toFixed(2) : "—"}
+                </p>
+                {showStrikethrough && product.compareAtPrice != null && (
+                  <p className="text-sm font-medium text-white/45 line-through">
+                    {currency} {product.compareAtPrice.toFixed(2)}
+                  </p>
+                )}
+                {saleLabel && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide bg-blue-500/15 border border-white/10 text-sky-200">
+                    {saleLabel}
+                  </span>
+                )}
+              </div>
+              {saleEndsLabel && (
+                <p className="text-xs text-white/55">Sale ends {saleEndsLabel}</p>
+              )}
+            </div>
 
             {/* Variant selector */}
             {hasVariants && (

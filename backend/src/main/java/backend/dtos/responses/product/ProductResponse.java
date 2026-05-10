@@ -31,6 +31,8 @@ public class ProductResponse {
     private BigDecimal weight;
     private String weightUnit;
     private String status;
+    private Instant scheduledPublishAt;
+    private Instant publishedAt;
     private boolean featured;
     private boolean purchasable;
     private boolean listed;
@@ -38,4 +40,5 @@ public class ProductResponse {
     private Instant updatedAt;
     private Double avgRating;
     private Long reviewCount;
+    private ActivePromotionSummary activePromotion;
 }

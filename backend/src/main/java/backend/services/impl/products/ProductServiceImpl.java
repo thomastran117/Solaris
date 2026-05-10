@@ -34,6 +34,7 @@ import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
 import backend.dtos.responses.general.PagedResponse;
+import backend.dtos.responses.product.ActivePromotionSummary;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
 import backend.dtos.responses.search.FacetBucket;
@@ -71,6 +72,7 @@ import backend.repositories.ProductReviewRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.repositories.specifications.ProductSpecification;
+import backend.services.impl.pricing.ActivePromotionLookupService;
 import backend.services.intf.products.ProductService;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -82,6 +84,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import backend.services.impl.SingleFlightCache;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -110,6 +113,7 @@ public class ProductServiceImpl implements ProductService {
     private final ApplicationEventPublisher eventPublisher;
     private final ElasticsearchOperations elasticsearchOperations;
     private final SingleFlightCache singleFlightCache;
+    private final ActivePromotionLookupService activePromotionLookupService;
     private final long cacheTtl;
     private final long cacheTtlShort;
 
@@ -128,6 +132,7 @@ public class ProductServiceImpl implements ProductService {
             ApplicationEventPublisher eventPublisher,
             ElasticsearchOperations elasticsearchOperations,
             SingleFlightCache singleFlightCache,
+            ActivePromotionLookupService activePromotionLookupService,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
             @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
         this.productRepository = productRepository;
@@ -144,6 +149,7 @@ public class ProductServiceImpl implements ProductService {
         this.eventPublisher = eventPublisher;
         this.elasticsearchOperations = elasticsearchOperations;
         this.singleFlightCache = singleFlightCache;
+        this.activePromotionLookupService = activePromotionLookupService;
         this.cacheTtl = cacheTtl;
         this.cacheTtlShort = cacheTtlShort;
     }
@@ -218,9 +224,12 @@ public class ProductServiceImpl implements ProductService {
                         .stream()
                         .collect(Collectors.toMap(Product::getId, p -> p));
 
+                Map<Long, ActivePromotionSummary> promoMap =
+                        activePromotionLookupService.findForProducts(productMap.values());
+
                 List<ProductResponse> content = ids.stream()
                         .filter(productMap::containsKey)
-                        .map(id -> toResponse(productMap.get(id)))
+                        .map(id -> toResponse(productMap.get(id), promoMap.get(id)))
                         .toList();
 
                 return new PagedResponse<>(new PageImpl<>(content, pageable, hits.getTotalHits()));
@@ -230,11 +239,12 @@ public class ProductServiceImpl implements ProductService {
             }
 
             // --- JPA fallback ---
-            return new PagedResponse<>(
-                    productRepository
-                            .findAll(ProductSpecification.withFilters(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount), pageable)
-                            .map(this::toResponse)
-            );
+            Page<Product> jpaPage = productRepository.findAll(
+                    ProductSpecification.withFilters(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount),
+                    pageable);
+            Map<Long, ActivePromotionSummary> jpaPromoMap =
+                    activePromotionLookupService.findForProducts(jpaPage.getContent());
+            return new PagedResponse<>(jpaPage.map(p -> toResponse(p, jpaPromoMap.get(p.getId()))));
         }, new TypeReference<PagedResponse<ProductResponse>>() {});
     }
 
@@ -245,7 +255,10 @@ public class ProductServiceImpl implements ProductService {
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-            return toResponse(product);
+            ActivePromotionSummary promo = activePromotionLookupService
+                    .findForProducts(List.of(product))
+                    .get(productId);
+            return toResponse(product, promo);
         }, ProductResponse.class);
     }
 
@@ -254,12 +267,13 @@ public class ProductServiceImpl implements ProductService {
         assertCompanyExists(companyId);
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "products:batch:" + companyId + ":" + sortedIds;
-        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () ->
-                productRepository.findAllByIdInAndCompanyId(ids, companyId)
-                        .stream()
-                        .map(this::toResponse)
-                        .toList(),
-                new TypeReference<List<ProductResponse>>() {});
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
+            List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
+            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+            return products.stream()
+                    .map(p -> toResponse(p, promoMap.get(p.getId())))
+                    .toList();
+        }, new TypeReference<List<ProductResponse>>() {});
     }
 
     @Override
@@ -290,7 +304,9 @@ public class ProductServiceImpl implements ProductService {
         product.setFeatured(request.isFeatured());
         product.setPurchasable(request.isPurchasable());
         product.setListed(request.isListed());
-        product.setStatus(ProductStatus.DRAFT);
+
+        ProductStatus initialStatus = request.getStatus() != null ? request.getStatus() : ProductStatus.DRAFT;
+        applyStatusTransition(product, initialStatus, request.getScheduledPublishAt(), true);
 
         Product saved = productRepository.save(product);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
@@ -331,7 +347,10 @@ public class ProductServiceImpl implements ProductService {
         if (request.getThumbnailUrl() != null) product.setThumbnailUrl(request.getThumbnailUrl());
         if (request.getWeight() != null) product.setWeight(request.getWeight());
         if (request.getWeightUnit() != null) product.setWeightUnit(request.getWeightUnit());
-        if (request.getStatus() != null) product.setStatus(request.getStatus());
+        if (request.getStatus() != null || request.getScheduledPublishAt() != null) {
+            ProductStatus targetStatus = request.getStatus() != null ? request.getStatus() : product.getStatus();
+            applyStatusTransition(product, targetStatus, request.getScheduledPublishAt(), false);
+        }
         if (request.getFeatured() != null) product.setFeatured(request.getFeatured());
         if (request.getPurchasable() != null) product.setPurchasable(request.getPurchasable());
         if (request.getListed() != null) product.setListed(request.getListed());
@@ -893,10 +912,14 @@ public class ProductServiceImpl implements ProductService {
             Map<Long, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
 
             Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, products);
+            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
             List<MarketplaceCatalogProductResponse> content = ids.stream()
                     .filter(productMap::containsKey)
-                    .map(id -> toCatalogResponse(productMap.get(id), vendorMap.get(productMap.get(id).getCompany().getId())))
+                    .map(id -> toCatalogResponse(
+                            productMap.get(id),
+                            vendorMap.get(productMap.get(id).getCompany().getId()),
+                            promoMap.get(id)))
                     .toList();
 
             SearchFacets facets = extractFacets(hits);
@@ -916,8 +939,9 @@ public class ProductServiceImpl implements ProductService {
         // --- JPA fallback (unfiltered, no active search filters) ---
         Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
         Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
+        Map<Long, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
         return new CatalogSearchResponse(
-                productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()))),
+                productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()), jpaPromoMap.get(p.getId()))),
                 new SearchFacets(List.of(), List.of(), List.of()));
         }, new TypeReference<CatalogSearchResponse>() {});
     }
@@ -930,7 +954,10 @@ public class ProductServiceImpl implements ProductService {
             Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
             Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, List.of(product));
-            return toCatalogResponse(product, vendorMap.get(product.getCompany().getId()));
+            ActivePromotionSummary promo = activePromotionLookupService
+                    .findForProducts(List.of(product))
+                    .get(productId);
+            return toCatalogResponse(product, vendorMap.get(product.getCompany().getId()), promo);
         }, MarketplaceCatalogProductResponse.class);
     }
 
@@ -947,10 +974,14 @@ public class ProductServiceImpl implements ProductService {
                     .filter(p -> p.getCompany().getId() == vendorCompanyId)
                     .toList();
 
-            List<MarketplaceCatalogProductResponse> featured = allVendorProducts.stream()
+            List<Product> featuredProducts = allVendorProducts.stream()
                     .filter(Product::isFeatured)
                     .limit(10)
-                    .map(p -> toCatalogResponse(p, vendor))
+                    .toList();
+            Map<Long, ActivePromotionSummary> storefrontPromoMap =
+                    activePromotionLookupService.findForProducts(featuredProducts);
+            List<MarketplaceCatalogProductResponse> featured = featuredProducts.stream()
+                    .map(p -> toCatalogResponse(p, vendor, storefrontPromoMap.get(p.getId())))
                     .toList();
 
             return new VendorStorefrontResponse(
@@ -1122,7 +1153,8 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.toMap(mv -> mv.getVendorCompany().getId(), mv -> mv));
     }
 
-    private MarketplaceCatalogProductResponse toCatalogResponse(Product product, MarketplaceVendor vendor) {
+    private MarketplaceCatalogProductResponse toCatalogResponse(
+            Product product, MarketplaceVendor vendor, ActivePromotionSummary activePromotion) {
         List<ProductImageResponse> images = product.getImages().stream()
                 .map(this::toImageResponse)
                 .toList();
@@ -1156,11 +1188,60 @@ public class ProductServiceImpl implements ProductService {
                 product.isFeatured(),
                 product.isPurchasable(),
                 product.getCreatedAt(),
-                product.getUpdatedAt()
+                product.getUpdatedAt(),
+                activePromotion
         );
     }
 
+    /**
+     * Applies a target lifecycle status to {@code product}, enforcing the scheduling invariants.
+     * The window of valid transitions is intentionally narrow because the scheduling worker, the
+     * customer catalog filter, and the activation event hook all depend on these fields being
+     * mutually consistent.
+     *
+     * @param product           the product being mutated
+     * @param targetStatus      the status the caller wants to land on
+     * @param scheduledPublishAt the schedule timestamp from the request (may be null)
+     * @param isCreate          true on create — disables some "current state" checks
+     */
+    private void applyStatusTransition(
+            Product product,
+            ProductStatus targetStatus,
+            Instant scheduledPublishAt,
+            boolean isCreate) {
+        ProductStatus previousStatus = isCreate ? null : product.getStatus();
+        Instant now = Instant.now();
+
+        if (targetStatus == ProductStatus.SCHEDULED) {
+            if (previousStatus == ProductStatus.ARCHIVED) {
+                throw new BadRequestException("Cannot schedule an archived product. Restore it to draft first.");
+            }
+            Instant publishAt = scheduledPublishAt != null ? scheduledPublishAt : product.getScheduledPublishAt();
+            if (publishAt == null) {
+                throw new BadRequestException("scheduledPublishAt is required when status is SCHEDULED");
+            }
+            if (!publishAt.isAfter(now)) {
+                throw new BadRequestException("scheduledPublishAt must be in the future");
+            }
+            product.setStatus(ProductStatus.SCHEDULED);
+            product.setScheduledPublishAt(publishAt);
+            return;
+        }
+
+        // Any non-SCHEDULED status clears the schedule field.
+        product.setScheduledPublishAt(null);
+        product.setStatus(targetStatus);
+
+        if (targetStatus == ProductStatus.ACTIVE && product.getPublishedAt() == null) {
+            product.setPublishedAt(now);
+        }
+    }
+
     private ProductResponse toResponse(Product product) {
+        return toResponse(product, null);
+    }
+
+    private ProductResponse toResponse(Product product, ActivePromotionSummary activePromotion) {
         List<ProductImageResponse> images = product.getImages().stream()
                 .map(this::toImageResponse)
                 .toList();
@@ -1177,7 +1258,7 @@ public class ProductServiceImpl implements ProductService {
                 .map(this::toAttrResponse)
                 .toList();
 
-        return toResponseWithRating(product, images, options, variants, attributes, null, 0L);
+        return toResponseWithRating(product, images, options, variants, attributes, null, 0L, activePromotion);
     }
 
     private ProductResponse toResponseWithRating(
@@ -1188,6 +1269,18 @@ public class ProductServiceImpl implements ProductService {
             List<ProductAttributeResponse> attributes,
             Double avgRating,
             Long reviewCount) {
+        return toResponseWithRating(product, images, options, variants, attributes, avgRating, reviewCount, null);
+    }
+
+    private ProductResponse toResponseWithRating(
+            Product product,
+            List<ProductImageResponse> images,
+            List<ProductOptionResponse> options,
+            List<ProductVariantResponse> variants,
+            List<ProductAttributeResponse> attributes,
+            Double avgRating,
+            Long reviewCount,
+            ActivePromotionSummary activePromotion) {
         return new ProductResponse(
                 product.getId(),
                 product.getCompany().getId(),
@@ -1210,13 +1303,16 @@ public class ProductServiceImpl implements ProductService {
                 product.getWeight(),
                 product.getWeightUnit(),
                 product.getStatus().name(),
+                product.getScheduledPublishAt(),
+                product.getPublishedAt(),
                 product.isFeatured(),
                 product.isPurchasable(),
                 product.isListed(),
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 avgRating,
-                reviewCount
+                reviewCount,
+                activePromotion
         );
     }
 
@@ -1236,6 +1332,7 @@ public class ProductServiceImpl implements ProductService {
             }
             List<Long> foundIds = products.stream().map(Product::getId).toList();
             Map<Long, double[]> ratingMap = buildRatingMap(foundIds);
+            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
             return products.stream().map(p -> {
                 double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
@@ -1245,7 +1342,7 @@ public class ProductServiceImpl implements ProductService {
                 List<ProductOptionResponse> options = p.getOptions().stream().map(this::toOptionResponse).toList();
                 List<ProductVariantResponse> variants = p.getVariants().stream().map(this::toVariantResponse).toList();
                 List<ProductAttributeResponse> attributes = p.getAttributes().stream().map(this::toAttrResponse).toList();
-                return toResponseWithRating(p, images, options, variants, attributes, avgRating, reviewCount);
+                return toResponseWithRating(p, images, options, variants, attributes, avgRating, reviewCount, promoMap.get(p.getId()));
             }).toList();
         }, new TypeReference<List<ProductResponse>>() {});
     }

@@ -34,4 +34,5 @@ public class MarketplaceCatalogProductResponse {
     private boolean purchasable;
     private Instant createdAt;
     private Instant updatedAt;
+    private ActivePromotionSummary activePromotion;
 }
