@@ -3,6 +3,7 @@ package backend.dtos.requests.inventory;
 import backend.annotations.safeIdentifier.SafeIdentifier;
 import backend.annotations.safeRichText.SafeRichText;
 import backend.annotations.safeText.SafeText;
+import backend.models.enums.LocationType;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -49,4 +50,14 @@ public class UpdateLocationRequest {
 
     @DecimalMin(value = "0.0", message = "Fulfillment cost cannot be negative")
     private BigDecimal fulfillmentCost;
+
+    private LocationType type;
+
+    @Min(value = 0, message = "Handling days cannot be negative")
+    @Max(value = 30, message = "Handling days must be at most 30")
+    private Integer handlingDays;
+
+    @Min(value = 0, message = "Pickup ready hours cannot be negative")
+    @Max(value = 168, message = "Pickup ready hours must be at most 168 (one week)")
+    private Integer pickupReadyHours;
 }

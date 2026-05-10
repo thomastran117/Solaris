@@ -1,5 +1,6 @@
 package backend.models.core;
 
+import backend.models.enums.LocationType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -61,6 +62,22 @@ public class InventoryLocation {
 
     @Column(nullable = true, precision = 10, scale = 4)
     private BigDecimal fulfillmentCost;
+
+    /**
+     * Operational role of the location. WAREHOUSE ships only; STORE supports pickup only;
+     * HYBRID does both. Drives availability/pickup display on the storefront.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'WAREHOUSE'")
+    private LocationType type = LocationType.WAREHOUSE;
+
+    /** Admin-tunable handling time before a packed item leaves the location. Feeds delivery ETA. */
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 1")
+    private int handlingDays = 1;
+
+    /** When type != WAREHOUSE: hours until pickup is ready after order. Null for WAREHOUSE. */
+    @Column(nullable = true)
+    private Integer pickupReadyHours;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

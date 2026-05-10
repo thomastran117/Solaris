@@ -6,6 +6,7 @@ import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
+import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
@@ -246,6 +247,14 @@ export default function ProductPage() {
                 </span>
               )}
             </div>
+
+            {/* Availability & delivery */}
+            <AvailabilityPanel
+              marketplaceId={marketplaceId}
+              productId={productId}
+              variantId={selectedVariantId}
+              unavailable={unavailable}
+            />
 
             {/* Description */}
             {product.description && (

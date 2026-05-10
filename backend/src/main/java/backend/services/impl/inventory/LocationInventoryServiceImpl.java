@@ -22,6 +22,7 @@ import backend.models.core.LocationStock;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.enums.AdjustmentReason;
+import backend.models.enums.LocationType;
 import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.InventoryLocationRepository;
@@ -105,6 +106,9 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
             throw new ConflictException("A location with code '" + request.getCode() + "' already exists in this company");
         }
 
+        LocationType type = request.getType() != null ? request.getType() : LocationType.WAREHOUSE;
+        validatePickupReadyHours(type, request.getPickupReadyHours());
+
         InventoryLocation location = new InventoryLocation();
         location.setCompany(company);
         location.setName(request.getName());
@@ -116,6 +120,9 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         location.setLatitude(request.getLatitude());
         location.setLongitude(request.getLongitude());
         location.setFulfillmentCost(request.getFulfillmentCost());
+        location.setType(type);
+        if (request.getHandlingDays() != null) location.setHandlingDays(request.getHandlingDays());
+        location.setPickupReadyHours(request.getPickupReadyHours());
 
         return toLocationResponse(locationRepository.save(location));
     }
@@ -145,8 +152,19 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         if (request.getLatitude() != null) location.setLatitude(request.getLatitude());
         if (request.getLongitude() != null) location.setLongitude(request.getLongitude());
         if (request.getFulfillmentCost() != null) location.setFulfillmentCost(request.getFulfillmentCost());
+        if (request.getType() != null) location.setType(request.getType());
+        if (request.getHandlingDays() != null) location.setHandlingDays(request.getHandlingDays());
+        if (request.getPickupReadyHours() != null) location.setPickupReadyHours(request.getPickupReadyHours());
+
+        validatePickupReadyHours(location.getType(), location.getPickupReadyHours());
 
         return toLocationResponse(locationRepository.save(location));
+    }
+
+    private void validatePickupReadyHours(LocationType type, Integer pickupReadyHours) {
+        if (type == LocationType.WAREHOUSE && pickupReadyHours != null) {
+            throw new BadRequestException("pickupReadyHours must be null for WAREHOUSE locations");
+        }
     }
 
     @Override
@@ -403,6 +421,9 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 loc.getLatitude(),
                 loc.getLongitude(),
                 loc.getFulfillmentCost(),
+                loc.getType(),
+                loc.getHandlingDays(),
+                loc.getPickupReadyHours(),
                 loc.getCreatedAt(),
                 loc.getUpdatedAt()
         );

@@ -1,5 +1,6 @@
 package backend.dtos.responses.inventory;
 
+import backend.models.enums.LocationType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -21,6 +22,9 @@ public class LocationResponse {
     private Double latitude;
     private Double longitude;
     private BigDecimal fulfillmentCost;
+    private LocationType type;
+    private int handlingDays;
+    private Integer pickupReadyHours;
     private Instant createdAt;
     private Instant updatedAt;
 }

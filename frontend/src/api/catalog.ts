@@ -1,4 +1,5 @@
 import api from "../api";
+import type { AvailabilityEstimate } from "../types/availability";
 import type { CatalogSearchResponse, SearchSuggestionsResponse } from "../types/search";
 
 export interface CatalogProduct {
@@ -79,4 +80,14 @@ export const catalogApi = {
 
   getVendorStorefront: (marketplaceId: number, vendorId: number) =>
     api.get<VendorStorefront>(`/marketplaces/${marketplaceId}/catalog/vendors/${vendorId}/storefront`),
+
+  getAvailability: (
+    marketplaceId: number,
+    productId: number,
+    opts: { variantId?: number; lat?: number; lng?: number } = {}
+  ) =>
+    api.get<AvailabilityEstimate>(
+      `/marketplaces/${marketplaceId}/catalog/products/${productId}/availability`,
+      { params: opts }
+    ),
 };

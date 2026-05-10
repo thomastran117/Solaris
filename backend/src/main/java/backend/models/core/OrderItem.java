@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 
 import java.math.BigDecimal;
@@ -89,6 +90,14 @@ public class OrderItem {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private FulfillmentStatus fulfillmentStatus = FulfillmentStatus.PENDING;
+
+    /**
+     * Whether this line is shipped to the customer or collected in person.
+     * Defaults to DELIVERY; checkout sets PICKUP when the customer chose a store.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'DELIVERY'")
+    private FulfillmentMethod fulfillmentMethod = FulfillmentMethod.DELIVERY;
 
     /** Non-null for bundle order items; null for regular product items. */
     @ManyToOne(fetch = FetchType.LAZY, optional = true)

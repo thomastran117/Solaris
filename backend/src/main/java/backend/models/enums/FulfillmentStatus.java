@@ -7,6 +7,8 @@ public enum FulfillmentStatus {
     BACKORDERED,
     /** Physically assembled by the warehouse; ready for carrier handoff. */
     PACKED,
+    /** Pickup orders only: assembled at the store and waiting for the customer to collect. */
+    PICKUP_READY,
     /** Handed to carrier. */
     SHIPPED,
     /** Delivery confirmed. */

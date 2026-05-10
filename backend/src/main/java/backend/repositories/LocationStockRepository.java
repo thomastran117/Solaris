@@ -48,6 +48,29 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
             @Param("variantRef") long variantRef,
             Pageable pageable);
 
+    /**
+     * All active, stocked locations for a product (product-level stock), sorted by the
+     * admin-curated displayOrder. Used when the buyer has no coordinates so we can't sort
+     * by distance. JOIN FETCH avoids lazy-loads when mapping to the response.
+     */
+    @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
+           "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
+           "AND loc.active = true AND ls.stock > 0 " +
+           "ORDER BY loc.displayOrder ASC, loc.name ASC")
+    List<LocationStock> findStockedByProduct(@Param("productId") long productId);
+
+    /**
+     * All active, stocked locations for a specific variant, sorted by displayOrder.
+     * No-coords companion to {@link #findByVariantOrderedByDistance}.
+     */
+    @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
+           "WHERE ls.product.id = :productId AND ls.variantRef = :variantRef " +
+           "AND loc.active = true AND ls.stock > 0 " +
+           "ORDER BY loc.displayOrder ASC, loc.name ASC")
+    List<LocationStock> findStockedByVariant(
+            @Param("productId") long productId,
+            @Param("variantRef") long variantRef);
+
     /** Picks active locations for a product ordered by Haversine distance to buyer (product-level stock). */
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
            "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
