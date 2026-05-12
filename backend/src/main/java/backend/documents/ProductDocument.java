@@ -94,4 +94,30 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Double)
     private BigDecimal discountedPrice;
+
+    // -------------------------------------------------------------------------
+    // Merchandising — consumed by function_score in product search.
+    // -------------------------------------------------------------------------
+
+    /** Manual relevance multiplier (1–10). Stored as Integer so missing -> default in scoring. */
+    @Field(type = FieldType.Integer)
+    private Integer boostWeight;
+
+    /**
+     * When set and in the future, the product gets a high weight via function_score so it
+     * surfaces at the top of search results. Range query against now is run at search time.
+     */
+    @Field(type = FieldType.Date)
+    private Instant pinnedUntil;
+
+    /** Tie-breaker among pinned products. Lower value surfaces first. */
+    @Field(type = FieldType.Integer)
+    private Integer pinnedRank;
+
+    /**
+     * IDs of {@code ACTIVE} collections this product belongs to. Lets the storefront filter
+     * search results by collection membership without a separate join.
+     */
+    @Field(type = FieldType.Long)
+    private List<Long> collectionIds;
 }

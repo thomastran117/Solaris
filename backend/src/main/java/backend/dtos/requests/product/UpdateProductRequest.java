@@ -77,4 +77,22 @@ public class UpdateProductRequest {
     private Boolean purchasable;
 
     private Boolean listed;
+
+    /**
+     * Merchandising — folded into the main update payload so the admin editor can save in one go.
+     * The dedicated {@code /merchandising} endpoint (see {@code UpdateProductMerchandisingRequest})
+     * remains available for headless clients that only want to touch these fields.
+     *
+     * <p>{@code boostWeight} valid range is 1–10. {@code pinnedUntil} must be in the future when
+     * set. Setting {@code pinnedRank} without {@code pinnedUntil} is treated as a no-op on the
+     * service side (the rank is cleared alongside the window).
+     */
+    @Min(value = 1, message = "boostWeight must be between 1 and 10")
+    @Max(value = 10, message = "boostWeight must be between 1 and 10")
+    private Integer boostWeight;
+
+    private Instant pinnedUntil;
+
+    @Min(value = 0, message = "pinnedRank must be 0 or greater")
+    private Integer pinnedRank;
 }

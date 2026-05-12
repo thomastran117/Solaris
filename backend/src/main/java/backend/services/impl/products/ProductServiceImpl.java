@@ -2,7 +2,15 @@ package backend.services.impl.products;
 
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.FieldValueFactorScoreFunction;
+import co.elastic.clients.elasticsearch._types.query_dsl.FieldValueFactorModifier;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionBoostMode;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScore;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreMode;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregation;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregations;
@@ -30,6 +38,7 @@ import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
+import backend.dtos.requests.product.UpdateProductMerchandisingRequest;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
@@ -61,6 +70,7 @@ import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.models.core.MarketplaceVendor;
 import backend.repositories.BundleRepository;
+import backend.repositories.CollectionProductRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
@@ -107,6 +117,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductAttributeRepository productAttributeRepository;
     private final ProductReviewRepository productReviewRepository;
     private final BundleRepository bundleRepository;
+    private final CollectionProductRepository collectionProductRepository;
     private final PromotionRuleRepository promotionRuleRepository;
     private final MarketplaceProfileRepository marketplaceProfileRepository;
     private final MarketplaceVendorRepository marketplaceVendorRepository;
@@ -126,6 +137,7 @@ public class ProductServiceImpl implements ProductService {
             ProductAttributeRepository productAttributeRepository,
             ProductReviewRepository productReviewRepository,
             BundleRepository bundleRepository,
+            CollectionProductRepository collectionProductRepository,
             PromotionRuleRepository promotionRuleRepository,
             MarketplaceProfileRepository marketplaceProfileRepository,
             MarketplaceVendorRepository marketplaceVendorRepository,
@@ -143,6 +155,7 @@ public class ProductServiceImpl implements ProductService {
         this.productAttributeRepository = productAttributeRepository;
         this.productReviewRepository = productReviewRepository;
         this.bundleRepository = bundleRepository;
+        this.collectionProductRepository = collectionProductRepository;
         this.promotionRuleRepository = promotionRuleRepository;
         this.marketplaceProfileRepository = marketplaceProfileRepository;
         this.marketplaceVendorRepository = marketplaceVendorRepository;
@@ -212,7 +225,7 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 NativeQuery esQuery = NativeQuery.builder()
-                        .withQuery(bq.build()._toQuery())
+                        .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
                         .withPageable(pageable)
                         .build();
 
@@ -355,6 +368,20 @@ public class ProductServiceImpl implements ProductService {
         if (request.getPurchasable() != null) product.setPurchasable(request.getPurchasable());
         if (request.getListed() != null) product.setListed(request.getListed());
 
+        // Merchandising — pinning a product with an expired window is rejected outright so the
+        // admin sees a clear validation error rather than a silent reset on next reindex.
+        if (request.getPinnedUntil() != null && !request.getPinnedUntil().isAfter(Instant.now())) {
+            throw new BadRequestException("pinnedUntil must be in the future");
+        }
+        if (request.getBoostWeight() != null) product.setBoostWeight(request.getBoostWeight());
+        if (request.getPinnedUntil() != null) {
+            product.setPinnedUntil(request.getPinnedUntil());
+            product.setPinnedRank(request.getPinnedRank());
+        } else if (request.getPinnedRank() != null) {
+            // Rank-only update with the window already set: just update the rank.
+            product.setPinnedRank(request.getPinnedRank());
+        }
+
         boolean activating = request.getStatus() == ProductStatus.ACTIVE && originalStatus != ProductStatus.ACTIVE;
         boolean listing    = Boolean.TRUE.equals(request.getListed()) && !originalListed;
 
@@ -392,6 +419,7 @@ public class ProductServiceImpl implements ProductService {
 
         final Long marketplaceId = product.getMarketplaceId();
         promotionRuleRepository.removeProductFromAllRules(productId);
+        collectionProductRepository.deleteAllByProductId(productId);
         productRepository.delete(product);
         eventPublisher.publishEvent(new ProductRemoveEvent(productId, marketplaceId));
         evictAfterCommit(() -> {
@@ -470,6 +498,9 @@ public class ProductServiceImpl implements ProductService {
         }
 
         promotionRuleRepository.removeProductsFromAllRules(request.getIds());
+        for (Long pid : request.getIds()) {
+            collectionProductRepository.deleteAllByProductId(pid);
+        }
         productRepository.deleteAll(products);
         for (Product p : products) {
             eventPublisher.publishEvent(new ProductRemoveEvent(p.getId(), p.getMarketplaceId()));
@@ -858,8 +889,15 @@ public class ProductServiceImpl implements ProductService {
                 marketplaceId, q, category, brand, minPrice, maxPrice, featured,
                 vendorId, page, clampedSize, sort, direction);
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-        String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
+        // When the shopper hasn't picked a specific sort, let function_score (pin + boost) drive
+        // the order via _score. Only override with an explicit field sort when the caller asks
+        // for one. The JPA fallback still needs a deterministic order, so use createdAt there.
+        boolean explicitSort = sort != null && SORTABLE_FIELDS.contains(sort);
+        String sortField = explicitSort ? sort : "createdAt";
         Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable esPageable = explicitSort
+                ? PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField))
+                : PageRequest.of(page, clampedSize);
         Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
 
         // --- Elasticsearch path ---
@@ -892,8 +930,8 @@ public class ProductServiceImpl implements ProductService {
             }
 
             NativeQuery esQuery = NativeQuery.builder()
-                    .withQuery(bq.build()._toQuery())
-                    .withPageable(pageable)
+                    .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
+                    .withPageable(esPageable)
                     .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
                     .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
                     .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
@@ -1041,7 +1079,79 @@ public class ProductServiceImpl implements ProductService {
         return toResponse(saved);
     }
 
+    // --- Merchandising ---
+
+    @Override
+    @Transactional
+    public ProductResponse updateProductMerchandising(long companyId, long productId, long ownerId,
+                                                       UpdateProductMerchandisingRequest request) {
+        companyRepository.findByIdAndOwnerId(companyId, ownerId)
+                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+
+        Product product = productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        if (request.getPinnedUntil() != null && !request.getPinnedUntil().isAfter(Instant.now())) {
+            throw new BadRequestException("pinnedUntil must be in the future");
+        }
+        // Clearing the pin window also clears the rank — keeping a rank without an active window
+        // would leave a ghost ordering in the index after the next reindex.
+        product.setBoostWeight(request.getBoostWeight());
+        product.setPinnedUntil(request.getPinnedUntil());
+        product.setPinnedRank(request.getPinnedUntil() == null ? null : request.getPinnedRank());
+
+        Product saved = productRepository.save(product);
+        eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
+
+        final Long marketplaceId = saved.getMarketplaceId();
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (marketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + marketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + marketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + marketplaceId + ":*");
+            }
+        });
+        return toResponse(saved);
+    }
+
     // --- Helpers ---
+
+    /**
+     * Wraps {@code base} in a {@code function_score} so that merchandising signals influence the
+     * relevance score:
+     * <ul>
+     *   <li>Pinned products (with {@code pinnedUntil} still in window) get a huge weight (1e4),
+     *       which guarantees a higher {@code _score} than any non-pinned product on the same
+     *       textual match. The {@code _last}-style ordering among pinned products is handled by
+     *       a secondary {@code pinnedRank} sort in the caller — but in practice the weight is
+     *       large enough that a pinned product always wins on {@code _score} alone.</li>
+     *   <li>Boost weight (1–10) is folded in via {@code field_value_factor} with a {@code log1p}
+     *       modifier so the impact saturates gracefully. Missing → 1 keeps unboosted products
+     *       neutral.</li>
+     * </ul>
+     * Sort by a non-score field (price/name/stock) overrides this; that's intentional — when a
+     * user explicitly sorts, they don't want pins moving things around.
+     */
+    private static Query applyMerchandisingScore(Query base) {
+        Query pinnedFilter = RangeQuery.of(r -> r.date(d -> d.field("pinnedUntil").gt("now")))._toQuery();
+        FunctionScore pinFn = FunctionScore.of(f -> f
+                .filter(pinnedFilter)
+                .weight(10000.0));
+        FunctionScore boostFn = FunctionScore.of(f -> f
+                .fieldValueFactor(FieldValueFactorScoreFunction.of(fvf -> fvf
+                        .field("boostWeight")
+                        .factor(1.0)
+                        .modifier(FieldValueFactorModifier.Log1p)
+                        .missing(1.0))));
+        return FunctionScoreQuery.of(fs -> fs
+                .query(base)
+                .functions(pinFn, boostFn)
+                .scoreMode(FunctionScoreMode.Multiply)
+                .boostMode(FunctionBoostMode.Multiply))._toQuery();
+    }
 
     private void evictAfterCommit(Runnable eviction) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -1308,6 +1418,9 @@ public class ProductServiceImpl implements ProductService {
                 product.isFeatured(),
                 product.isPurchasable(),
                 product.isListed(),
+                product.getBoostWeight(),
+                product.getPinnedUntil(),
+                product.getPinnedRank(),
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 avgRating,

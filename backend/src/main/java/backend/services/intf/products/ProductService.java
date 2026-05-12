@@ -9,6 +9,7 @@ import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.requests.product.UpdateMarketplaceListingRequest;
+import backend.dtos.requests.product.UpdateProductMerchandisingRequest;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
@@ -77,6 +78,13 @@ public interface ProductService {
 
     /** Vendor lists or unlists one of their products on a marketplace. */
     ProductResponse updateMarketplaceListing(long companyId, long productId, long ownerId, UpdateMarketplaceListingRequest request);
+
+    /**
+     * Updates the merchandising signals (boostWeight / pinnedUntil / pinnedRank) for a product.
+     * Triggers a reindex so the new values reach the storefront search ranking.
+     */
+    ProductResponse updateProductMerchandising(long companyId, long productId, long ownerId,
+                                                UpdateProductMerchandisingRequest request);
 
     /** Returns 2–4 products enriched with rating data for side-by-side comparison. */
     List<ProductResponse> compareProducts(long companyId, List<Long> ids);

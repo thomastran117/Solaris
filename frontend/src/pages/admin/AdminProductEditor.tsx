@@ -70,6 +70,11 @@ function buildPayload(values: ProductFormValues): AdminProductWritePayload {
     featured: values.featured,
     purchasable: values.purchasable,
     listed: values.listed,
+    boostWeight: intOrNull(values.boostWeight),
+    pinnedUntil: values.pinnedUntil
+      ? new Date(values.pinnedUntil).toISOString()
+      : null,
+    pinnedRank: values.pinnedUntil ? intOrNull(values.pinnedRank) : null,
   };
 }
 
@@ -91,6 +96,9 @@ function productToFormValues(p: AdminProduct): ProductFormValues {
     featured: p.featured,
     purchasable: p.purchasable,
     listed: p.listed,
+    boostWeight: p.boostWeight == null ? "" : String(p.boostWeight),
+    pinnedUntil: toLocalInputValue(p.pinnedUntil),
+    pinnedRank: p.pinnedRank == null ? "" : String(p.pinnedRank),
   };
 }
 
@@ -358,6 +366,62 @@ export default function AdminProductEditor() {
               <input type="checkbox" {...form.register("purchasable")} className="accent-sky-400" />
               Purchasable
             </label>
+          </div>
+
+          {/* Merchandising */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5 space-y-5">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
+                Merchandising
+              </p>
+              <p className="text-xs text-white/45">
+                Boost ranks higher in search; pin forces to the top until expiry.
+              </p>
+            </div>
+
+            <Field
+              label="Boost weight"
+              hint="1–10. Multiplies relevance — leave blank for neutral."
+              error={errors.boostWeight?.message as string | undefined}
+            >
+              <input
+                type="number"
+                step="1"
+                min="1"
+                max="10"
+                className={inputBase}
+                placeholder="e.g. 5"
+                {...form.register("boostWeight")}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field
+                label="Pin until"
+                hint="Local time. Empty = not pinned."
+                error={errors.pinnedUntil?.message as string | undefined}
+              >
+                <input
+                  type="datetime-local"
+                  className={inputBase}
+                  {...form.register("pinnedUntil")}
+                />
+              </Field>
+              <Field
+                label="Pin order"
+                hint="Lower wins among pinned products. Optional."
+                error={errors.pinnedRank?.message as string | undefined}
+              >
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  className={inputBase}
+                  placeholder="0"
+                  {...form.register("pinnedRank")}
+                />
+              </Field>
+            </div>
           </div>
 
           {submitError && (

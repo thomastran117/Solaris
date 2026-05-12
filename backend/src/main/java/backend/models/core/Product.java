@@ -27,7 +27,8 @@ import java.util.List;
         @Index(name = "idx_product_company", columnList = "company_id"),
         @Index(name = "idx_product_sku_company", columnList = "sku, company_id", unique = true),
         @Index(name = "idx_product_marketplace", columnList = "marketplace_id"),
-        @Index(name = "idx_products_status_scheduled_publish_at", columnList = "status, scheduled_publish_at")
+        @Index(name = "idx_products_status_scheduled_publish_at", columnList = "status, scheduled_publish_at"),
+        @Index(name = "idx_product_pinned_until", columnList = "pinned_until")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class Product {
@@ -155,6 +156,28 @@ public class Product {
 
     @Column(nullable = false)
     private boolean listed = true;
+
+    // -------------------------------------------------------------------------
+    // Merchandising — pin/boost ranking signals consumed by storefront search.
+    // See backend.services.impl.collections.CollectionServiceImpl for the
+    // per-collection equivalents (CollectionProduct.pinnedRank / boostWeight).
+    // -------------------------------------------------------------------------
+
+    /** Manual relevance multiplier (1–10) applied via Elasticsearch function_score. Null = neutral. */
+    @Column(name = "boost_weight", nullable = true)
+    private Integer boostWeight;
+
+    /**
+     * When non-null and in the future, the product is forced to the top tier of any storefront
+     * listing (search, category, collection). The expiry is mirrored in the ES document so the
+     * filter clause can use a range query; a reindex after expiry releases the pin.
+     */
+    @Column(name = "pinned_until", nullable = true)
+    private Instant pinnedUntil;
+
+    /** Tie-breaker among pinned products — lower value surfaces first. Ignored when not pinned. */
+    @Column(name = "pinned_rank", nullable = true)
+    private Integer pinnedRank;
 
     // -------------------------------------------------------------------------
     // Subscription / recurring orders

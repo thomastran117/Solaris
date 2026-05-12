@@ -67,6 +67,23 @@ export const productFormSchema = z
     featured: z.boolean(),
     purchasable: z.boolean(),
     listed: z.boolean(),
+
+    /**
+     * Merchandising — pin and boost. Stored as strings on the form (mirrors price/stock)
+     * so the empty state is preserved. `buildPayload` converts these to numbers / null
+     * before sending to the API.
+     */
+    boostWeight: z
+      .string()
+      .refine(s => s === "" || /^\d+$/.test(s.trim()), "Boost weight must be a whole number")
+      .refine(
+        s => s === "" || (Number(s) >= 1 && Number(s) <= 10),
+        "Boost weight must be between 1 and 10"
+      ),
+    pinnedUntil: z.string(),
+    pinnedRank: z
+      .string()
+      .refine(s => s === "" || /^\d+$/.test(s.trim()), "Pin rank must be a whole number"),
   })
   .superRefine((value, ctx) => {
     if (value.status === "SCHEDULED") {
@@ -95,6 +112,30 @@ export const productFormSchema = z
         });
       }
     }
+    // Pin rules: pinnedUntil must be in the future when set; pinnedRank without a pin
+    // window is meaningless and gets cleared by the backend, so flag it as an error here too.
+    if (value.pinnedUntil) {
+      const target = new Date(value.pinnedUntil).getTime();
+      if (Number.isNaN(target)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["pinnedUntil"],
+          message: "Invalid date",
+        });
+      } else if (target <= Date.now()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["pinnedUntil"],
+          message: "Pin expiry must be in the future",
+        });
+      }
+    } else if (value.pinnedRank) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["pinnedRank"],
+        message: "Set a pin expiry first or clear the rank",
+      });
+    }
   });
 
 export type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -120,4 +161,7 @@ export const productFormDefaults: ProductFormValues = {
   featured: false,
   purchasable: true,
   listed: true,
+  boostWeight: "",
+  pinnedUntil: "",
+  pinnedRank: "",
 };

@@ -9,6 +9,7 @@ import backend.models.core.ProductBundle;
 import backend.models.core.PromotionRule;
 import backend.models.enums.PromotionRuleType;
 import backend.repositories.BundleRepository;
+import backend.repositories.CollectionProductRepository;
 import backend.repositories.IndexingFailureRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.PromotionRuleRepository;
@@ -47,6 +48,7 @@ public class ProductIndexingService implements ApplicationRunner {
     private final ProductRepository productRepository;
     private final BundleRepository bundleRepository;
     private final PromotionRuleRepository promotionRuleRepository;
+    private final CollectionProductRepository collectionProductRepository;
     private final PromotionConfigValidator configValidator;
     private final IndexingFailureRepository failureRepository;
     private final IndexVersionManager indexVersionManager;
@@ -61,6 +63,7 @@ public class ProductIndexingService implements ApplicationRunner {
             ProductRepository productRepository,
             BundleRepository bundleRepository,
             PromotionRuleRepository promotionRuleRepository,
+            CollectionProductRepository collectionProductRepository,
             PromotionConfigValidator configValidator,
             IndexingFailureRepository failureRepository,
             IndexVersionManager indexVersionManager,
@@ -70,6 +73,7 @@ public class ProductIndexingService implements ApplicationRunner {
         this.productRepository = productRepository;
         this.bundleRepository = bundleRepository;
         this.promotionRuleRepository = promotionRuleRepository;
+        this.collectionProductRepository = collectionProductRepository;
         this.configValidator = configValidator;
         this.failureRepository = failureRepository;
         this.indexVersionManager = indexVersionManager;
@@ -330,6 +334,31 @@ public class ProductIndexingService implements ApplicationRunner {
                 ? p.getName() + (p.getBrand() != null ? " " + p.getBrand() : "")
                 : null;
 
+        // Active collection ids — loaded once per indexing call. Empty when the product isn't
+        // a member of any collection; null when the lookup fails (Redis-style: don't propagate).
+        List<Long> collectionIds = null;
+        try {
+            collectionIds = collectionProductRepository.findProductCollectionPairs(List.of(p.getId()))
+                    .stream()
+                    .map(row -> ((Number) row[1]).longValue())
+                    .distinct()
+                    .toList();
+            if (collectionIds.isEmpty()) collectionIds = null;
+        } catch (Exception e) {
+            log.warn("[SEARCH INDEX] Failed to load collection memberships for product {}: {}",
+                    p.getId(), e.getMessage());
+        }
+
+        // Pin: only carry forward when still in window. ES will treat the absent date as "no pin".
+        // pinnedRank is dropped alongside the date so that "sort by pinnedRank asc, missing last"
+        // correctly buckets expired pins with the rest of the catalog.
+        Instant pinnedUntil = p.getPinnedUntil();
+        Integer pinnedRank = p.getPinnedRank();
+        if (pinnedUntil == null || !pinnedUntil.isAfter(now)) {
+            pinnedUntil = null;
+            pinnedRank = null;
+        }
+
         return new ProductDocument(
                 p.getId(),
                 companyId,
@@ -352,7 +381,11 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getPrice(),
                 discountCategories.isEmpty() ? null : discountCategories,
                 hasActiveDiscount,
-                discountedPrice
+                discountedPrice,
+                p.getBoostWeight(),
+                pinnedUntil,
+                pinnedRank,
+                collectionIds
         );
     }
 

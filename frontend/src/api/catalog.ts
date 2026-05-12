@@ -118,6 +118,9 @@ export interface AdminProduct {
   featured: boolean;
   purchasable: boolean;
   listed: boolean;
+  boostWeight: number | null;
+  pinnedUntil: string | null;
+  pinnedRank: number | null;
   createdAt: string;
   updatedAt: string;
   activePromotion: ActivePromotionSummary | null;
@@ -151,6 +154,20 @@ export interface AdminProductWritePayload {
   featured?: boolean;
   purchasable?: boolean;
   listed?: boolean;
+  /** Merchandising: pin/boost. Sent as null to clear. */
+  boostWeight?: number | null;
+  pinnedUntil?: string | null;
+  pinnedRank?: number | null;
+}
+
+/**
+ * Body for {@code PATCH /companies/{cId}/products/{pId}/merchandising}.
+ * All fields are nullable — sending null clears the value.
+ */
+export interface UpdateProductMerchandisingPayload {
+  boostWeight: number | null;
+  pinnedUntil: string | null;
+  pinnedRank: number | null;
 }
 
 export interface AdminListParams {
@@ -177,6 +194,12 @@ export const adminProductsApi = {
 
   remove: (companyId: number, productId: number) =>
     api.delete<void>(`/companies/${companyId}/products/${productId}`),
+};
+
+export const adminMerchandisingApi = {
+  /** Update a product's pin/boost without touching the rest of the catalog fields. */
+  update: (companyId: number, productId: number, payload: UpdateProductMerchandisingPayload) =>
+    api.patch<AdminProduct>(`/companies/${companyId}/products/${productId}/merchandising`, payload),
 };
 
 export const catalogApi = {

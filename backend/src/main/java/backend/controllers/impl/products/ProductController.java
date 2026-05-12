@@ -18,6 +18,7 @@ import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateMarketplaceListingRequest;
+import backend.dtos.requests.product.UpdateProductMerchandisingRequest;
 import backend.dtos.requests.product.UpdateProductVariantRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.BundleResponse;
@@ -467,6 +468,22 @@ public class ProductController {
         try {
             long userId = resolveUserId();
             return ResponseEntity.ok(productService.updateMarketplaceListing(companyId, productId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{productId}/merchandising")
+    @RequireAuth
+    public ResponseEntity<ProductResponse> updateProductMerchandising(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @Valid @RequestBody UpdateProductMerchandisingRequest request) {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.ok(productService.updateProductMerchandising(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

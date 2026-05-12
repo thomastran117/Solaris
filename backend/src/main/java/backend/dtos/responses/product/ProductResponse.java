@@ -36,6 +36,9 @@ public class ProductResponse {
     private boolean featured;
     private boolean purchasable;
     private boolean listed;
+    private Integer boostWeight;
+    private Instant pinnedUntil;
+    private Integer pinnedRank;
     private Instant createdAt;
     private Instant updatedAt;
     private Double avgRating;
