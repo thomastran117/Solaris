@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { Plus, Pencil, Trash2, CalendarClock } from "lucide-react";
+import { Plus, Pencil, Trash2, CalendarClock, FileSpreadsheet } from "lucide-react";
 import {
   adminProductsApi,
   type AdminProduct,
@@ -112,14 +112,24 @@ export default function AdminProductsPage() {
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">Products</h1>
             <p className="text-sm text-white/60 mt-1">Drafts, scheduled launches, and live items.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/products/new")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New product
-          </button>
+          <div className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/admin/bulk-import")}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/20 hover:bg-white/10 text-sm font-semibold text-white transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Bulk import
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/admin/products/new")}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New product
+            </button>
+          </div>
         </motion.header>
 
         {/* Status filter pills */}

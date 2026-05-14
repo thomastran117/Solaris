@@ -12,5 +12,6 @@ public enum AdjustmentReason {
     THEFT,
     EXPIRY,
     COUNT_CORRECTION,
+    IMPORT_SYNC,
     OTHER
 }
