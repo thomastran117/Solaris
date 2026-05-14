@@ -179,6 +179,53 @@ export interface AdminListParams {
   direction?: "asc" | "desc";
 }
 
+export type ProductHistoryKind = "FIELD_CHANGE" | "INVENTORY_ADJUSTMENT";
+export type ProductHistorySource = "USER" | "SYSTEM" | "REVERT";
+export type ProductHistoryChangeType = "CREATED" | "UPDATED" | "DELETED";
+
+/**
+ * Unified product timeline entry. Field-change rows populate {@code fieldName / oldValue / newValue};
+ * inventory rows populate {@code delta / previousStock / newStock / reason}. Discriminate on {@code kind}.
+ */
+export type CompanyRole = "OWNER" | "MANAGER" | "EMPLOYEE";
+
+export interface ProductHistoryEntry {
+  kind: ProductHistoryKind;
+  id: number;
+  productId: number;
+  variantId: number | null;
+  actorUserId: number | null;
+  actorRole: CompanyRole | null;
+  occurredAt: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  changeType: ProductHistoryChangeType | null;
+  source: ProductHistorySource | null;
+  revertedFromLogId: number | null;
+  delta: number | null;
+  previousStock: number | null;
+  newStock: number | null;
+  reason: string | null;
+  note: string | null;
+  orderId: number | null;
+}
+
+export interface ProductHistoryPage {
+  items: ProductHistoryEntry[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface RevertProductChangesPayload {
+  logEntryIds: number[];
+  expectedVersion?: number | null;
+}
+
 export const adminProductsApi = {
   list: (companyId: number, params: AdminListParams = {}) =>
     api.get<AdminProductsPage>(`/companies/${companyId}/products`, { params }),
@@ -194,6 +241,19 @@ export const adminProductsApi = {
 
   remove: (companyId: number, productId: number) =>
     api.delete<void>(`/companies/${companyId}/products/${productId}`),
+
+  getHistory: (
+    companyId: number,
+    productId: number,
+    params: { page?: number; size?: number } = {}
+  ) =>
+    api.get<ProductHistoryPage>(
+      `/companies/${companyId}/products/${productId}/history`,
+      { params }
+    ),
+
+  revertChanges: (companyId: number, productId: number, payload: RevertProductChangesPayload) =>
+    api.post<AdminProduct>(`/companies/${companyId}/products/${productId}/revert`, payload),
 };
 
 export const adminMerchandisingApi = {

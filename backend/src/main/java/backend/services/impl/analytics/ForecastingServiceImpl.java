@@ -14,14 +14,14 @@ import backend.dtos.responses.forecasting.ReorderSuggestionResponse.ReorderReaso
 import backend.dtos.responses.forecasting.SeasonalPrepResponse;
 import backend.dtos.responses.forecasting.SeasonalPrepResponse.Trend;
 import backend.dtos.responses.forecasting.SeasonalPrepSummaryResponse;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Product;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.ProductRepository;
 import backend.repositories.projections.DailyDemandProjection;
 import backend.services.intf.CacheService;
 import backend.services.intf.analytics.ForecastingService;
+import backend.services.intf.company.CompanyAccessService;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -44,7 +44,7 @@ public class ForecastingServiceImpl implements ForecastingService {
     private static final int    STOCKOUT_HORIZON_DAYS = 28;
     private static final int    YOY_WINDOW_DAYS       = 28;
 
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final ProductRepository productRepository;
     private final CacheService      cacheService;
     private final ObjectMapper      objectMapper;
@@ -62,11 +62,11 @@ public class ForecastingServiceImpl implements ForecastingService {
     private int cacheTtlSeconds;
 
     public ForecastingServiceImpl(
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             ProductRepository productRepository,
             CacheService cacheService,
             ObjectMapper objectMapper) {
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.productRepository = productRepository;
         this.cacheService      = cacheService;
         this.objectMapper      = objectMapper;
@@ -320,7 +320,6 @@ public class ForecastingServiceImpl implements ForecastingService {
     }
 
     private void verifyOwnership(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 }

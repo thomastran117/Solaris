@@ -1,9 +1,13 @@
 package backend.seeds;
 
 import backend.models.core.Company;
+import backend.models.core.CompanyMembership;
 import backend.models.core.InventoryLocation;
 import backend.models.core.User;
+import backend.models.enums.CompanyMembershipStatus;
+import backend.models.enums.CompanyRole;
 import backend.models.enums.CompanyStatus;
+import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryLocationRepository;
 import backend.seeds.UserSeeder.SeededUsers;
@@ -11,12 +15,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+
 @Component
 @Profile("dev")
 @RequiredArgsConstructor
 public class CompanySeeder {
 
     private final CompanyRepository companyRepository;
+    private final CompanyMembershipRepository membershipRepository;
     private final InventoryLocationRepository inventoryLocationRepository;
 
     public record SeededCompanies(
@@ -83,7 +90,17 @@ public class CompanySeeder {
             c.setFoundedYear(foundedYear);
             c.setEmployeeCount(employeeCount);
             c.setStatus(CompanyStatus.ACTIVE);
-            return companyRepository.save(c);
+            Company saved = companyRepository.save(c);
+
+            CompanyMembership ownerMembership = new CompanyMembership();
+            ownerMembership.setCompany(saved);
+            ownerMembership.setUser(owner);
+            ownerMembership.setRole(CompanyRole.OWNER);
+            ownerMembership.setStatus(CompanyMembershipStatus.ACTIVE);
+            ownerMembership.setAcceptedAt(Instant.now());
+            membershipRepository.save(ownerMembership);
+
+            return saved;
         });
     }
 

@@ -14,8 +14,9 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.inventory.RestockRequestResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.CompanyCapability;
+import backend.services.intf.company.CompanyAccessService;
 import backend.models.core.Company;
 import backend.models.core.InventoryAdjustment;
 import backend.models.core.InventoryLocation;
@@ -25,7 +26,6 @@ import backend.models.core.ProductVariant;
 import backend.models.core.RestockRequest;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.RestockStatus;
-import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.InventoryLocationRepository;
 import backend.repositories.LocationStockRepository;
@@ -57,7 +57,7 @@ public class RestockServiceImpl implements RestockService {
     private final ProductVariantRepository variantRepository;
     private final InventoryLocationRepository locationRepository;
     private final LocationStockRepository locationStockRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final UserRepository userRepository;
     private final InventoryAdjustmentRepository adjustmentRepository;
     private final backend.services.intf.CacheService cacheService;
@@ -71,7 +71,7 @@ public class RestockServiceImpl implements RestockService {
             ProductVariantRepository variantRepository,
             InventoryLocationRepository locationRepository,
             LocationStockRepository locationStockRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             UserRepository userRepository,
             InventoryAdjustmentRepository adjustmentRepository,
             backend.services.intf.CacheService cacheService,
@@ -83,7 +83,7 @@ public class RestockServiceImpl implements RestockService {
         this.variantRepository = variantRepository;
         this.locationRepository = locationRepository;
         this.locationStockRepository = locationStockRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.userRepository = userRepository;
         this.adjustmentRepository = adjustmentRepository;
         this.cacheService = cacheService;
@@ -121,8 +121,7 @@ public class RestockServiceImpl implements RestockService {
     @Override
     @Transactional
     public RestockRequestResponse createRestockRequest(long companyId, long ownerId, CreateRestockRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         Product product = productRepository.findByIdAndCompanyId(request.getProductId(), companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
@@ -375,8 +374,7 @@ public class RestockServiceImpl implements RestockService {
     // --- Helpers ---
 
     private void assertCompanyOwnership(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 
     private RestockRequestResponse toResponse(RestockRequest rr) {

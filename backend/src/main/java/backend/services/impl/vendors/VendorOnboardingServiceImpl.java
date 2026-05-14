@@ -12,8 +12,10 @@ import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.*;
 import backend.models.enums.*;
 import backend.repositories.*;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.vendors.VendorOnboardingService;
+import backend.models.enums.CompanyCapability;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +39,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
     private final MarketplaceVendorRepository marketplaceVendorRepository;
     private final VendorOnboardingDocumentRepository documentRepository;
     private final VendorAuditLogRepository auditLogRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final UserRepository userRepository;
     private final PaymentService paymentService;
 
@@ -46,14 +48,14 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
             MarketplaceVendorRepository marketplaceVendorRepository,
             VendorOnboardingDocumentRepository documentRepository,
             VendorAuditLogRepository auditLogRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             UserRepository userRepository,
             PaymentService paymentService) {
         this.marketplaceProfileRepository = marketplaceProfileRepository;
         this.marketplaceVendorRepository = marketplaceVendorRepository;
         this.documentRepository = documentRepository;
         this.auditLogRepository = auditLogRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.userRepository = userRepository;
         this.paymentService = paymentService;
     }
@@ -67,8 +69,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
             throw new BadRequestException("This marketplace is not currently accepting vendor applications");
         }
 
-        Company vendorCompany = companyRepository.findByIdAndOwnerId(request.getVendorCompanyId(), requestingUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found or you are not the owner"));
+        Company vendorCompany = companyAccessService.require(request.getVendorCompanyId(), requestingUserId, CompanyCapability.MANAGE_COMPANY);
 
         if (marketplaceVendorRepository.existsByMarketplaceIdAndVendorCompanyId(marketplaceId, vendorCompany.getId())) {
             throw new ConflictException("This company already has an application for this marketplace");
@@ -321,7 +322,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
     @Override
     @Transactional(readOnly = true)
     public MarketplaceVendorResponse getMyVendorRecord(long marketplaceId, long userId) {
-        List<Company> userCompanies = companyRepository.findAllByOwnerId(userId);
+        List<Company> userCompanies = companyAccessService.listAccessibleCompanies(userId);
         return userCompanies.stream()
                 .flatMap(c -> marketplaceVendorRepository
                         .findByMarketplaceIdAndVendorCompanyId(marketplaceId, c.getId()).stream())
@@ -380,17 +381,13 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     private MarketplaceVendor resolveVendorAsOwner(long marketplaceId, long vendorId, long userId) {
         MarketplaceVendor vendor = resolveVendor(marketplaceId, vendorId);
-        if (vendor.getVendorCompany().getOwner().getId() != userId) {
-            throw new ForbiddenException("You are not the owner of this vendor company");
-        }
+        companyAccessService.require(vendor.getVendorCompany().getId(), userId, CompanyCapability.MANAGE_COMPANY);
         return vendor;
     }
 
     private void resolveMarketplaceAsOperator(long marketplaceId, long userId) {
         MarketplaceProfile marketplace = resolveMarketplace(marketplaceId);
-        if (marketplace.getCompany().getOwner().getId() != userId) {
-            throw new ForbiddenException("You are not an operator of this marketplace");
-        }
+        companyAccessService.require(marketplace.getCompany().getId(), userId, CompanyCapability.MANAGE_COMPANY);
     }
 
     private void requireOnboardingNotComplete(MarketplaceVendor vendor) {

@@ -7,12 +7,12 @@ import backend.dtos.requests.return_.CreateReturnLocationRequest;
 import backend.dtos.requests.return_.UpdateReturnLocationRequest;
 import backend.dtos.responses.return_.ReturnLocationResponse;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
 import backend.models.core.CompanyReturnLocation;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.CompanyReturnLocationRepository;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.returns.ReturnLocationService;
 
 import java.util.List;
@@ -21,20 +21,19 @@ import java.util.List;
 public class ReturnLocationServiceImpl implements ReturnLocationService {
 
     private final CompanyReturnLocationRepository locationRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
 
     public ReturnLocationServiceImpl(
             CompanyReturnLocationRepository locationRepository,
-            CompanyRepository companyRepository) {
+            CompanyAccessService companyAccessService) {
         this.locationRepository = locationRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
     }
 
     @Override
     @Transactional
     public ReturnLocationResponse createReturnLocation(long companyId, long ownerId, CreateReturnLocationRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         if (request.primary()) {
             locationRepository.clearPrimaryForCompany(companyId);
@@ -55,8 +54,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
     @Override
     @Transactional(readOnly = true)
     public List<ReturnLocationResponse> getReturnLocations(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         return locationRepository.findAllByCompanyId(companyId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -65,8 +63,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
     @Override
     @Transactional
     public ReturnLocationResponse updateReturnLocation(long locationId, long companyId, long ownerId, UpdateReturnLocationRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         CompanyReturnLocation loc = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Return location not found with id: " + locationId));
@@ -90,8 +87,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
     @Override
     @Transactional
     public void deleteReturnLocation(long locationId, long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         CompanyReturnLocation loc = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Return location not found with id: " + locationId));

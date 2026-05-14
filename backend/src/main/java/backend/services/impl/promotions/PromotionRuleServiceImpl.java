@@ -29,8 +29,10 @@ import backend.repositories.CompanyRepository;
 import backend.repositories.CustomerSegmentRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.PromotionRuleRepository;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.promotions.PromotionRuleService;
 import backend.services.pricing.config.PromotionConfigValidator;
+import backend.models.enums.CompanyCapability;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     private final PromotionRuleRepository ruleRepository;
     private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final ProductRepository productRepository;
     private final BundleRepository bundleRepository;
     private final CustomerSegmentRepository segmentRepository;
@@ -52,6 +55,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     public PromotionRuleServiceImpl(
             PromotionRuleRepository ruleRepository,
             CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             ProductRepository productRepository,
             BundleRepository bundleRepository,
             CustomerSegmentRepository segmentRepository,
@@ -59,6 +63,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
             ObjectMapper objectMapper) {
         this.ruleRepository = ruleRepository;
         this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.productRepository = productRepository;
         this.bundleRepository = bundleRepository;
         this.segmentRepository = segmentRepository;
@@ -68,8 +73,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     public PagedResponse<PromotionRuleResponse> listRules(long companyId, long ownerId, int page, int size) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return new PagedResponse<>(
@@ -78,8 +82,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     public PromotionRuleResponse getRule(long companyId, long ruleId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Promotion rule not found with id: " + ruleId));
@@ -89,8 +92,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     @Override
     @Transactional
     public PromotionRuleResponse createRule(long companyId, long ownerId, CreatePromotionRuleRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRuleType type = parseType(request.getRuleType());
         String configJson = configValidator.validateAndSerialise(type, request.getConfig());
@@ -121,8 +123,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     @Transactional
     public PromotionRuleResponse updateRule(
             long companyId, long ruleId, long ownerId, UpdatePromotionRuleRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Promotion rule not found with id: " + ruleId));
@@ -181,8 +182,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     @Override
     @Transactional
     public void deleteRule(long companyId, long ruleId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Promotion rule not found with id: " + ruleId));

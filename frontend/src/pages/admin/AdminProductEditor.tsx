@@ -1,16 +1,17 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { ChevronLeft, Save, AlertCircle } from "lucide-react";
+import { ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil } from "lucide-react";
 import {
   adminProductsApi,
   type AdminProduct,
   type AdminProductWritePayload,
 } from "../../api/catalog";
+import ProductHistoryTimeline from "../../components/product/ProductHistoryTimeline";
 import {
   productFormSchema,
   productFormDefaults,
@@ -136,6 +137,7 @@ export default function AdminProductEditor() {
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();
+  const [tab, setTab] = useState<"edit" | "history">("edit");
 
   const queryKey = useMemo(
     () => ["admin-products", "detail", { companyId, productId }],
@@ -239,6 +241,42 @@ export default function AdminProductEditor() {
           </h1>
         </motion.header>
 
+        {isEdit && (
+          <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] backdrop-blur p-1">
+            <button
+              type="button"
+              onClick={() => setTab("edit")}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                tab === "edit" ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
+              }`}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("history")}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                tab === "history" ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
+              }`}
+            >
+              <HistoryIcon className="w-3.5 h-3.5" />
+              History
+            </button>
+          </div>
+        )}
+
+        {isEdit && tab === "history" && productId !== null && (
+          <ProductHistoryTimeline
+            companyId={companyId}
+            productId={productId}
+            onReverted={() => {
+              queryClient.invalidateQueries({ queryKey });
+            }}
+          />
+        )}
+
+        {(!isEdit || tab === "edit") && (
         <motion.form
           variants={fadeInUp}
           initial="hidden"
@@ -449,6 +487,7 @@ export default function AdminProductEditor() {
             </button>
           </div>
         </motion.form>
+        )}
       </div>
     </div>
   );

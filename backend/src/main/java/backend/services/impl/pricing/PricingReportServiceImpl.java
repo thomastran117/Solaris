@@ -6,13 +6,13 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.dtos.responses.pricing.PayoutAttributionResponse;
 import backend.dtos.responses.pricing.PromotionRuleAnalyticsResponse;
 import backend.exceptions.http.BadRequestException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.PromotionRedemptionRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.repositories.projections.PayoutAttributionProjection;
 import backend.repositories.projections.PromotionRuleAnalyticsProjection;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.pricing.PricingReportService;
 
 import java.math.BigDecimal;
@@ -25,15 +25,15 @@ public class PricingReportServiceImpl implements PricingReportService {
 
     private final PromotionRedemptionRepository redemptionRepository;
     private final PromotionRuleRepository ruleRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
 
     public PricingReportServiceImpl(
             PromotionRedemptionRepository redemptionRepository,
             PromotionRuleRepository ruleRepository,
-            CompanyRepository companyRepository) {
+            CompanyAccessService companyAccessService) {
         this.redemptionRepository = redemptionRepository;
         this.ruleRepository = ruleRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
     }
 
     @Override
@@ -68,8 +68,7 @@ public class PricingReportServiceImpl implements PricingReportService {
     public PromotionRuleAnalyticsResponse getRuleAnalytics(
             long companyId, long ruleId, long ownerId, Instant from, Instant to) {
         validateWindow(from, to);
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
         ruleRepository.findByIdAndCompanyId(ruleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Promotion rule not found with id: " + ruleId));
 

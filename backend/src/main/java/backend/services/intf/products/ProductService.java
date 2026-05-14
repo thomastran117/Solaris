@@ -7,6 +7,7 @@ import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
+import backend.dtos.requests.product.RevertProductChangesRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.requests.product.UpdateMarketplaceListingRequest;
 import backend.dtos.requests.product.UpdateProductMerchandisingRequest;
@@ -17,6 +18,7 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
+import backend.dtos.responses.product.ProductHistoryEntryResponse;
 import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
@@ -88,4 +90,23 @@ public interface ProductService {
 
     /** Returns 2–4 products enriched with rating data for side-by-side comparison. */
     List<ProductResponse> compareProducts(long companyId, List<Long> ids);
+
+    // -------------------------------------------------------------------------
+    // Versioning / change history
+    // -------------------------------------------------------------------------
+
+    /**
+     * Unified timeline merging {@code ProductChangeLog} (catalog field edits) and
+     * {@code InventoryAdjustment} (stock movements), ordered by occurrence desc.
+     */
+    PagedResponse<ProductHistoryEntryResponse> getProductHistory(
+            long companyId, long productId, int page, int size);
+
+    /**
+     * Reverts one or more field-change log entries by id. Stock-related entries are
+     * rejected (managed via the inventory adjustment flow). Generates new log rows
+     * with {@code source = REVERT}.
+     */
+    ProductResponse revertProductChanges(
+            long companyId, long productId, long ownerId, RevertProductChangesRequest request);
 }

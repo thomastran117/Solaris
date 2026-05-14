@@ -4,12 +4,12 @@ import backend.dtos.requests.marketplace.CreateMarketplaceRequest;
 import backend.dtos.requests.marketplace.UpdateMarketplaceRequest;
 import backend.dtos.responses.marketplace.MarketplaceProfileResponse;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
 import backend.models.core.MarketplaceProfile;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.MarketplaceProfileRepository;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.marketplace.MarketplaceService;
 
 import org.springframework.stereotype.Service;
@@ -19,20 +19,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class MarketplaceServiceImpl implements MarketplaceService {
 
     private final MarketplaceProfileRepository marketplaceProfileRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
 
     public MarketplaceServiceImpl(
             MarketplaceProfileRepository marketplaceProfileRepository,
-            CompanyRepository companyRepository) {
+            CompanyAccessService companyAccessService) {
         this.marketplaceProfileRepository = marketplaceProfileRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
     }
 
     @Override
     @Transactional
     public MarketplaceProfileResponse createMarketplace(long ownerId, long companyId, CreateMarketplaceRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (marketplaceProfileRepository.existsByCompanyId(companyId)) {
             throw new ConflictException("This company already has a marketplace profile");
@@ -67,9 +66,7 @@ public class MarketplaceServiceImpl implements MarketplaceService {
         MarketplaceProfile profile = marketplaceProfileRepository.findById(marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Marketplace not found"));
 
-        if (profile.getCompany().getOwner().getId() != ownerId) {
-            throw new ForbiddenException("You do not own this marketplace");
-        }
+        companyAccessService.require(profile.getCompany().getId(), ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (request.getPayoutSchedule() != null) {
             profile.setPayoutSchedule(request.getPayoutSchedule());

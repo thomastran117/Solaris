@@ -19,7 +19,9 @@ import backend.models.enums.DiscountStatus;
 import backend.models.enums.DiscountType;
 import backend.repositories.CompanyRepository;
 import backend.repositories.CouponRepository;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.promotions.CouponService;
+import backend.models.enums.CompanyCapability;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -29,16 +31,19 @@ public class CouponServiceImpl implements CouponService {
 
     private final CouponRepository couponRepository;
     private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
 
-    public CouponServiceImpl(CouponRepository couponRepository, CompanyRepository companyRepository) {
+    public CouponServiceImpl(CouponRepository couponRepository,
+                             CompanyRepository companyRepository,
+                             CompanyAccessService companyAccessService) {
         this.couponRepository = couponRepository;
         this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
     }
 
     @Override
     public PagedResponse<CouponResponse> listCoupons(long companyId, long ownerId, int page, int size) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return new PagedResponse<>(
@@ -47,8 +52,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public CouponResponse getCoupon(long companyId, long couponId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         return toResponse(couponRepository.findByIdAndCompanyId(couponId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found with id: " + couponId)));
@@ -57,8 +61,7 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional
     public CouponResponse createCoupon(long companyId, long ownerId, CreateCouponRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         String code = request.getCode().trim().toUpperCase();
         if (couponRepository.existsByCodeIgnoreCase(code)) {
@@ -87,8 +90,7 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional
     public CouponResponse updateCoupon(long companyId, long couponId, long ownerId, UpdateCouponRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Coupon coupon = couponRepository.findByIdAndCompanyId(couponId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found with id: " + couponId));
@@ -141,8 +143,7 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional
     public void deleteCoupon(long companyId, long couponId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Coupon coupon = couponRepository.findByIdAndCompanyId(couponId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found with id: " + couponId));

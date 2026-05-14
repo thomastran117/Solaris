@@ -19,7 +19,6 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.BundleItemResponse;
 import backend.dtos.responses.product.BundleResponse;
 import backend.exceptions.http.BadRequestException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.BundleItem;
 import backend.models.core.Product;
@@ -27,12 +26,13 @@ import backend.models.core.ProductBundle;
 import backend.models.core.ProductVariant;
 import backend.models.enums.ProductStatus;
 import backend.repositories.BundleRepository;
-import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.events.BundleIndexEvent;
 import backend.events.BundleRemoveEvent;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.products.BundleService;
+import backend.models.enums.CompanyCapability;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
@@ -48,7 +48,7 @@ public class BundleServiceImpl implements BundleService {
     private final BundleRepository bundleRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final ApplicationEventPublisher eventPublisher;
     private final SingleFlightCache singleFlightCache;
     private final long cacheTtl;
@@ -57,14 +57,14 @@ public class BundleServiceImpl implements BundleService {
             BundleRepository bundleRepository,
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             ApplicationEventPublisher eventPublisher,
             SingleFlightCache singleFlightCache,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl) {
         this.bundleRepository = bundleRepository;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.eventPublisher = eventPublisher;
         this.singleFlightCache = singleFlightCache;
         this.cacheTtl = cacheTtl;
@@ -74,15 +74,14 @@ public class BundleServiceImpl implements BundleService {
 
     @Override
     public PagedResponse<BundleResponse> listBundles(long companyId, long ownerId, ProductStatus status, int page, int size) {
-        assertOwnership(companyId, ownerId);
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         return listBundles(companyId, status, page, size);
     }
 
     @Override
     @Transactional
     public BundleResponse createBundle(long companyId, long ownerId, CreateBundleRequest request) {
-        var company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        var company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<BundleItemRequest> itemRequests = request.getItems();
         validateNoDuplicates(itemRequests);
@@ -113,14 +112,14 @@ public class BundleServiceImpl implements BundleService {
 
     @Override
     public BundleResponse getBundle(long companyId, long bundleId, long ownerId) {
-        assertOwnership(companyId, ownerId);
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         return getBundle(companyId, bundleId);
     }
 
     @Override
     @Transactional
     public BundleResponse updateBundle(long companyId, long bundleId, long ownerId, UpdateBundleRequest request) {
-        assertOwnership(companyId, ownerId);
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
@@ -162,7 +161,7 @@ public class BundleServiceImpl implements BundleService {
     @Override
     @Transactional
     public void deleteBundle(long companyId, long bundleId, long ownerId) {
-        assertOwnership(companyId, ownerId);
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
@@ -229,11 +228,6 @@ public class BundleServiceImpl implements BundleService {
         } else {
             eviction.run();
         }
-    }
-
-    private void assertOwnership(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
     }
 
     private void validateNoDuplicates(List<BundleItemRequest> itemRequests) {

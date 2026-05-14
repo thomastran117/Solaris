@@ -15,9 +15,8 @@ import backend.dtos.responses.analytics.ProductPerformanceResponse;
 import backend.dtos.responses.analytics.ProductPerformanceResponse.ProductPerfEntry;
 import backend.dtos.responses.analytics.SlowMoversResponse;
 import backend.dtos.responses.analytics.SlowMoversResponse.SlowMoverEntry;
-import backend.exceptions.http.ForbiddenException;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.CompanyAnalyticsRepository;
-import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.projections.CategorySalesProjection;
 import backend.repositories.projections.DailyRevProjection;
@@ -25,6 +24,7 @@ import backend.repositories.projections.ProductSalesProjection;
 import backend.repositories.projections.SlowMoverProjection;
 import backend.services.intf.CacheService;
 import backend.services.intf.analytics.CompanyAnalyticsService;
+import backend.services.intf.company.CompanyAccessService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -54,23 +54,23 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
     @Value("${app.analytics.cache-ttl-seconds:7200}")
     private long cacheTtlSeconds;
 
-    private final CompanyRepository         companyRepository;
     private final ProductRepository         productRepository;
     private final CompanyAnalyticsRepository analyticsRepository;
     private final CacheService              cacheService;
     private final ObjectMapper              objectMapper;
+    private final CompanyAccessService      companyAccessService;
 
     public CompanyAnalyticsServiceImpl(
-            CompanyRepository companyRepository,
             ProductRepository productRepository,
             CompanyAnalyticsRepository analyticsRepository,
             CacheService cacheService,
-            ObjectMapper objectMapper) {
-        this.companyRepository   = companyRepository;
+            ObjectMapper objectMapper,
+            CompanyAccessService companyAccessService) {
         this.productRepository   = productRepository;
         this.analyticsRepository = analyticsRepository;
         this.cacheService        = cacheService;
         this.objectMapper        = objectMapper;
+        this.companyAccessService = companyAccessService;
     }
 
     // -------------------------------------------------------------------------
@@ -283,8 +283,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
     // -------------------------------------------------------------------------
 
     private void verifyOwner(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 
     private <T> T fromCache(String key, Class<T> type) {

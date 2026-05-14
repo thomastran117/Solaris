@@ -14,6 +14,7 @@ import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
+import backend.dtos.requests.product.RevertProductChangesRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
@@ -23,6 +24,7 @@ import backend.dtos.requests.product.UpdateProductVariantRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.BundleResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
+import backend.dtos.responses.product.ProductHistoryEntryResponse;
 import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
@@ -499,6 +501,38 @@ public class ProductController {
             @RequestParam List<Long> ids) {
         try {
             return ResponseEntity.ok(productService.compareProducts(companyId, ids));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/{productId}/history")
+    @RequireAuth
+    public ResponseEntity<PagedResponse<ProductHistoryEntryResponse>> getProductHistory(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        try {
+            return ResponseEntity.ok(productService.getProductHistory(companyId, productId, page, size));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{productId}/revert")
+    @RequireAuth
+    public ResponseEntity<ProductResponse> revertProductChanges(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @Valid @RequestBody RevertProductChangesRequest request) {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.ok(productService.revertProductChanges(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

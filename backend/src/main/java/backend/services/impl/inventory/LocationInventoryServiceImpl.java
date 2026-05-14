@@ -13,8 +13,9 @@ import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.CompanyCapability;
+import backend.services.intf.company.CompanyAccessService;
 import backend.models.core.Company;
 import backend.models.core.InventoryAdjustment;
 import backend.models.core.InventoryLocation;
@@ -23,7 +24,6 @@ import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.LocationType;
-import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.InventoryLocationRepository;
 import backend.repositories.LocationStockRepository;
@@ -48,7 +48,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     private final InventoryLocationRepository locationRepository;
     private final LocationStockRepository locationStockRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final InventoryAdjustmentRepository adjustmentRepository;
@@ -59,7 +59,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     public LocationInventoryServiceImpl(
             InventoryLocationRepository locationRepository,
             LocationStockRepository locationStockRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
             InventoryAdjustmentRepository adjustmentRepository,
@@ -68,7 +68,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
             StockAlertService stockAlertService) {
         this.locationRepository = locationRepository;
         this.locationStockRepository = locationStockRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.adjustmentRepository = adjustmentRepository;
@@ -99,8 +99,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     @Override
     @Transactional
     public LocationResponse createLocation(long companyId, long ownerId, CreateLocationRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         if (locationRepository.existsByCodeAndCompanyId(request.getCode(), companyId)) {
             throw new ConflictException("A location with code '" + request.getCode() + "' already exists in this company");
@@ -130,8 +129,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     @Override
     @Transactional
     public LocationResponse updateLocation(long companyId, long locationId, long ownerId, UpdateLocationRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -170,8 +168,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     @Override
     @Transactional
     public void deleteLocation(long companyId, long locationId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -403,8 +400,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     // --- Helpers ---
 
     private void assertCompanyOwnership(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 
     private LocationResponse toLocationResponse(InventoryLocation loc) {

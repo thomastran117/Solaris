@@ -40,7 +40,6 @@ import backend.models.enums.ReturnStatus;
 import backend.models.enums.RiskAction;
 import backend.models.enums.RiskAssessmentKind;
 import backend.models.enums.RiskMode;
-import backend.repositories.CompanyRepository;
 import backend.repositories.CompanyReturnLocationRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.LocationStockRepository;
@@ -55,8 +54,10 @@ import backend.repositories.UserRepository;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.returns.ReturnService;
+import backend.models.enums.CompanyCapability;
 import backend.services.intf.pricing.RiskEngine;
 import backend.services.risk.RiskAssessmentResult;
 import backend.services.risk.RiskContext;
@@ -91,7 +92,7 @@ public class ReturnServiceImpl implements ReturnService {
     private final ProductVariantRepository variantRepository;
     private final LocationStockRepository locationStockRepository;
     private final InventoryAdjustmentRepository adjustmentRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final CompanyReturnLocationRepository returnLocationRepository;
     private final UserRepository userRepository;
     private final PaymentService paymentService;
@@ -110,7 +111,7 @@ public class ReturnServiceImpl implements ReturnService {
             ProductVariantRepository variantRepository,
             LocationStockRepository locationStockRepository,
             InventoryAdjustmentRepository adjustmentRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             CompanyReturnLocationRepository returnLocationRepository,
             UserRepository userRepository,
             PaymentService paymentService,
@@ -126,7 +127,7 @@ public class ReturnServiceImpl implements ReturnService {
         this.variantRepository = variantRepository;
         this.locationStockRepository = locationStockRepository;
         this.adjustmentRepository = adjustmentRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.returnLocationRepository = returnLocationRepository;
         this.userRepository = userRepository;
         this.paymentService = paymentService;
@@ -198,8 +199,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional(readOnly = true)
     public List<ReturnResponse> getCompanyReturnsByOrder(long orderId, long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         return returnRepository.findAllByOrderIdAndCompanyId(orderId, companyId).stream()
                 .filter(ret -> returnBelongsExclusivelyToCompany(ret, companyId))
                 .map(this::toReturnResponse)
@@ -209,8 +209,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional(readOnly = true)
     public ReturnResponse getCompanyReturn(long returnId, long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Return ret = requireCompanyScopedReturn(
                 returnRepository.findByIdAndCompanyId(returnId, companyId),
                 returnId,
@@ -221,8 +220,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public ReturnResponse approveReturn(long returnId, long companyId, long ownerId, MerchantApproveReturnRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
                 returnRepository.findByIdAndCompanyIdForUpdate(returnId, companyId),
@@ -330,8 +328,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public ReturnResponse inspectReturn(long returnId, long companyId, long ownerId, InspectReturnRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
                 returnRepository.findByIdAndCompanyId(returnId, companyId),
@@ -381,8 +378,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public ReturnResponse rejectReturn(long returnId, long companyId, long ownerId, MerchantRejectReturnRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
                 returnRepository.findByIdAndCompanyId(returnId, companyId),
@@ -402,8 +398,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public ReturnResponse merchantInitiateReturn(long orderId, long companyId, long ownerId, MerchantInitiateReturnRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyIdForUpdate(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));

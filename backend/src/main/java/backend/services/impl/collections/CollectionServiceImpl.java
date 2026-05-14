@@ -44,6 +44,8 @@ import backend.repositories.specifications.ProductSpecification;
 import backend.services.impl.SingleFlightCache;
 import backend.services.impl.pricing.ActivePromotionLookupService;
 import backend.services.intf.collections.CollectionService;
+import backend.services.intf.company.CompanyAccessService;
+import backend.models.enums.CompanyCapability;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -68,6 +70,7 @@ public class CollectionServiceImpl implements CollectionService {
     private final SingleFlightCache singleFlightCache;
     private final ActivePromotionLookupService activePromotionLookupService;
     private final ObjectMapper objectMapper;
+    private final CompanyAccessService companyAccessService;
 
     public CollectionServiceImpl(
             CollectionRepository collectionRepository,
@@ -78,7 +81,8 @@ public class CollectionServiceImpl implements CollectionService {
             ApplicationEventPublisher eventPublisher,
             SingleFlightCache singleFlightCache,
             ActivePromotionLookupService activePromotionLookupService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            CompanyAccessService companyAccessService) {
         this.collectionRepository = collectionRepository;
         this.collectionProductRepository = collectionProductRepository;
         this.productRepository = productRepository;
@@ -88,6 +92,7 @@ public class CollectionServiceImpl implements CollectionService {
         this.singleFlightCache = singleFlightCache;
         this.activePromotionLookupService = activePromotionLookupService;
         this.objectMapper = objectMapper;
+        this.companyAccessService = companyAccessService;
     }
 
     // -------------------------------------------------------------------------
@@ -132,8 +137,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionResponse createCollection(long companyId, long ownerId, CreateCollectionRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         String slug = normaliseSlug(request.getSlug());
         if (collectionRepository.existsBySlugAndCompanyId(slug, companyId)) {
@@ -171,8 +175,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Transactional
     public CollectionResponse updateCollection(long companyId, long collectionId, long ownerId,
                                                UpdateCollectionRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -229,8 +232,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public void deleteCollection(long companyId, long collectionId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -280,8 +282,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Transactional
     public CollectionProductResponse addCollectionProduct(
             long companyId, long collectionId, long ownerId, AddCollectionProductRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -315,8 +316,7 @@ public class CollectionServiceImpl implements CollectionService {
     public CollectionProductResponse updateCollectionProduct(
             long companyId, long collectionId, long productId, long ownerId,
             UpdateCollectionProductRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -337,8 +337,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public void removeCollectionProduct(long companyId, long collectionId, long productId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -354,8 +353,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionResponse refreshCollection(long companyId, long collectionId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));

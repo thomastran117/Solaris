@@ -19,6 +19,8 @@ import AdminProductEditor from "./pages/admin/AdminProductEditor";
 import AdminCollectionsPage from "./pages/admin/AdminCollectionsPage";
 import AdminCollectionEditor from "./pages/admin/AdminCollectionEditor";
 import AdminCollectionProductsPage from "./pages/admin/AdminCollectionProductsPage";
+import AdminTeamPage from "./pages/admin/AdminTeamPage";
+import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -67,6 +69,8 @@ function App() {
             <Route path="/admin/collections/new" element={<AdminCollectionEditor />} />
             <Route path="/admin/collections/:id/edit" element={<AdminCollectionEditor />} />
             <Route path="/admin/collections/:id/products" element={<AdminCollectionProductsPage />} />
+            <Route path="/admin/team" element={<AdminTeamPage />} />
+            <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />

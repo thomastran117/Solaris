@@ -30,8 +30,10 @@ import backend.models.core.Order;
 import backend.models.enums.CreditEntryType;
 import backend.models.enums.LoyaltyEarnMode;
 import backend.models.enums.LoyaltyTransactionType;
-import backend.repositories.CompanyRepository;
 import backend.repositories.LoyaltyAccountRepository;
+import backend.services.intf.company.CompanyAccessService;
+import backend.models.enums.CompanyCapability;
+import backend.services.intf.customers.CustomerCreditService;
 import backend.repositories.LoyaltyPolicyRepository;
 import backend.repositories.LoyaltyTierRepository;
 import backend.repositories.LoyaltyTransactionRepository;
@@ -53,7 +55,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     private final LoyaltyTransactionRepository transactionRepository;
     private final LoyaltyPolicyRepository policyRepository;
     private final LoyaltyTierRepository tierRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final CustomerCreditService customerCreditService;
 
     public LoyaltyServiceImpl(
@@ -61,13 +63,13 @@ public class LoyaltyServiceImpl implements LoyaltyService {
             LoyaltyTransactionRepository transactionRepository,
             LoyaltyPolicyRepository policyRepository,
             LoyaltyTierRepository tierRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             CustomerCreditService customerCreditService) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.policyRepository = policyRepository;
         this.tierRepository = tierRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.customerCreditService = customerCreditService;
     }
 
@@ -532,8 +534,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     }
 
     private void assertOwner(long companyId, long userId) {
-        companyRepository.findByIdAndOwnerId(companyId, userId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_PROMOTIONS);
     }
 
     private LoyaltyAccountResponse toAccountResponse(LoyaltyAccount a) {

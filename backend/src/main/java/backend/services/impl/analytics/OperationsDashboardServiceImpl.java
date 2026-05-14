@@ -12,8 +12,7 @@ import backend.dtos.responses.operations.DurationMetricResponse;
 import backend.dtos.responses.operations.OperationsSummaryResponse;
 import backend.dtos.responses.operations.StockoutMetricResponse;
 import backend.dtos.responses.operations.SupplierLatenessMetricResponse;
-import backend.exceptions.http.ForbiddenException;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.OperationsMetricsRepository;
 import backend.repositories.OrderRepository;
 import backend.repositories.ProductRepository;
@@ -24,6 +23,7 @@ import backend.repositories.projections.DurationStatsProjection;
 import backend.repositories.projections.SupplierLatenessProjection;
 import backend.services.intf.CacheService;
 import backend.services.intf.analytics.OperationsDashboardService;
+import backend.services.intf.company.CompanyAccessService;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -42,7 +42,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
 
     private static final double SECONDS_PER_HOUR = 3600.0;
 
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final OperationsMetricsRepository metricsRepository;
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -50,13 +50,13 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
     private final ObjectMapper objectMapper;
 
     public OperationsDashboardServiceImpl(
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             OperationsMetricsRepository metricsRepository,
             OrderRepository orderRepository,
             ProductRepository productRepository,
             CacheService cacheService,
             ObjectMapper objectMapper) {
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.metricsRepository = metricsRepository;
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
@@ -290,8 +290,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
     }
 
     private void verifyOwnership(long companyId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 
     private record Window(Instant from, Instant to) {}

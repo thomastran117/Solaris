@@ -21,14 +21,14 @@ import backend.dtos.responses.inventory.ProductSalesMetricResponse;
 import backend.repositories.projections.ProductSalesProjection;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.CompanyCapability;
+import backend.services.intf.company.CompanyAccessService;
 import backend.models.core.Company;
 import backend.models.enums.ProductStatus;
 import backend.models.core.InventoryAdjustment;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
-import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
@@ -69,7 +69,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final InventoryAdjustmentRepository adjustmentRepository;
     private final UserRepository userRepository;
     private final CacheService cacheService;
@@ -79,7 +79,7 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryServiceImpl(
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             InventoryAdjustmentRepository adjustmentRepository,
             UserRepository userRepository,
             CacheService cacheService,
@@ -87,7 +87,7 @@ public class InventoryServiceImpl implements InventoryService {
             ApplicationEventPublisher eventPublisher) {
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.adjustmentRepository = adjustmentRepository;
         this.userRepository = userRepository;
         this.cacheService = cacheService;
@@ -491,8 +491,7 @@ public class InventoryServiceImpl implements InventoryService {
     // --- Private mapping helpers ---
 
     private Company assertCompanyOwnership(long companyId, long ownerId) {
-        return companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        return companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 
     private InventoryItemResponse toInventoryItemResponse(Product product) {

@@ -37,6 +37,7 @@ import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
+import backend.dtos.requests.product.RevertProductChangesRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.requests.product.UpdateProductMerchandisingRequest;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
@@ -46,6 +47,7 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.ActivePromotionSummary;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
+import backend.dtos.responses.product.ProductHistoryEntryResponse;
 import backend.dtos.responses.search.FacetBucket;
 import backend.dtos.responses.search.PriceRangeBucket;
 import backend.dtos.responses.search.SearchFacets;
@@ -59,8 +61,10 @@ import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.exceptions.http.ServiceUnavaliableException;
 import backend.models.core.Company;
+import backend.models.core.InventoryAdjustment;
 import backend.models.core.Product;
 import backend.models.core.ProductAttribute;
+import backend.models.core.ProductChangeLog;
 import backend.models.core.ProductImage;
 import backend.models.core.ProductOption;
 import backend.models.core.ProductVariant;
@@ -72,9 +76,11 @@ import backend.models.core.MarketplaceVendor;
 import backend.repositories.BundleRepository;
 import backend.repositories.CollectionProductRepository;
 import backend.repositories.CompanyRepository;
+import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.ProductAttributeRepository;
+import backend.repositories.ProductChangeLogRepository;
 import backend.repositories.ProductImageRepository;
 import backend.repositories.ProductOptionRepository;
 import backend.repositories.ProductRepository;
@@ -83,7 +89,11 @@ import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.repositories.specifications.ProductSpecification;
 import backend.services.impl.pricing.ActivePromotionLookupService;
+import backend.services.intf.company.CompanyAccessService;
+import backend.services.intf.products.ProductChangeLogger;
 import backend.services.intf.products.ProductService;
+import backend.models.enums.CompanyCapability;
+import backend.models.enums.ChangeSource;
 import org.springframework.context.ApplicationEventPublisher;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -125,6 +135,10 @@ public class ProductServiceImpl implements ProductService {
     private final ElasticsearchOperations elasticsearchOperations;
     private final SingleFlightCache singleFlightCache;
     private final ActivePromotionLookupService activePromotionLookupService;
+    private final ProductChangeLogger productChangeLogger;
+    private final ProductChangeLogRepository productChangeLogRepository;
+    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    private final CompanyAccessService companyAccessService;
     private final long cacheTtl;
     private final long cacheTtlShort;
 
@@ -145,6 +159,10 @@ public class ProductServiceImpl implements ProductService {
             ElasticsearchOperations elasticsearchOperations,
             SingleFlightCache singleFlightCache,
             ActivePromotionLookupService activePromotionLookupService,
+            ProductChangeLogger productChangeLogger,
+            ProductChangeLogRepository productChangeLogRepository,
+            InventoryAdjustmentRepository inventoryAdjustmentRepository,
+            CompanyAccessService companyAccessService,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
             @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
         this.productRepository = productRepository;
@@ -163,6 +181,10 @@ public class ProductServiceImpl implements ProductService {
         this.elasticsearchOperations = elasticsearchOperations;
         this.singleFlightCache = singleFlightCache;
         this.activePromotionLookupService = activePromotionLookupService;
+        this.productChangeLogger = productChangeLogger;
+        this.productChangeLogRepository = productChangeLogRepository;
+        this.inventoryAdjustmentRepository = inventoryAdjustmentRepository;
+        this.companyAccessService = companyAccessService;
         this.cacheTtl = cacheTtl;
         this.cacheTtlShort = cacheTtlShort;
     }
@@ -290,9 +312,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ProductResponse createProduct(long companyId, long ownerId, CreateProductRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (request.getSku() != null && !request.getSku().isBlank()
                 && productRepository.existsBySkuAndCompanyId(request.getSku(), companyId)) {
@@ -322,6 +344,7 @@ public class ProductServiceImpl implements ProductService {
         applyStatusTransition(product, initialStatus, request.getScheduledPublishAt(), true);
 
         Product saved = productRepository.save(product);
+        productChangeLogger.logCreate(saved, ChangeSource.USER);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
         evictAfterCommit(() -> {
             singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
@@ -333,12 +356,12 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse updateProduct(long companyId, long productId, long ownerId, UpdateProductRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
+        Product before = productChangeLogger.snapshot(product);
         ProductStatus originalStatus = product.getStatus();
         boolean originalListed = product.isListed();
 
@@ -390,6 +413,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Product saved = productRepository.save(product);
+        productChangeLogger.logUpdate(before, saved, ChangeSource.USER, null);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
         final Long marketplaceId = saved.getMarketplaceId();
         evictAfterCommit(() -> {
@@ -406,9 +430,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public void deleteProduct(long companyId, long productId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -418,6 +442,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         final Long marketplaceId = product.getMarketplaceId();
+        productChangeLogger.logDelete(product);
         promotionRuleRepository.removeProductFromAllRules(productId);
         collectionProductRepository.deleteAllByProductId(productId);
         productRepository.delete(product);
@@ -437,8 +462,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public List<ProductResponse> batchCreateProducts(long companyId, long ownerId, BatchCreateProductsRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<ProductResponse> results = new java.util.ArrayList<>();
         Set<String> batchSkus = new HashSet<>();
@@ -474,6 +498,7 @@ public class ProductServiceImpl implements ProductService {
             product.setStatus(ProductStatus.DRAFT);
 
             Product saved = productRepository.save(product);
+            productChangeLogger.logCreate(saved, ChangeSource.USER);
             eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
             results.add(toResponse(saved));
         }
@@ -488,8 +513,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void batchDeleteProducts(long companyId, long ownerId, BatchDeleteProductsRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<Product> products = productRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
 
@@ -500,6 +524,9 @@ public class ProductServiceImpl implements ProductService {
         promotionRuleRepository.removeProductsFromAllRules(request.getIds());
         for (Long pid : request.getIds()) {
             collectionProductRepository.deleteAllByProductId(pid);
+        }
+        for (Product p : products) {
+            productChangeLogger.logDelete(p);
         }
         productRepository.deleteAll(products);
         for (Product p : products) {
@@ -535,8 +562,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductImageResponse addProductImage(long companyId, long productId, long ownerId, AddProductImageRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyIdWithLock(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -568,8 +594,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void deleteProductImage(long companyId, long productId, long imageId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -591,8 +616,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public List<ProductImageResponse> reorderProductImages(long companyId, long productId, long ownerId, ReorderProductImagesRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         // Pessimistic write lock prevents concurrent reorder calls from overwriting each other.
         Product product = productRepository.findByIdAndCompanyIdWithLock(productId, companyId)
@@ -655,8 +679,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductOptionResponse addProductOption(long companyId, long productId, long ownerId, CreateProductOptionRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         // Pessimistic write lock serializes concurrent option-add requests so the count
         // check and the insert are atomic with respect to other writers.
@@ -684,8 +707,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductOptionResponse updateProductOption(long companyId, long productId, long optionId, long ownerId, UpdateProductOptionRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
 
@@ -705,8 +727,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void deleteProductOption(long companyId, long productId, long optionId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
 
@@ -742,8 +763,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductVariantResponse createProductVariant(long companyId, long productId, long ownerId, CreateProductVariantRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -766,7 +786,9 @@ public class ProductServiceImpl implements ProductService {
         variant.setOption3(request.getOption3());
         variant.setDisplayOrder(request.getDisplayOrder());
 
-        ProductVariantResponse result = toVariantResponse(productVariantRepository.save(variant));
+        ProductVariant savedVariant = productVariantRepository.save(variant);
+        productChangeLogger.logVariantCreate(savedVariant, ChangeSource.USER);
+        ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
@@ -777,13 +799,14 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductVariantResponse updateProductVariant(long companyId, long productId, long variantId, long ownerId, UpdateProductVariantRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
+
+        ProductVariant variantBefore = productChangeLogger.snapshot(variant);
 
         if (request.getSku() != null && !request.getSku().equals(variant.getSku())) {
             if (productVariantRepository.existsBySkuAndProductCompanyId(request.getSku(), companyId)) {
@@ -802,7 +825,9 @@ public class ProductServiceImpl implements ProductService {
         if (request.getOption3() != null) variant.setOption3(request.getOption3());
         if (request.getDisplayOrder() != null) variant.setDisplayOrder(request.getDisplayOrder());
 
-        ProductVariantResponse result = toVariantResponse(productVariantRepository.save(variant));
+        ProductVariant savedVariant = productVariantRepository.save(variant);
+        productChangeLogger.logVariantUpdate(variantBefore, savedVariant, ChangeSource.USER, null);
+        ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
@@ -813,14 +838,14 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void deleteProductVariant(long companyId, long productId, long variantId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
 
+        productChangeLogger.logVariantDelete(variant);
         productVariantRepository.delete(variant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
@@ -842,8 +867,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public List<ProductAttributeResponse> setProductAttributes(long companyId, long productId, long ownerId, SetProductAttributesRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -1040,8 +1064,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public ProductResponse updateMarketplaceListing(long companyId, long productId, long ownerId,
                                                      UpdateMarketplaceListingRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -1085,8 +1108,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public ProductResponse updateProductMerchandising(long companyId, long productId, long ownerId,
                                                        UpdateProductMerchandisingRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -1474,5 +1496,230 @@ public class ProductServiceImpl implements ProductService {
             log.warn("[COMPARE] Failed to load ratings: {}", e.getMessage());
         }
         return map;
+    }
+
+    // -------------------------------------------------------------------------
+    // Versioning / change history
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<ProductHistoryEntryResponse> getProductHistory(
+            long companyId, long productId, int page, int size) {
+        productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        int clampedSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+        // Pull enough from each source to cover the requested page after a merge sort.
+        int prefix = (safePage + 1) * clampedSize;
+        Pageable prefixPage = PageRequest.of(0, prefix, Sort.by(Sort.Direction.DESC, "changedAt"));
+        Pageable invPrefixPage = PageRequest.of(0, prefix, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<ProductChangeLog> changes = productChangeLogRepository
+                .findAllByProductIdAndCompanyId(productId, companyId, prefixPage);
+        Page<InventoryAdjustment> adjustments = inventoryAdjustmentRepository
+                .findAllByProductIdAndProductCompanyId(productId, companyId, invPrefixPage);
+
+        List<ProductHistoryEntryResponse> merged = new java.util.ArrayList<>(
+                changes.getNumberOfElements() + adjustments.getNumberOfElements());
+        for (ProductChangeLog c : changes.getContent()) merged.add(toHistoryEntry(c));
+        for (InventoryAdjustment a : adjustments.getContent()) merged.add(toHistoryEntry(a));
+        merged.sort((x, y) -> y.getOccurredAt().compareTo(x.getOccurredAt()));
+
+        long total = changes.getTotalElements() + adjustments.getTotalElements();
+        int from = Math.min(safePage * clampedSize, merged.size());
+        int to = Math.min(from + clampedSize, merged.size());
+        List<ProductHistoryEntryResponse> pageContent = merged.subList(from, to);
+        Page<ProductHistoryEntryResponse> springPage = new PageImpl<>(
+                pageContent, PageRequest.of(safePage, clampedSize), total);
+        return new PagedResponse<>(springPage);
+    }
+
+    @Override
+    @Transactional
+    public ProductResponse revertProductChanges(
+            long companyId, long productId, long ownerId, RevertProductChangesRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
+
+        Product product = productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        if (request.getExpectedVersion() != null
+                && !request.getExpectedVersion().equals(product.getVersion())) {
+            throw new ConflictException(
+                    "Product has been modified since you loaded history (expected version "
+                            + request.getExpectedVersion() + ", current " + product.getVersion() + ")");
+        }
+
+        List<ProductChangeLog> entries = productChangeLogRepository
+                .findAllByIdInAndCompanyId(request.getLogEntryIds(), companyId);
+        if (entries.size() != request.getLogEntryIds().size()) {
+            throw new ResourceNotFoundException("One or more log entries were not found in this company");
+        }
+        for (ProductChangeLog e : entries) {
+            if (!e.getProduct().getId().equals(productId)) {
+                throw new BadRequestException("Log entry " + e.getId() + " does not belong to product " + productId);
+            }
+            if ("stock".equals(e.getFieldName())) {
+                throw new BadRequestException(
+                        "Stock changes cannot be reverted here — use the inventory adjustment endpoint");
+            }
+        }
+
+        // Group entries by variant (null = parent product). Within each group, keep only the
+        // newest entry per field — that is the value the user wants to undo, and its oldValue
+        // is the target state.
+        Map<Long, Map<String, ProductChangeLog>> byVariant = new java.util.HashMap<>();
+        for (ProductChangeLog e : entries) {
+            Long variantId = e.getVariant() == null ? null : e.getVariant().getId();
+            byVariant.computeIfAbsent(variantId, k -> new java.util.HashMap<>())
+                    .merge(e.getFieldName(), e, (oldE, newE) ->
+                            newE.getChangedAt().isAfter(oldE.getChangedAt()) ? newE : oldE);
+        }
+
+        Map<String, ProductChangeLog> productFieldRevisions = byVariant.remove(null);
+        if (productFieldRevisions != null && !productFieldRevisions.isEmpty()) {
+            Product before = productChangeLogger.snapshot(product);
+            for (Map.Entry<String, ProductChangeLog> entry : productFieldRevisions.entrySet()) {
+                applyProductField(product, entry.getKey(), entry.getValue().getOldValue());
+            }
+            Product saved = productRepository.save(product);
+            Long lastEntryId = productFieldRevisions.values().stream()
+                    .map(ProductChangeLog::getId)
+                    .max(Long::compareTo)
+                    .orElse(null);
+            productChangeLogger.logUpdate(before, saved, ChangeSource.REVERT, lastEntryId);
+            product = saved;
+        }
+
+        for (Map.Entry<Long, Map<String, ProductChangeLog>> v : byVariant.entrySet()) {
+            ProductVariant variant = productVariantRepository.findByIdAndProductId(v.getKey(), productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Variant not found: " + v.getKey()));
+            ProductVariant beforeVariant = productChangeLogger.snapshot(variant);
+            for (Map.Entry<String, ProductChangeLog> entry : v.getValue().entrySet()) {
+                applyVariantField(variant, entry.getKey(), entry.getValue().getOldValue());
+            }
+            ProductVariant savedVariant = productVariantRepository.save(variant);
+            Long lastEntryId = v.getValue().values().stream()
+                    .map(ProductChangeLog::getId)
+                    .max(Long::compareTo)
+                    .orElse(null);
+            productChangeLogger.logVariantUpdate(beforeVariant, savedVariant, ChangeSource.REVERT, lastEntryId);
+        }
+
+        eventPublisher.publishEvent(new ProductIndexEvent(product, companyId));
+        final long productIdF = productId;
+        final Long marketplaceId = product.getMarketplaceId();
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productIdF);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (marketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + marketplaceId + ":" + productIdF);
+                singleFlightCache.evictByPattern("marketplace:search:" + marketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + marketplaceId + ":*");
+            }
+        });
+        return toResponse(product);
+    }
+
+    private ProductHistoryEntryResponse toHistoryEntry(ProductChangeLog c) {
+        Long actorId = c.getChangedBy() == null ? null : c.getChangedBy().getId();
+        return new ProductHistoryEntryResponse(
+                ProductHistoryEntryResponse.Kind.FIELD_CHANGE,
+                c.getId(),
+                c.getProduct().getId(),
+                c.getVariant() == null ? null : c.getVariant().getId(),
+                actorId,
+                resolveActorRole(c.getProduct().getCompany().getId(), actorId),
+                c.getChangedAt(),
+                c.getFieldName(),
+                c.getOldValue(),
+                c.getNewValue(),
+                c.getChangeType().name(),
+                c.getSource().name(),
+                c.getRevertedFromLogId(),
+                null, null, null, null, null, null);
+    }
+
+    private ProductHistoryEntryResponse toHistoryEntry(InventoryAdjustment a) {
+        Long actorId = a.getAdjustedBy() == null ? null : a.getAdjustedBy().getId();
+        return new ProductHistoryEntryResponse(
+                ProductHistoryEntryResponse.Kind.INVENTORY_ADJUSTMENT,
+                a.getId(),
+                a.getProduct().getId(),
+                a.getVariant() == null ? null : a.getVariant().getId(),
+                actorId,
+                resolveActorRole(a.getProduct().getCompany().getId(), actorId),
+                a.getCreatedAt(),
+                null, null, null, null, null, null,
+                a.getDelta(),
+                a.getPreviousStock(),
+                a.getNewStock(),
+                a.getReason() == null ? null : a.getReason().name(),
+                a.getNote(),
+                a.getOrderId());
+    }
+
+    private backend.models.enums.CompanyRole resolveActorRole(long companyId, Long actorId) {
+        if (actorId == null) return null;
+        return companyAccessService.resolveRole(companyId, actorId).orElse(null);
+    }
+
+    private void applyProductField(Product p, String field, String value) {
+        switch (field) {
+            case "name" -> p.setName(value);
+            case "description" -> p.setDescription(value);
+            case "sku" -> p.setSku(value);
+            case "price" -> p.setPrice(value == null ? null : new BigDecimal(value));
+            case "compareAtPrice" -> p.setCompareAtPrice(value == null ? null : new BigDecimal(value));
+            case "currency" -> p.setCurrency(value);
+            case "category" -> p.setCategory(value);
+            case "brand" -> p.setBrand(value);
+            case "tags" -> p.setTags(value);
+            case "thumbnailUrl" -> p.setThumbnailUrl(value);
+            case "weight" -> p.setWeight(value == null ? null : new BigDecimal(value));
+            case "weightUnit" -> p.setWeightUnit(value);
+            case "status" -> p.setStatus(value == null ? null : ProductStatus.valueOf(value));
+            case "scheduledPublishAt" -> p.setScheduledPublishAt(value == null ? null : Instant.parse(value));
+            case "featured" -> p.setFeatured(Boolean.parseBoolean(value));
+            case "purchasable" -> p.setPurchasable(Boolean.parseBoolean(value));
+            case "listed" -> p.setListed(Boolean.parseBoolean(value));
+            case "backorderEnabled" -> p.setBackorderEnabled(Boolean.parseBoolean(value));
+            case "subscribable" -> p.setSubscribable(Boolean.parseBoolean(value));
+            case "subscriptionIntervals" -> p.setSubscriptionIntervals(value);
+            case "subscriptionDiscountPercent" -> p.setSubscriptionDiscountPercent(value == null ? null : new BigDecimal(value));
+            case "boostWeight" -> p.setBoostWeight(value == null ? null : Integer.parseInt(value));
+            case "pinnedUntil" -> p.setPinnedUntil(value == null ? null : Instant.parse(value));
+            case "pinnedRank" -> p.setPinnedRank(value == null ? null : Integer.parseInt(value));
+            case "lowStockThreshold" -> p.setLowStockThreshold(value == null ? null : Integer.parseInt(value));
+            case "lowStockThresholdPercent" -> p.setLowStockThresholdPercent(value == null ? null : Integer.parseInt(value));
+            case "maxStock" -> p.setMaxStock(value == null ? null : Integer.parseInt(value));
+            case "autoRestockEnabled" -> p.setAutoRestockEnabled(Boolean.parseBoolean(value));
+            case "autoRestockQty" -> p.setAutoRestockQty(value == null ? null : Integer.parseInt(value));
+            case "marketplaceListed" -> p.setMarketplaceListed(Boolean.parseBoolean(value));
+            default -> throw new BadRequestException("Field '" + field + "' is not revertable");
+        }
+    }
+
+    private void applyVariantField(ProductVariant v, String field, String value) {
+        switch (field) {
+            case "sku" -> v.setSku(value);
+            case "price" -> v.setPrice(value == null ? null : new BigDecimal(value));
+            case "compareAtPrice" -> v.setCompareAtPrice(value == null ? null : new BigDecimal(value));
+            case "lowStockThreshold" -> v.setLowStockThreshold(value == null ? null : Integer.parseInt(value));
+            case "lowStockThresholdPercent" -> v.setLowStockThresholdPercent(value == null ? null : Integer.parseInt(value));
+            case "maxStock" -> v.setMaxStock(value == null ? null : Integer.parseInt(value));
+            case "autoRestockEnabled" -> v.setAutoRestockEnabled(Boolean.parseBoolean(value));
+            case "autoRestockQty" -> v.setAutoRestockQty(value == null ? null : Integer.parseInt(value));
+            case "purchasable" -> v.setPurchasable(Boolean.parseBoolean(value));
+            case "backorderEnabled" -> v.setBackorderEnabled(Boolean.parseBoolean(value));
+            case "option1" -> v.setOption1(value);
+            case "option2" -> v.setOption2(value);
+            case "option3" -> v.setOption3(value);
+            case "displayOrder" -> v.setDisplayOrder(value == null ? 0 : Integer.parseInt(value));
+            default -> throw new BadRequestException("Variant field '" + field + "' is not revertable");
+        }
     }
 }

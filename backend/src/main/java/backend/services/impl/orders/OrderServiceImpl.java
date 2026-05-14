@@ -95,8 +95,10 @@ import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.services.impl.inventory.StockAlertService;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.inventory.AllocationService;
 import backend.services.intf.CacheService;
+import backend.models.enums.CompanyCapability;
 import backend.services.intf.auth.DeviceService;
 import backend.services.intf.support.EmailService;
 import backend.services.intf.auth.EmailVerificationService;
@@ -179,6 +181,7 @@ public class OrderServiceImpl implements OrderService {
     private final VendorBalanceRepository vendorBalanceRepository;
     private final LoyaltyService loyaltyService;
     private final ActivityEventPublisher activityEventPublisher;
+    private final CompanyAccessService companyAccessService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
@@ -219,7 +222,8 @@ public class OrderServiceImpl implements OrderService {
             CommissionRecordRepository commissionRecordRepository,
             VendorBalanceRepository vendorBalanceRepository,
             LoyaltyService loyaltyService,
-            ActivityEventPublisher activityEventPublisher) {
+            ActivityEventPublisher activityEventPublisher,
+            CompanyAccessService companyAccessService) {
         this.orderRepository = orderRepository;
         this.compensationRepository = compensationRepository;
         this.productRepository = productRepository;
@@ -256,6 +260,7 @@ public class OrderServiceImpl implements OrderService {
         this.vendorBalanceRepository = vendorBalanceRepository;
         this.loyaltyService = loyaltyService;
         this.activityEventPublisher = activityEventPublisher;
+        this.companyAccessService = companyAccessService;
     }
 
     /** Setter injection breaks the circular dependency: ReturnService → OrderServiceImpl → ReturnService. */
@@ -1675,8 +1680,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PagedResponse<CompanyOrderResponse> getCompanyOrders(long companyId, long ownerId, OrderStatus status, int page, int size) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         if (size > 50) size = 50;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -1693,8 +1697,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public CompanyOrderResponse getCompanyOrder(long companyId, long orderId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -1795,8 +1798,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CompanyOrderResponse markAsPacked(long companyId, long orderId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -1816,8 +1818,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CompanyOrderResponse markAsShipped(long companyId, long orderId, long ownerId, ShipOrderRequest request) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -1861,8 +1862,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CompanyOrderResponse markAsDelivered(long companyId, long orderId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -2071,8 +2071,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public PagedResponse<RiskReviewResponse> listRiskReviews(long companyId, long ownerId,
                                                              RiskReviewStatus status, int page, int size) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         if (size > 50) size = 50;
         RiskReviewStatus effective = status != null ? status : RiskReviewStatus.PENDING;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -2084,8 +2083,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public RiskAssessmentResponse getOrderRisk(long companyId, long orderId, long ownerId) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         requireExclusiveCompanyOrder(order, orderId, companyId);
@@ -2097,8 +2095,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse approveRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         requireExclusiveCompanyOrder(order, orderId, companyId);
@@ -2146,8 +2143,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse rejectRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         requireExclusiveCompanyOrder(order, orderId, companyId);

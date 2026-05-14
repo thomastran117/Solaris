@@ -4,6 +4,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import backend.dtos.requests.company.CreateCompanyRequest;
 import backend.dtos.requests.company.UpdateCompanyRequest;
@@ -11,18 +12,24 @@ import backend.dtos.responses.company.CompanyResponse;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.upload.PresignUploadResponse;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
+import backend.models.core.CompanyMembership;
 import backend.models.core.User;
+import backend.models.enums.CompanyCapability;
+import backend.models.enums.CompanyMembershipStatus;
+import backend.models.enums.CompanyRole;
 import backend.models.enums.CompanyStatus;
 import backend.models.enums.UploadFolder;
+import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.specifications.CompanySpecification;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.company.CompanyService;
 import backend.services.intf.StorageService;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -30,16 +37,22 @@ import java.util.Set;
 public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyRepository companyRepository;
+    private final CompanyMembershipRepository membershipRepository;
     private final UserRepository userRepository;
     private final StorageService storageService;
+    private final CompanyAccessService companyAccessService;
 
     public CompanyServiceImpl(
             CompanyRepository companyRepository,
+            CompanyMembershipRepository membershipRepository,
             UserRepository userRepository,
-            StorageService storageService) {
+            StorageService storageService,
+            CompanyAccessService companyAccessService) {
         this.companyRepository = companyRepository;
+        this.membershipRepository = membershipRepository;
         this.userRepository = userRepository;
         this.storageService = storageService;
+        this.companyAccessService = companyAccessService;
     }
 
     private static final Set<String> SORTABLE_FIELDS = Set.of("name", "createdAt", "foundedYear", "employeeCount");
@@ -69,21 +82,24 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     @Override
-    public List<CompanyResponse> getCompaniesByIds(List<Long> ids, long ownerId) {
-        return companyRepository.findAllByIdInAndOwnerId(ids, ownerId)
+    @Transactional(readOnly = true)
+    public List<CompanyResponse> getCompaniesByIds(List<Long> ids, long userId) {
+        return companyAccessService.listAccessibleCompanies(userId)
                 .stream()
+                .filter(c -> ids.contains(c.getId()))
                 .map(this::toResponse)
                 .toList();
     }
 
     @Override
-    public CompanyResponse getCompany(long companyId, long ownerId) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found with id: " + companyId));
+    @Transactional(readOnly = true)
+    public CompanyResponse getCompany(long companyId, long userId) {
+        Company company = companyAccessService.requireAnyAccess(companyId, userId);
         return toResponse(company);
     }
 
     @Override
+    @Transactional
     public CompanyResponse createCompany(long ownerId, CreateCompanyRequest request) {
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + ownerId));
@@ -110,16 +126,27 @@ public class CompanyServiceImpl implements CompanyService {
         company.setFoundedYear(request.getFoundedYear());
         company.setEmployeeCount(request.getEmployeeCount());
 
-        return toResponse(companyRepository.save(company));
+        Company saved = companyRepository.save(company);
+
+        CompanyMembership ownerMembership = new CompanyMembership();
+        ownerMembership.setCompany(saved);
+        ownerMembership.setUser(owner);
+        ownerMembership.setRole(CompanyRole.OWNER);
+        ownerMembership.setStatus(CompanyMembershipStatus.ACTIVE);
+        ownerMembership.setAcceptedAt(Instant.now());
+        membershipRepository.save(ownerMembership);
+
+        companyAccessService.invalidate(saved.getId(), ownerId);
+        return toResponse(saved);
     }
 
     @Override
-    public CompanyResponse updateCompany(long companyId, long ownerId, UpdateCompanyRequest request) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found with id: " + companyId));
+    @Transactional
+    public CompanyResponse updateCompany(long companyId, long userId, UpdateCompanyRequest request) {
+        Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
 
         if (request.getName() != null && !request.getName().equals(company.getName())) {
-            if (companyRepository.existsByNameAndOwnerId(request.getName(), ownerId)) {
+            if (companyRepository.existsByNameAndOwnerId(request.getName(), company.getOwner().getId())) {
                 throw new ConflictException("A company with this name already exists");
             }
             company.setName(request.getName());
@@ -144,22 +171,24 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     @Override
-    public void deleteCompany(long companyId, long ownerId) {
-        Company company = companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found with id: " + companyId));
+    @Transactional
+    public void deleteCompany(long companyId, long userId) {
+        Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
         companyRepository.delete(company);
+        companyAccessService.invalidate(companyId, userId);
     }
 
     @Override
-    public PresignUploadResponse generateLogoUploadUrl(long companyId, long ownerId, String contentType) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
-        return storageService.generatePresignedUrl(UploadFolder.COMPANY_LOGO, ownerId, contentType);
+    @Transactional(readOnly = true)
+    public PresignUploadResponse generateLogoUploadUrl(long companyId, long userId, String contentType) {
+        companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
+        return storageService.generatePresignedUrl(UploadFolder.COMPANY_LOGO, userId, contentType);
     }
 
     @Override
-    public CompanyResponse getMyCompany(long ownerId) {
-        return companyRepository.findAllByOwnerId(ownerId)
+    @Transactional(readOnly = true)
+    public CompanyResponse getMyCompany(long userId) {
+        return companyAccessService.listAccessibleCompanies(userId)
                 .stream()
                 .findFirst()
                 .map(this::toResponse)

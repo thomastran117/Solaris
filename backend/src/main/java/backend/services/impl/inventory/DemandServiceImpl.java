@@ -10,11 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.dtos.responses.analytics.DemandEntry;
 import backend.dtos.responses.analytics.HotProductsResponse;
 import backend.exceptions.http.BadRequestException;
-import backend.exceptions.http.ForbiddenException;
-import backend.repositories.CompanyRepository;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.ProductRepository;
 import backend.repositories.projections.ProductDemandProjection;
 import backend.services.intf.CacheService;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.inventory.DemandService;
 
 import java.time.Instant;
@@ -37,7 +37,7 @@ public class DemandServiceImpl implements DemandService {
     private static final String CACHE_KEY_PREFIX = "demand:hot:"; // + window + ":" + companyId
     private static final Set<String> VALID_WINDOWS = Set.of("1h", "24h");
 
-    private final CompanyRepository companyRepository;
+    private final CompanyAccessService companyAccessService;
     private final ProductRepository productRepository;
     private final CacheService      cacheService;
     private final ObjectMapper      objectMapper;
@@ -49,11 +49,11 @@ public class DemandServiceImpl implements DemandService {
     private int cacheTtl24h;
 
     public DemandServiceImpl(
-            CompanyRepository companyRepository,
+            CompanyAccessService companyAccessService,
             ProductRepository productRepository,
             CacheService cacheService,
             ObjectMapper objectMapper) {
-        this.companyRepository = companyRepository;
+        this.companyAccessService = companyAccessService;
         this.productRepository = productRepository;
         this.cacheService      = cacheService;
         this.objectMapper      = objectMapper;
@@ -61,8 +61,7 @@ public class DemandServiceImpl implements DemandService {
 
     @Override
     public HotProductsResponse getHotProducts(long companyId, long ownerId, String window, int limit) {
-        companyRepository.findByIdAndOwnerId(companyId, ownerId)
-                .orElseThrow(() -> new ForbiddenException("You do not own this company"));
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
 
         if (!VALID_WINDOWS.contains(window)) {
             throw new BadRequestException("window must be '1h' or '24h'");
