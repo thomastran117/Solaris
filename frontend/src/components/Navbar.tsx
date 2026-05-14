@@ -5,6 +5,7 @@ import SearchBar from "./search/SearchBar";
 import { useSelector, useDispatch } from "react-redux";
 import type { RootState, AppDispatch } from "../stores";
 import { clearCredentials } from "../stores/authSlice";
+import { useCompanyCapabilities } from "../hooks/useCompanyRole";
 import api from "../api";
 import "../styles/navbar.css";
 
@@ -12,7 +13,11 @@ export default function Navbar() {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { accessToken, email } = useSelector((state: RootState) => state.auth);
+  const { accessToken, email, companyId } = useSelector((state: RootState) => state.auth);
+  const { can } = useCompanyCapabilities(accessToken ? companyId : null);
+  const canManageCompany = can("MANAGE_COMPANY");
+  const canManageProducts = can("MANAGE_PRODUCTS");
+  const canFulfillOrders = can("FULFILL_ORDERS");
 
   const username = email ?? null;
 
@@ -140,6 +145,16 @@ export default function Navbar() {
               {accessToken && (
                 <NavLink to="/lists" className={navLinkClass}>
                   My Lists
+                </NavLink>
+              )}
+              {accessToken && companyId && (canManageProducts || canFulfillOrders) && (
+                <NavLink to="/admin/products" className={navLinkClass}>
+                  Admin
+                </NavLink>
+              )}
+              {accessToken && companyId && canManageCompany && (
+                <NavLink to="/admin/team" className={navLinkClass}>
+                  Team
                 </NavLink>
               )}
 

@@ -82,6 +82,12 @@ public class EmailServiceImpl implements EmailService {
                 variantId, variantTitle, productUrl));
     }
 
+    @Override
+    public void sendTeamInviteEmail(String toEmail, String companyName, String role,
+                                    String inviterDisplayName, String acceptUrl) {
+        publish(new EmailEvent.TeamInviteEmail(toEmail, companyName, role, inviterDisplayName, acceptUrl));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

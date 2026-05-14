@@ -20,10 +20,12 @@ import backend.models.core.User;
 import backend.models.enums.CompanyCapability;
 import backend.models.enums.CompanyMembershipStatus;
 import backend.models.enums.CompanyRole;
+import backend.configurations.environment.EnvironmentSetting;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.UserRepository;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.company.CompanyMembershipService;
+import backend.services.intf.support.EmailService;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -41,14 +43,20 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
     private final CompanyMembershipRepository membershipRepository;
     private final UserRepository userRepository;
     private final CompanyAccessService companyAccessService;
+    private final EmailService emailService;
+    private final EnvironmentSetting environmentSetting;
 
     public CompanyMembershipServiceImpl(
             CompanyMembershipRepository membershipRepository,
             UserRepository userRepository,
-            CompanyAccessService companyAccessService) {
+            CompanyAccessService companyAccessService,
+            EmailService emailService,
+            EnvironmentSetting environmentSetting) {
         this.membershipRepository = membershipRepository;
         this.userRepository = userRepository;
         this.companyAccessService = companyAccessService;
+        this.emailService = emailService;
+        this.environmentSetting = environmentSetting;
     }
 
     @Override
@@ -97,7 +105,15 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
         CompanyMembership saved = membershipRepository.save(membership);
 
-        // Email sending is best-effort. Log the invite link for now; a follow-up can wire to EmailService.
+        String acceptUrl = environmentSetting.getEmail().getVerificationBaseUrl()
+                + "/invite/accept/" + saved.getInviteToken();
+        String inviterName = displayName(inviter);
+        String roleLabel = role == CompanyRole.MANAGER ? "Manager" : "Employee";
+        try {
+            emailService.sendTeamInviteEmail(normalizedEmail, company.getName(), roleLabel, inviterName, acceptUrl);
+        } catch (Exception e) {
+            log.warn("Failed to publish team invite email for company={} email={}", companyId, normalizedEmail, e);
+        }
         log.info("Team invite created for company={} email={} role={} token={}",
                 companyId, normalizedEmail, role, saved.getInviteToken());
 

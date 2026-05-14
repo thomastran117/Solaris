@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = EmailEvent.CreditIssuedEmail.class,       name = "CREDIT_ISSUED"),
     @JsonSubTypes.Type(value = EmailEvent.ReplacementOrderEmail.class,   name = "REPLACEMENT_ORDER"),
     @JsonSubTypes.Type(value = EmailEvent.BackInStockEmail.class,        name = "BACK_IN_STOCK"),
+    @JsonSubTypes.Type(value = EmailEvent.TeamInviteEmail.class,         name = "TEAM_INVITE"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -27,7 +28,8 @@ public sealed interface EmailEvent
                 EmailEvent.TicketReplyEmail,
                 EmailEvent.CreditIssuedEmail,
                 EmailEvent.ReplacementOrderEmail,
-                EmailEvent.BackInStockEmail {
+                EmailEvent.BackInStockEmail,
+                EmailEvent.TeamInviteEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -94,5 +96,13 @@ public sealed interface EmailEvent
         Long variantId,
         String variantTitle,
         String productUrl
+    ) implements EmailEvent {}
+
+    record TeamInviteEmail(
+        String toEmail,
+        String companyName,
+        String role,
+        String inviterDisplayName,
+        String acceptUrl
     ) implements EmailEvent {}
 }

@@ -103,4 +103,18 @@ public interface EmailService {
                               long productId, String productName,
                               Long variantId, String variantTitle,
                               String productUrl);
+
+    /**
+     * Notifies an invitee that they've been invited to join a company as a manager
+     * or employee. The accept URL is a single-use link that activates the membership
+     * when followed by the recipient.
+     *
+     * @param toEmail            invitee email address
+     * @param companyName        company they've been invited to
+     * @param role               human-readable role label ("Manager" / "Employee")
+     * @param inviterDisplayName who sent the invite; may be null
+     * @param acceptUrl          deep link to the frontend invite-accept page
+     */
+    void sendTeamInviteEmail(String toEmail, String companyName, String role,
+                             String inviterDisplayName, String acceptUrl);
 }

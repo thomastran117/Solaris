@@ -5,7 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil } from "lucide-react";
+import { ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil, Eye } from "lucide-react";
+import { useCompanyCapabilities } from "../../hooks/useCompanyRole";
 import {
   adminProductsApi,
   type AdminProduct,
@@ -138,6 +139,8 @@ export default function AdminProductEditor() {
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();
   const [tab, setTab] = useState<"edit" | "history">("edit");
+  const { can } = useCompanyCapabilities(companyId);
+  const canEdit = can("MANAGE_PRODUCTS");
 
   const queryKey = useMemo(
     () => ["admin-products", "detail", { companyId, productId }],
@@ -475,16 +478,23 @@ export default function AdminProductEditor() {
               onClick={() => navigate("/admin/products")}
               className="px-4 py-2 rounded-full border border-white/20 text-sm font-semibold text-white/80 hover:bg-white/10 transition-colors"
             >
-              Cancel
+              {canEdit ? "Cancel" : "Back"}
             </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              {submitting ? "Saving…" : isEdit ? "Save changes" : "Create product"}
-            </button>
+            {canEdit ? (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {submitting ? "Saving…" : isEdit ? "Save changes" : "Create product"}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/20 text-xs font-semibold text-white/65">
+                <Eye className="w-3.5 h-3.5" />
+                Read-only
+              </span>
+            )}
           </div>
         </motion.form>
         )}

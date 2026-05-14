@@ -55,6 +55,9 @@ public class EmailSender {
             case EmailEvent.BackInStockEmail e ->
                 sendBackInStockEmail(e.toEmail(), e.firstName(), e.productId(), e.productName(),
                         e.variantId(), e.variantTitle(), e.productUrl());
+            case EmailEvent.TeamInviteEmail e ->
+                sendTeamInviteEmail(e.toEmail(), e.companyName(), e.role(),
+                        e.inviterDisplayName(), e.acceptUrl());
         }
     }
 
@@ -267,6 +270,36 @@ public class EmailSender {
             """.formatted(greeting, itemLine, primaryButton(productUrl, "Shop Now"));
         sendMimeMessage(toEmail, "Back in stock: " + productName + " — ShopWave",
                 wrapInShell("Back in Stock", body));
+    }
+
+    private void sendTeamInviteEmail(String toEmail, String companyName, String role,
+                                     String inviterDisplayName, String acceptUrl) {
+        String roleLabel = role == null ? "team member" : role.toLowerCase();
+        String inviterLine = (inviterDisplayName != null && !inviterDisplayName.isBlank())
+                ? "<strong>" + inviterDisplayName + "</strong> has"
+                : "You've been";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              You've been invited to join %s
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              %s invited you to join <strong>%s</strong> as a <strong>%s</strong>.
+            </p>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Accept the invitation below to start collaborating. This link is single-use and expires in 7 days.
+            </p>
+            %s
+            %s
+            """.formatted(
+                companyName,
+                inviterLine,
+                companyName,
+                roleLabel,
+                primaryButton(acceptUrl, "Accept Invitation"),
+                expiryNote("If you weren't expecting this invitation, you can safely ignore this email.")
+            );
+        sendMimeMessage(toEmail, "Invitation to join " + companyName + " on ShopWave",
+                wrapInShell("Team Invitation", body));
     }
 
     private void sendReplacementOrderEmail(String toEmail, String firstName, OrderResponse replacementOrder) {
