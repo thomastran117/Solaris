@@ -8,6 +8,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -28,14 +29,53 @@ public class TokenServiceImpl implements TokenService {
     private static final String REFRESH_USER_SET_PREFIX = "refresh:user:";
     private static final String PAYLOAD_SEP = ":";
     private static final int REFRESH_TOKEN_BYTES = 32;
+    /** HS512 requires a key of at least 512 bits / 64 bytes. */
+    private static final int MIN_SECRET_BYTES = 64;
 
     private final EnvironmentSetting env;
     private final CacheService cache;
     private final SecureRandom rng = new SecureRandom();
+    private volatile Key signingKey;
 
     public TokenServiceImpl(EnvironmentSetting env, CacheService cache) {
         this.env = env;
         this.cache = cache;
+    }
+
+    /**
+     * Validates JWT secret strength at startup so a misconfigured deployment fails fast
+     * instead of silently signing tokens with a weak key.
+     */
+    @PostConstruct
+    void validateJwtSecret() {
+        this.signingKey = buildSigningKey();
+    }
+
+    private Key buildSigningKey() {
+        String secret = env.getSecurity().getJwt().getSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT secret is not configured. Set the JWT_SECRET environment variable to a "
+                            + "BASE64-encoded value of at least " + MIN_SECRET_BYTES + " bytes "
+                            + "(e.g. `openssl rand -base64 64`).");
+        }
+
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secret);
+        } catch (IllegalArgumentException ignored) {
+            // Allow a raw (non-BASE64) value as long as it has enough entropy. Useful for
+            // dev environments where operators paste a long random string directly.
+            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        }
+
+        if (keyBytes.length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException(
+                    "JWT secret is too short (" + keyBytes.length + " bytes); HS512 requires at "
+                            + "least " + MIN_SECRET_BYTES + " bytes. Generate a stronger secret with "
+                            + "`openssl rand -base64 64`.");
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
     @Override
@@ -69,21 +109,23 @@ public class TokenServiceImpl implements TokenService {
     }
 
     private Key getSigningKey() {
-        String secret = env.getSecurity().getJwt().getSecret();
-        byte[] keyBytes;
-
-        try {
-            keyBytes = Decoders.BASE64.decode(secret);
-        } catch (IllegalArgumentException e) {
-            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        Key key = this.signingKey;
+        if (key == null) {
+            // Defensive: should only happen if a caller invokes getSigningKey() before
+            // Spring runs @PostConstruct (e.g. from another bean's constructor). Build
+            // on demand so we still fail fast on a weak/missing secret.
+            key = buildSigningKey();
+            this.signingKey = key;
         }
-
-        return Keys.hmacShaKeyFor(keyBytes);
+        return key;
     }
 
     private Claims getAllClaimsFromToken(String token) {
+        // requireIssuer rejects tokens minted by any other service that happens to share
+        // the signing key (defense-in-depth against key compromise across deployments).
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
+                .requireIssuer(env.getSecurity().getJwt().getIssuer())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
@@ -93,6 +135,7 @@ public class TokenServiceImpl implements TokenService {
     public String generateAccessToken(int userId, String role, String email) {
         long ttlMs = env.getSecurity().getJwt().getAccessTokenTtlSeconds() * 1000L;
         return Jwts.builder()
+                .setIssuer(env.getSecurity().getJwt().getIssuer())
                 .setSubject(String.valueOf(userId))
                 .claim("role", role)
                 .claim("email", email)

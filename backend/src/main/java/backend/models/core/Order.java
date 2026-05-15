@@ -40,6 +40,15 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Concurrent status transitions, refund denormalisation and
+     * fulfilment updates load-then-save an Order; without this column, two writers who
+     * read at the same version would silently overwrite each other's changes.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

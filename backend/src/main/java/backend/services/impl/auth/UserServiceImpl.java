@@ -43,7 +43,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User signup(String email, String password, String usertype) {
+    public User signup(String email, String password) {
         if (userRepository.findByEmail(email).isPresent()) {
             throw new ConflictException("User already exists with email: " + email);
         }
@@ -54,6 +54,17 @@ public class UserServiceImpl implements UserService {
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.PENDING_VERIFICATION);
 
+        return userRepository.save(user);
+    }
+
+    @Override
+    public User setRole(long userId, UserRole role) {
+        if (role == null) {
+            throw new ForbiddenException("Role is required");
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        user.setRole(role);
         return userRepository.save(user);
     }
 

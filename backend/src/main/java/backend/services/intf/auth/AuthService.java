@@ -69,9 +69,10 @@ public interface AuthService {
 
     /**
      * Register a new user with status PENDING_VERIFICATION, generate a verification token,
-     * and send a verification email asynchronously.
+     * and send a verification email asynchronously. New accounts are always created with the
+     * default USER role; elevated roles are assigned post-signup via an admin endpoint.
      */
-    SignupResult signup(String email, String password, String usertype);
+    SignupResult signup(String email, String password);
 
     /**
      * Consume a verification token from Redis and activate the user account.

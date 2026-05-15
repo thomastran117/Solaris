@@ -165,13 +165,18 @@ public class ImportServiceImpl implements ImportService {
         return new ImportDownloadResponse(url, DOWNLOAD_EXPIRY_SECONDS);
     }
 
+    /** Page size for the streaming export — small enough to bound JVM heap, big enough to amortise round-trips. */
+    private static final int EXPORT_PAGE_SIZE = 1_000;
+
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public ImportDownloadResponse exportCatalogue(long companyId, long ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
-        List<Product> products = productRepository.findAllByCompanyId(companyId);
-        if (products.size() > EXPORT_MAX_PRODUCTS) {
+        // Cheap upper-bound check first so we fail fast for absurdly large catalogues
+        // *before* loading anything into memory.
+        long total = productRepository.countByCompanyId(companyId);
+        if (total > EXPORT_MAX_PRODUCTS) {
             throw new BadRequestException(
                     "Catalogue export exceeds " + EXPORT_MAX_PRODUCTS + " rows. Contact support for bulk export.");
         }
@@ -182,8 +187,15 @@ public class ImportServiceImpl implements ImportService {
                      CSVFormat.DEFAULT.builder()
                              .setHeader(ImportCsvSchema.EXPORT_COLUMNS.toArray(new String[0]))
                              .build())) {
-            for (Product p : products) {
-                printer.printRecord(toExportRow(p));
+            int pageIdx = 0;
+            while (true) {
+                Page<Product> page = productRepository.findAllByCompanyId(
+                        companyId, PageRequest.of(pageIdx, EXPORT_PAGE_SIZE));
+                for (Product p : page.getContent()) {
+                    printer.printRecord(toExportRow(p));
+                }
+                if (!page.hasNext()) break;
+                pageIdx++;
             }
             printer.flush();
         } catch (IOException e) {
@@ -241,17 +253,22 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     public void processJob(long jobId) {
-        ImportJob job = jobRepository.findById(jobId).orElse(null);
-        if (job == null) {
-            log.warn("[IMPORT] worker received unknown jobId={}", jobId);
+        // Idempotency claim: only the first worker to transition PENDING -> PARSING owns
+        // the job. Subsequent deliveries (Kafka retries, consumer rebalances) observe a
+        // non-PENDING status and bail out, preventing duplicate processing of the same
+        // CSV. The status-isTerminal fallback below still guards against a re-delivery
+        // after the job has already completed.
+        int claimed = jobRepository.claimForProcessing(jobId, ImportJobStatus.PENDING, ImportJobStatus.PARSING);
+        if (claimed == 0) {
+            log.info("[IMPORT] jobId={} not claimable (already in flight or terminal), skipping", jobId);
             return;
         }
-        if (job.getStatus().isTerminal()) {
-            log.info("[IMPORT] jobId={} already terminal ({}), skipping", jobId, job.getStatus());
+        ImportJob job = jobRepository.findById(jobId).orElse(null);
+        if (job == null) {
+            log.warn("[IMPORT] worker received unknown jobId={} after claim", jobId);
             return;
         }
 
-        markStatus(job, ImportJobStatus.PARSING, null);
         List<ParsedRow> rows;
         try {
             rows = parseAndValidate(job);
@@ -270,20 +287,33 @@ public class ImportServiceImpl implements ImportService {
             case EXPORT -> { /* exports are sync via exportCatalogue, no worker work */ }
         }
 
-        // Persist failed rows to an error CSV
+        // M10: persist failed rows AND the terminal status in a single save so a crash
+        // mid-flow can't leave the row in {COMPLETED_WITH_ERRORS, errorReportS3Key=null}.
+        // We assemble both side effects on the in-memory entity, then save once.
+        String errorReportKey = null;
         if (job.getErrorRows() > 0) {
             try {
-                String key = writeErrorReport(job, rows);
-                job.setErrorReportS3Key(key);
+                errorReportKey = writeErrorReport(job, rows);
             } catch (Exception ex) {
                 log.warn("[IMPORT] failed to write error report for jobId={}", jobId, ex);
             }
         }
-
         ImportJobStatus terminal = job.getErrorRows() > 0
                 ? ImportJobStatus.COMPLETED_WITH_ERRORS
                 : ImportJobStatus.COMPLETED;
-        markStatus(job, terminal, null);
+        finalizeJob(job, terminal, errorReportKey);
+    }
+
+    /** Atomically persist the terminal status and any error-report S3 key. */
+    @Transactional
+    void finalizeJob(ImportJob job, ImportJobStatus terminal, String errorReportKey) {
+        ImportJob current = jobRepository.findById(job.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Import job missing on finalize: " + job.getId()));
+        current.setStatus(terminal);
+        if (errorReportKey != null) {
+            current.setErrorReportS3Key(errorReportKey);
+        }
+        jobRepository.save(current);
     }
 
     // -------------------------------------------------------------------------
@@ -619,10 +649,40 @@ public class ImportServiceImpl implements ImportService {
             }
         }
         if (!errorRows.isEmpty()) rowRepository.saveAll(errorRows);
-        job.setProcessedRows(job.getProcessedRows() + chunk.size());
-        job.setSuccessRows(job.getSuccessRows() + success);
-        job.setErrorRows(job.getErrorRows() + errors);
-        jobRepository.save(job);
+
+        // Inline retry: a Spring @Retryable proxy doesn't apply to private/intra-class
+        // calls, so we hand-roll the OptimisticLock recovery loop here. Each iteration
+        // re-reads the latest counters so the increments compose with whatever other
+        // chunks have already persisted, instead of overwriting them.
+        final int chunkSize = chunk.size();
+        final int chunkSuccess = success;
+        final int chunkErrors = errors;
+        int attempt = 0;
+        while (true) {
+            attempt++;
+            try {
+                ImportJob current = jobRepository.findById(job.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Import job vanished mid-processing: " + job.getId()));
+                current.setProcessedRows(current.getProcessedRows() + chunkSize);
+                current.setSuccessRows(current.getSuccessRows() + chunkSuccess);
+                current.setErrorRows(current.getErrorRows() + chunkErrors);
+                ImportJob saved = jobRepository.save(current);
+                // Keep the worker's in-memory ImportJob in sync so callers reading
+                // counters afterwards (status decision, error-report writer) see the
+                // latest values.
+                job.setProcessedRows(saved.getProcessedRows());
+                job.setSuccessRows(saved.getSuccessRows());
+                job.setErrorRows(saved.getErrorRows());
+                return;
+            } catch (org.springframework.dao.ConcurrencyFailureException ex) {
+                if (attempt >= 5) {
+                    log.error("[IMPORT] bumpProgress gave up after {} attempts for jobId={}", attempt, job.getId());
+                    throw ex;
+                }
+                log.debug("[IMPORT] bumpProgress retry {} for jobId={}", attempt, job.getId());
+            }
+        }
     }
 
     private void recordInvalidRowsAsErrors(ImportJob job, List<ParsedRow> allRows) {
@@ -660,6 +720,18 @@ public class ImportServiceImpl implements ImportService {
             job.setFailureReason(trimmed);
         }
         jobRepository.save(job);
+    }
+
+    @Override
+    @Transactional
+    public void markJobFailed(long jobId, String reason) {
+        jobRepository.findById(jobId).ifPresent(job -> {
+            // Only escalate to FAILED if the job didn't already finish — we don't want a
+            // late-arriving consumer error to overwrite a successful terminal state.
+            if (!job.getStatus().isTerminal()) {
+                markStatus(job, ImportJobStatus.FAILED, reason);
+            }
+        });
     }
 
     // -------------------------------------------------------------------------

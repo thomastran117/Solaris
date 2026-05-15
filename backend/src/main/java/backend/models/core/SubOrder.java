@@ -32,6 +32,15 @@ public class SubOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Vendor and marketplace operators can concurrently approve,
+     * cancel, or settle a sub-order; the @Version makes those concurrent writes fail
+     * loudly instead of silently dropping commission/status updates.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;

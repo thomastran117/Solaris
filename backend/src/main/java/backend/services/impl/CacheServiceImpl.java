@@ -118,4 +118,16 @@ public class CacheServiceImpl implements CacheService {
         DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>(script, Long.class);
         redisTemplate.execute(redisScript, Collections.singletonList(key(lockKey)), lockValue);
     }
+
+    @Override
+    public long incrementWithTtl(String key, long ttlSeconds) {
+        String namespacedKey = key(key);
+        Long count = redisTemplate.opsForValue().increment(namespacedKey);
+        if (count == null) return 0L;
+        if (count == 1L && ttlSeconds > 0) {
+            // First hit in this window — set the TTL so the counter resets when it elapses.
+            redisTemplate.expire(namespacedKey, Duration.ofSeconds(ttlSeconds));
+        }
+        return count;
+    }
 }

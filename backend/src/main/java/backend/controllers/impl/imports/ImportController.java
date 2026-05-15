@@ -7,8 +7,6 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.imports.ImportDownloadResponse;
 import backend.dtos.responses.imports.ImportJobResponse;
 import backend.dtos.responses.imports.ImportJobRowResponse;
-import backend.exceptions.http.AppHttpException;
-import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.imports.ImportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -21,6 +19,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+/**
+ * Per-controller {@code catch(Exception) -> InternalServerErrorException()} blocks
+ * have been removed deliberately: {@code GlobalExceptionHandler} already catches
+ * {@code Exception} (and {@code AppHttpException} subclasses), logs the cause, and
+ * returns the right status to the client. Catching here was hiding the real cause
+ * type — for example, an authorization failure was being reported as a 500 instead
+ * of bubbling up through its dedicated handler.
+ */
 @RestController
 @RequestMapping("/companies/{companyId}/imports")
 @RequireAuth
@@ -36,14 +42,8 @@ public class ImportController {
     public ResponseEntity<ImportJobResponse> createJob(
             @PathVariable long companyId,
             @Valid @RequestBody CreateImportJobRequest request) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.status(HttpStatus.CREATED).body(importService.createJob(companyId, userId, request));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.status(HttpStatus.CREATED).body(importService.createJob(companyId, userId, request));
     }
 
     @GetMapping
@@ -51,28 +51,16 @@ public class ImportController {
             @PathVariable long companyId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.ok(importService.listJobs(companyId, userId, page, size));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.ok(importService.listJobs(companyId, userId, page, size));
     }
 
     @GetMapping("/{jobId}")
     public ResponseEntity<ImportJobResponse> getJob(
             @PathVariable long companyId,
             @PathVariable long jobId) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.ok(importService.getJob(companyId, userId, jobId));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.ok(importService.getJob(companyId, userId, jobId));
     }
 
     @GetMapping("/{jobId}/errors")
@@ -81,55 +69,31 @@ public class ImportController {
             @PathVariable long jobId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.ok(importService.listErrors(companyId, userId, jobId, page, size));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.ok(importService.listErrors(companyId, userId, jobId, page, size));
     }
 
     @GetMapping("/{jobId}/error-report")
     public ResponseEntity<ImportDownloadResponse> getErrorReport(
             @PathVariable long companyId,
             @PathVariable long jobId) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.ok(importService.getErrorReport(companyId, userId, jobId));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.ok(importService.getErrorReport(companyId, userId, jobId));
     }
 
     @PostMapping("/export")
     public ResponseEntity<ImportDownloadResponse> exportCatalogue(@PathVariable long companyId) {
-        try {
-            long userId = resolveUserId();
-            return ResponseEntity.ok(importService.exportCatalogue(companyId, userId));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        return ResponseEntity.ok(importService.exportCatalogue(companyId, userId));
     }
 
     @PostMapping("/attach-images")
     public ResponseEntity<Map<String, Integer>> attachImages(
             @PathVariable long companyId,
             @Valid @RequestBody AttachImagesRequest request) {
-        try {
-            long userId = resolveUserId();
-            int attached = importService.attachImages(companyId, userId, request);
-            return ResponseEntity.ok(Map.of("attached", attached));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
+        long userId = resolveUserId();
+        int attached = importService.attachImages(companyId, userId, request);
+        return ResponseEntity.ok(Map.of("attached", attached));
     }
 
     private long resolveUserId() {

@@ -75,9 +75,15 @@ public class EnvironmentSetting {
     public static class Cors {
         private String allowedOrigins = "";
 
+        /**
+         * Returns the configured allowed origins, or an empty list when nothing is set.
+         * We intentionally do NOT fall back to {@code "*"} — wildcard + credentials is
+         * unsafe and modern browsers reject the combination anyway. An empty list lets
+         * {@link backend.configurations.security.CorsConfiguration} fail closed.
+         */
         public List<String> getAllowedOrigins() {
             if (allowedOrigins == null || allowedOrigins.isBlank()) {
-                return List.of("*");
+                return List.of();
             }
             return Arrays.stream(allowedOrigins.split(","))
                     .map(String::trim)
@@ -96,6 +102,7 @@ public class EnvironmentSetting {
 
         private final Jwt jwt = new Jwt();
         private final Jwks jwks = new Jwks();
+        private final Cookie cookie = new Cookie();
 
         private String googleClientId = "";
         private String microsoftClientId = "";
@@ -124,6 +131,10 @@ public class EnvironmentSetting {
 
         public Jwt getJwt() {
             return jwt;
+        }
+
+        public Cookie getCookie() {
+            return cookie;
         }
 
         public String getGoogleClientId() {
@@ -274,7 +285,7 @@ public class EnvironmentSetting {
         }
 
         public static class Jwt {
-            private String secret = "change-me-in-env";
+            private String secret = "";
             private long accessTokenTtlSeconds = 900;
             private long refreshTokenTtlSeconds = 604800;
             private String issuer = "shopwave-api";
@@ -309,6 +320,33 @@ public class EnvironmentSetting {
 
             public void setIssuer(String issuer) {
                 this.issuer = issuer != null ? issuer : "";
+            }
+        }
+
+        /**
+         * Cookie attributes for session-bearing cookies (notably the refresh token).
+         * {@code secure} defaults to true so production deployments never accidentally
+         * ship cookies over plain HTTP; override via {@code app.security.cookie.secure=false}
+         * (or {@code COOKIE_SECURE=false}) only for local dev.
+         */
+        public static class Cookie {
+            private boolean secure = true;
+            private String sameSite = "Strict";
+
+            public boolean isSecure() {
+                return secure;
+            }
+
+            public void setSecure(boolean secure) {
+                this.secure = secure;
+            }
+
+            public String getSameSite() {
+                return sameSite != null && !sameSite.isBlank() ? sameSite : "Strict";
+            }
+
+            public void setSameSite(String sameSite) {
+                this.sameSite = sameSite;
             }
         }
     }

@@ -85,8 +85,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public SignupResult signup(String email, String password, String usertype) {
-        User user = userService.signup(email, password, usertype);
+    public SignupResult signup(String email, String password) {
+        User user = userService.signup(email, password);
         emailVerificationService.initiateVerification(user.getId(), user.getEmail());
         return new SignupResult(user.getEmail(),
                 "Account created. Please check your email to verify your account.");

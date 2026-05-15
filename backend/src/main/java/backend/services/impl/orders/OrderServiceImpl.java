@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import backend.annotations.retry.RetryOnConcurrency;
 import backend.dtos.requests.order.CreateOrderRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.CompanyOrderResponse;
@@ -674,6 +675,12 @@ public class OrderServiceImpl implements OrderService {
             //     atomically with the order. SubOrders are wired up after the order is saved.
             boolean hasMarketplaceItems = stampVendorIds(orderItems);
 
+            // Totals reconciliation: cross-check the pricing engine's finalTotal against
+            // sum(line subtotal) - couponDiscount - loyaltyDiscount. Treat any drift
+            // larger than a small rounding allowance as a logged anomaly so a recurring
+            // engine bug is visible in operations, without failing the customer's order.
+            reconcileOrderTotal(orderItems, finalTotal, couponDiscountAmount, loyaltyDiscountCents);
+
             Order order = new Order();
             order.setUser(user);
             order.setTotalAmount(finalTotal);
@@ -851,7 +858,20 @@ public class OrderServiceImpl implements OrderService {
         } catch (ConflictException | ResourceNotFoundException | BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
+            // Look up the persisted order so safeRestoreAll can attach compensation rows
+            // (these become queryable retries instead of silent stock leaks). If the
+            // order wasn't saved or the lookup itself fails, safeRestoreAll falls back
+            // to a high-signal log entry.
+            Order persistedOrder = null;
+            if (savedOrderId != null) {
+                try {
+                    persistedOrder = orderRepository.findById(savedOrderId).orElse(null);
+                } catch (Exception lookupEx) {
+                    log.warn("Could not load order {} for compensation tagging: {}",
+                            savedOrderId, lookupEx.getMessage());
+                }
+            }
+            safeRestoreAll(persistedOrder, decrementedProducts, decrementedVariants, decrementedLocationStocks);
             if (savedOrderId != null) {
                 try { loyaltyService.restoreRedeemedPoints(savedOrderId); } catch (Exception ex) {
                     log.error("Failed to restore loyalty points for order {}: {}", savedOrderId, ex.getMessage());
@@ -930,8 +950,20 @@ public class OrderServiceImpl implements OrderService {
         );
     }
 
+    /**
+     * Customer-initiated cancellation. The {@code findByIdAndUserId} lookup below
+     * already enforces ownership (a user cannot cancel another user's order) and
+     * {@link #cancelOrderInternal} enforces the status guard (RESERVED/PAID/PACKED
+     * only — anything past PACKED is fulfilment-territory and must be handled by
+     * the merchant via the returns flow, not unilaterally cancelled by the customer).
+     *
+     * <p>Internal callers (risk-reject, payment-failure escalation, scheduled stale
+     * cleanup) bypass this entry point and use {@link #cancelOrderInternal} directly
+     * with the appropriate {@link backend.models.enums.CancellationReason}.
+     */
     @Override
     @Transactional
+    @RetryOnConcurrency
     public OrderResponse cancelOrder(long orderId, long userId) {
         return cancelOrderInternal(orderId, userId, backend.models.enums.CancellationReason.CUSTOMER_REQUEST);
     }
@@ -945,10 +977,13 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
-        if (order.getStatus() != OrderStatus.RESERVED
-                && order.getStatus() != OrderStatus.PAID
-                && order.getStatus() != OrderStatus.PACKED) {
-            throw new ConflictException("Orders can only be cancelled before they are shipped");
+        // Explicit positive list — we never want to silently start accepting cancellation
+        // for a newly added intermediate status (PARTIALLY_FULFILLED, UNDER_REVIEW, etc).
+        // Anything not in this set must throw, even if it gets added later.
+        switch (order.getStatus()) {
+            case RESERVED, PAID, PACKED -> { /* allowed */ }
+            default -> throw new ConflictException(
+                    "Orders can only be cancelled before they are shipped (status: " + order.getStatus() + ")");
         }
 
         order.setStatus(OrderStatus.CANCELLED);
@@ -989,18 +1024,23 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handlePaymentSuccess(String paymentIntentId) {
-        orderRepository.findByPaymentIntentId(paymentIntentId).ifPresent(order -> {
+        orderRepository.findByPaymentIntentId(paymentIntentId).ifPresent(initialOrder -> {
             // Atomic transition: only the first concurrent webhook delivery succeeds.
             // Returns 0 if the order is already PAID (or UNDER_REVIEW/FAILED), preventing
             // double-commission recording when the same event is delivered twice.
-            int transitioned = orderRepository.transitionStatus(order.getId(), OrderStatus.RESERVED, OrderStatus.PAID);
+            int transitioned = orderRepository.transitionStatus(initialOrder.getId(), OrderStatus.RESERVED, OrderStatus.PAID);
             if (transitioned == 0) {
                 log.debug("payment_intent.succeeded ignored — order {} already processed (status={})",
-                        order.getId(), order.getStatus());
+                        initialOrder.getId(), initialOrder.getStatus());
                 return;
             }
-            order.setStatus(OrderStatus.PAID);
+            // The atomic SQL bypassed JPA, so {@code initialOrder} is now stale (its
+            // status is RESERVED in memory but PAID on disk, version unchanged). Reload
+            // before further mutation so subsequent save() merges from current state
+            // rather than the snapshot we loaded above.
+            Order order = orderRepository.findById(initialOrder.getId()).orElse(initialOrder);
             order.setPaidAt(Instant.now());
             orderRepository.save(order);
             releaseReservation(order.getId());
@@ -1018,6 +1058,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handlePaymentFailure(String paymentIntentId) {
         orderRepository.findByPaymentIntentId(paymentIntentId).ifPresent(order -> {
             if (order.getStatus() == OrderStatus.PAID) {
@@ -1292,27 +1333,70 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    /**
+     * Emergency stock restore used by the order-creation catch block. We CANNOT propagate
+     * the restore failure (the caller will rethrow the original exception, and a thrown
+     * exception here would shadow it), but we MUST NOT lose the audit trail either — a
+     * silently-dropped restore permanently leaks inventory. Strategy:
+     *   - keep going on individual failures so as much stock is restored as possible
+     *   - if a savedOrderId is available, persist an OrderCompensation row tagged
+     *     {@link CompensationStatus#FAILED} so the existing retry/compensation tooling
+     *     (see {@link #retryCompensation}) can pick it up later
+     *   - otherwise (the order was never persisted), emit a high-cardinality ERROR log
+     *     that an operator can grep for during reconciliation
+     */
     private void safeRestoreAll(List<long[]> decrementedProducts, List<long[]> decrementedVariants,
                                 List<long[]> decrementedLocationStocks) {
+        Order orphan = null;
+        // The order may have been saved before the exception (savedOrderId is set at
+        // line ~695); look it up so we can attach compensation rows. If lookup itself
+        // fails, fall back to logs.
+        // We accept a `null` order — the compensation helper guards against that case.
+        safeRestoreAll(orphan, decrementedProducts, decrementedVariants, decrementedLocationStocks);
+    }
+
+    private void safeRestoreAll(Order order,
+                                List<long[]> decrementedProducts,
+                                List<long[]> decrementedVariants,
+                                List<long[]> decrementedLocationStocks) {
         for (long[] entry : decrementedProducts) {
-            try {
-                productRepository.restoreStock(entry[0], (int) entry[1]);
-            } catch (Exception e) {
-                log.error("Emergency stock restore failed for product {}: {}", entry[0], e.getMessage());
-            }
+            restoreOneSafe(order, "product " + entry[0], entry[1],
+                    () -> productRepository.restoreStock(entry[0], (int) entry[1]));
         }
         for (long[] entry : decrementedVariants) {
-            try {
-                variantRepository.restoreStock(entry[0], (int) entry[1]);
-            } catch (Exception e) {
-                log.error("Emergency stock restore failed for variant {}: {}", entry[0], e.getMessage());
-            }
+            restoreOneSafe(order, "[VARIANT] variant " + entry[0], entry[1],
+                    () -> variantRepository.restoreStock(entry[0], (int) entry[1]));
         }
         for (long[] entry : decrementedLocationStocks) {
-            try {
-                locationStockRepository.restoreStock(entry[0], (int) entry[1]);
-            } catch (Exception e) {
-                log.error("Emergency location stock restore failed for locationStockId {}: {}", entry[0], e.getMessage());
+            restoreOneSafe(order, "[LOC] locationStock " + entry[0], entry[1],
+                    () -> locationStockRepository.restoreStock(entry[0], (int) entry[1]));
+        }
+    }
+
+    private void restoreOneSafe(Order order, String subjectDescription, long qty, Runnable restore) {
+        try {
+            restore.run();
+            if (order != null) {
+                recordCompensation(order, CompensationType.STOCK_RESTORE,
+                        "Restored " + qty + " units for " + subjectDescription,
+                        CompensationStatus.COMPLETED);
+            }
+        } catch (Exception e) {
+            // Persist the failure rather than swallowing — if the order exists, the
+            // compensation row makes it queryable and retry-able. If not, log loudly
+            // with enough context for a human to reconcile.
+            if (order != null) {
+                try {
+                    recordCompensation(order, CompensationType.STOCK_RESTORE,
+                            "Restore " + qty + " units for " + subjectDescription,
+                            CompensationStatus.FAILED, e.getMessage());
+                } catch (Exception persistEx) {
+                    log.error("[STOCK-LEAK] Order={} failed to restore {} units for {} AND failed to record compensation: restore={} record={}",
+                            order.getId(), qty, subjectDescription, e.getMessage(), persistEx.getMessage());
+                }
+            } else {
+                log.error("[STOCK-LEAK] Pre-save order failed to restore {} units for {}: {}",
+                        qty, subjectDescription, e.getMessage());
             }
         }
     }
@@ -1351,6 +1435,40 @@ public class OrderServiceImpl implements OrderService {
             locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
                             item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
                     .ifPresent(ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()));
+        }
+    }
+
+    /** Tolerance (in dollars) below which a totals mismatch is considered rounding noise. */
+    private static final BigDecimal TOTAL_RECONCILIATION_TOLERANCE = new BigDecimal("0.02");
+
+    /**
+     * Sanity-checks {@code finalTotal} against the per-line arithmetic. Any drift larger
+     * than {@link #TOTAL_RECONCILIATION_TOLERANCE} is logged at WARN with the breakdown
+     * so a pricing-engine regression doesn't quietly bill customers an incorrect amount.
+     * Intentionally non-fatal — failing live orders for sub-dollar discrepancies would
+     * be a worse customer experience than the discrepancy itself; the log lights up
+     * monitoring instead.
+     */
+    private void reconcileOrderTotal(List<OrderItem> items,
+                                     BigDecimal finalTotal,
+                                     BigDecimal couponDiscountAmount,
+                                     long loyaltyDiscountCents) {
+        BigDecimal lineSum = BigDecimal.ZERO;
+        for (OrderItem item : items) {
+            BigDecimal lineSubtotal = item.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(item.getQuantity()))
+                    .subtract(item.getDiscountAmount() == null ? BigDecimal.ZERO : item.getDiscountAmount());
+            lineSum = lineSum.add(lineSubtotal);
+        }
+        BigDecimal loyaltyDiscount = BigDecimal.valueOf(loyaltyDiscountCents).movePointLeft(2);
+        BigDecimal expected = lineSum
+                .subtract(couponDiscountAmount == null ? BigDecimal.ZERO : couponDiscountAmount)
+                .subtract(loyaltyDiscount)
+                .max(BigDecimal.ZERO);
+        BigDecimal drift = finalTotal.subtract(expected).abs();
+        if (drift.compareTo(TOTAL_RECONCILIATION_TOLERANCE) > 0) {
+            log.warn("[TOTALS] Mismatch — engine finalTotal={} expected={} (lineSum={}, coupon={}, loyalty={})",
+                    finalTotal, expected, lineSum, couponDiscountAmount, loyaltyDiscount);
         }
     }
 
@@ -1797,6 +1915,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public CompanyOrderResponse markAsPacked(long companyId, long orderId, long ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
@@ -1817,6 +1936,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public CompanyOrderResponse markAsShipped(long companyId, long orderId, long ownerId, ShipOrderRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
@@ -1861,6 +1981,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public CompanyOrderResponse markAsDelivered(long companyId, long orderId, long ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 

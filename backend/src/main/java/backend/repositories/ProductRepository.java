@@ -61,6 +61,16 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     List<Product> findAllByCompanyId(long companyId);
 
+    /**
+     * Paginated catalogue listing for the company — used by export-to-CSV and other
+     * large-result-set flows. The unpaginated overload above is OOM-prone for large
+     * companies; prefer this method for new callers and migrate existing ones over time.
+     */
+    Page<Product> findAllByCompanyId(long companyId, Pageable pageable);
+
+    /** Cheap upper-bound check so callers can short-circuit before paging through a huge result set. */
+    long countByCompanyId(long companyId);
+
     /** Fetches a product with its company and the company's owner in one query — used by stock alert notifications. */
     @Query("SELECT p FROM Product p JOIN FETCH p.company c JOIN FETCH c.owner WHERE p.id = :id")
     Optional<Product> findByIdWithCompanyOwner(@Param("id") long id);

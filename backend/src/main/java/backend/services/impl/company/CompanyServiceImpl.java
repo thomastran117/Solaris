@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.dtos.requests.company.CreateCompanyRequest;
 import backend.dtos.requests.company.UpdateCompanyRequest;
 import backend.dtos.responses.company.CompanyResponse;
+import backend.dtos.responses.company.PublicCompanyResponse;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.upload.PresignUploadResponse;
 import backend.exceptions.http.ConflictException;
@@ -79,6 +80,36 @@ public class CompanyServiceImpl implements CompanyService {
                         .findAll(CompanySpecification.withFilters(q, industry, country, status), pageable)
                         .map(this::toResponse)
         );
+    }
+
+    @Override
+    public PagedResponse<PublicCompanyResponse> searchPublicCompanies(
+            String q, String industry, String country, CompanyStatus status,
+            int page, int size, String sort, String direction) {
+
+        if (size > 50) size = 50;
+        String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
+        Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDir, sortField));
+
+        return new PagedResponse<>(
+                companyRepository
+                        .findAll(CompanySpecification.withFilters(q, industry, country, status), pageable)
+                        .map(this::toPublicResponse)
+        );
+    }
+
+    private PublicCompanyResponse toPublicResponse(Company c) {
+        return new PublicCompanyResponse(
+                c.getId(),
+                c.getName(),
+                c.getCity(),
+                c.getCountry(),
+                c.getLogoUrl(),
+                c.getWebsite(),
+                c.getDescription(),
+                c.getIndustry(),
+                c.getFoundedYear());
     }
 
     @Override

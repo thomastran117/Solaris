@@ -22,6 +22,13 @@ public interface ImportService {
      */
     void processJob(long jobId);
 
+    /**
+     * Marks an import job as FAILED with the supplied reason. Used by the Kafka
+     * consumer's catch block so worker-thread exceptions surface in the operator-
+     * visible job list instead of being silently dropped.
+     */
+    void markJobFailed(long jobId, String reason);
+
     ImportJobResponse getJob(long companyId, long ownerId, long jobId);
 
     PagedResponse<ImportJobResponse> listJobs(long companyId, long ownerId, int page, int size);

@@ -29,6 +29,7 @@ import backend.models.core.Return;
 import backend.models.core.ReturnItem;
 import backend.models.core.RiskAssessment;
 import backend.models.core.User;
+import backend.annotations.retry.RetryOnConcurrency;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.CompensationStatus;
 import backend.models.enums.CompensationType;
@@ -219,6 +220,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public ReturnResponse approveReturn(long returnId, long companyId, long ownerId, MerchantApproveReturnRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
@@ -327,6 +329,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public ReturnResponse inspectReturn(long returnId, long companyId, long ownerId, InspectReturnRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
@@ -397,6 +400,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public ReturnResponse merchantInitiateReturn(long orderId, long companyId, long ownerId, MerchantInitiateReturnRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
@@ -447,6 +451,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public ReturnResponse issuePartialRefund(long orderId, long amountCents, String reason, long actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + actorUserId));
@@ -481,6 +486,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handleRefundWebhookEvent(String stripeRefundId, String stripeStatus, long amountCents) {
         returnRepository.findByStripeRefundId(stripeRefundId).ifPresent(ret -> {
             RefundStatus newStatus = "succeeded".equals(stripeStatus) ? RefundStatus.SUCCEEDED : RefundStatus.FAILED;

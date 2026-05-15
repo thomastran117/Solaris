@@ -30,6 +30,15 @@ public class Coupon {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Used together with the atomic redemption SQL in
+     * {@link backend.repositories.CouponRepository} so the redemption-cap check
+     * cannot be bypassed under concurrent checkouts.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;

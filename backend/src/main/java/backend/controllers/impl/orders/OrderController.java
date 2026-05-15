@@ -13,8 +13,10 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.AppHttpException;
+import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.models.enums.OrderStatus;
+import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.orders.ReplacementOrderService;
@@ -22,6 +24,10 @@ import backend.services.intf.returns.ReturnService;
 import backend.services.intf.subscriptions.SubscriptionService;
 import backend.services.intf.vendors.VendorOnboardingService;
 import backend.services.intf.payments.VendorPayoutService;
+
+import org.springframework.web.bind.annotation.RequestHeader;
+
+import java.util.Optional;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -31,6 +37,9 @@ import jakarta.validation.constraints.Min;
 @RequestMapping("/orders")
 public class OrderController {
 
+    /** Short window during which a concurrent retry with the same key is rejected as a duplicate. */
+    private static final long IDEMPOTENCY_CLAIM_TTL_SECONDS = 60;
+
     private final OrderService orderService;
     private final PaymentService paymentService;
     private final ReturnService returnService;
@@ -38,12 +47,14 @@ public class OrderController {
     private final SubscriptionService subscriptionService;
     private final VendorPayoutService vendorPayoutService;
     private final VendorOnboardingService vendorOnboardingService;
+    private final IdempotencyService idempotencyService;
 
     public OrderController(OrderService orderService, PaymentService paymentService,
                            ReturnService returnService, ReplacementOrderService replacementOrderService,
                            SubscriptionService subscriptionService,
                            VendorPayoutService vendorPayoutService,
-                           VendorOnboardingService vendorOnboardingService) {
+                           VendorOnboardingService vendorOnboardingService,
+                           IdempotencyService idempotencyService) {
         this.orderService = orderService;
         this.paymentService = paymentService;
         this.returnService = returnService;
@@ -51,14 +62,41 @@ public class OrderController {
         this.subscriptionService = subscriptionService;
         this.vendorPayoutService = vendorPayoutService;
         this.vendorOnboardingService = vendorOnboardingService;
+        this.idempotencyService = idempotencyService;
     }
 
     @PostMapping
     @RequireAuth
-    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
+    public ResponseEntity<OrderResponse> createOrder(
+            @Valid @RequestBody CreateOrderRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
         try {
             long userId = resolveUserId();
-            return ResponseEntity.status(HttpStatus.CREATED).body(orderService.createOrder(userId, request));
+
+            // Idempotency: if the caller already created an order under this key, return
+            // it directly so a retried POST doesn't charge the customer twice. We only
+            // engage when a key is provided (back-compat: existing clients still work).
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                Optional<Long> existing = idempotencyService.lookup("order:create", userId, idempotencyKey);
+                if (existing.isPresent()) {
+                    OrderResponse prior = orderService.getOrder(existing.get(), userId);
+                    return ResponseEntity.status(HttpStatus.OK).body(prior);
+                }
+                // Claim the key so a near-simultaneous duplicate retry doesn't slip
+                // through while the first request is still creating the order.
+                boolean claimed = idempotencyService.claim("order:create", userId, idempotencyKey,
+                        IDEMPOTENCY_CLAIM_TTL_SECONDS);
+                if (!claimed) {
+                    throw new ConflictException("A request with this Idempotency-Key is already in flight");
+                }
+            }
+
+            OrderResponse created = orderService.createOrder(userId, request);
+
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                idempotencyService.store("order:create", userId, idempotencyKey, created.getId());
+            }
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

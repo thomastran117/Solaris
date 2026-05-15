@@ -59,4 +59,13 @@ public interface CacheService {
      * @param lockValue the token used when acquiring the lock
      */
     void unlock(String lockKey, String lockValue);
+
+    /**
+     * Atomically increments the counter at {@code key}. On the first increment (i.e. when
+     * the resulting value is 1) the supplied TTL is applied. Used for fixed-window
+     * rate-limiting counters.
+     *
+     * @return the value after the increment
+     */
+    long incrementWithTtl(String key, long ttlSeconds);
 }
