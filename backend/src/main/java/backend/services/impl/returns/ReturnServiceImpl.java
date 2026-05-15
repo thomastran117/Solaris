@@ -57,6 +57,7 @@ import backend.events.activity.UserActivityEvent;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.payments.PaymentService;
+import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.returns.ReturnService;
 import backend.models.enums.CompanyCapability;
 import backend.services.intf.pricing.RiskEngine;
@@ -101,6 +102,7 @@ public class ReturnServiceImpl implements ReturnService {
     private final RiskAssessmentRepository riskAssessmentRepository;
     private final RiskProperties riskProperties;
     private final ActivityEventPublisher activityEventPublisher;
+    private final LoyaltyService loyaltyService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     public ReturnServiceImpl(
@@ -119,7 +121,8 @@ public class ReturnServiceImpl implements ReturnService {
             RiskEngine riskEngine,
             RiskAssessmentRepository riskAssessmentRepository,
             RiskProperties riskProperties,
-            ActivityEventPublisher activityEventPublisher) {
+            ActivityEventPublisher activityEventPublisher,
+            LoyaltyService loyaltyService) {
         this.returnRepository = returnRepository;
         this.returnItemRepository = returnItemRepository;
         this.orderRepository = orderRepository;
@@ -136,6 +139,29 @@ public class ReturnServiceImpl implements ReturnService {
         this.riskAssessmentRepository = riskAssessmentRepository;
         this.riskProperties = riskProperties;
         this.activityEventPublisher = activityEventPublisher;
+        this.loyaltyService = loyaltyService;
+    }
+
+    /**
+     * Cumulative refunded amount on the order, in cents. Centralised so the loyalty
+     * clawback below can compute a proportional reversal off a single, well-defined
+     * source instead of recomputing per call-site.
+     */
+    private static long orderTotalCents(Order order) {
+        return order.getTotalAmount() == null
+                ? 0L
+                : order.getTotalAmount().movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+    }
+
+    /**
+     * Strips HTML tags from a free-form text field so a buyer-supplied {@code <script>}
+     * or {@code onerror=...} can't reach the merchant dashboard intact. Returns null
+     * for null input. Intentionally conservative — anything between {@code <} and
+     * {@code >} goes, no HTML allowlist.
+     */
+    private static String stripHtml(String value) {
+        if (value == null) return null;
+        return value.replaceAll("<[^>]*>", "").trim();
     }
 
     // -------------------------------------------------------------------------
@@ -163,7 +189,11 @@ public class ReturnServiceImpl implements ReturnService {
         ret.setRequestedBy(userRepository.getReferenceById(buyerUserId));
         ret.setStatus(ReturnStatus.REQUESTED);
         ret.setReason(request.reason());
-        ret.setBuyerNote(request.buyerNote());
+        // R2-L2: strip HTML tags before persisting — the merchant portal may render the
+        // note in a panel, and an unescaped {@code <script>} or {@code onload=} would
+        // be an XSS vector. Server-side defense-in-depth costs us nothing and means a
+        // future frontend bug can't be exploited.
+        ret.setBuyerNote(stripHtml(request.buyerNote()));
         ret.setEvidenceUrls(request.evidenceUrls() != null ? new ArrayList<>(request.evidenceUrls()) : new ArrayList<>());
 
         List<ReturnItem> returnItems = buildReturnItems(ret, request.items(), order, null);
@@ -494,23 +524,52 @@ public class ReturnServiceImpl implements ReturnService {
             Order order = ret.getOrder();
 
             if (newStatus == RefundStatus.SUCCEEDED) {
-                // Re-sync in case Stripe's confirmed amount differs (e.g., gateway rounding)
+                // R2-C4: atomic delta against the column instead of read-then-write.
+                // Two near-simultaneous SUCCEEDED webhooks for the same refund will
+                // both compute the same delta (amountCents - prev); applying both
+                // atomically would over-credit, so we *also* guard idempotency on the
+                // Return row's own refundStatus — if it's already SUCCEEDED with the
+                // same amount, skip the order-side update entirely.
                 long prev = ret.getRefundedAmountCents() != null ? ret.getRefundedAmountCents() : 0L;
-                order.setRefundedAmountCents(order.getRefundedAmountCents() - prev + amountCents);
-                ret.setRefundedAmountCents(amountCents);
+                boolean alreadyApplied = ret.getRefundStatus() == RefundStatus.SUCCEEDED
+                        && prev == amountCents;
+                if (!alreadyApplied) {
+                    long delta = amountCents - prev;
+                    orderRepository.addRefundAmountDelta(order.getId(), delta);
+                    ret.setRefundedAmountCents(amountCents);
+                }
                 ret.setRefundFailureReason(null);
-                computeOrderStatusAfterReturn(order);
+                // The atomic UPDATE clears the persistence context, so reload the Order
+                // before downstream code uses it for status computation / clawback.
+                Order fresh = orderRepository.findById(order.getId()).orElse(order);
+                computeOrderStatusAfterReturn(fresh);
+                // R2-C1 / R2-M7: claw back the proportional share of any points earned
+                // on this order. Computed off the *total* refunded so far, so a second
+                // partial refund extends rather than overlaps the previous reversal.
+                try {
+                    loyaltyService.clawbackEarnedPoints(
+                            fresh.getId(),
+                            fresh.getRefundedAmountCents(),
+                            orderTotalCents(fresh));
+                } catch (Exception ex) {
+                    log.error("[LOYALTY] Clawback failed for order {} after refund {}: {}",
+                            fresh.getId(), stripeRefundId, ex.getMessage());
+                }
+                returnRepository.save(ret);
+                orderRepository.save(fresh);
             } else {
                 long provisional = ret.getRefundedAmountCents() != null ? ret.getRefundedAmountCents() : 0L;
-                order.setRefundedAmountCents(Math.max(0, order.getRefundedAmountCents() - provisional));
+                if (provisional > 0) {
+                    orderRepository.addRefundAmountDelta(order.getId(), -provisional);
+                }
                 ret.setRefundedAmountCents(0L);
                 ret.setRefundFailureReason("Stripe webhook reported failure for refund " + stripeRefundId);
                 recordReturnCompensation(order, ret);
-                computeOrderStatusAfterReturn(order);
+                Order fresh = orderRepository.findById(order.getId()).orElse(order);
+                computeOrderStatusAfterReturn(fresh);
+                returnRepository.save(ret);
+                orderRepository.save(fresh);
             }
-
-            returnRepository.save(ret);
-            orderRepository.save(order);
         });
     }
 

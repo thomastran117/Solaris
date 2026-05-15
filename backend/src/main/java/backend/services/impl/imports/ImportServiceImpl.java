@@ -681,6 +681,17 @@ public class ImportServiceImpl implements ImportService {
                     throw ex;
                 }
                 log.debug("[IMPORT] bumpProgress retry {} for jobId={}", attempt, job.getId());
+                // R2-L5: exponential backoff with jitter. The previous loop retried in
+                // tight succession, which under sustained contention just burned the
+                // 5-attempt budget without giving the contending writer time to commit.
+                long sleepMs = (long) (20L * (1L << (attempt - 1))
+                        + java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 20));
+                try {
+                    Thread.sleep(Math.min(sleepMs, 200L));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ex;
+                }
             }
         }
     }

@@ -72,9 +72,15 @@ public class CouponAbuseEvaluator implements RiskRuleEvaluator {
             }
         }
 
-        long priorOrders = orderRepository.countByUserId(ctx.userId());
-        // countByUserId includes the just-created order (persisted before we assess) — treat ≤1 as "first order".
-        boolean firstOrder = priorOrders <= 1;
+        // R2-H8: count only orders that have moved past RESERVED. Two concurrent first
+        // orders both bump countByUserId(), so the previous {@code priorOrders <= 1}
+        // heuristic let abusers slip through by submitting parallel checkouts. Counting
+        // only non-RESERVED orders means a brand-new buyer with N parallel in-flight
+        // orders is still treated as "first order" for every one of them — the signal
+        // fires (correctly) on each.
+        long priorOrders = orderRepository.countByUserIdExcludingStatus(
+                ctx.userId(), backend.models.enums.OrderStatus.RESERVED);
+        boolean firstOrder = priorOrders == 0;
         if (firstOrder && isDiscountPercentHigh(ctx, cfg.getFirstOrderPctThreshold())) {
             return RiskSignal.medium(type(), 25,
                     "First order with coupon ≥ " + cfg.getFirstOrderPctThreshold() + "% off");

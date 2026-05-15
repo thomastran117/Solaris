@@ -234,6 +234,62 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
+    public void clawbackEarnedPoints(long orderId, long refundedAmountCents, long orderTotalCents) {
+        if (refundedAmountCents <= 0 || orderTotalCents <= 0) return;
+
+        LoyaltyTransaction earnTx = transactionRepository
+                .findFirstBySourceOrderIdAndType(orderId, LoyaltyTransactionType.EARN_ORDER)
+                .orElse(null);
+        if (earnTx == null) return;  // Order never earned points (no policy, or 0 earn rate)
+
+        long earnedPoints = earnTx.getPointsDelta();
+        if (earnedPoints <= 0) return;
+
+        // Proportional target: earnedPoints * refunded/total, floored. Cap refund at 100%
+        // of the order to guard against odd partial-refund-exceeds-total inputs.
+        long effectiveRefund = Math.min(refundedAmountCents, orderTotalCents);
+        long shouldHaveReversed = BigDecimal.valueOf(earnedPoints)
+                .multiply(BigDecimal.valueOf(effectiveRefund))
+                .divide(BigDecimal.valueOf(orderTotalCents), 0, RoundingMode.FLOOR)
+                .longValue();
+
+        long alreadyReversed = transactionRepository.sumAbsPointsForOrderAndType(
+                orderId, LoyaltyTransactionType.EARN_REVERSAL);
+        long deltaToReverse = shouldHaveReversed - alreadyReversed;
+        if (deltaToReverse <= 0) return;
+        // Never reverse more than was originally earned.
+        deltaToReverse = Math.min(deltaToReverse, earnedPoints - alreadyReversed);
+        if (deltaToReverse <= 0) return;
+
+        // Best-effort balance deduction. If the customer has already spent the points
+        // (balance < deltaToReverse), the atomic guard inside deductPoints returns 0 and
+        // the balance stays at whatever it is. We STILL record the reversal so the audit
+        // trail captures intent — the resulting balance won't be made negative, and the
+        // shortfall is a known operational risk of refunding orders whose points have
+        // already been spent.
+        accountRepository.deductPoints(earnTx.getAccount().getId(), deltaToReverse);
+
+        long perPointValueCents = earnedPoints > 0
+                ? earnTx.getValueCents() / earnedPoints
+                : 0;
+
+        LoyaltyTransaction reversal = new LoyaltyTransaction();
+        reversal.setAccount(earnTx.getAccount());
+        reversal.setUserId(earnTx.getUserId());
+        reversal.setCompanyId(earnTx.getCompanyId());
+        reversal.setType(LoyaltyTransactionType.EARN_REVERSAL);
+        reversal.setPointsDelta(-deltaToReverse);
+        reversal.setValueCents(-(deltaToReverse * perPointValueCents));
+        reversal.setSourceOrderId(orderId);
+        reversal.setReason("Reversed: refund of " + effectiveRefund + " cents on order #" + orderId);
+        transactionRepository.save(reversal);
+
+        log.info("[LOYALTY] Clawed back {} points (of {} originally earned) for order {} after refund of {} / {} cents",
+                deltaToReverse, earnedPoints, orderId, effectiveRefund, orderTotalCents);
+    }
+
+    @Override
+    @Transactional
     public void restoreRedeemedPoints(long orderId) {
         if (transactionRepository.existsBySourceOrderIdAndType(orderId, LoyaltyTransactionType.RESTORE_ORDER)) {
             log.debug("[LOYALTY] Restore already recorded for order {} — skipping", orderId);

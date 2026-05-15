@@ -33,6 +33,16 @@ public class Return {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Round 1 added {@code @Version} to Order/SubOrder/Coupon
+     * but missed Return. Two concurrent {@code approveReturn} calls both load a
+     * REQUESTED return, both pass the state-check, both issue a Stripe refund — and
+     * without this column there is nothing to fail the second writer on.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;

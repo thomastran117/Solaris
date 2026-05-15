@@ -16,6 +16,7 @@ import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.models.enums.OrderStatus;
+import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.payments.PaymentService;
@@ -40,6 +41,13 @@ public class OrderController {
     /** Short window during which a concurrent retry with the same key is rejected as a duplicate. */
     private static final long IDEMPOTENCY_CLAIM_TTL_SECONDS = 60;
 
+    /**
+     * How long a successfully processed Stripe {@code event.id} remains in the dedup
+     * cache. Stripe documents a 30-day retry window for at-least-once delivery, so
+     * 31 days keeps us a margin above that.
+     */
+    private static final long STRIPE_EVENT_DEDUP_TTL_SECONDS = 31L * 24 * 60 * 60;
+
     private final OrderService orderService;
     private final PaymentService paymentService;
     private final ReturnService returnService;
@@ -48,13 +56,15 @@ public class OrderController {
     private final VendorPayoutService vendorPayoutService;
     private final VendorOnboardingService vendorOnboardingService;
     private final IdempotencyService idempotencyService;
+    private final CacheService cacheService;
 
     public OrderController(OrderService orderService, PaymentService paymentService,
                            ReturnService returnService, ReplacementOrderService replacementOrderService,
                            SubscriptionService subscriptionService,
                            VendorPayoutService vendorPayoutService,
                            VendorOnboardingService vendorOnboardingService,
-                           IdempotencyService idempotencyService) {
+                           IdempotencyService idempotencyService,
+                           CacheService cacheService) {
         this.orderService = orderService;
         this.paymentService = paymentService;
         this.returnService = returnService;
@@ -63,6 +73,7 @@ public class OrderController {
         this.vendorPayoutService = vendorPayoutService;
         this.vendorOnboardingService = vendorOnboardingService;
         this.idempotencyService = idempotencyService;
+        this.cacheService = cacheService;
     }
 
     @PostMapping
@@ -178,10 +189,25 @@ public class OrderController {
     public ResponseEntity<Void> stripeWebhook(
             @RequestBody String payload,
             @RequestHeader("Stripe-Signature") String sigHeader) {
-        try {
-            PaymentService.WebhookEvent event = paymentService.constructWebhookEvent(payload, sigHeader);
+        // No try/catch wrapping the whole body: GlobalExceptionHandler differentiates
+        // AppHttpException (4xx, e.g. bad signature) from Exception (500). A blanket
+        // catch here was turning malformed payloads into 500s, which makes Stripe
+        // retry forever instead of giving up after a 4xx.
+        PaymentService.WebhookEvent event = paymentService.constructWebhookEvent(payload, sigHeader);
 
-            switch (event.type()) {
+        // R2-C3: Stripe at-least-once delivery means the same event id can arrive twice.
+        // SETNX-style claim — if another delivery (or another replica) already started
+        // processing this event id, we return 200 OK so Stripe stops retrying without
+        // running the side-effects a second time.
+        if (event.eventId() != null && !event.eventId().isBlank()) {
+            String dedupKey = "stripe:event:" + event.eventId();
+            boolean firstDelivery = cacheService.tryLock(dedupKey, "1", STRIPE_EVENT_DEDUP_TTL_SECONDS);
+            if (!firstDelivery) {
+                return ResponseEntity.ok().build();
+            }
+        }
+
+        switch (event.type()) {
                 case "payment_intent.succeeded"      -> orderService.handlePaymentSuccess(event.objectId());
                 case "payment_intent.payment_failed" -> orderService.handlePaymentFailure(event.objectId());
                 case "charge.refunded" -> {
@@ -242,15 +268,10 @@ public class OrderController {
                         vendorPayoutService.handleTransferFailed(event.objectId(), reason);
                     }
                 }
-                default -> { }
-            }
-
-            return ResponseEntity.ok().build();
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
+            default -> { }
         }
+
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/support/orders/{orderId}/partial-refund")

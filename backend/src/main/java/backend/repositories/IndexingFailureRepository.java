@@ -8,4 +8,7 @@ import java.util.List;
 
 public interface IndexingFailureRepository extends JpaRepository<IndexingFailure, Long> {
     List<IndexingFailure> findAllByStatusAndAttemptsLessThan(IndexingFailureStatus status, int maxAttempts);
+
+    /** Used by the heartbeat scheduler so an unfixed search drift is visible in logs/metrics. */
+    long countByStatus(IndexingFailureStatus status);
 }

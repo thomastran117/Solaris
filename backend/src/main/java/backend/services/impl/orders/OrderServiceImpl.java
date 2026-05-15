@@ -1032,8 +1032,21 @@ public class OrderServiceImpl implements OrderService {
             // double-commission recording when the same event is delivered twice.
             int transitioned = orderRepository.transitionStatus(initialOrder.getId(), OrderStatus.RESERVED, OrderStatus.PAID);
             if (transitioned == 0) {
-                log.debug("payment_intent.succeeded ignored — order {} already processed (status={})",
-                        initialOrder.getId(), initialOrder.getStatus());
+                // R2-H2: this is no longer a routine DEBUG. The atomic transition can fail
+                // for two distinct reasons, and operators need to be able to tell them
+                // apart from logs alone:
+                //   1) idempotent re-delivery (status already PAID) — benign
+                //   2) the order has been flipped to UNDER_REVIEW / FAILED / CANCELLED
+                //      since the payment intent was created — the customer has paid for
+                //      an order we won't fulfil. Manual refund required.
+                Order current = orderRepository.findById(initialOrder.getId()).orElse(initialOrder);
+                if (current.getStatus() == OrderStatus.PAID) {
+                    log.debug("payment_intent.succeeded already processed for order {}", current.getId());
+                } else {
+                    log.warn("[ORPHAN-PAYMENT] payment_intent.succeeded for order {} but status is {} (not RESERVED). "
+                            + "Stripe holds funds for paymentIntentId={}; merchant must reconcile (refund + re-issue if needed).",
+                            current.getId(), current.getStatus(), current.getPaymentIntentId());
+                }
                 return;
             }
             // The atomic SQL bypassed JPA, so {@code initialOrder} is now stale (its
@@ -1438,16 +1451,25 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    /** Tolerance (in dollars) below which a totals mismatch is considered rounding noise. */
-    private static final BigDecimal TOTAL_RECONCILIATION_TOLERANCE = new BigDecimal("0.02");
+    /** Per-line tolerance (in dollars) used to build the scaled aggregate tolerance below. */
+    private static final BigDecimal TOTAL_RECONCILIATION_PER_LINE_TOLERANCE = new BigDecimal("0.01");
+    /** Floor — never accept less than a 2¢ drift even on tiny orders. */
+    private static final BigDecimal TOTAL_RECONCILIATION_MIN_TOLERANCE = new BigDecimal("0.02");
 
     /**
      * Sanity-checks {@code finalTotal} against the per-line arithmetic. Any drift larger
-     * than {@link #TOTAL_RECONCILIATION_TOLERANCE} is logged at WARN with the breakdown
-     * so a pricing-engine regression doesn't quietly bill customers an incorrect amount.
-     * Intentionally non-fatal — failing live orders for sub-dollar discrepancies would
-     * be a worse customer experience than the discrepancy itself; the log lights up
-     * monitoring instead.
+     * than {@code max(MIN_TOLERANCE, lines * PER_LINE_TOLERANCE)} is logged at WARN with
+     * the breakdown so a pricing-engine regression doesn't quietly bill customers an
+     * incorrect amount.
+     *
+     * <p>R2-L8: scaling tolerance with line count keeps the alarm useful on both small
+     * and large orders. A flat $0.02 tolerance fires too often on 100-line orders
+     * (legitimate cumulative rounding) and would mask real bugs once operators
+     * start ignoring it.
+     *
+     * <p>Intentionally non-fatal — failing live orders for sub-dollar discrepancies
+     * would be a worse customer experience than the discrepancy itself; the log lights
+     * up monitoring instead.
      */
     private void reconcileOrderTotal(List<OrderItem> items,
                                      BigDecimal finalTotal,
@@ -1466,9 +1488,12 @@ public class OrderServiceImpl implements OrderService {
                 .subtract(loyaltyDiscount)
                 .max(BigDecimal.ZERO);
         BigDecimal drift = finalTotal.subtract(expected).abs();
-        if (drift.compareTo(TOTAL_RECONCILIATION_TOLERANCE) > 0) {
-            log.warn("[TOTALS] Mismatch — engine finalTotal={} expected={} (lineSum={}, coupon={}, loyalty={})",
-                    finalTotal, expected, lineSum, couponDiscountAmount, loyaltyDiscount);
+        BigDecimal scaledTolerance = TOTAL_RECONCILIATION_PER_LINE_TOLERANCE
+                .multiply(BigDecimal.valueOf(Math.max(1, items.size())))
+                .max(TOTAL_RECONCILIATION_MIN_TOLERANCE);
+        if (drift.compareTo(scaledTolerance) > 0) {
+            log.warn("[TOTALS] Mismatch beyond {} tolerance — engine finalTotal={} expected={} drift={} (lineSum={}, coupon={}, loyalty={}, lines={})",
+                    scaledTolerance, finalTotal, expected, drift, lineSum, couponDiscountAmount, loyaltyDiscount, items.size());
         }
     }
 
@@ -2630,13 +2655,22 @@ public class OrderServiceImpl implements OrderService {
                 record.setCurrency(result.currency());
                 commissionRecordRepository.save(record);
 
-                // Credit VendorBalance.pendingCents atomically (hold period releases via scheduler)
-                long pendingCents = result.netVendorAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue();
-                long grossCents = result.grossAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue();
-                long commissionCents = result.commissionAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue();
+                // Credit VendorBalance.pendingCents atomically (hold period releases via scheduler).
+                // R2-H5: clamp netVendor to >= 0. If a refund cycle pushes the engine to
+                // return a negative net (refund > commission), we DO NOT debit the vendor's
+                // balance via this path — the refund's own compensation pipeline handles
+                // balance adjustments. Persisting a negative pending would silently put
+                // the vendor in the red.
+                long pendingCents = Math.max(0L, result.netVendorAmount()
+                        .multiply(BigDecimal.valueOf(100)).longValue());
+                long grossCents = Math.max(0L, result.grossAmount()
+                        .multiply(BigDecimal.valueOf(100)).longValue());
+                long commissionCents = Math.max(0L, result.commissionAmount()
+                        .multiply(BigDecimal.valueOf(100)).longValue());
+                if (result.netVendorAmount().signum() < 0) {
+                    log.warn("[COMMISSION] Negative netVendor {} for sub_order {} on order {} — capping at 0; refund accounting must handle the debit",
+                            result.netVendorAmount(), subOrder.getId(), order.getId());
+                }
                 vendorBalanceRepository.upsertPending(
                         subOrder.getMarketplaceVendor().getId(),
                         pendingCents, grossCents, commissionCents, result.currency());

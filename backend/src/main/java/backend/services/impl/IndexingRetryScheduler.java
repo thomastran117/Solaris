@@ -67,6 +67,25 @@ public class IndexingRetryScheduler {
         productIndexingService.reindexAll();
     }
 
+    /**
+     * R2-H10 heartbeat: once an hour, count records that have been parked at
+     * {@link IndexingFailureStatus#EXHAUSTED} (max-retried, no longer auto-retrying).
+     * When this number is non-zero, search results have drifted from the database and
+     * an operator needs to investigate (query the table, optionally run
+     * {@code productIndexingService.reindexAll()} or re-queue specific docs).
+     *
+     * <p>This is intentionally just a high-signal log line — wiring to Micrometer or
+     * an alerting backend is a separate config change.
+     */
+    @Scheduled(fixedDelayString = "${app.elasticsearch.exhausted-heartbeat-ms:3600000}")
+    public void surfaceExhaustedFailures() {
+        long exhausted = failureRepository.countByStatus(IndexingFailureStatus.EXHAUSTED);
+        if (exhausted > 0) {
+            log.warn("[SEARCH DRIFT] {} indexing failure(s) in EXHAUSTED status — search results may diverge from DB. Investigate indexing_failure table.",
+                    exhausted);
+        }
+    }
+
     private boolean attempt(IndexingFailure f) {
         try {
             if ("PRODUCT".equals(f.getDocumentType())) {

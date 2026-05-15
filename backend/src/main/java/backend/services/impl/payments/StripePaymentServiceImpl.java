@@ -180,7 +180,7 @@ public class StripePaymentServiceImpl implements PaymentService {
 
             Map<String, String> metadata = extractMetadata(eventType, stripeObject);
 
-            return new WebhookEvent(event.getType(), objectId, objectType, metadata);
+            return new WebhookEvent(event.getId(), event.getType(), objectId, objectType, metadata);
         } catch (SignatureVerificationException e) {
             throw new BadRequestException("Invalid webhook signature");
         } catch (Exception e) {

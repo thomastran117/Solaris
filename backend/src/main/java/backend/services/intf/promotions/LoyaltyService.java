@@ -49,6 +49,14 @@ public interface LoyaltyService {
      */
     void restoreRedeemedPoints(long orderId);
 
+    /**
+     * Claws back loyalty points earned from a now-refunded order. Proportional to the
+     * refund ratio ({@code refundedAmountCents / orderTotalCents}). Safe to call
+     * multiple times — incremental partial refunds reverse only the new delta beyond
+     * what's already been reversed. No-op if the order never earned points.
+     */
+    void clawbackEarnedPoints(long orderId, long refundedAmountCents, long orderTotalCents);
+
     // -------------------------------------------------------------------------
     // Operator actions
     // -------------------------------------------------------------------------

@@ -290,8 +290,21 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
             payout.setFailureReason("No Stripe Connect account configured");
             return;
         }
+        // R2-H4: move the balance first. If the move fails (race, insufficient pending,
+        // already reserved by another batch), we abort before talking to Stripe — better
+        // to fail fast than leave an orphaned Stripe transfer with no internal accounting
+        // record. If the move succeeds but Stripe rejects the transfer, we must roll the
+        // balance back so the funds stay queryable as Pending.
+        payout.setStatus(PayoutStatus.PROCESSING);
+        int moved = balanceRepository.moveToInTransit(payout.getVendorId(), amountCents);
+        if (moved == 0) {
+            payout.setStatus(PayoutStatus.FAILED);
+            payout.setFailureReason("Vendor balance insufficient or already reserved");
+            log.error("[PAYOUT] Aborted transfer for vendor {} — balance move returned 0",
+                    payout.getVendorId());
+            return;
+        }
         try {
-            payout.setStatus(PayoutStatus.PROCESSING);
             PaymentService.TransferResult transfer = paymentService.createTransfer(
                     connectAccountId,
                     amountCents,
@@ -301,14 +314,17 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
                            "payoutId", String.valueOf(payout.getId()))
             );
             payout.setStripeTransferId(transfer.transferId());
-            int moved = balanceRepository.moveToInTransit(payout.getVendorId(), amountCents);
-            if (moved == 0) {
-                log.error("[PAYOUT] ACCOUNTING MISMATCH: transfer {} created for vendor {} but balance move failed — manual reconciliation required",
-                        transfer.transferId(), payout.getVendorId());
-            } else {
-                log.info("[PAYOUT] Transfer {} dispatched for vendor {}", transfer.transferId(), payout.getVendorId());
-            }
+            log.info("[PAYOUT] Transfer {} dispatched for vendor {}", transfer.transferId(), payout.getVendorId());
         } catch (Exception e) {
+            // Reverse the balance move so the funds remain in Pending and a later retry
+            // can pick them up. If this rollback itself fails, surface loudly — that's
+            // the only path to a real accounting mismatch.
+            try {
+                balanceRepository.returnFromInTransit(payout.getVendorId(), amountCents);
+            } catch (Exception rollbackEx) {
+                log.error("[PAYOUT] ACCOUNTING MISMATCH: vendor {} moved {} to in-transit but Stripe transfer failed AND balance rollback also failed. Manual reconciliation required. transfer={} rollback={}",
+                        payout.getVendorId(), amountCents, e.getMessage(), rollbackEx.getMessage());
+            }
             payout.setStatus(PayoutStatus.FAILED);
             payout.setFailureReason("Transfer creation failed: " + e.getMessage());
             log.error("[PAYOUT] Transfer failed for vendor {}: {}", payout.getVendorId(), e.getMessage());

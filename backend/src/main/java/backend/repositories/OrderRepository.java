@@ -29,6 +29,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     /** Total orders placed by this user — feeds CouponAbuseEvaluator's first-order heuristic. */
     long countByUserId(long userId);
+
+    /**
+     * Count of the user's orders that have moved past the just-created RESERVED state.
+     * Used by {@code CouponAbuseEvaluator} so a "first order" check doesn't get fooled
+     * by another in-flight RESERVED order placed in the same instant — both would have
+     * incremented {@link #countByUserId} but neither has confirmed payment yet, so
+     * neither is really a "prior" order.
+     */
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.user.id = :userId AND o.status <> :excludeStatus")
+    long countByUserIdExcludingStatus(@Param("userId") long userId,
+                                      @Param("excludeStatus") OrderStatus excludeStatus);
     Optional<Order> findByPaymentIntentId(String paymentIntentId);
     Optional<Order> findByStripeInvoiceId(String stripeInvoiceId);
     Page<Order> findAllByUserIdAndStatus(long userId, OrderStatus status, Pageable pageable);
@@ -66,6 +77,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     int transitionStatus(@Param("id") long id,
                          @Param("expectedStatus") OrderStatus expectedStatus,
                          @Param("newStatus") OrderStatus newStatus);
+
+    /**
+     * Atomically applies {@code delta} (may be negative) to {@code refundedAmountCents}
+     * and floors the result at zero. The {@code clearAutomatically} flag forces JPA to
+     * re-load the entity on next access so the in-memory Order isn't out of sync with
+     * the column we just updated outside of dirty-checking.
+     *
+     * <p>Returns the affected row count (0 if {@code id} doesn't exist).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Order o SET o.refundedAmountCents = " +
+           "CASE WHEN o.refundedAmountCents + :delta < 0 THEN 0 ELSE o.refundedAmountCents + :delta END " +
+           "WHERE o.id = :id")
+    int addRefundAmountDelta(@Param("id") long id, @Param("delta") long delta);
 
     /**
      * FIFO: PAID orders that contain at least one BACKORDERED item for the given product.

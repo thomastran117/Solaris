@@ -436,6 +436,16 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             return;
         }
 
+        // R2-H3: cancel-at-period-end means the customer asked NOT to be billed again.
+        // Stripe sometimes fires `invoice.paid` before `customer.subscription.deleted`
+        // for the final period — we must not turn that into an extra renewal order, or
+        // the customer gets billed for a subscription they cancelled.
+        if (sub.isCancelAtPeriodEnd() || sub.getStatus() == SubscriptionStatus.CANCELLED) {
+            log.info("invoice.paid skipped — subscription {} is marked for cancellation (cancelAtPeriodEnd={}, status={})",
+                    sub.getId(), sub.isCancelAtPeriodEnd(), sub.getStatus());
+            return;
+        }
+
         try {
             orderService.createRenewalOrder(sub, stripeInvoiceId, amountPaidCents);
         } catch (Exception e) {

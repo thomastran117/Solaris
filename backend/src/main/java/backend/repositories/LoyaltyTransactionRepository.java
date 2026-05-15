@@ -23,6 +23,15 @@ public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTrans
 
     boolean existsBySourceOrderIdAndType(long sourceOrderId, LoyaltyTransactionType type);
 
+    /**
+     * Sum of absolute points already reversed for {@code orderId} (used to compute the
+     * incremental delta when a second partial refund lands on the same order).
+     */
+    @Query("SELECT COALESCE(SUM(ABS(t.pointsDelta)), 0) FROM LoyaltyTransaction t " +
+           "WHERE t.sourceOrderId = :orderId AND t.type = :type")
+    long sumAbsPointsForOrderAndType(@Param("orderId") long orderId,
+                                     @Param("type") LoyaltyTransactionType type);
+
     List<LoyaltyTransaction> findByUserIdAndCompanyId(long userId, long companyId);
 
     /** Earn transactions that have expired and haven't been claimed by a prior expiry run. */

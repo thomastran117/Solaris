@@ -72,7 +72,13 @@ public interface PaymentService {
      *                   For {@code refund.updated}: same fields (objectId is the refund ID).
      *                   Empty map for all other event types.
      */
+    /**
+     * @param eventId provider-issued unique id for this event delivery ({@code evt_xxx}
+     *                in Stripe). Used by the controller's idempotency guard so the same
+     *                event delivered twice cannot drive side-effects twice.
+     */
     record WebhookEvent(
+            String eventId,
             String type,
             String objectId,
             String objectType,

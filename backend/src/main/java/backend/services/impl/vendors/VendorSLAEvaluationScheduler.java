@@ -76,21 +76,36 @@ public class VendorSLAEvaluationScheduler {
     // Per-policy evaluation
     // -------------------------------------------------------------------------
 
+    /** Page size for the SLA sweep — bounded to keep heap predictable on large marketplaces. */
+    private static final int SLA_PAGE_SIZE = 500;
+
     private void evaluatePolicy(VendorSLAPolicy policy) {
         long marketplaceId = policy.getMarketplaceId();
-        var vendorPage = marketplaceVendorRepository.findByMarketplaceIdAndStatus(
-                marketplaceId, VendorStatus.APPROVED, PageRequest.of(0, Integer.MAX_VALUE));
 
-        log.info("[SLA SCHEDULER] Policy {} — evaluating {} vendors in marketplace {}",
-                policy.getId(), vendorPage.getTotalElements(), marketplaceId);
-
-        for (MarketplaceVendor vendor : vendorPage.getContent()) {
-            try {
-                evaluateVendor(vendor, policy);
-            } catch (Exception e) {
-                log.error("[SLA SCHEDULER] Error evaluating vendor {} for policy {}: {}",
-                        vendor.getId(), policy.getId(), e.getMessage());
+        // R2-M10: the previous {@code PageRequest.of(0, Integer.MAX_VALUE)} attempted to
+        // load every approved vendor into memory at once — fine for a small marketplace,
+        // unbounded heap pressure for a large one. Paging puts a ceiling on the working
+        // set while still walking the entire list.
+        int pageIdx = 0;
+        long total = 0;
+        while (true) {
+            var page = marketplaceVendorRepository.findByMarketplaceIdAndStatus(
+                    marketplaceId, VendorStatus.APPROVED, PageRequest.of(pageIdx, SLA_PAGE_SIZE));
+            if (pageIdx == 0) {
+                total = page.getTotalElements();
+                log.info("[SLA SCHEDULER] Policy {} — evaluating {} vendors in marketplace {}",
+                        policy.getId(), total, marketplaceId);
             }
+            for (MarketplaceVendor vendor : page.getContent()) {
+                try {
+                    evaluateVendor(vendor, policy);
+                } catch (Exception e) {
+                    log.error("[SLA SCHEDULER] Error evaluating vendor {} for policy {}: {}",
+                            vendor.getId(), policy.getId(), e.getMessage());
+                }
+            }
+            if (!page.hasNext()) break;
+            pageIdx++;
         }
     }
 

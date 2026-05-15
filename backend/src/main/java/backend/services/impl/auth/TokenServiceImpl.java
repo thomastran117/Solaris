@@ -152,7 +152,12 @@ public class TokenServiceImpl implements TokenService {
         String payload = userId + PAYLOAD_SEP + (role != null ? role : "") + PAYLOAD_SEP + (email != null ? email : "");
 
         cache.set(REFRESH_TOKEN_PREFIX + tokenId, payload, ttlSeconds);
-        cache.setAdd(REFRESH_USER_SET_PREFIX + userId, tokenId);
+        // R2-H9: apply the same TTL to the user-set so stale token-ids don't accumulate
+        // forever. The TTL refreshes on each add, which keeps the set alive as long as
+        // the user has any active token; once they stop refreshing for a full window the
+        // set self-cleans. {@code revokeAllRefreshTokensForUser} therefore walks a
+        // bounded set instead of an ever-growing one.
+        cache.setAdd(REFRESH_USER_SET_PREFIX + userId, tokenId, ttlSeconds);
 
         return tokenId;
     }
@@ -207,7 +212,9 @@ public class TokenServiceImpl implements TokenService {
         String payload = existing.userId() + PAYLOAD_SEP + existing.role() + PAYLOAD_SEP + existing.email();
 
         cache.set(REFRESH_TOKEN_PREFIX + newTokenId, payload, ttlSeconds);
-        cache.setAdd(REFRESH_USER_SET_PREFIX + existing.userId(), newTokenId);
+        // R2-H9: pair the set TTL with the token TTL so rotation paths don't reset the
+        // set to "no expiry" — the bug was that this overload had no TTL.
+        cache.setAdd(REFRESH_USER_SET_PREFIX + existing.userId(), newTokenId, ttlSeconds);
 
         return newTokenId;
     }

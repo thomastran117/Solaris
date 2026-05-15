@@ -122,6 +122,13 @@ public class RiskEngineImpl implements RiskEngine {
         };
     }
 
+    /**
+     * VIP carve-out is intentionally fail-closed: when {@code app.risk.vip-segment-id}
+     * is unset (default 0) we return false so the engine runs every signal against
+     * every user. The inverse would be dangerous — silently exempting segment 0 (or
+     * any random unconfigured segment) from fraud checks. Operators who want a
+     * carve-out must set the property explicitly to a positive segment id.
+     */
     private boolean isVip(RiskContext ctx) {
         long vipId = properties.getVipSegmentId();
         if (vipId <= 0) return false;
@@ -158,8 +165,20 @@ public class RiskEngineImpl implements RiskEngine {
             }
             return signal;
         } catch (RuntimeException ex) {
-            log.warn("Risk evaluator {} threw; failing open", evaluator.type(), ex);
-            warnings.add(evaluator.type() + " threw " + ex.getClass().getSimpleName() + "; fail-open");
+            // R2-M5: in SHADOW mode fail-open is fine (we're just observing). In ENFORCE
+            // a broken evaluator silently dropping its score contribution is exactly the
+            // risk the fraud engine exists to prevent — bias toward verification rather
+            // than letting the order glide through. A MEDIUM-weight signal nudges marginal
+            // orders into VERIFY without auto-blocking benign traffic during an outage.
+            boolean enforce = properties.getMode() == backend.models.enums.RiskMode.ENFORCE;
+            log.warn("Risk evaluator {} threw (mode={}); failing {}", evaluator.type(),
+                    properties.getMode(), enforce ? "to MEDIUM" : "open", ex);
+            warnings.add(evaluator.type() + " threw " + ex.getClass().getSimpleName()
+                    + (enforce ? "; failing to MEDIUM" : "; fail-open"));
+            if (enforce) {
+                return RiskSignal.medium(evaluator.type(), 15,
+                        "Evaluator " + evaluator.type() + " unavailable: " + ex.getClass().getSimpleName());
+            }
             return RiskSignal.neutral(evaluator.type(), "Evaluator error: " + ex.getClass().getSimpleName());
         }
     }
