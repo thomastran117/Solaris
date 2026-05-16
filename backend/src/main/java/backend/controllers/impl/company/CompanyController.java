@@ -22,9 +22,13 @@ import backend.services.intf.company.CompanyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/companies")
 public class CompanyController {
@@ -44,14 +48,14 @@ public class CompanyController {
      */
     @GetMapping
     public ResponseEntity<PagedResponse<PublicCompanyResponse>> getCompanies(
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String industry,
-            @RequestParam(required = false) String country,
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(required = false) @Size(max = 100) String industry,
+            @RequestParam(required = false) @Size(max = 100) String country,
             @RequestParam(required = false) CompanyStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
-            @RequestParam(defaultValue = "createdAt") String sort,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
             return ResponseEntity.ok(companyService.searchPublicCompanies(q, industry, country, status, page, size, sort, direction));
         } catch (AppHttpException e) {

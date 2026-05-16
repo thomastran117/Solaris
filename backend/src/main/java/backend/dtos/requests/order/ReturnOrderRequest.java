@@ -1,10 +1,12 @@
 package backend.dtos.requests.order;
 
+import backend.annotations.safeText.SafeText;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ReturnOrderRequest(
         /** Optional merchant note about the return. */
-        String note,
+        @SafeText @Size(max = 1000) String note,
         /**
          * Optional list of OrderItem IDs to return. When null or empty, all DELIVERED items are
          * returned. When provided, only the specified items are returned.

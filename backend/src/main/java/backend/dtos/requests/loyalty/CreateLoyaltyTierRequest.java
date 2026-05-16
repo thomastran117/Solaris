@@ -1,5 +1,6 @@
 package backend.dtos.requests.loyalty;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,7 +13,9 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class CreateLoyaltyTierRequest {
 
+    @SafeText
     @NotBlank
+    @Size(max = 255)
     private String name;
 
     @Min(0)
@@ -21,6 +24,7 @@ public class CreateLoyaltyTierRequest {
     @NotNull @DecimalMin("0.10") @DecimalMax("10.00")
     private BigDecimal earnMultiplier = BigDecimal.ONE;
 
+    @Size(max = 4000)
     private String perksJson;
 
     @Size(max = 20)

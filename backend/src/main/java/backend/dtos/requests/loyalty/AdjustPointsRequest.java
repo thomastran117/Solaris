@@ -15,6 +15,7 @@ public class AdjustPointsRequest {
     @NotNull
     private Integer pointsDelta;
 
+    @backend.annotations.safeText.SafeText
     @Size(max = 500)
     private String reason;
 }

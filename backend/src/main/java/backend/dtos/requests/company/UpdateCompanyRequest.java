@@ -1,5 +1,7 @@
 package backend.dtos.requests.company;
 
+import backend.annotations.safeRichText.SafeRichText;
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,15 +10,19 @@ import lombok.Setter;
 @Setter
 public class UpdateCompanyRequest {
 
+    @SafeText
     @Size(max = 255, message = "Company name must not exceed 255 characters")
     private String name;
 
+    @SafeText
     @Size(max = 255, message = "Address must not exceed 255 characters")
     private String address;
 
+    @SafeText
     @Size(max = 100, message = "City must not exceed 100 characters")
     private String city;
 
+    @SafeText
     @Size(max = 100, message = "Country must not exceed 100 characters")
     private String country;
 
@@ -36,6 +42,8 @@ public class UpdateCompanyRequest {
     @Size(max = 255, message = "Website must not exceed 255 characters")
     private String website;
 
+    @SafeRichText
+    @Size(max = 5000, message = "Description must not exceed 5000 characters")
     private String description;
 
     @Size(max = 100, message = "Industry must not exceed 100 characters")

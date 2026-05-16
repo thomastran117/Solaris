@@ -1,5 +1,6 @@
 package backend.dtos.requests.loyalty;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,7 +13,9 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class CreateLoyaltyPolicyRequest {
 
+    @SafeText
     @NotBlank
+    @Size(max = 255)
     private String name;
 
     @NotNull @DecimalMin("0.01") @DecimalMax("100.00")

@@ -2,9 +2,12 @@ package backend.dtos.requests.pricing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import backend.annotations.safeRichText.SafeRichText;
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,9 +21,11 @@ import java.util.List;
 @Setter
 public class UpdatePromotionRuleRequest {
 
+    @SafeText
     @Size(max = 255)
     private String name;
 
+    @SafeRichText
     @Size(max = 500)
     private String description;
 
@@ -33,6 +38,7 @@ public class UpdatePromotionRuleRequest {
     private Boolean stackable;
 
     /** ACTIVE or DISABLED. EXPIRED is rejected (computed). */
+    @Pattern(regexp = "^(ACTIVE|DISABLED)$", message = "status must be ACTIVE or DISABLED")
     private String status;
 
     private Instant startDate;

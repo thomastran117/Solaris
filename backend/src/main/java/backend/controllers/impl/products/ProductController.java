@@ -40,10 +40,14 @@ import backend.services.intf.SanitizationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/companies/{companyId}/products")
 public class ProductController {
@@ -66,20 +70,20 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<PagedResponse<ProductResponse>> getProducts(
             @PathVariable long companyId,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(required = false) @Size(max = 100) String category,
+            @RequestParam(required = false) @Size(max = 100) String brand,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Boolean featured,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) Boolean listed,
-            @RequestParam(required = false) String discountCategory,
+            @RequestParam(required = false) @Size(max = 100) String discountCategory,
             @RequestParam(required = false) Boolean hasDiscount,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
-            @RequestParam(defaultValue = "createdAt") String sort,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
             return ResponseEntity.ok(productService.searchProducts(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount, page, size, sort, direction));
         } catch (AppHttpException e) {

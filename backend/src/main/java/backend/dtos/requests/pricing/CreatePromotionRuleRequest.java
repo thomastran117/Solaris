@@ -23,6 +23,7 @@ public class CreatePromotionRuleRequest {
     @Size(max = 255)
     private String name;
 
+    @backend.annotations.safeRichText.SafeRichText
     @Size(max = 500)
     private String description;
 

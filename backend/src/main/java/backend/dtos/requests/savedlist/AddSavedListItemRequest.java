@@ -1,5 +1,6 @@
 package backend.dtos.requests.savedlist;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -20,6 +21,7 @@ public class AddSavedListItemRequest {
     @Min(1)
     private Integer quantity = 1;
 
+    @SafeText
     @Size(max = 500)
     private String note;
 }

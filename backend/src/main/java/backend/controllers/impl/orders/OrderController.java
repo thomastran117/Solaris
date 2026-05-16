@@ -34,6 +34,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
+@org.springframework.validation.annotation.Validated
 @RestController
 @RequestMapping("/orders")
 public class OrderController {
@@ -121,8 +122,8 @@ public class OrderController {
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
-            @RequestParam(defaultValue = "createdAt") String sort,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "createdAt") @jakarta.validation.constraints.Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "desc") @jakarta.validation.constraints.Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
             long userId = resolveUserId();
             return ResponseEntity.ok(orderService.getOrders(userId, status, page, size, sort, direction));

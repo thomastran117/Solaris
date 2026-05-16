@@ -1,10 +1,13 @@
 package backend.dtos.requests.sla;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -14,7 +17,9 @@ import lombok.Setter;
 @NoArgsConstructor
 public class CreateSLAPolicyRequest {
 
+    @SafeText
     @NotBlank
+    @Size(max = 255)
     private String name;
 
     @Positive
@@ -33,6 +38,8 @@ public class CreateSLAPolicyRequest {
     private double maxLateShipmentRate = 0.10;
 
     @NotNull
+    @Pattern(regexp = "^[A-Z_]+$", message = "breachAction must be an uppercase identifier")
+    @Size(max = 50)
     private String breachAction;
 
     @Min(7) @Max(90)

@@ -1,5 +1,7 @@
 package backend.dtos.requests.product;
 
+import backend.annotations.safeRichText.SafeRichText;
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -19,8 +21,12 @@ public class CreateBundleRequest {
     @Size(max = 255)
     private String name;
 
+    @SafeRichText
+    @Size(max = 5000)
     private String description;
 
+    @SafeText
+    @Size(max = 500)
     private String thumbnailUrl;
 
     /** If null, auto-computed as sum of (item.quantity × product/variant price). */

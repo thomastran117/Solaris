@@ -1,16 +1,18 @@
 package backend.dtos.requests.order;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
 public record ShipOrderRequest(
         /** Required carrier tracking number. */
-        @NotBlank String trackingNumber,
+        @NotBlank @Size(max = 100) String trackingNumber,
         /** Optional carrier name (e.g. "UPS", "FedEx", "USPS"). */
-        String carrier,
+        @SafeText @Size(max = 100) String carrier,
         /** Optional merchant note recorded on the order. */
-        String note,
+        @SafeText @Size(max = 1000) String note,
         /**
          * Optional list of OrderItem IDs to ship. When null or empty, all PACKED items are
          * transitioned to SHIPPED. When provided, only the specified items are shipped,

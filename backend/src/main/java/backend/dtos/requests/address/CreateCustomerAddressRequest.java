@@ -1,5 +1,6 @@
 package backend.dtos.requests.address;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -12,25 +13,31 @@ import lombok.Setter;
 @NoArgsConstructor
 public class CreateCustomerAddressRequest {
 
+    @SafeText
     @NotBlank
     @Size(max = 50)
     private String label;
 
+    @SafeText
     @NotBlank
     @Size(max = 150)
     private String recipientName;
 
+    @SafeText
     @NotBlank
     @Size(max = 255)
     private String street;
 
+    @SafeText
     @Size(max = 255)
     private String street2;
 
+    @SafeText
     @NotBlank
     @Size(max = 100)
     private String city;
 
+    @SafeText
     @NotBlank
     @Size(max = 100)
     private String state;

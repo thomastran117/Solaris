@@ -18,6 +18,7 @@ public class IssueBonusRequest {
     @NotNull @Min(1)
     private Integer points;
 
+    @backend.annotations.safeText.SafeText
     @Size(max = 500)
     private String reason;
 }

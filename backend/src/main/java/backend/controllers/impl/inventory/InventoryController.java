@@ -28,6 +28,8 @@ import backend.services.intf.SanitizationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
 
 import org.springframework.format.annotation.DateTimeFormat;
 
@@ -36,6 +38,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/companies/{companyId}/inventory")
 @RequireAuth
@@ -56,10 +59,10 @@ public class InventoryController {
     @GetMapping
     public ResponseEntity<CursorPagedResponse<InventoryItemResponse>> getInventory(
             @PathVariable long companyId,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String stockStatus,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(required = false) @Size(max = 50) String stockStatus,
+            @RequestParam(required = false) @Size(max = 100) String category,
+            @RequestParam(required = false) @Size(max = 100) String brand,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) Integer minStock,
             @RequestParam(required = false) Integer maxStock,

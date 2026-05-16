@@ -13,14 +13,18 @@ import backend.services.intf.products.ProductService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
+@Validated
 @RestController
 @RequestMapping("/marketplaces/{marketplaceId}/catalog")
 public class MarketplaceCatalogController {
@@ -64,17 +68,17 @@ public class MarketplaceCatalogController {
     @GetMapping("/products")
     public ResponseEntity<CatalogSearchResponse> searchCatalog(
             @PathVariable long marketplaceId,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(required = false) @Size(max = 100) String category,
+            @RequestParam(required = false) @Size(max = 100) String brand,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Boolean featured,
             @RequestParam(required = false) Long vendorId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
-            @RequestParam(defaultValue = "createdAt") String sort,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
             return ResponseEntity.ok(productService.searchMarketplaceCatalog(
                     marketplaceId, q, category, brand, minPrice, maxPrice,

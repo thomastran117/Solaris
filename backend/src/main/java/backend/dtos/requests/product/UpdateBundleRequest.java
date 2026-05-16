@@ -1,5 +1,7 @@
 package backend.dtos.requests.product;
 
+import backend.annotations.safeRichText.SafeRichText;
+import backend.annotations.safeText.SafeText;
 import backend.models.enums.ProductStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -17,8 +19,12 @@ public class UpdateBundleRequest {
     @Size(max = 255)
     private String name;
 
+    @SafeRichText
+    @Size(max = 5000)
     private String description;
 
+    @SafeText
+    @Size(max = 500)
     private String thumbnailUrl;
 
     /** If null and items are being replaced, price is auto-recomputed from new items. */

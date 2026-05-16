@@ -1,9 +1,12 @@
 package backend.dtos.requests.pricing;
 
+import backend.annotations.safeIdentifier.SafeIdentifier;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -25,7 +28,11 @@ public class PricingQuoteRequest {
     @Valid
     private List<Item> items;
 
+    @SafeIdentifier
+    @Size(max = 100)
     private String couponCode;
+
+    @Pattern(regexp = "^[A-Z]{3}$", message = "currency must be a 3-letter ISO 4217 code")
     private String currency;
     private BigDecimal shippingAmount;
 

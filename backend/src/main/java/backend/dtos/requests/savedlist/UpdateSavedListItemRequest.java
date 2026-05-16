@@ -1,5 +1,6 @@
 package backend.dtos.requests.savedlist;
 
+import backend.annotations.safeText.SafeText;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -14,6 +15,7 @@ public class UpdateSavedListItemRequest {
     @Min(1)
     private Integer quantity;
 
+    @SafeText
     @Size(max = 500)
     private String note;
 

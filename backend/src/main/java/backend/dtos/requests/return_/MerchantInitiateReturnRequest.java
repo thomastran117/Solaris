@@ -9,7 +9,7 @@ import java.util.List;
 public record MerchantInitiateReturnRequest(
         @NotEmpty List<@Valid BuyerReturnItemRequest> items,
         ReturnReason reason,
-        String merchantNote,
+        @backend.annotations.safeText.SafeText @jakarta.validation.constraints.Size(max = 1000) String merchantNote,
         boolean restockItems,
         /**
          * Refund amount in cents.
