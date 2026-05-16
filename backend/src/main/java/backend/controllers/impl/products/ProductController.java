@@ -31,8 +31,10 @@ import backend.dtos.responses.product.ProductResponse;
 import backend.dtos.responses.product.ProductVariantResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.enums.ProductStatus;
 import backend.kafka.workers.ProductIndexingService;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.products.BundleService;
 import backend.services.intf.products.ProductService;
 import backend.services.intf.SanitizationService;
@@ -56,15 +58,18 @@ public class ProductController {
     private final BundleService bundleService;
     private final ProductIndexingService productIndexingService;
     private final SanitizationService sanitizationService;
+    private final CompanyAccessService companyAccessService;
 
     public ProductController(ProductService productService,
                              BundleService bundleService,
                              ProductIndexingService productIndexingService,
-                             SanitizationService sanitizationService) {
+                             SanitizationService sanitizationService,
+                             CompanyAccessService companyAccessService) {
         this.productService = productService;
         this.bundleService = bundleService;
         this.productIndexingService = productIndexingService;
         this.sanitizationService = sanitizationService;
+        this.companyAccessService = companyAccessService;
     }
 
     @GetMapping
@@ -85,7 +90,9 @@ public class ProductController {
             @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
             @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
-            return ResponseEntity.ok(productService.searchProducts(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount, page, size, sort, direction));
+            // Non-members can only browse ACTIVE products
+            ProductStatus effectiveStatus = isCompanyMember(companyId, resolveUserIdOptional()) ? status : ProductStatus.ACTIVE;
+            return ResponseEntity.ok(productService.searchProducts(companyId, q, category, brand, minPrice, maxPrice, featured, effectiveStatus, listed, discountCategory, hasDiscount, page, size, sort, direction));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -98,7 +105,12 @@ public class ProductController {
             @PathVariable long companyId,
             @PathVariable long id) {
         try {
-            return ResponseEntity.ok(productService.getProduct(companyId, id));
+            ProductResponse product = productService.getProduct(companyId, id);
+            // Non-members can only see ACTIVE products; hide drafts/scheduled/archived
+            if (!"ACTIVE".equals(product.getStatus()) && !isCompanyMember(companyId, resolveUserIdOptional())) {
+                throw new ResourceNotFoundException("Product not found with id: " + id);
+            }
+            return ResponseEntity.ok(product);
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -548,6 +560,7 @@ public class ProductController {
     @RequireAuth
     public ResponseEntity<Void> triggerReindex(@PathVariable long companyId) {
         try {
+            companyAccessService.requireAnyAccess(companyId, resolveUserId());
             productIndexingService.reindexCompany(companyId);
             return ResponseEntity.accepted().build();
         } catch (AppHttpException e) {
@@ -560,5 +573,18 @@ public class ProductController {
     private long resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return ((Number) auth.getPrincipal()).longValue();
+    }
+
+    private Long resolveUserIdOptional() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return ((Number) auth.getPrincipal()).longValue();
+    }
+
+    private boolean isCompanyMember(long companyId, Long userId) {
+        if (userId == null) return false;
+        return companyAccessService.resolveRole(companyId, userId).isPresent();
     }
 }

@@ -13,6 +13,7 @@ import backend.dtos.responses.loyalty.LoyaltyTierResponse;
 import backend.dtos.responses.loyalty.LoyaltyTransactionResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.promotions.LoyaltyService;
 
 import jakarta.validation.Valid;
@@ -31,9 +32,12 @@ import java.util.List;
 public class LoyaltyController {
 
     private final LoyaltyService loyaltyService;
+    private final CompanyAccessService companyAccessService;
 
-    public LoyaltyController(LoyaltyService loyaltyService) {
+    public LoyaltyController(LoyaltyService loyaltyService,
+                             CompanyAccessService companyAccessService) {
         this.loyaltyService = loyaltyService;
+        this.companyAccessService = companyAccessService;
     }
 
     // -------------------------------------------------------------------------
@@ -88,6 +92,7 @@ public class LoyaltyController {
     @GetMapping("/companies/{companyId}/loyalty/policy")
     public ResponseEntity<LoyaltyPolicyResponse> getPolicy(@PathVariable long companyId) {
         try {
+            companyAccessService.requireAnyAccess(companyId, resolveUserId());
             return ResponseEntity.ok(loyaltyService.getPolicy(companyId));
         } catch (AppHttpException e) {
             throw e;
@@ -118,6 +123,7 @@ public class LoyaltyController {
     @GetMapping("/companies/{companyId}/loyalty/tiers")
     public ResponseEntity<List<LoyaltyTierResponse>> listTiers(@PathVariable long companyId) {
         try {
+            companyAccessService.requireAnyAccess(companyId, resolveUserId());
             return ResponseEntity.ok(loyaltyService.listTiers(companyId));
         } catch (AppHttpException e) {
             throw e;
