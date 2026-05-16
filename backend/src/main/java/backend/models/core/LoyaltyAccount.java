@@ -50,6 +50,10 @@ public class LoyaltyAccount {
     @Column(nullable = true)
     private Instant tierUpdatedAt;
 
+    /** Calendar year in which the last birthday reward was issued; null if never issued. Used for atomic idempotency. */
+    @Column(nullable = true, name = "last_birthday_reward_year")
+    private Integer lastBirthdayRewardYear;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

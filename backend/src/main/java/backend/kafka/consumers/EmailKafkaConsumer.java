@@ -14,7 +14,8 @@ public class EmailKafkaConsumer {
         this.sender = sender;
     }
 
-    @KafkaListener(topics = "${app.kafka.topics.email-events}", groupId = "email-worker")
+    @KafkaListener(topics = "${app.kafka.topics.email-events}", groupId = "email-worker",
+                   containerFactory = "emailKafkaListenerContainerFactory")
     public void onEmailEvent(EmailEvent event) {
         sender.send(event);
     }

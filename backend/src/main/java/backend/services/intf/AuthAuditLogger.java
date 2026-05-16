@@ -20,7 +20,8 @@ public interface AuthAuditLogger {
         DEVICE_VERIFICATION_REQUIRED,
         DEVICE_VERIFIED,
         EMAIL_VERIFIED,
-        ROLE_CHANGED
+        ROLE_CHANGED,
+        REFUND_ISSUED
     }
 
     /**

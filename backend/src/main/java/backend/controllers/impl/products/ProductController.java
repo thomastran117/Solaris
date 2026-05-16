@@ -138,7 +138,7 @@ public class ProductController {
     @RequireAuth
     public ResponseEntity<List<ProductResponse>> getProductsByIds(
             @PathVariable long companyId,
-            @RequestBody List<Long> ids) {
+            @RequestBody @jakarta.validation.constraints.Size(max = 100, message = "Cannot fetch more than 100 products at once") List<Long> ids) {
         try {
             return ResponseEntity.ok(productService.getProductsByIds(companyId, ids));
         } catch (AppHttpException e) {
@@ -498,7 +498,7 @@ public class ProductController {
     @GetMapping("/compare")
     public ResponseEntity<List<ProductResponse>> compareProducts(
             @PathVariable long companyId,
-            @RequestParam List<Long> ids) {
+            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 products at once") List<Long> ids) {
         try {
             return ResponseEntity.ok(productService.compareProducts(companyId, ids));
         } catch (AppHttpException e) {

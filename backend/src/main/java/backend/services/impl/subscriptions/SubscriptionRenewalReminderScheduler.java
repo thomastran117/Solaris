@@ -53,8 +53,8 @@ public class SubscriptionRenewalReminderScheduler {
                 if (user == null || user.getEmail() == null) continue;
                 // Dedicated EmailService template will be wired in a follow-up; for now
                 // log the intent so ops can audit until the template is added.
-                log.info("Renewal reminder due for subscription {} (user {} email {}) at {}",
-                        sub.getId(), user.getId(), user.getEmail(), sub.getNextBillingAt());
+                log.info("Renewal reminder due for subscription {} (userId={}) at {}",
+                        sub.getId(), user.getId(), sub.getNextBillingAt());
             } catch (Exception e) {
                 log.warn("Renewal reminder failed for subscription {}: {}", sub.getId(), e.getMessage());
             }

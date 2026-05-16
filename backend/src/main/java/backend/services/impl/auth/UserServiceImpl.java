@@ -45,7 +45,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User signup(String email, String password) {
         if (userRepository.findByEmail(email).isPresent()) {
-            throw new ConflictException("User already exists with email: " + email);
+            throw new ConflictException("An account with these credentials already exists");
         }
 
         User user = new User();

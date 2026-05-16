@@ -2,6 +2,8 @@ package backend.repositories;
 
 import backend.models.core.VendorBalance;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -15,6 +17,8 @@ import java.util.Optional;
 public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Long> {
 
     Optional<VendorBalance> findByVendorId(long vendorId);
+
+    Slice<VendorBalance> findByAvailableCentsGreaterThan(long threshold, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT b FROM VendorBalance b WHERE b.vendorId = :vendorId")

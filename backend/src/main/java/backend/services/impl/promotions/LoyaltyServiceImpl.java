@@ -502,7 +502,10 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     @Transactional
     public void issueBirthdayReward(LoyaltyAccount account, LoyaltyPolicy policy) {
         int year = java.time.LocalDate.now().getYear();
-        if (transactionRepository.existsBirthdayRewardForYear(account.getId(), year)) return;
+        // Atomic claim — if another scheduler run already claimed this year's slot, the UPDATE
+        // returns 0 rows and we bail. This replaces the old SELECT-then-INSERT pattern which
+        // allowed two concurrent runs to both see "no reward yet" and both issue the reward.
+        if (accountRepository.claimBirthdayRewardForYear(account.getId(), year) == 0) return;
 
         if (policy.getBirthdayBonusPoints() > 0) {
             accountRepository.addPoints(account.getId(), policy.getBirthdayBonusPoints());

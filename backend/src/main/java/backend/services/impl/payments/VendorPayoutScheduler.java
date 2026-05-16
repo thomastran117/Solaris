@@ -21,6 +21,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -130,13 +133,20 @@ public class VendorPayoutScheduler {
     // Pass 2: Create payout batches
     // -------------------------------------------------------------------------
 
-    private void createPayoutBatches() {
-        // Find all approved vendors with available balance
-        List<VendorBalance> balances = vendorBalanceRepository.findAll().stream()
-                .filter(b -> b.getAvailableCents() > 0)
-                .toList();
+    private static final int PAYOUT_BATCH_PAGE_SIZE = 500;
 
-        log.info("[PAYOUT SCHEDULER] {} vendors have available balance", balances.size());
+    private void createPayoutBatches() {
+        log.info("[PAYOUT SCHEDULER] Building payout batches");
+        int page = 0;
+        Slice<VendorBalance> slice;
+        do {
+            slice = vendorBalanceRepository.findByAvailableCentsGreaterThan(0L,
+                    PageRequest.of(page++, PAYOUT_BATCH_PAGE_SIZE));
+            processBatchSlice(slice.getContent());
+        } while (slice.hasNext());
+    }
+
+    private void processBatchSlice(List<VendorBalance> balances) {
 
         for (VendorBalance balance : balances) {
             try {

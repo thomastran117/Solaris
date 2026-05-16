@@ -30,6 +30,7 @@ import backend.models.core.ReturnItem;
 import backend.models.core.RiskAssessment;
 import backend.models.core.User;
 import backend.annotations.retry.RetryOnConcurrency;
+import backend.services.intf.AuthAuditLogger;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.CompensationStatus;
 import backend.models.enums.CompensationType;
@@ -103,6 +104,7 @@ public class ReturnServiceImpl implements ReturnService {
     private final RiskProperties riskProperties;
     private final ActivityEventPublisher activityEventPublisher;
     private final LoyaltyService loyaltyService;
+    private final AuthAuditLogger auditLogger;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     public ReturnServiceImpl(
@@ -122,7 +124,8 @@ public class ReturnServiceImpl implements ReturnService {
             RiskAssessmentRepository riskAssessmentRepository,
             RiskProperties riskProperties,
             ActivityEventPublisher activityEventPublisher,
-            LoyaltyService loyaltyService) {
+            LoyaltyService loyaltyService,
+            AuthAuditLogger auditLogger) {
         this.returnRepository = returnRepository;
         this.returnItemRepository = returnItemRepository;
         this.orderRepository = orderRepository;
@@ -140,6 +143,7 @@ public class ReturnServiceImpl implements ReturnService {
         this.riskProperties = riskProperties;
         this.activityEventPublisher = activityEventPublisher;
         this.loyaltyService = loyaltyService;
+        this.auditLogger = auditLogger;
     }
 
     /**
@@ -507,7 +511,11 @@ public class ReturnServiceImpl implements ReturnService {
 
         issueRefundAndFinalize(ret, amountCents);
         orderRepository.save(order);
-        return toReturnResponse(returnRepository.save(ret));
+        ReturnResponse response = toReturnResponse(returnRepository.save(ret));
+        auditLogger.log(AuthAuditLogger.Event.REFUND_ISSUED,
+                Long.toString(actorUserId),
+                "orderId=" + orderId + " amountCents=" + amountCents + " returnId=" + response.id());
+        return response;
     }
 
     // -------------------------------------------------------------------------

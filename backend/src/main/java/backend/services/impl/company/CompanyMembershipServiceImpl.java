@@ -112,10 +112,9 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
         try {
             emailService.sendTeamInviteEmail(normalizedEmail, company.getName(), roleLabel, inviterName, acceptUrl);
         } catch (Exception e) {
-            log.warn("Failed to publish team invite email for company={} email={}", companyId, normalizedEmail, e);
+            log.warn("Failed to publish team invite email for company={} membershipId={}", companyId, saved.getId(), e);
         }
-        log.info("Team invite created for company={} email={} role={} token={}",
-                companyId, normalizedEmail, role, saved.getInviteToken());
+        log.info("Team invite created for company={} membershipId={} role={}", companyId, saved.getId(), role);
 
         return toResponse(saved);
     }

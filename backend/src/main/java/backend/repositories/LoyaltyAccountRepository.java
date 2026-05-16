@@ -52,4 +52,14 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
            "  (:tierId IS NOT NULL AND a.currentTierId != :tierId)" +
            ")")
     int updateTierIfChanged(@Param("id") long id, @Param("tierId") Long tierId, @Param("now") Instant now);
+
+    /**
+     * Atomically claims the birthday reward slot for the given calendar year.
+     * Returns 1 if the claim succeeded (reward not yet issued this year), 0 if already claimed.
+     * Using an atomic UPDATE prevents two concurrent scheduler runs from both issuing the reward.
+     */
+    @Modifying
+    @Query("UPDATE LoyaltyAccount a SET a.lastBirthdayRewardYear = :year " +
+           "WHERE a.id = :id AND (a.lastBirthdayRewardYear IS NULL OR a.lastBirthdayRewardYear != :year)")
+    int claimBirthdayRewardForYear(@Param("id") long id, @Param("year") int year);
 }

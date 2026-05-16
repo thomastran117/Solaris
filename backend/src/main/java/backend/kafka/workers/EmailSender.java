@@ -14,6 +14,8 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
 
+import org.springframework.web.util.HtmlUtils;
+
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -211,7 +213,7 @@ public class EmailSender {
             <div style="background:#F8FAFF;border-left:4px solid #3B82F6;border-radius:4px;padding:16px 20px;margin:16px 0;">
               <p style="margin:0;font-size:14px;color:#334155;line-height:1.7;">%s</p>
             </div>
-            """.formatted(greeting, ticket.getId(), ticket.getSubject(), message.getBody());
+            """.formatted(greeting, ticket.getId(), ticket.getSubject(), HtmlUtils.htmlEscape(message.getBody()));
         sendMimeMessage(toEmail, "New reply on ticket #" + ticket.getId() + " — ShopWave",
                 wrapInShell("Support", body));
     }
@@ -275,8 +277,9 @@ public class EmailSender {
     private void sendTeamInviteEmail(String toEmail, String companyName, String role,
                                      String inviterDisplayName, String acceptUrl) {
         String roleLabel = role == null ? "team member" : role.toLowerCase();
+        String safeCompany = HtmlUtils.htmlEscape(companyName != null ? companyName : "");
         String inviterLine = (inviterDisplayName != null && !inviterDisplayName.isBlank())
-                ? "<strong>" + inviterDisplayName + "</strong> has"
+                ? "<strong>" + HtmlUtils.htmlEscape(inviterDisplayName) + "</strong> has"
                 : "You've been";
         String body = """
             <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
@@ -291,14 +294,14 @@ public class EmailSender {
             %s
             %s
             """.formatted(
-                companyName,
+                safeCompany,
                 inviterLine,
-                companyName,
+                safeCompany,
                 roleLabel,
                 primaryButton(acceptUrl, "Accept Invitation"),
                 expiryNote("If you weren't expecting this invitation, you can safely ignore this email.")
             );
-        sendMimeMessage(toEmail, "Invitation to join " + companyName + " on ShopWave",
+        sendMimeMessage(toEmail, "Invitation to join " + safeCompany + " on ShopWave",
                 wrapInShell("Team Invitation", body));
     }
 
@@ -435,8 +438,10 @@ public class EmailSender {
             %s
             %s
             """.formatted(
-                email,
-                browser, os, ip,
+                HtmlUtils.htmlEscape(email != null ? email : ""),
+                HtmlUtils.htmlEscape(browser != null ? browser : ""),
+                HtmlUtils.htmlEscape(os != null ? os : ""),
+                HtmlUtils.htmlEscape(ip != null ? ip : ""),
                 primaryButton(verifyUrl, "Verify Device"),
                 expiryNote("This link expires in <strong>10 minutes</strong>. "
                          + "If you did not attempt to log in, please change your password immediately.")

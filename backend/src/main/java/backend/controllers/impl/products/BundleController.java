@@ -60,7 +60,7 @@ public class BundleController {
     public ResponseEntity<BundleResponse> updateBundle(
             @PathVariable long companyId,
             @PathVariable long bundleId,
-            @RequestBody UpdateBundleRequest request) {
+            @Valid @RequestBody UpdateBundleRequest request) {
         return ResponseEntity.ok(bundleService.updateBundle(companyId, bundleId, resolveUserId(), request));
     }
 
@@ -76,7 +76,7 @@ public class BundleController {
     @GetMapping("/compare")
     public ResponseEntity<List<BundleResponse>> compareBundles(
             @PathVariable long companyId,
-            @RequestParam List<Long> ids) {
+            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 bundles at once") List<Long> ids) {
         return ResponseEntity.ok(bundleService.compareBundles(companyId, ids));
     }
 
