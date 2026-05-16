@@ -97,9 +97,15 @@ public class BundleServiceImpl implements BundleService {
         List<BundleItem> items = buildItems(bundle, itemRequests, companyId);
         bundle.setItems(items);
 
-        BigDecimal price = request.getPrice() != null
-                ? request.getPrice()
-                : computePrice(items);
+        BigDecimal componentTotal = computePrice(items);
+        BigDecimal price = request.getPrice() != null ? request.getPrice() : componentTotal;
+        if (price.compareTo(BigDecimal.ZERO) < 0) {
+            throw new backend.exceptions.http.BadRequestException("Bundle price cannot be negative");
+        }
+        if (price.compareTo(componentTotal) > 0) {
+            throw new backend.exceptions.http.BadRequestException(
+                    "Bundle price cannot exceed the sum of component prices (" + componentTotal + ")");
+        }
         bundle.setPrice(price);
 
         if (request.getCompareAtPrice() != null) bundle.setCompareAtPrice(request.getCompareAtPrice());
@@ -141,11 +147,20 @@ public class BundleServiceImpl implements BundleService {
             bundle.getItems().addAll(newItems);
 
             // Recompute price from new items if no explicit price is provided
-            BigDecimal price = request.getPrice() != null
-                    ? request.getPrice()
-                    : computePrice(newItems);
+            BigDecimal componentTotal = computePrice(newItems);
+            BigDecimal price = request.getPrice() != null ? request.getPrice() : componentTotal;
+            if (price.compareTo(BigDecimal.ZERO) < 0 || price.compareTo(componentTotal) > 0) {
+                throw new backend.exceptions.http.BadRequestException(
+                        "Bundle price must be between 0 and the component total (" + componentTotal + ")");
+            }
             bundle.setPrice(price);
         } else if (request.getPrice() != null) {
+            BigDecimal currentComponentTotal = computePrice(bundle.getItems());
+            if (request.getPrice().compareTo(BigDecimal.ZERO) < 0
+                    || request.getPrice().compareTo(currentComponentTotal) > 0) {
+                throw new backend.exceptions.http.BadRequestException(
+                        "Bundle price must be between 0 and the component total (" + currentComponentTotal + ")");
+            }
             bundle.setPrice(request.getPrice());
         }
 

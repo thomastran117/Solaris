@@ -21,23 +21,32 @@ import backend.dtos.responses.support.TicketResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.models.enums.TicketStatus;
+import backend.services.intf.RateLimitService;
 import backend.services.intf.support.SupportTicketService;
 
 @RestController
 @RequestMapping("/support/tickets")
 public class SupportTicketController {
 
-    private final SupportTicketService ticketService;
+    private static final int TICKET_CREATE_LIMIT = 5;
+    private static final int TICKET_MESSAGE_LIMIT = 20;
+    private static final int TICKET_WINDOW_SECONDS = 3600;
 
-    public SupportTicketController(SupportTicketService ticketService) {
+    private final SupportTicketService ticketService;
+    private final RateLimitService rateLimitService;
+
+    public SupportTicketController(SupportTicketService ticketService, RateLimitService rateLimitService) {
         this.ticketService = ticketService;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping
     @RequireAuth
     public ResponseEntity<TicketResponse> createTicket(@Valid @RequestBody CreateTicketRequest request) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.createTicket(resolveUserId(), request));
+            long userId = resolveUserId();
+            rateLimitService.enforce("ticket:create", Long.toString(userId), TICKET_CREATE_LIMIT, TICKET_WINDOW_SECONDS);
+            return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.createTicket(userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -78,7 +87,9 @@ public class SupportTicketController {
     public ResponseEntity<TicketMessageResponse> addMessage(@PathVariable long id,
                                                             @Valid @RequestBody TicketMessageRequest request) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.addMessage(id, resolveUserId(), request));
+            long userId = resolveUserId();
+            rateLimitService.enforce("ticket:message", Long.toString(userId), TICKET_MESSAGE_LIMIT, TICKET_WINDOW_SECONDS);
+            return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.addMessage(id, userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

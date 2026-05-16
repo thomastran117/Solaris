@@ -21,7 +21,8 @@ public interface AuthAuditLogger {
         DEVICE_VERIFIED,
         EMAIL_VERIFIED,
         ROLE_CHANGED,
-        REFUND_ISSUED
+        REFUND_ISSUED,
+        OAUTH_ACCOUNT_LINKED
     }
 
     /**

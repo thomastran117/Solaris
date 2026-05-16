@@ -3,9 +3,9 @@ package backend.controllers.impl.inventory;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
+import backend.services.intf.RateLimitService;
 import backend.services.intf.inventory.StockNotificationService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,17 +18,24 @@ import java.util.List;
 @RequireAuth
 public class StockNotificationController {
 
-    private final StockNotificationService stockNotificationService;
+    private static final int SUBSCRIBE_LIMIT = 30;
+    private static final int SUBSCRIBE_WINDOW_SECONDS = 60;
 
-    public StockNotificationController(StockNotificationService stockNotificationService) {
+    private final StockNotificationService stockNotificationService;
+    private final RateLimitService rateLimitService;
+
+    public StockNotificationController(StockNotificationService stockNotificationService,
+                                       RateLimitService rateLimitService) {
         this.stockNotificationService = stockNotificationService;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping
     public ResponseEntity<StockNotificationResponse> subscribe(
             @Valid @RequestBody SubscribeBackInStockRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(stockNotificationService.subscribe(resolveUserId(), request));
+        long userId = resolveUserId();
+        rateLimitService.enforce("stock:subscribe", Long.toString(userId), SUBSCRIBE_LIMIT, SUBSCRIBE_WINDOW_SECONDS);
+        return ResponseEntity.ok(stockNotificationService.subscribe(userId, request));
     }
 
     @DeleteMapping("/{notificationId}")

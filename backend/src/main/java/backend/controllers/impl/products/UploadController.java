@@ -13,6 +13,7 @@ import backend.dtos.requests.upload.PresignUploadRequest;
 import backend.dtos.responses.upload.PresignUploadResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.services.intf.RateLimitService;
 import backend.services.intf.StorageService;
 
 import jakarta.validation.Valid;
@@ -21,10 +22,15 @@ import jakarta.validation.Valid;
 @RequestMapping("/upload")
 public class UploadController {
 
-    private final StorageService storageService;
+    private static final int PRESIGN_LIMIT = 20;
+    private static final int PRESIGN_WINDOW_SECONDS = 60;
 
-    public UploadController(StorageService storageService) {
+    private final StorageService storageService;
+    private final RateLimitService rateLimitService;
+
+    public UploadController(StorageService storageService, RateLimitService rateLimitService) {
         this.storageService = storageService;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping("/presign")
@@ -32,6 +38,7 @@ public class UploadController {
     public ResponseEntity<PresignUploadResponse> presign(@Valid @RequestBody PresignUploadRequest request) {
         try {
             long userId = resolveUserId();
+            rateLimitService.enforce("upload:presign", Long.toString(userId), PRESIGN_LIMIT, PRESIGN_WINDOW_SECONDS);
             PresignUploadResponse response = storageService.generatePresignedUrl(
                     request.getFolder(),
                     userId,

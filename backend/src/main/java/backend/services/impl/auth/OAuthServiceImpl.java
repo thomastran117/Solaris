@@ -136,6 +136,9 @@ public class OAuthServiceImpl implements OAuthService {
         if (email == null || email.isBlank()) {
             throw new InvalidOAuthTokenException("Missing Google email claim");
         }
+        if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
+            throw new InvalidOAuthTokenException("Google account email is not verified");
+        }
         return new OAuthUser(sub != null ? sub : "", email, (name != null && !name.isBlank()) ? name : email, "google");
     }
 
@@ -167,6 +170,10 @@ public class OAuthServiceImpl implements OAuthService {
         String email = OAuthClaimUtils.getClaim(jwt, "preferred_username", "email");
         if (email == null || email.isBlank()) {
             throw new InvalidOAuthTokenException("Missing Microsoft email claim");
+        }
+        String msEmailVerified = OAuthClaimUtils.getClaim(jwt, "email_verified", null);
+        if ("false".equalsIgnoreCase(msEmailVerified)) {
+            throw new InvalidOAuthTokenException("Microsoft account email is not verified");
         }
         String name = OAuthClaimUtils.getClaim(jwt, "name", null);
         if (name == null || name.isBlank()) {
@@ -211,6 +218,10 @@ public class OAuthServiceImpl implements OAuthService {
         String email = OAuthClaimUtils.getClaim(jwt, "email", null);
         if (email == null || email.isBlank()) {
             throw new InvalidOAuthTokenException("Missing Apple email claim");
+        }
+        String appleEmailVerified = OAuthClaimUtils.getClaim(jwt, "email_verified", null);
+        if ("false".equalsIgnoreCase(appleEmailVerified)) {
+            throw new InvalidOAuthTokenException("Apple account email is not verified");
         }
         String name = OAuthClaimUtils.getClaim(jwt, "name", null);
         if (name == null || name.isBlank()) {

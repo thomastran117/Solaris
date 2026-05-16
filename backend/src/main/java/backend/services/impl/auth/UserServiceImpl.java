@@ -12,17 +12,25 @@ import backend.models.core.User;
 import backend.models.enums.UserRole;
 import backend.models.enums.UserStatus;
 import backend.repositories.UserRepository;
+import backend.services.intf.AuthAuditLogger;
 import backend.services.intf.auth.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class UserServiceImpl implements UserService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder  passwordEncoder;
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
 
-    public UserServiceImpl(UserRepository userRepository, PasswordEncoder  passwordEncoder) {
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final AuthAuditLogger auditLogger;
+
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                           AuthAuditLogger auditLogger) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditLogger = auditLogger;
     }
 
     @Override
@@ -115,6 +123,10 @@ public class UserServiceImpl implements UserService {
 
         if (existing.isPresent()) {
             validateAccountAccessible(existing.get());
+            if (existing.get().getPassword() != null) {
+                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                        Long.toString(existing.get().getId()), "provider=google");
+            }
             return existing.get();
         }
 
@@ -131,6 +143,10 @@ public class UserServiceImpl implements UserService {
 
         if (existing.isPresent()) {
             validateAccountAccessible(existing.get());
+            if (existing.get().getPassword() != null) {
+                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                        Long.toString(existing.get().getId()), "provider=microsoft");
+            }
             return existing.get();
         }
 
@@ -147,6 +163,10 @@ public class UserServiceImpl implements UserService {
 
         if (existing.isPresent()) {
             validateAccountAccessible(existing.get());
+            if (existing.get().getPassword() != null) {
+                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                        Long.toString(existing.get().getId()), "provider=apple");
+            }
             return existing.get();
         }
 

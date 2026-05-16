@@ -231,8 +231,13 @@ public class OrderIssueServiceImpl implements OrderIssueService {
         requireNonTerminal(issue);
 
         Long customerId = issue.getOrder().getUser().getId();
+        // Deduct any credit the customer already spent on this order so we don't
+        // return more than they actually paid. E.g. $100 order paid $30 credit +
+        // $70 Stripe → compensation is capped at $100 - $30 = $70 new credit.
+        long creditAlreadyApplied = issue.getOrder().getCreditAppliedCents();
+        long netCompensation = Math.max(0L, request.amountCents() - creditAlreadyApplied);
         IssueCreditRequest creditRequest = new IssueCreditRequest(
-                request.amountCents(),
+                netCompensation,
                 CreditEntryType.COMPENSATION_ISSUED,
                 request.reason(),
                 null

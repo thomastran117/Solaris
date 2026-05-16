@@ -12,11 +12,14 @@ import backend.models.core.CustomerCredit;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CustomerCreditRepository extends JpaRepository<CustomerCredit, Long> {
 
     List<CustomerCredit> findAllByUserIdOrderByCreatedAtDesc(long userId);
+
+    Optional<CustomerCredit> findFirstBySourceOrderIssueId(Long sourceOrderIssueId);
 
     /** Sum of all non-expired, non-reversed credit entries for a user — the current balance. */
     @Query("SELECT COALESCE(SUM(c.amountCents), 0) FROM CustomerCredit c " +

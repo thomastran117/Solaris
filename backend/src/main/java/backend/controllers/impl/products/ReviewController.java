@@ -13,8 +13,10 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.review.ReviewResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.services.intf.RateLimitService;
 import backend.services.intf.products.ReviewService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,10 +25,15 @@ import jakarta.validation.constraints.Min;
 @RequestMapping("/companies/{companyId}/products/{productId}/reviews")
 public class ReviewController {
 
-    private final ReviewService reviewService;
+    private static final int REVIEW_LIMIT = 5;
+    private static final int REVIEW_WINDOW_SECONDS = 3600;
 
-    public ReviewController(ReviewService reviewService) {
+    private final ReviewService reviewService;
+    private final RateLimitService rateLimitService;
+
+    public ReviewController(ReviewService reviewService, RateLimitService rateLimitService) {
         this.reviewService = reviewService;
+        this.rateLimitService = rateLimitService;
     }
 
     @GetMapping
@@ -66,9 +73,11 @@ public class ReviewController {
     public ResponseEntity<ReviewResponse> createReview(
             @PathVariable long companyId,
             @PathVariable long productId,
-            @Valid @RequestBody CreateReviewRequest request) {
+            @Valid @RequestBody CreateReviewRequest request,
+            HttpServletRequest httpRequest) {
         try {
             long userId = resolveUserId();
+            rateLimitService.enforce("review:create", Long.toString(userId), REVIEW_LIMIT, REVIEW_WINDOW_SECONDS);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(reviewService.createReview(companyId, productId, userId, request));
         } catch (AppHttpException e) {

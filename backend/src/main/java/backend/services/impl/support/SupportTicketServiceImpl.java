@@ -135,7 +135,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         User author = userRepository.findById(authorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + authorUserId));
 
-        SupportTicket ticket = ticketRepository.findById(ticketId)
+        SupportTicket ticket = ticketRepository.findByIdForUpdate(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found: " + ticketId));
 
         boolean isStaff = SecurityUtils.isStaff(author);

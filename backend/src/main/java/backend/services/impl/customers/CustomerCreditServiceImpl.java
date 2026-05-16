@@ -39,6 +39,15 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
     @Transactional
     public CreditEntryResponse issueCredit(long userId, IssueCreditRequest request,
                                            long issuedByUserId, Long sourceTicketId, Long sourceOrderIssueId) {
+        if (sourceOrderIssueId != null) {
+            java.util.Optional<CustomerCredit> existing = creditRepository.findFirstBySourceOrderIssueId(sourceOrderIssueId);
+            if (existing.isPresent()) {
+                log.info("Idempotent credit re-request for orderIssue={} — returning existing entry {}",
+                        sourceOrderIssueId, existing.get().getId());
+                return toResponse(existing.get());
+            }
+        }
+
         User customer = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
         User issuedBy = userRepository.findById(issuedByUserId)
