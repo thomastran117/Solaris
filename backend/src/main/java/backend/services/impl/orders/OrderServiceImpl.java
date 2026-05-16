@@ -35,6 +35,7 @@ import backend.models.core.OrderCompensation;
 import backend.models.core.OrderItem;
 import backend.models.core.SubOrder;
 import backend.models.enums.SubOrderStatus;
+import backend.models.enums.VendorStatus;
 import backend.models.core.Product;
 import backend.models.core.ProductBundle;
 import backend.models.core.ProductVariant;
@@ -2588,6 +2589,11 @@ public class OrderServiceImpl implements OrderService {
             if (vendor == null) {
                 log.warn("[MARKETPLACE] MarketplaceVendor {} not found — skipping SubOrder creation for order {}",
                         mvId, order.getId());
+                continue;
+            }
+            if (vendor.getStatus() != VendorStatus.APPROVED) {
+                log.warn("[MARKETPLACE] MarketplaceVendor {} has status {} — skipping SubOrder creation for order {}",
+                        mvId, vendor.getStatus(), order.getId());
                 continue;
             }
 

@@ -9,6 +9,8 @@ import backend.models.core.Subscription;
 import backend.models.core.User;
 import backend.models.enums.SubscriptionStatus;
 import backend.repositories.SubscriptionRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -23,6 +25,9 @@ import java.util.List;
 public class SubscriptionRenewalReminderScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(SubscriptionRenewalReminderScheduler.class);
+
+    @Value("${app.subscription.dunning.grace-period-days:14}")
+    private int dunningGracePeriodDays;
 
     private final SubscriptionRepository subscriptionRepository;
 
@@ -52,6 +57,38 @@ public class SubscriptionRenewalReminderScheduler {
                         sub.getId(), user.getId(), user.getEmail(), sub.getNextBillingAt());
             } catch (Exception e) {
                 log.warn("Renewal reminder failed for subscription {}: {}", sub.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Auto-cancels subscriptions that have been PAST_DUE longer than
+     * {@code app.subscription.dunning.grace-period-days} (default 14). Stripe drives
+     * the actual billing dunning; this pass handles the local status update for
+     * subscriptions whose {@code customer.subscription.deleted} webhook was missed or
+     * whose Stripe dunning cycle ended without a status-change event reaching us.
+     */
+    @Scheduled(cron = "${app.subscription.dunning.cron:0 0 6 * * *}")
+    @Transactional
+    public void cancelExpiredPastDueSubscriptions() {
+        Instant cutoff = Instant.now().minus(dunningGracePeriodDays, ChronoUnit.DAYS);
+        List<Subscription> expired = subscriptionRepository
+                .findAllByStatusAndPastDueSinceBefore(SubscriptionStatus.PAST_DUE, cutoff);
+
+        if (expired.isEmpty()) return;
+
+        log.info("[DUNNING] Auto-cancelling {} subscriptions past grace period ({} days)",
+                expired.size(), dunningGracePeriodDays);
+
+        for (Subscription sub : expired) {
+            try {
+                sub.setStatus(SubscriptionStatus.CANCELLED);
+                sub.setCancelledAt(Instant.now());
+                sub.setNextBillingAt(null);
+                subscriptionRepository.save(sub);
+                log.info("[DUNNING] Cancelled subscription {} (pastDueSince={})", sub.getId(), sub.getPastDueSince());
+            } catch (Exception e) {
+                log.error("[DUNNING] Failed to cancel subscription {}: {}", sub.getId(), e.getMessage());
             }
         }
     }

@@ -12,6 +12,8 @@ import org.springframework.stereotype.Repository;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByStripeCustomerId(String stripeCustomerId);
+
     /** Returns the segment ids a user belongs to. Empty for anonymous/unsegmented users. */
     @Query("SELECT s.id FROM User u JOIN u.segments s WHERE u.id = :userId")
     List<Long> findSegmentIdsByUserId(@Param("userId") long userId);

@@ -430,7 +430,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     public void handleInvoicePaid(String stripeInvoiceId, String stripeSubscriptionId, long amountPaidCents) {
         if (stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) return;
 
-        Subscription sub = subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId).orElse(null);
+        Subscription sub = subscriptionRepository.findByStripeSubscriptionIdForUpdate(stripeSubscriptionId).orElse(null);
         if (sub == null) {
             log.warn("invoice.paid for unknown subscription {}", stripeSubscriptionId);
             return;
@@ -463,6 +463,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         }
 
         sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setPastDueSince(null);
         sub.setSkipNextCycle(false);
         SubscriptionResult fresh = paymentService.retrieveSubscription(stripeSubscriptionId);
         sub.setCurrentPeriodStart(fresh.currentPeriodStart());
@@ -479,6 +480,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         if (sub == null) return;
 
         sub.setStatus(SubscriptionStatus.PAST_DUE);
+        if (sub.getPastDueSince() == null) {
+            sub.setPastDueSince(Instant.now());
+        }
         subscriptionRepository.save(sub);
 
         try {
@@ -503,10 +507,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             return; // idempotent
         }
 
-        User user = userRepository.findAll().stream()
-                .filter(u -> stripeCustomerId.equals(u.getStripeCustomerId()))
-                .findFirst()
-                .orElse(null);
+        User user = userRepository.findByStripeCustomerId(stripeCustomerId).orElse(null);
         if (user == null) {
             log.warn("setup_intent.succeeded for unknown stripe customer {}", stripeCustomerId);
             return;

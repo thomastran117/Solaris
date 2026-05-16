@@ -191,7 +191,18 @@ public class VendorPayoutScheduler {
         for (VendorPayout payout : scheduled) {
             try {
                 MarketplaceVendor vendor = marketplaceVendorRepository.findById(payout.getVendorId()).orElse(null);
-                if (vendor == null) continue;
+                if (vendor == null) {
+                    log.warn("[PAYOUT SCHEDULER] Vendor {} not found for payout {} — skipping", payout.getVendorId(), payout.getId());
+                    continue;
+                }
+                if (vendor.getStatus() != VendorStatus.APPROVED) {
+                    log.warn("[PAYOUT SCHEDULER] Vendor {} is {} — skipping payout {}", payout.getVendorId(), vendor.getStatus(), payout.getId());
+                    continue;
+                }
+                if (!vendor.isPayoutsEnabled()) {
+                    log.warn("[PAYOUT SCHEDULER] Vendor {} has payoutsEnabled=false — skipping payout {}", payout.getVendorId(), payout.getId());
+                    continue;
+                }
 
                 long amountCents = payout.getNetAmount()
                         .multiply(BigDecimal.valueOf(100)).longValue();

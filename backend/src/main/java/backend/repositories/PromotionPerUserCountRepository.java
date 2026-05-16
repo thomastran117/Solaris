@@ -35,4 +35,9 @@ public interface PromotionPerUserCountRepository extends JpaRepository<Promotion
     void decrementUserCount(
             @Param("ruleId") long ruleId,
             @Param("userId") long userId);
+
+    @Query(value = "SELECT COALESCE(SUM(count), 0) FROM promotion_per_user_counts " +
+                   "WHERE rule_id = :ruleId AND user_id = :userId",
+           nativeQuery = true)
+    int countByRuleIdAndUserId(@Param("ruleId") long ruleId, @Param("userId") long userId);
 }

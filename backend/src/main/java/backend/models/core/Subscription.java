@@ -38,6 +38,10 @@ public class Subscription {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -98,6 +102,10 @@ public class Subscription {
 
     @Column(nullable = true)
     private Instant cancelledAt;
+
+    /** Set when the subscription first enters PAST_DUE; cleared on successful payment. */
+    @Column(nullable = true)
+    private Instant pastDueSince;
 
     /** When true, the next due invoice will be skipped (we advance the billing anchor in Stripe). */
     @Column(nullable = false)

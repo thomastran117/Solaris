@@ -11,6 +11,7 @@ import backend.models.enums.DiscountStatus;
 import backend.models.enums.DiscountType;
 import backend.models.enums.PromotionRuleType;
 import backend.repositories.CouponRepository;
+import backend.repositories.PromotionPerUserCountRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.services.intf.pricing.PricingEngine;
 import backend.services.pricing.AppliedPromotion;
@@ -62,16 +63,19 @@ public class PricingEngineImpl implements PricingEngine {
     private final PromotionRuleRepository ruleRepository;
     private final CouponRepository couponRepository;
     private final PromotionConfigValidator configValidator;
+    private final PromotionPerUserCountRepository promotionPerUserCountRepository;
     private final Map<backend.models.enums.PromotionRuleType, RuleEvaluator> evaluators;
 
     public PricingEngineImpl(
             PromotionRuleRepository ruleRepository,
             CouponRepository couponRepository,
             PromotionConfigValidator configValidator,
+            PromotionPerUserCountRepository promotionPerUserCountRepository,
             List<RuleEvaluator> evaluatorList) {
         this.ruleRepository = ruleRepository;
         this.couponRepository = couponRepository;
         this.configValidator = configValidator;
+        this.promotionPerUserCountRepository = promotionPerUserCountRepository;
 
         Map<backend.models.enums.PromotionRuleType, RuleEvaluator> map =
                 new EnumMap<>(backend.models.enums.PromotionRuleType.class);
@@ -254,6 +258,15 @@ public class PricingEngineImpl implements PricingEngine {
                 warnings.add("Rule '" + rule.getName() + "' skipped: cart subtotal below minCartAmount");
                 continue;
             }
+
+            if (rule.getMaxUsesPerUser() != null && ctx.userId() != null) {
+                int used = promotionPerUserCountRepository.countByRuleIdAndUserId(rule.getId(), ctx.userId());
+                if (used >= rule.getMaxUsesPerUser()) {
+                    warnings.add("Rule '" + rule.getName() + "' skipped: per-user limit reached");
+                    continue;
+                }
+            }
+
             kept.add(rule);
         }
 
