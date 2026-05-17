@@ -11,9 +11,30 @@ interface Props {
   initialValue?: string;
   placeholder?: string;
   className?: string;
+  /**
+   * Override the suggestion source. When omitted, falls back to the marketplace-scoped
+   * fetch using the current marketplace from Redux. Pass this from a company storefront
+   * to scope suggestions to a single company.
+   */
+  suggestionsFetcher?: (q: string) => Promise<SearchSuggestionsResponse>;
+  /**
+   * Override what happens when a category/brand suggestion is picked. Default behaviour
+   * navigates to /browse?category=… (the marketplace browse page); page-specific callers
+   * can route within their own surface instead.
+   */
+  onSelectCategory?: (cat: string) => void;
+  onSelectBrand?: (brand: string) => void;
 }
 
-export default function SearchBar({ onSearch, initialValue = "", placeholder = "Search products, brands…", className = "" }: Props) {
+export default function SearchBar({
+  onSearch,
+  initialValue = "",
+  placeholder = "Search products, brands…",
+  className = "",
+  suggestionsFetcher,
+  onSelectCategory,
+  onSelectBrand,
+}: Props) {
   const navigate = useNavigate();
   const marketplaceId = useSelector((s: RootState) => s.marketplace.currentMarketplace?.id);
 
@@ -41,20 +62,29 @@ export default function SearchBar({ onSearch, initialValue = "", placeholder = "
 
   const fetchSuggestions = useCallback(
     (q: string) => {
-      if (!marketplaceId || q.length < 2) {
+      if (q.length < 2) {
+        setSuggestions(null);
+        setOpen(false);
+        return;
+      }
+      const fetcher = suggestionsFetcher
+        ? suggestionsFetcher(q)
+        : marketplaceId
+          ? catalogApi.getSuggestions(marketplaceId, q).then((r) => r.data)
+          : null;
+      if (!fetcher) {
         setSuggestions(null);
         setOpen(false);
         return;
       }
       setLoading(true);
-      catalogApi
-        .getSuggestions(marketplaceId, q)
-        .then((r) => {
-          setSuggestions(r.data);
+      fetcher
+        .then((data) => {
+          setSuggestions(data);
           const hasAny =
-            r.data.productNames.length > 0 ||
-            r.data.categories.length > 0 ||
-            r.data.brands.length > 0;
+            data.productNames.length > 0 ||
+            data.categories.length > 0 ||
+            data.brands.length > 0;
           setOpen(hasAny);
         })
         .catch(() => {
@@ -63,7 +93,7 @@ export default function SearchBar({ onSearch, initialValue = "", placeholder = "
         })
         .finally(() => setLoading(false));
     },
-    [marketplaceId]
+    [marketplaceId, suggestionsFetcher]
   );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -86,9 +116,11 @@ export default function SearchBar({ onSearch, initialValue = "", placeholder = "
       setValue(val);
       onSearch(val);
     } else if (type === "category") {
-      navigate(`/browse?category=${encodeURIComponent(val)}`);
+      if (onSelectCategory) onSelectCategory(val);
+      else navigate(`/browse?category=${encodeURIComponent(val)}`);
     } else {
-      navigate(`/browse?brand=${encodeURIComponent(val)}`);
+      if (onSelectBrand) onSelectBrand(val);
+      else navigate(`/browse?brand=${encodeURIComponent(val)}`);
     }
   }
 

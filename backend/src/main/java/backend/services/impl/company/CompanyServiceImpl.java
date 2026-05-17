@@ -130,6 +130,15 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PublicCompanyResponse getPublicCompany(long companyId) {
+        Company company = companyRepository.findById(companyId)
+                .filter(c -> c.getStatus() == CompanyStatus.ACTIVE)
+                .orElseThrow(() -> new ResourceNotFoundException("Company not found"));
+        return toPublicResponse(company);
+    }
+
+    @Override
     @Transactional
     public CompanyResponse createCompany(long ownerId, CreateCompanyRequest request) {
         User owner = userRepository.findById(ownerId)

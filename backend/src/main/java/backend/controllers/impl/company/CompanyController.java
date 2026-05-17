@@ -78,6 +78,21 @@ public class CompanyController {
         }
     }
 
+    /**
+     * Public, anonymous-safe single-company read for the storefront page at
+     * {@code /c/{id}}. Returns 404 for any non-ACTIVE company so existence is not leaked.
+     */
+    @GetMapping("/{id}/public")
+    public ResponseEntity<PublicCompanyResponse> getPublicCompany(@PathVariable long id) {
+        try {
+            return ResponseEntity.ok(companyService.getPublicCompany(id));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @GetMapping("/{id}")
     @RequireAuth
     public ResponseEntity<CompanyResponse> getCompany(@PathVariable long id) {

@@ -21,6 +21,12 @@ public interface CompanyService {
     PagedResponse<PublicCompanyResponse> searchPublicCompanies(String q, String industry, String country, CompanyStatus status, int page, int size, String sort, String direction);
 
     CompanyResponse getCompany(long companyId, long ownerId);
+
+    /**
+     * Public, anonymous-safe single-company read. Returns 404 if the company is not
+     * {@code ACTIVE} (rather than 403) so non-active companies do not leak existence.
+     */
+    PublicCompanyResponse getPublicCompany(long companyId);
     List<CompanyResponse> getCompaniesByIds(List<Long> ids, long ownerId);
     CompanyResponse createCompany(long ownerId, CreateCompanyRequest request);
     CompanyResponse updateCompany(long companyId, long ownerId, UpdateCompanyRequest request);

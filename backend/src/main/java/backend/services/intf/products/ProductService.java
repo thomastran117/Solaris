@@ -72,6 +72,16 @@ public interface ProductService {
             BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, Long vendorId,
             int page, int size, String sort, String direction);
 
+    /**
+     * Single-company storefront search. Same ES query shape as
+     * {@link #searchMarketplaceCatalog} but filtered by {@code companyId} only and
+     * restricted to ACTIVE products — used by the public {@code /c/{id}} page.
+     */
+    CatalogSearchResponse searchCompanyCatalog(
+            long companyId, String q, String category, String brand,
+            BigDecimal minPrice, BigDecimal maxPrice,
+            int page, int size, String sort, String direction);
+
     /** Returns a single marketplace product detail including vendor information. */
     MarketplaceCatalogProductResponse getMarketplaceProduct(long marketplaceId, long productId);
 

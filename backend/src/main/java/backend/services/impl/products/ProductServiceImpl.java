@@ -1010,6 +1010,109 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
+    public CatalogSearchResponse searchCompanyCatalog(
+            long companyId, String q, String category, String brand,
+            BigDecimal minPrice, BigDecimal maxPrice,
+            int page, int size, String sort, String direction) {
+
+        if (!companyRepository.existsById(companyId)) {
+            throw new ResourceNotFoundException("Company not found");
+        }
+        final int clampedSize = Math.min(size, 50);
+        String cacheKey = String.format("company:search:%d:%s:%s:%s:%s:%s:%d:%d:%s:%s",
+                companyId, q, category, brand, minPrice, maxPrice,
+                page, clampedSize, sort, direction);
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
+            boolean explicitSort = sort != null && SORTABLE_FIELDS.contains(sort);
+            String sortField = explicitSort ? sort : "createdAt";
+            Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            Pageable esPageable = explicitSort
+                    ? PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField))
+                    : PageRequest.of(page, clampedSize);
+            Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
+
+            // --- Elasticsearch path ---
+            try {
+                BoolQuery.Builder bq = new BoolQuery.Builder()
+                        .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery())
+                        .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery());
+
+                if (q != null && !q.isBlank()) {
+                    bq.must(MultiMatchQuery.of(mm -> mm
+                            .fields("name^3", "description", "brand^2", "category", "tags", "vendorName")
+                            .query(q)
+                            .fuzziness("AUTO"))._toQuery());
+                }
+                if (category != null) bq.filter(TermQuery.of(t -> t.field("category").value(category))._toQuery());
+                if (brand    != null) bq.filter(TermQuery.of(t -> t.field("brand").value(brand))._toQuery());
+                if (minPrice != null || maxPrice != null) {
+                    final Double minVal = minPrice != null ? minPrice.doubleValue() : null;
+                    final Double maxVal = maxPrice != null ? maxPrice.doubleValue() : null;
+                    bq.filter(RangeQuery.of(r -> r.number(n -> {
+                        n.field("price");
+                        if (minVal != null) n.gte(minVal);
+                        if (maxVal != null) n.lte(maxVal);
+                        return n;
+                    }))._toQuery());
+                }
+
+                NativeQuery esQuery = NativeQuery.builder()
+                        .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
+                        .withPageable(esPageable)
+                        .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
+                        .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
+                        .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
+                                .field("price")
+                                .ranges(rb -> rb.to(25.0))
+                                .ranges(rb -> rb.from(25.0).to(50.0))
+                                .ranges(rb -> rb.from(50.0).to(100.0))
+                                .ranges(rb -> rb.from(100.0).to(200.0))
+                                .ranges(rb -> rb.from(200.0)))))
+                        .build();
+
+                SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
+                List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
+
+                List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
+                Map<Long, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+                Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+
+                List<MarketplaceCatalogProductResponse> content = ids.stream()
+                        .filter(productMap::containsKey)
+                        .map(id -> toCatalogResponse(productMap.get(id), null, promoMap.get(id)))
+                        .toList();
+
+                SearchFacets facets = extractFacets(hits);
+                return new CatalogSearchResponse(new PageImpl<>(content, pageable, hits.getTotalHits()), facets);
+
+            } catch (Exception e) {
+                log.warn("[COMPANY CATALOG SEARCH] Elasticsearch unavailable: {}", e.getMessage());
+                boolean hasFilters = (q != null && !q.isBlank())
+                        || category != null || brand != null
+                        || minPrice != null || maxPrice != null;
+                if (hasFilters) {
+                    throw new ServiceUnavaliableException("Search is temporarily unavailable. Please try again shortly.");
+                }
+                log.warn("[COMPANY CATALOG SEARCH] Falling back to unfiltered database listing");
+            }
+
+            // --- JPA fallback (unfiltered, ACTIVE-only) ---
+            Page<Product> productPage = productRepository.findAllByCompanyId(companyId, pageable);
+            List<Product> active = productPage.getContent().stream()
+                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
+                    .toList();
+            Map<Long, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(active);
+            List<MarketplaceCatalogProductResponse> content = active.stream()
+                    .map(p -> toCatalogResponse(p, null, jpaPromoMap.get(p.getId())))
+                    .toList();
+            return new CatalogSearchResponse(
+                    new PageImpl<>(content, pageable, productPage.getTotalElements()),
+                    new SearchFacets(List.of(), List.of(), List.of()));
+        }, new TypeReference<CatalogSearchResponse>() {});
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public MarketplaceCatalogProductResponse getMarketplaceProduct(long marketplaceId, long productId) {
         String cacheKey = "marketplace:product:" + marketplaceId + ":" + productId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {

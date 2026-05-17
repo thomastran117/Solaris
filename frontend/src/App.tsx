@@ -9,6 +9,7 @@ import AuthCallback from "./pages/AuthCallback";
 import HelloTestPage from "./pages/HelloTestPage";
 import DashboardPage from "./pages/DashboardPage";
 import BrowsePage from "./pages/BrowsePage";
+import CompanyPage from "./pages/CompanyPage";
 import ProductPage from "./pages/ProductPage";
 import SavedListsPage from "./pages/SavedListsPage";
 import SavedListDetailPage from "./pages/SavedListDetailPage";
@@ -58,6 +59,7 @@ function App() {
             />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/browse" element={<BrowsePage />} />
+            <Route path="/c/:id" element={<CompanyPage />} />
             <Route path="/products/:id" element={<ProductPage />} />
             <Route path="/lists" element={<SavedListsPage />} />
             <Route path="/lists/:id" element={<SavedListDetailPage />} />

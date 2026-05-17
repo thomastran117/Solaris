@@ -106,4 +106,71 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
             }
         }, new TypeReference<SearchSuggestionsResponse>() {});
     }
+
+    @Override
+    public SearchSuggestionsResponse getCompanySuggestions(long companyId, String q, int limit) {
+        if (q == null || q.isBlank() || q.length() < 2) {
+            return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
+        }
+        int clampedLimit = Math.min(limit, 10);
+        String cacheKey = String.format("suggestions:company:%d:%s:%d", companyId, q.toLowerCase(), clampedLimit);
+
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
+            try {
+                BoolQuery.Builder bq = new BoolQuery.Builder()
+                        .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery())
+                        .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery())
+                        .must(co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery.of(m -> m
+                                .field("nameCompletion")
+                                .query(q))._toQuery());
+
+                NativeQuery query = NativeQuery.builder()
+                        .withQuery(bq.build()._toQuery())
+                        .withPageable(PageRequest.of(0, clampedLimit))
+                        .withAggregation("categories",
+                                Aggregation.of(a -> a.terms(t -> t.field("category").size(5))))
+                        .withAggregation("brands",
+                                Aggregation.of(a -> a.terms(t -> t.field("brand").size(5))))
+                        .build();
+
+                SearchHits<ProductDocument> hits = elasticsearchOperations.search(query, ProductDocument.class);
+
+                List<String> productNames = hits.stream()
+                        .map(h -> h.getContent().getName())
+                        .filter(name -> name != null && !name.isBlank())
+                        .distinct()
+                        .limit(clampedLimit)
+                        .toList();
+
+                List<String> categories = List.of();
+                List<String> brands = List.of();
+
+                if (hits.getAggregations() != null) {
+                    ElasticsearchAggregations aggs = (ElasticsearchAggregations) hits.getAggregations();
+                    Map<String, ElasticsearchAggregation> aggMap = aggs.aggregationsAsMap();
+
+                    if (aggMap.containsKey("categories")) {
+                        categories = aggMap.get("categories").aggregation().getAggregate()
+                                .sterms().buckets().array().stream()
+                                .map(b -> b.key().stringValue())
+                                .filter(k -> k != null && !k.isBlank())
+                                .toList();
+                    }
+                    if (aggMap.containsKey("brands")) {
+                        brands = aggMap.get("brands").aggregation().getAggregate()
+                                .sterms().buckets().array().stream()
+                                .map(b -> b.key().stringValue())
+                                .filter(k -> k != null && !k.isBlank())
+                                .toList();
+                    }
+                }
+
+                return new SearchSuggestionsResponse(productNames, categories, brands);
+
+            } catch (Exception e) {
+                log.warn("[SUGGESTIONS] Elasticsearch unavailable: {}", e.getMessage());
+                return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
+            }
+        }, new TypeReference<SearchSuggestionsResponse>() {});
+    }
 }

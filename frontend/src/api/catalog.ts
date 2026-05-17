@@ -287,4 +287,14 @@ export const catalogApi = {
       `/marketplaces/${marketplaceId}/catalog/products/${productId}/availability`,
       { params: opts }
     ),
+
+  /** ES-backed search scoped to a single company's storefront at /c/:id. */
+  companyCatalogSearch: (companyId: number, params: CatalogSearchParams = {}) =>
+    api.get<CatalogSearchResponse>(`/companies/${companyId}/catalog/search`, { params }),
+
+  getCompanySuggestions: (companyId: number, q: string, limit = 8) =>
+    api.get<SearchSuggestionsResponse>(
+      `/companies/${companyId}/catalog/search/suggestions`,
+      { params: { q, limit } }
+    ),
 };
