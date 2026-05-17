@@ -1,11 +1,14 @@
 package backend.services.impl;
 
 import backend.kafka.workers.ProductIndexingService;
+import backend.kafka.workers.ReviewIndexingService;
 import backend.models.core.IndexingFailure;
 import backend.models.enums.IndexingFailureStatus;
 import backend.repositories.BundleRepository;
 import backend.repositories.IndexingFailureRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.ProductReviewRepository;
+import backend.repositories.ReviewMediaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,17 +26,26 @@ public class IndexingRetryScheduler {
     private final IndexingFailureRepository failureRepository;
     private final ProductRepository productRepository;
     private final BundleRepository bundleRepository;
+    private final ProductReviewRepository reviewRepository;
+    private final ReviewMediaRepository mediaRepository;
     private final ProductIndexingService productIndexingService;
+    private final ReviewIndexingService reviewIndexingService;
 
     public IndexingRetryScheduler(
             IndexingFailureRepository failureRepository,
             ProductRepository productRepository,
             BundleRepository bundleRepository,
-            ProductIndexingService productIndexingService) {
+            ProductReviewRepository reviewRepository,
+            ReviewMediaRepository mediaRepository,
+            ProductIndexingService productIndexingService,
+            ReviewIndexingService reviewIndexingService) {
         this.failureRepository = failureRepository;
         this.productRepository = productRepository;
         this.bundleRepository = bundleRepository;
+        this.reviewRepository = reviewRepository;
+        this.mediaRepository = mediaRepository;
         this.productIndexingService = productIndexingService;
+        this.reviewIndexingService = reviewIndexingService;
     }
 
     @Scheduled(fixedDelayString = "${app.elasticsearch.retry.interval-ms:60000}")
@@ -88,19 +100,37 @@ public class IndexingRetryScheduler {
 
     private boolean attempt(IndexingFailure f) {
         try {
-            if ("PRODUCT".equals(f.getDocumentType())) {
-                if ("INDEX".equals(f.getOperation())) {
-                    productRepository.findById(f.getDocumentId())
-                            .ifPresent(p -> productIndexingService.indexProduct(p, f.getCompanyId()));
-                } else {
-                    productIndexingService.removeProduct(f.getDocumentId());
+            switch (f.getDocumentType()) {
+                case "PRODUCT" -> {
+                    if ("INDEX".equals(f.getOperation())) {
+                        productRepository.findById(f.getDocumentId())
+                                .ifPresent(p -> productIndexingService.indexProduct(p, f.getCompanyId()));
+                    } else {
+                        productIndexingService.removeProduct(f.getDocumentId());
+                    }
                 }
-            } else {
-                if ("INDEX".equals(f.getOperation())) {
-                    bundleRepository.findById(f.getDocumentId())
-                            .ifPresent(b -> productIndexingService.indexBundle(b));
-                } else {
-                    productIndexingService.removeBundle(f.getDocumentId());
+                case "BUNDLE" -> {
+                    if ("INDEX".equals(f.getOperation())) {
+                        bundleRepository.findById(f.getDocumentId())
+                                .ifPresent(b -> productIndexingService.indexBundle(b));
+                    } else {
+                        productIndexingService.removeBundle(f.getDocumentId());
+                    }
+                }
+                case "REVIEW" -> {
+                    if ("INDEX".equals(f.getOperation())) {
+                        reviewRepository.findById(f.getDocumentId()).ifPresent(r -> {
+                            boolean hasMedia = mediaRepository.countByReviewId(r.getId()) > 0;
+                            reviewIndexingService.indexReview(r, hasMedia);
+                        });
+                    } else {
+                        reviewIndexingService.removeReview(f.getDocumentId());
+                    }
+                }
+                default -> {
+                    log.warn("[SEARCH RETRY] Unknown documentType '{}' on failure {} — leaving as-is",
+                            f.getDocumentType(), f.getId());
+                    return false;
                 }
             }
             return true;

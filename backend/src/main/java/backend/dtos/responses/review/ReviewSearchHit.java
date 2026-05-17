@@ -8,19 +8,22 @@ import java.util.List;
 
 @Getter
 @AllArgsConstructor
-public class ReviewResponse {
+public class ReviewSearchHit {
     private Long id;
     private Long productId;
     private Long reviewerId;
-    private String reviewerFirstName;
-    private String reviewerLastName;
+    private String reviewerName;
     private int rating;
     private String title;
     private String body;
-    private String status;
     private boolean verifiedPurchase;
+    private boolean hasMedia;
     private int helpfulCount;
-    private List<ReviewMediaResponse> media;
+    private String status;
     private Instant createdAt;
     private Instant updatedAt;
+    /** Highlight fragments keyed by field name (title, body). Empty if no highlights matched. */
+    private List<String> titleHighlights;
+    private List<String> bodyHighlights;
+    private double relevanceScore;
 }

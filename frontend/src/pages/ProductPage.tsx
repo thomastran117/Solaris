@@ -8,6 +8,7 @@ import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
 import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
+import ReviewsSection from "../components/reviews/ReviewsSection";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
 import { useNavigate } from "react-router-dom";
@@ -364,6 +365,10 @@ export default function ProductPage() {
             ))}
           </motion.div>
         )}
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-6xl">
+        <ReviewsSection companyId={product.companyId} productId={product.id} />
       </div>
 
       <SaveToListModal

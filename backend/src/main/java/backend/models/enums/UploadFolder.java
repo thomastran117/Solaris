@@ -5,6 +5,7 @@ public enum UploadFolder {
     PRODUCT_THUMBNAIL("product-thumbnails"),
     PRODUCT_IMAGE("product-images"),
     RETURN_EVIDENCE("return-evidence"),
+    REVIEW_MEDIA("review-media"),
     IMPORT_CSV("imports/csv"),
     IMPORT_ERROR_REPORT("imports/errors");
 

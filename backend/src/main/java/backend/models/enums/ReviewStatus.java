@@ -2,5 +2,7 @@ package backend.models.enums;
 
 public enum ReviewStatus {
     PUBLISHED,
-    HIDDEN
+    HIDDEN,
+    PENDING_MODERATION,
+    REMOVED
 }

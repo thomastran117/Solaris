@@ -1,0 +1,63 @@
+package backend.documents;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
+
+import java.time.Instant;
+
+@Document(indexName = "reviews")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class ReviewDocument {
+
+    @Id
+    private Long id;
+
+    @Field(type = FieldType.Long)
+    private Long productId;
+
+    @Field(type = FieldType.Long)
+    private Long companyId;
+
+    @Field(type = FieldType.Long)
+    private Long marketplaceId;
+
+    @Field(type = FieldType.Long)
+    private Long reviewerId;
+
+    @Field(type = FieldType.Keyword)
+    private String reviewerName;
+
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String title;
+
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String body;
+
+    @Field(type = FieldType.Integer)
+    private int rating;
+
+    private boolean verifiedPurchase;
+
+    private boolean hasMedia;
+
+    @Field(type = FieldType.Integer)
+    private int helpfulCount;
+
+    @Field(type = FieldType.Keyword)
+    private String status;
+
+    @Field(type = FieldType.Date)
+    private Instant createdAt;
+
+    @Field(type = FieldType.Date)
+    private Instant updatedAt;
+}

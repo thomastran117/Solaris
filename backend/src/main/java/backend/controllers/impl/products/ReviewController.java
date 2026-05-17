@@ -7,14 +7,26 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import backend.annotations.requireAuth.RequireAuth;
+import backend.dtos.requests.review.AttachReviewMediaRequest;
 import backend.dtos.requests.review.CreateReviewRequest;
+import backend.dtos.requests.review.ReportReviewRequest;
 import backend.dtos.requests.review.UpdateReviewRequest;
 import backend.dtos.responses.general.PagedResponse;
+import backend.dtos.responses.review.HelpfulVoteResponse;
+import backend.dtos.responses.review.ReviewMediaResponse;
 import backend.dtos.responses.review.ReviewResponse;
+import backend.dtos.responses.review.ReviewSearchHit;
+import backend.dtos.responses.review.ReviewSummaryResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.RateLimitService;
+import backend.services.intf.products.ReviewMediaService;
+import backend.services.intf.products.ReviewReportService;
+import backend.services.intf.products.ReviewSearchService;
 import backend.services.intf.products.ReviewService;
+import backend.services.intf.products.ReviewVoteService;
+
+import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,12 +42,26 @@ public class ReviewController {
 
     private static final int REVIEW_LIMIT = 5;
     private static final int REVIEW_WINDOW_SECONDS = 3600;
+    private static final int VOTE_LIMIT = 60;
+    private static final int VOTE_WINDOW_SECONDS = 3600;
+    private static final int REPORT_LIMIT = 5;
+    private static final int REPORT_WINDOW_SECONDS = 86400;
 
     private final ReviewService reviewService;
+    private final ReviewVoteService reviewVoteService;
+    private final ReviewMediaService reviewMediaService;
+    private final ReviewReportService reviewReportService;
+    private final ReviewSearchService reviewSearchService;
     private final RateLimitService rateLimitService;
 
-    public ReviewController(ReviewService reviewService, RateLimitService rateLimitService) {
+    public ReviewController(ReviewService reviewService, ReviewVoteService reviewVoteService,
+                            ReviewMediaService reviewMediaService, ReviewReportService reviewReportService,
+                            ReviewSearchService reviewSearchService, RateLimitService rateLimitService) {
         this.reviewService = reviewService;
+        this.reviewVoteService = reviewVoteService;
+        this.reviewMediaService = reviewMediaService;
+        this.reviewReportService = reviewReportService;
+        this.reviewSearchService = reviewSearchService;
         this.rateLimitService = rateLimitService;
     }
 
@@ -46,9 +72,46 @@ public class ReviewController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
             @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
-            @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction,
+            @RequestParam(required = false) List<Integer> rating,
+            @RequestParam(required = false) Boolean verifiedOnly,
+            @RequestParam(required = false) Boolean hasMedia) {
         try {
-            return ResponseEntity.ok(reviewService.getReviews(companyId, productId, page, size, sort, direction));
+            return ResponseEntity.ok(
+                    reviewService.getReviews(companyId, productId, page, size, sort, direction, rating, verifiedOnly, hasMedia));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<PagedResponse<ReviewSearchHit>> searchReviews(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) List<Integer> rating,
+            @RequestParam(required = false) Boolean verifiedOnly,
+            @RequestParam(defaultValue = "relevance") @Pattern(regexp = "^[a-zA-Z]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        try {
+            return ResponseEntity.ok(
+                    reviewSearchService.search(companyId, productId, q, rating, verifiedOnly, sort, page, size));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<ReviewSummaryResponse> getSummary(
+            @PathVariable long companyId,
+            @PathVariable long productId) {
+        try {
+            return ResponseEntity.ok(reviewService.getReviewSummary(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -114,6 +177,94 @@ public class ReviewController {
         try {
             long userId = resolveUserId();
             reviewService.deleteReview(companyId, productId, userId);
+            return ResponseEntity.noContent().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{reviewId}/helpful")
+    @RequireAuth
+    public ResponseEntity<HelpfulVoteResponse> voteHelpful(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @PathVariable long reviewId) {
+        try {
+            long userId = resolveUserId();
+            rateLimitService.enforce("review:vote", Long.toString(userId), VOTE_LIMIT, VOTE_WINDOW_SECONDS);
+            return ResponseEntity.ok(reviewVoteService.voteHelpful(reviewId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @DeleteMapping("/{reviewId}/helpful")
+    @RequireAuth
+    public ResponseEntity<HelpfulVoteResponse> removeHelpful(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @PathVariable long reviewId) {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.ok(reviewVoteService.removeHelpful(reviewId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{reviewId}/report")
+    @RequireAuth
+    public ResponseEntity<Void> reportReview(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @PathVariable long reviewId,
+            @Valid @RequestBody ReportReviewRequest request) {
+        try {
+            long userId = resolveUserId();
+            rateLimitService.enforce("review:report", Long.toString(userId), REPORT_LIMIT, REPORT_WINDOW_SECONDS);
+            reviewReportService.reportReview(companyId, productId, reviewId, userId, request);
+            return ResponseEntity.accepted().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{reviewId}/media")
+    @RequireAuth
+    public ResponseEntity<ReviewMediaResponse> attachMedia(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @PathVariable long reviewId,
+            @Valid @RequestBody AttachReviewMediaRequest request) {
+        try {
+            long userId = resolveUserId();
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(reviewMediaService.attachMedia(companyId, productId, reviewId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @DeleteMapping("/{reviewId}/media/{mediaId}")
+    @RequireAuth
+    public ResponseEntity<Void> deleteMedia(
+            @PathVariable long companyId,
+            @PathVariable long productId,
+            @PathVariable long reviewId,
+            @PathVariable long mediaId) {
+        try {
+            long userId = resolveUserId();
+            reviewMediaService.deleteMedia(companyId, productId, reviewId, mediaId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
             throw e;
