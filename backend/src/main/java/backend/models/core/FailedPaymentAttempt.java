@@ -9,6 +9,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Velocity table appended to on every {@code payment_intent.payment_failed} webhook.
@@ -27,14 +28,15 @@ import java.time.Instant;
 public class FailedPaymentAttempt {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID userId;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID orderId;
 
     /** Best-effort IP copied from the {@code RiskAssessment} written at checkout. Null if assessment missing. */
     @Column(nullable = true, length = 45)
@@ -50,7 +52,7 @@ public class FailedPaymentAttempt {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    public FailedPaymentAttempt(Long userId, Long orderId, String ip, String paymentIntentId, String failureReason) {
+    public FailedPaymentAttempt(UUID userId, UUID orderId, String ip, String paymentIntentId, String failureReason) {
         this.userId = userId;
         this.orderId = orderId;
         this.ip = ip;

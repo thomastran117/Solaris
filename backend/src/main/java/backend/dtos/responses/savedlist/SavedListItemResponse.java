@@ -4,15 +4,16 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class SavedListItemResponse {
-    private Long id;
-    private Long productId;
+    private UUID id;
+    private UUID productId;
     private String productName;
     private String productThumbnailUrl;
-    private Long variantId;
+    private UUID variantId;
     private String variantSku;
     private int quantity;
     private String note;

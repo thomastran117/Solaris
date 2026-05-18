@@ -1,5 +1,6 @@
 package backend.controllers.impl.orders;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -83,13 +84,13 @@ public class OrderController {
             @Valid @RequestBody CreateOrderRequest request,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
 
             // Idempotency: if the caller already created an order under this key, return
             // it directly so a retried POST doesn't charge the customer twice. We only
             // engage when a key is provided (back-compat: existing clients still work).
             if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-                Optional<Long> existing = idempotencyService.lookup("order:create", userId, idempotencyKey);
+                Optional<UUID> existing = idempotencyService.lookup("order:create", userId, idempotencyKey);
                 if (existing.isPresent()) {
                     OrderResponse prior = orderService.getOrder(existing.get(), userId);
                     return ResponseEntity.status(HttpStatus.OK).body(prior);
@@ -125,7 +126,7 @@ public class OrderController {
             @RequestParam(defaultValue = "createdAt") @jakarta.validation.constraints.Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
             @RequestParam(defaultValue = "desc") @jakarta.validation.constraints.Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getOrders(userId, status, page, size, sort, direction));
         } catch (AppHttpException e) {
             throw e;
@@ -138,7 +139,7 @@ public class OrderController {
     @RequireAuth
     public ResponseEntity<OrderResponse> getLatestOrder() {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getLatestOrder(userId));
         } catch (AppHttpException e) {
             throw e;
@@ -149,9 +150,9 @@ public class OrderController {
 
     @GetMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable long id) {
+    public ResponseEntity<OrderResponse> getOrder(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getOrder(id, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -162,9 +163,9 @@ public class OrderController {
 
     @PostMapping("/{id}/cancel")
     @RequireAuth
-    public ResponseEntity<OrderResponse> cancelOrder(@PathVariable long id) {
+    public ResponseEntity<OrderResponse> cancelOrder(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.cancelOrder(id, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -175,9 +176,9 @@ public class OrderController {
 
     @PostMapping("/{id}/reorder")
     @RequireAuth
-    public ResponseEntity<OrderResponse> reorderOrder(@PathVariable long id) {
+    public ResponseEntity<OrderResponse> reorderOrder(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED).body(orderService.reorderOrder(id, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -278,7 +279,7 @@ public class OrderController {
     @PostMapping("/support/orders/{orderId}/partial-refund")
     @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
     public ResponseEntity<ReturnResponse> issuePartialRefund(
-            @PathVariable long orderId,
+            @PathVariable UUID orderId,
             @RequestParam long amountCents,
             @RequestParam(required = false) String reason) {
         try {
@@ -293,7 +294,7 @@ public class OrderController {
     @PostMapping("/support/orders/{orderId}/replacement")
     @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
     public ResponseEntity<OrderResponse> createReplacement(
-            @PathVariable long orderId,
+            @PathVariable UUID orderId,
             @Valid @RequestBody ResolveWithReplacementRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -305,8 +306,8 @@ public class OrderController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

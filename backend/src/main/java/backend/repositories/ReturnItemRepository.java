@@ -7,8 +7,10 @@ import org.springframework.stereotype.Repository;
 
 import backend.models.core.ReturnItem;
 
+import java.util.UUID;
+
 @Repository
-public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
+public interface ReturnItemRepository extends JpaRepository<ReturnItem, UUID> {
 
     /**
      * Sum of all queued or approved returned quantities for a given order item.
@@ -18,5 +20,5 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
     @Query("SELECT COALESCE(SUM(ri.quantityReturned), 0) FROM ReturnItem ri " +
            "WHERE ri.orderItem.id = :orderItemId " +
            "AND ri.returnRequest.status NOT IN ('REJECTED','FAILED')")
-    int sumReturnedQuantityByOrderItemId(@Param("orderItemId") long orderItemId);
+    int sumReturnedQuantityByOrderItemId(@Param("orderItemId") UUID orderItemId);
 }

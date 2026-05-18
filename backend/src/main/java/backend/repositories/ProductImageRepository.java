@@ -10,13 +10,13 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ProductImageRepository extends JpaRepository<ProductImage, Long> {
+public interface ProductImageRepository extends JpaRepository<ProductImage, java.util.UUID> {
 
-    List<ProductImage> findAllByProductIdOrderByDisplayOrderAsc(long productId);
+    List<ProductImage> findAllByProductIdOrderByDisplayOrderAsc(java.util.UUID productId);
 
-    List<ProductImage> findAllByProductIdInOrderByDisplayOrderAsc(Collection<Long> productIds);
+    List<ProductImage> findAllByProductIdInOrderByDisplayOrderAsc(Collection<java.util.UUID> productIds);
 
-    Optional<ProductImage> findByIdAndProductId(long id, long productId);
+    Optional<ProductImage> findByIdAndProductId(java.util.UUID id, java.util.UUID productId);
 
-    int countByProductId(long productId);
+    int countByProductId(java.util.UUID productId);
 }

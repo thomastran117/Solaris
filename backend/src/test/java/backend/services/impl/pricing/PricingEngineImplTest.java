@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import backend.testutil.TestIds;
+
 import backend.models.core.Company;
 import backend.models.core.Coupon;
 import backend.models.core.CustomerSegment;
@@ -217,7 +219,7 @@ class PricingEngineImplTest {
 
         PromotionRule rule = percentageRule("10", null, "ORDER", false, 100);
         CustomerSegment seg = new CustomerSegment();
-        seg.setId(55L);
+        seg.setId(TestIds.uuid(55));
         seg.setCode("VIP");
         rule.setTargetSegments(new HashSet<>(List.of(seg)));
 

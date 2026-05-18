@@ -33,8 +33,9 @@ import java.time.Instant;
 public class MarketplaceVendor {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "marketplace_id", nullable = false)
@@ -57,8 +58,8 @@ public class MarketplaceVendor {
     private OnboardingStep onboardingStep = OnboardingStep.PROFILE;
 
     /** Override commission policy for this vendor; null means use marketplace default. */
-    @Column(nullable = true)
-    private Long commissionPolicyId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID commissionPolicyId;
 
     @Column(nullable = true, length = 255)
     private String stripeConnectAccountId;

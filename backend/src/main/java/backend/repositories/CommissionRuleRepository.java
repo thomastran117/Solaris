@@ -7,9 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface CommissionRuleRepository extends JpaRepository<CommissionRule, Long> {
+public interface CommissionRuleRepository extends JpaRepository<CommissionRule, java.util.UUID> {
 
-    List<CommissionRule> findByPolicyIdOrderByPriorityDesc(long policyId);
+    List<CommissionRule> findByPolicyIdOrderByPriorityDesc(java.util.UUID policyId);
 
-    void deleteByPolicyId(long policyId);
+    void deleteByPolicyId(java.util.UUID policyId);
 }

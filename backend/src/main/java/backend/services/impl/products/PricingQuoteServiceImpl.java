@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,7 +58,7 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public PricingQuoteResponse quote(PricingQuoteRequest request, Long userId) {
+    public PricingQuoteResponse quote(PricingQuoteRequest request, UUID userId) {
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new BadRequestException("items must contain at least one line");
         }
@@ -89,7 +90,7 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
                 }
 
                 BigDecimal unitPrice;
-                Long variantId = item.getVariantId();
+                UUID variantId = item.getVariantId();
                 if (variantId != null) {
                     ProductVariant variant = variantRepository.findByIdAndProductId(variantId, product.getId())
                             .orElseThrow(() -> new ResourceNotFoundException("Variant not found: " + variantId));
@@ -108,7 +109,7 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
             }
         }
 
-        Set<Long> segmentIds = userId != null
+        Set<UUID> segmentIds = userId != null
                 ? new HashSet<>(userRepository.findSegmentIdsByUserId(userId))
                 : Set.of();
 

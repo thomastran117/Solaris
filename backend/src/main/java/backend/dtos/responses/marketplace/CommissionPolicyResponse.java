@@ -6,12 +6,13 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class CommissionPolicyResponse {
-    private Long id;
-    private Long marketplaceId;
+    private UUID id;
+    private UUID marketplaceId;
     private String name;
     private BigDecimal defaultRate;
     private Instant effectiveFrom;
@@ -24,7 +25,7 @@ public class CommissionPolicyResponse {
     @Getter
     @AllArgsConstructor
     public static class RuleResponse {
-        private Long id;
+        private UUID id;
         private String ruleType;
         private String matchValue;
         private BigDecimal rate;

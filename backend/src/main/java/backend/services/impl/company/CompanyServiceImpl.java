@@ -1,5 +1,6 @@
 package backend.services.impl.company;
 
+import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -114,7 +115,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CompanyResponse> getCompaniesByIds(List<Long> ids, long userId) {
+    public List<CompanyResponse> getCompaniesByIds(List<UUID> ids, UUID userId) {
         return companyAccessService.listAccessibleCompanies(userId)
                 .stream()
                 .filter(c -> ids.contains(c.getId()))
@@ -124,14 +125,14 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional(readOnly = true)
-    public CompanyResponse getCompany(long companyId, long userId) {
+    public CompanyResponse getCompany(UUID companyId, UUID userId) {
         Company company = companyAccessService.requireAnyAccess(companyId, userId);
         return toResponse(company);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PublicCompanyResponse getPublicCompany(long companyId) {
+    public PublicCompanyResponse getPublicCompany(UUID companyId) {
         Company company = companyRepository.findById(companyId)
                 .filter(c -> c.getStatus() == CompanyStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found"));
@@ -140,7 +141,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional
-    public CompanyResponse createCompany(long ownerId, CreateCompanyRequest request) {
+    public CompanyResponse createCompany(UUID ownerId, CreateCompanyRequest request) {
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + ownerId));
 
@@ -182,7 +183,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional
-    public CompanyResponse updateCompany(long companyId, long userId, UpdateCompanyRequest request) {
+    public CompanyResponse updateCompany(UUID companyId, UUID userId, UpdateCompanyRequest request) {
         Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
 
         if (request.getName() != null && !request.getName().equals(company.getName())) {
@@ -212,7 +213,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional
-    public void deleteCompany(long companyId, long userId) {
+    public void deleteCompany(UUID companyId, UUID userId) {
         Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
         companyRepository.delete(company);
         companyAccessService.invalidate(companyId, userId);
@@ -220,14 +221,14 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional(readOnly = true)
-    public PresignUploadResponse generateLogoUploadUrl(long companyId, long userId, String contentType) {
+    public PresignUploadResponse generateLogoUploadUrl(UUID companyId, UUID userId, String contentType) {
         companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
         return storageService.generatePresignedUrl(UploadFolder.COMPANY_LOGO, userId, contentType);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public CompanyResponse getMyCompany(long userId) {
+    public CompanyResponse getMyCompany(UUID userId) {
         return companyAccessService.listAccessibleCompanies(userId)
                 .stream()
                 .findFirst()

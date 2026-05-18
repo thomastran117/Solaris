@@ -1,5 +1,6 @@
 package backend.services.impl.vendors;
 
+import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -56,7 +57,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional
-    public VendorSLAPolicyResponse createPolicy(long marketplaceId, long operatorUserId, CreateSLAPolicyRequest request) {
+    public VendorSLAPolicyResponse createPolicy(UUID marketplaceId, UUID operatorUserId, CreateSLAPolicyRequest request) {
         assertOperator(marketplaceId, operatorUserId);
 
         SLABreachAction action;
@@ -83,7 +84,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorSLAPolicyResponse getActivePolicy(long marketplaceId) {
+    public VendorSLAPolicyResponse getActivePolicy(UUID marketplaceId) {
         VendorSLAPolicy policy = policyRepository.findFirstByMarketplaceIdAndActiveTrue(marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("No active SLA policy for this marketplace"));
         return toPolicyResponse(policy);
@@ -91,7 +92,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<VendorSLAPolicyResponse> listPolicies(long marketplaceId) {
+    public List<VendorSLAPolicyResponse> listPolicies(UUID marketplaceId) {
         return policyRepository.findByMarketplaceId(marketplaceId).stream()
                 .map(this::toPolicyResponse)
                 .toList();
@@ -103,7 +104,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<VendorSLAMetricResponse> listMetrics(long marketplaceId, long vendorId, long actorUserId, int page, int size) {
+    public PagedResponse<VendorSLAMetricResponse> listMetrics(UUID marketplaceId, UUID vendorId, UUID actorUserId, int page, int size) {
         assertVendorAccess(marketplaceId, vendorId, actorUserId);
         int cap = Math.min(size, 90);
         var pageable = PageRequest.of(page, cap, Sort.by(Sort.Direction.DESC, "date"));
@@ -113,7 +114,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorSLAMetricResponse getLatestMetric(long marketplaceId, long vendorId, long actorUserId) {
+    public VendorSLAMetricResponse getLatestMetric(UUID marketplaceId, UUID vendorId, UUID actorUserId) {
         assertVendorAccess(marketplaceId, vendorId, actorUserId);
         return metricRepository.findByVendorIdOrderByDateDesc(vendorId).stream()
                 .findFirst()
@@ -127,7 +128,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<VendorSLABreachResponse> listBreaches(long marketplaceId, long vendorId, long actorUserId, int page, int size) {
+    public PagedResponse<VendorSLABreachResponse> listBreaches(UUID marketplaceId, UUID vendorId, UUID actorUserId, int page, int size) {
         assertVendorAccess(marketplaceId, vendorId, actorUserId);
         int cap = Math.min(size, 50);
         var pageable = PageRequest.of(page, cap, Sort.by(Sort.Direction.DESC, "detectedAt"));
@@ -137,7 +138,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
 
     @Override
     @Transactional
-    public VendorSLABreachResponse resolveBreach(long breachId, long operatorUserId, long marketplaceId) {
+    public VendorSLABreachResponse resolveBreach(UUID breachId, UUID operatorUserId, UUID marketplaceId) {
         assertOperator(marketplaceId, operatorUserId);
         VendorSLABreach breach = breachRepository.findById(breachId)
                 .orElseThrow(() -> new ResourceNotFoundException("Breach not found"));
@@ -152,7 +153,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private void assertVendorAccess(long marketplaceId, long vendorId, long userId) {
+    private void assertVendorAccess(UUID marketplaceId, UUID vendorId, UUID userId) {
         MarketplaceVendor vendor = marketplaceVendorRepository.findById(vendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
         if (!vendor.getMarketplace().getId().equals(marketplaceId)) {
@@ -164,7 +165,7 @@ public class VendorSLAServiceImpl implements VendorSLAService {
         assertOperator(marketplaceId, userId);
     }
 
-    private void assertOperator(long marketplaceId, long userId) {
+    private void assertOperator(UUID marketplaceId, UUID userId) {
         marketplaceProfileRepository.findByCompanyId(marketplaceId)
                 .filter(p -> p.getCompany().getOwner().getId() == userId)
                 .orElseThrow(() -> new ForbiddenException("You are not an operator of this marketplace"));

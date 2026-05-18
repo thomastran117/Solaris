@@ -1,5 +1,6 @@
 package backend.services.impl.inventory;
 
+import java.util.UUID;
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
 import backend.events.inventory.StockRestoredEvent;
@@ -57,7 +58,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
     @Override
     @Transactional
-    public StockNotificationResponse subscribe(long userId, SubscribeBackInStockRequest request) {
+    public StockNotificationResponse subscribe(UUID userId, SubscribeBackInStockRequest request) {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
@@ -94,7 +95,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
     @Override
     @Transactional
-    public void cancel(long userId, long notificationId) {
+    public void cancel(UUID userId, UUID notificationId) {
         StockNotification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found with id: " + notificationId));
 
@@ -108,7 +109,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<StockNotificationResponse> listByUser(long userId) {
+    public List<StockNotificationResponse> listByUser(UUID userId) {
         return notificationRepository.findAllByUserIdAndStatusNot(userId, NotificationStatus.CANCELLED)
                 .stream()
                 .map(this::toResponse)
@@ -117,7 +118,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
     @Override
     @Transactional
-    public void notifySubscribers(long productId, long variantRef) {
+    public void notifySubscribers(UUID productId, long variantRef) {
         List<StockNotification> pending = notificationRepository
                 .findAllByProductIdAndVariantRefAndStatus(productId, variantRef, NotificationStatus.PENDING);
 

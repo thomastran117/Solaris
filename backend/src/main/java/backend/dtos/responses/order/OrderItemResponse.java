@@ -5,22 +5,23 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class OrderItemResponse {
-    private Long id;
-    private Long productId;
+    private UUID id;
+    private UUID productId;
     private String productName;
-    private Long variantId;
+    private UUID variantId;
     private String variantTitle;
     private String variantSku;
     private int quantity;
     private BigDecimal unitPrice;
-    private Long fulfillmentLocationId;
+    private UUID fulfillmentLocationId;
     private String fulfillmentLocationName;
     private FulfillmentStatus fulfillmentStatus;
-    private Long bundleId;
+    private UUID bundleId;
     private String bundleName;
     private BigDecimal discountAmount;
 }

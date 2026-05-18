@@ -1,5 +1,6 @@
 package backend.services.impl.support;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -57,7 +58,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional
-    public TicketResponse createTicket(long actorUserId, CreateTicketRequest request) {
+    public TicketResponse createTicket(UUID actorUserId, CreateTicketRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
 
@@ -96,8 +97,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<TicketResponse> listTickets(long actorUserId, TicketStatus status,
-                                                     Long assignedToId, int page, int size) {
+    public PagedResponse<TicketResponse> listTickets(UUID actorUserId, TicketStatus status,
+                                                     UUID assignedToId, int page, int size) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
 
@@ -115,7 +116,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional(readOnly = true)
-    public TicketResponse getTicket(long ticketId, long actorUserId) {
+    public TicketResponse getTicket(UUID ticketId, UUID actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
 
@@ -131,7 +132,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional
-    public TicketMessageResponse addMessage(long ticketId, long authorUserId, TicketMessageRequest request) {
+    public TicketMessageResponse addMessage(UUID ticketId, UUID authorUserId, TicketMessageRequest request) {
         User author = userRepository.findById(authorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + authorUserId));
 
@@ -169,7 +170,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional
-    public TicketResponse assignTicket(long ticketId, long actorUserId, AssignTicketRequest request) {
+    public TicketResponse assignTicket(UUID ticketId, UUID actorUserId, AssignTicketRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -190,7 +191,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional
-    public TicketResponse updateStatus(long ticketId, long actorUserId, UpdateTicketStatusRequest request) {
+    public TicketResponse updateStatus(UUID ticketId, UUID actorUserId, UpdateTicketStatusRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -215,7 +216,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional
-    public TicketResponse updatePriority(long ticketId, long actorUserId, UpdateTicketPriorityRequest request) {
+    public TicketResponse updatePriority(UUID ticketId, UUID actorUserId, UpdateTicketPriorityRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);

@@ -1,5 +1,6 @@
 package backend.dtos.responses.note;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -8,10 +9,10 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class InternalNoteResponse {
-    private Long id;
+    private UUID id;
     private String entityType;
-    private Long entityId;
-    private Long authorId;
+    private UUID entityId;
+    private UUID authorId;
     private String authorName;
     private String body;
     private Instant createdAt;

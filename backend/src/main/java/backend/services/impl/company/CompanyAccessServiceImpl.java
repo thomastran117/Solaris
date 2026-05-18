@@ -1,5 +1,6 @@
 package backend.services.impl.company;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
 
     @Override
     @Transactional(readOnly = true)
-    public Company require(long companyId, long userId, CompanyCapability capability) {
+    public Company require(UUID companyId, UUID userId, CompanyCapability capability) {
         CompanyRole role = resolveRole(companyId, userId)
                 .orElseThrow(() -> new ForbiddenException("You do not have access to this company"));
         if (!roleHas(role, capability)) {
@@ -54,7 +55,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
 
     @Override
     @Transactional(readOnly = true)
-    public Company requireAnyAccess(long companyId, long userId) {
+    public Company requireAnyAccess(UUID companyId, UUID userId) {
         resolveRole(companyId, userId)
                 .orElseThrow(() -> new ForbiddenException("You do not have access to this company"));
         return companyRepository.findById(companyId)
@@ -63,7 +64,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<CompanyRole> resolveRole(long companyId, long userId) {
+    public Optional<CompanyRole> resolveRole(UUID companyId, UUID userId) {
         String key = cacheKey(companyId, userId);
         try {
             String cached = cacheService.get(key);
@@ -89,7 +90,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Company> listAccessibleCompanies(long userId) {
+    public List<Company> listAccessibleCompanies(UUID userId) {
         return membershipRepository.findCompaniesAccessibleByUser(userId, CompanyMembershipStatus.ACTIVE);
     }
 
@@ -99,7 +100,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
     }
 
     @Override
-    public void invalidate(long companyId, long userId) {
+    public void invalidate(UUID companyId, UUID userId) {
         try {
             cacheService.delete(cacheKey(companyId, userId));
         } catch (Exception e) {
@@ -107,7 +108,7 @@ public class CompanyAccessServiceImpl implements CompanyAccessService {
         }
     }
 
-    private String cacheKey(long companyId, long userId) {
+    private String cacheKey(UUID companyId, UUID userId) {
         return CACHE_NS + companyId + ":" + userId;
     }
 }

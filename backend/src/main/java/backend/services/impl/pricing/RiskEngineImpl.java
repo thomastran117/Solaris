@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Orders the per-signal evaluators behind a few short-circuits:
@@ -124,16 +125,17 @@ public class RiskEngineImpl implements RiskEngine {
 
     /**
      * VIP carve-out is intentionally fail-closed: when {@code app.risk.vip-segment-id}
-     * is unset (default 0) we return false so the engine runs every signal against
-     * every user. The inverse would be dangerous — silently exempting segment 0 (or
-     * any random unconfigured segment) from fraud checks. Operators who want a
-     * carve-out must set the property explicitly to a positive segment id.
+     * is unset we return false so the engine runs every signal against every user.
+     * The inverse would be dangerous because an accidentally configured or absent
+     * segment id would silently exempt users from fraud checks. Operators who want
+     * a carve-out must set the UUID explicitly.
      */
     private boolean isVip(RiskContext ctx) {
-        long vipId = properties.getVipSegmentId();
-        if (vipId <= 0) return false;
-        Set<Long> segments = ctx.userSegmentIds();
-        return segments != null && segments.contains(vipId);
+        UUID vipId = properties.getVipSegmentId();
+        if (vipId == null) return false;
+        Set<UUID> segments = ctx.userSegmentIds();
+        if (segments == null || segments.isEmpty()) return false;
+        return segments.contains(vipId);
     }
 
     private Optional<RiskBlocklist> findBlocklistHit(RiskContext ctx) {

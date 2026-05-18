@@ -1,5 +1,6 @@
 package backend.services.intf.customers;
 
+import java.util.UUID;
 import backend.dtos.requests.credit.IssueCreditRequest;
 import backend.dtos.responses.credit.CreditBalanceResponse;
 import backend.dtos.responses.credit.CreditEntryResponse;
@@ -16,11 +17,11 @@ public interface CustomerCreditService {
      * @param sourceOrderIssueId optional linked order issue ID
      * @return the new ledger entry
      */
-    CreditEntryResponse issueCredit(long userId, IssueCreditRequest request,
-                                    long issuedByUserId, Long sourceTicketId, Long sourceOrderIssueId);
+    CreditEntryResponse issueCredit(UUID userId, IssueCreditRequest request,
+                                    UUID issuedByUserId, UUID sourceTicketId, UUID sourceOrderIssueId);
 
     /** Returns the customer's current balance and full ledger history. */
-    CreditBalanceResponse getBalance(long userId);
+    CreditBalanceResponse getBalance(UUID userId);
 
     /**
      * Redeems credit against an order. Creates a negative REDEEMED entry.
@@ -31,13 +32,13 @@ public interface CustomerCreditService {
      * @param amountCents amount to redeem in cents
      * @return the new ledger entry
      */
-    CreditEntryResponse redeemCredit(long userId, long orderId, long amountCents);
+    CreditEntryResponse redeemCredit(UUID userId, UUID orderId, long amountCents);
 
     /**
      * Reverses a credit entry by appending an offsetting REVERSED entry.
      * Staff-only; caller must validate the actor role before calling.
      */
-    CreditEntryResponse reverseCredit(long creditEntryId, long actorUserId);
+    CreditEntryResponse reverseCredit(UUID creditEntryId, UUID actorUserId);
 
     /** Scheduled job: expires credits past their expiry date. */
     void expireCredits();

@@ -1,5 +1,6 @@
 package backend.services.impl.vendors;
 
+import java.util.UUID;
 import backend.dtos.requests.vendor.*;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.vendor.MarketplaceVendorResponse;
@@ -62,7 +63,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse applyToMarketplace(long marketplaceId, long requestingUserId, ApplyVendorRequest request) {
+    public MarketplaceVendorResponse applyToMarketplace(UUID marketplaceId, UUID requestingUserId, ApplyVendorRequest request) {
         MarketplaceProfile marketplace = resolveMarketplace(marketplaceId);
 
         if (!marketplace.isAcceptingApplications()) {
@@ -91,7 +92,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse updateProfile(long marketplaceId, long vendorId, long requestingUserId,
+    public MarketplaceVendorResponse updateProfile(UUID marketplaceId, UUID vendorId, UUID requestingUserId,
                                                     UpdateVendorProfileRequest request) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         requireOnboardingNotComplete(vendor);
@@ -107,7 +108,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse submitTaxInfo(long marketplaceId, long vendorId, long requestingUserId,
+    public MarketplaceVendorResponse submitTaxInfo(UUID marketplaceId, UUID vendorId, UUID requestingUserId,
                                                     SubmitVendorTaxRequest request) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         requireOnboardingNotComplete(vendor);
@@ -124,7 +125,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
     @Override
     @Transactional
     public StripeOnboardingLinkResponse generateStripeOnboardingLink(
-            long marketplaceId, long vendorId, long requestingUserId, GenerateStripeOnboardingLinkRequest request) {
+            UUID marketplaceId, UUID vendorId, UUID requestingUserId, GenerateStripeOnboardingLinkRequest request) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         requireOnboardingNotComplete(vendor);
 
@@ -163,7 +164,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public VendorDocumentResponse recordDocumentUpload(long marketplaceId, long vendorId, long requestingUserId,
+    public VendorDocumentResponse recordDocumentUpload(UUID marketplaceId, UUID vendorId, UUID requestingUserId,
                                                         VendorDocumentType documentType, String s3Key) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         requireOnboardingNotComplete(vendor);
@@ -186,7 +187,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse submitForReview(long marketplaceId, long vendorId, long requestingUserId) {
+    public MarketplaceVendorResponse submitForReview(UUID marketplaceId, UUID vendorId, UUID requestingUserId) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
 
         if (vendor.getStatus() != VendorStatus.DRAFT && vendor.getStatus() != VendorStatus.NEEDS_INFO) {
@@ -206,7 +207,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse approveVendor(long marketplaceId, long vendorId, long operatorUserId,
+    public MarketplaceVendorResponse approveVendor(UUID marketplaceId, UUID vendorId, UUID operatorUserId,
                                                     VendorActionRequest request) {
         resolveMarketplaceAsOperator(marketplaceId, operatorUserId);
         MarketplaceVendor vendor = resolveVendor(marketplaceId, vendorId);
@@ -226,7 +227,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse rejectVendor(long marketplaceId, long vendorId, long operatorUserId,
+    public MarketplaceVendorResponse rejectVendor(UUID marketplaceId, UUID vendorId, UUID operatorUserId,
                                                    VendorActionRequest request) {
         if (request.getReason() == null || request.getReason().isBlank()) {
             throw new BadRequestException("Rejection reason is required");
@@ -244,7 +245,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse suspendVendor(long marketplaceId, long vendorId, long operatorUserId,
+    public MarketplaceVendorResponse suspendVendor(UUID marketplaceId, UUID vendorId, UUID operatorUserId,
                                                     VendorActionRequest request) {
         if (request.getReason() == null || request.getReason().isBlank()) {
             throw new BadRequestException("Suspension reason is required");
@@ -263,7 +264,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse reinstateVendor(long marketplaceId, long vendorId, long operatorUserId) {
+    public MarketplaceVendorResponse reinstateVendor(UUID marketplaceId, UUID vendorId, UUID operatorUserId) {
         resolveMarketplaceAsOperator(marketplaceId, operatorUserId);
         MarketplaceVendor vendor = resolveVendor(marketplaceId, vendorId);
 
@@ -280,7 +281,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional
-    public MarketplaceVendorResponse requestMoreInfo(long marketplaceId, long vendorId, long operatorUserId,
+    public MarketplaceVendorResponse requestMoreInfo(UUID marketplaceId, UUID vendorId, UUID operatorUserId,
                                                       VendorActionRequest request) {
         if (request.getReason() == null || request.getReason().isBlank()) {
             throw new BadRequestException("A note explaining what information is needed is required");
@@ -302,14 +303,14 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional(readOnly = true)
-    public MarketplaceVendorResponse getVendor(long marketplaceId, long vendorId, long operatorUserId) {
+    public MarketplaceVendorResponse getVendor(UUID marketplaceId, UUID vendorId, UUID operatorUserId) {
         resolveMarketplaceAsOperator(marketplaceId, operatorUserId);
         return toResponse(resolveVendor(marketplaceId, vendorId));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<MarketplaceVendorResponse> listVendors(long marketplaceId, VendorStatus status, int page, int size, long operatorUserId) {
+    public PagedResponse<MarketplaceVendorResponse> listVendors(UUID marketplaceId, VendorStatus status, int page, int size, UUID operatorUserId) {
         resolveMarketplaceAsOperator(marketplaceId, operatorUserId);
         if (size > 50) size = 50;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -321,7 +322,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional(readOnly = true)
-    public MarketplaceVendorResponse getMyVendorRecord(long marketplaceId, long userId) {
+    public MarketplaceVendorResponse getMyVendorRecord(UUID marketplaceId, UUID userId) {
         List<Company> userCompanies = companyAccessService.listAccessibleCompanies(userId);
         return userCompanies.stream()
                 .flatMap(c -> marketplaceVendorRepository
@@ -333,7 +334,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<VendorDocumentResponse> listDocuments(long marketplaceId, long vendorId, long requestingUserId) {
+    public List<VendorDocumentResponse> listDocuments(UUID marketplaceId, UUID vendorId, UUID requestingUserId) {
         resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         return documentRepository.findAllByMarketplaceVendorId(vendorId)
                 .stream()
@@ -369,23 +370,23 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private MarketplaceProfile resolveMarketplace(long marketplaceId) {
+    private MarketplaceProfile resolveMarketplace(UUID marketplaceId) {
         return marketplaceProfileRepository.findByCompanyId(marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Marketplace not found"));
     }
 
-    private MarketplaceVendor resolveVendor(long marketplaceId, long vendorId) {
+    private MarketplaceVendor resolveVendor(UUID marketplaceId, UUID vendorId) {
         return marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found in this marketplace"));
     }
 
-    private MarketplaceVendor resolveVendorAsOwner(long marketplaceId, long vendorId, long userId) {
+    private MarketplaceVendor resolveVendorAsOwner(UUID marketplaceId, UUID vendorId, UUID userId) {
         MarketplaceVendor vendor = resolveVendor(marketplaceId, vendorId);
         companyAccessService.require(vendor.getVendorCompany().getId(), userId, CompanyCapability.MANAGE_COMPANY);
         return vendor;
     }
 
-    private void resolveMarketplaceAsOperator(long marketplaceId, long userId) {
+    private void resolveMarketplaceAsOperator(UUID marketplaceId, UUID userId) {
         MarketplaceProfile marketplace = resolveMarketplace(marketplaceId);
         companyAccessService.require(marketplace.getCompany().getId(), userId, CompanyCapability.MANAGE_COMPANY);
     }
@@ -397,7 +398,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         }
     }
 
-    private void audit(MarketplaceVendor vendor, Long actorUserId, VendorAuditAction action, String metadataJson) {
+    private void audit(MarketplaceVendor vendor, UUID actorUserId, VendorAuditAction action, String metadataJson) {
         try {
             VendorAuditLog entry = new VendorAuditLog();
             entry.setMarketplaceVendor(vendor);

@@ -8,7 +8,7 @@ import backend.models.core.ProductAttribute;
 import java.util.List;
 
 @Repository
-public interface ProductAttributeRepository extends JpaRepository<ProductAttribute, Long> {
-    List<ProductAttribute> findAllByProductIdOrderByDisplayOrderAsc(long productId);
-    void deleteAllByProductId(long productId);
+public interface ProductAttributeRepository extends JpaRepository<ProductAttribute, java.util.UUID> {
+    List<ProductAttribute> findAllByProductIdOrderByDisplayOrderAsc(java.util.UUID productId);
+    void deleteAllByProductId(java.util.UUID productId);
 }

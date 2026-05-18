@@ -1,5 +1,6 @@
 package backend.controllers.impl.support;
 
+import java.util.UUID;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +43,7 @@ public class InternalNoteController {
     @GetMapping
     @RequireAuth
     public ResponseEntity<List<InternalNoteResponse>> listNotes(@RequestParam NoteEntityType entityType,
-                                                                 @RequestParam long entityId) {
+                                                                 @RequestParam UUID entityId) {
         try {
             return ResponseEntity.ok(noteService.listNotes(resolveUserId(), entityType, entityId));
         } catch (AppHttpException e) {
@@ -54,7 +55,7 @@ public class InternalNoteController {
 
     @DeleteMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<Void> deleteNote(@PathVariable long id) {
+    public ResponseEntity<Void> deleteNote(@PathVariable UUID id) {
         try {
             noteService.deleteNote(id, resolveUserId());
             return ResponseEntity.noContent().build();
@@ -65,8 +66,8 @@ public class InternalNoteController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

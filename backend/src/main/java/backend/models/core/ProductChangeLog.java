@@ -34,8 +34,9 @@ import java.time.Instant;
 public class ProductChangeLog {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
@@ -45,8 +46,8 @@ public class ProductChangeLog {
     @JoinColumn(name = "variant_id", nullable = true)
     private ProductVariant variant;
 
-    @Column(name = "company_id", nullable = false)
-    private Long companyId;
+    @Column(name = "company_id", nullable = false, columnDefinition = "BINARY(16)")
+    private java.util.UUID companyId;
 
     @Column(name = "field_name", nullable = false, length = 64)
     private String fieldName;

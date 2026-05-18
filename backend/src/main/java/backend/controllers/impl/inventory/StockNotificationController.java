@@ -1,5 +1,6 @@
 package backend.controllers.impl.inventory;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
@@ -33,13 +34,13 @@ public class StockNotificationController {
     @PostMapping
     public ResponseEntity<StockNotificationResponse> subscribe(
             @Valid @RequestBody SubscribeBackInStockRequest request) {
-        long userId = resolveUserId();
-        rateLimitService.enforce("stock:subscribe", Long.toString(userId), SUBSCRIBE_LIMIT, SUBSCRIBE_WINDOW_SECONDS);
+        UUID userId = resolveUserId();
+        rateLimitService.enforce("stock:subscribe", userId.toString(), SUBSCRIBE_LIMIT, SUBSCRIBE_WINDOW_SECONDS);
         return ResponseEntity.ok(stockNotificationService.subscribe(userId, request));
     }
 
     @DeleteMapping("/{notificationId}")
-    public ResponseEntity<Void> cancel(@PathVariable long notificationId) {
+    public ResponseEntity<Void> cancel(@PathVariable UUID notificationId) {
         stockNotificationService.cancel(resolveUserId(), notificationId);
         return ResponseEntity.noContent().build();
     }
@@ -49,8 +50,8 @@ public class StockNotificationController {
         return ResponseEntity.ok(stockNotificationService.listByUser(resolveUserId()));
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

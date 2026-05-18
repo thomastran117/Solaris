@@ -1,9 +1,10 @@
 package backend.repositories.projections;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public interface SlowMoverProjection {
-    Long getProductId();
+    UUID getProductId();
     String getProductName();
     String getSku();
     Integer getCurrentStock();

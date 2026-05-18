@@ -1,5 +1,6 @@
 package backend.controllers.impl.search;
 
+import java.util.UUID;
 import backend.dtos.responses.search.SearchSuggestionsResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.BadRequestException;
@@ -34,7 +35,7 @@ public class SearchSuggestionController {
 
     @GetMapping("/suggestions")
     public ResponseEntity<SearchSuggestionsResponse> getSuggestions(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @RequestParam String q,
             @RequestParam(defaultValue = "8") @Min(1) @Max(10) int limit,
             HttpServletRequest httpRequest) {

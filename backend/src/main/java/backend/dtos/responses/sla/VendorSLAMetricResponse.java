@@ -5,13 +5,14 @@ import lombok.Getter;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorSLAMetricResponse {
-    private long id;
-    private long vendorId;
-    private long marketplaceId;
+    private UUID id;
+    private UUID vendorId;
+    private UUID marketplaceId;
     private LocalDate date;
     private long totalOrders;
     private Double shipHoursP50;

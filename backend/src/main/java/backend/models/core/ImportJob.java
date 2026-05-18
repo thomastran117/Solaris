@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -28,14 +29,15 @@ import java.time.Instant;
 public class ImportJob {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
-    @Column(name = "company_id", nullable = false)
-    private Long companyId;
+    @Column(name = "company_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID companyId;
 
-    @Column(name = "uploaded_by", nullable = false)
-    private Long uploadedBy;
+    @Column(name = "uploaded_by", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID uploadedBy;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "job_type", nullable = false, length = 30)

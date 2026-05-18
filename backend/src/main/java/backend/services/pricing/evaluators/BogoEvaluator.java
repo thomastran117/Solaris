@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Buy-X-Get-Y evaluator. Counts trigger units across the cart, computes how many times
@@ -36,9 +37,9 @@ public class BogoEvaluator implements RuleEvaluator {
     @Override
     public BigDecimal apply(PromotionRule rule, Object parsedConfig, List<WorkingLine> eligibleLines) {
         BogoConfig cfg = (BogoConfig) parsedConfig;
-        Set<Long> triggerSet = cfg.triggerProductIds() == null
+        Set<UUID> triggerSet = cfg.triggerProductIds() == null
                 ? new HashSet<>() : new HashSet<>(cfg.triggerProductIds());
-        Set<Long> rewardSet = cfg.rewardProductIds() == null || cfg.rewardProductIds().isEmpty()
+        Set<UUID> rewardSet = cfg.rewardProductIds() == null || cfg.rewardProductIds().isEmpty()
                 ? triggerSet : new HashSet<>(cfg.rewardProductIds());
 
         List<WorkingLine> triggerLines = eligibleLines.stream()

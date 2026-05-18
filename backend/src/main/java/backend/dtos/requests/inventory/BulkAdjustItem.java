@@ -8,12 +8,14 @@ import lombok.Setter;
 
 import backend.models.enums.AdjustmentReason;
 
+import java.util.UUID;
+
 @Getter
 @Setter
 public class BulkAdjustItem {
 
     @NotNull(message = "Product ID is required")
-    private Long productId;
+    private UUID productId;
 
     /** Positive = increase stock, negative = decrease. Zero is invalid. */
     @NotNull(message = "Delta is required")

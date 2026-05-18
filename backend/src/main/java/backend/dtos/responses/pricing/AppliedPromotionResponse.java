@@ -3,11 +3,12 @@ package backend.dtos.responses.pricing;
 import backend.models.enums.PromotionRuleType;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record AppliedPromotionResponse(
-        long ruleId,
+        UUID ruleId,
         String name,
         PromotionRuleType ruleType,
         BigDecimal savings,
-        long fundedByCompanyId
+        UUID fundedByCompanyId
 ) {}

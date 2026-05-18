@@ -6,12 +6,13 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class BundleResponse {
-    private Long id;
-    private Long companyId;
+    private UUID id;
+    private UUID companyId;
     private String name;
     private String description;
     private String thumbnailUrl;

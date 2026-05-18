@@ -40,7 +40,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
     }
 
     @Override
-    public SearchSuggestionsResponse getSuggestions(long marketplaceId, String q, int limit) {
+    public SearchSuggestionsResponse getSuggestions(UUID marketplaceId, String q, int limit) {
         if (q == null || q.isBlank() || q.length() < 2) {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }
@@ -108,7 +108,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
     }
 
     @Override
-    public SearchSuggestionsResponse getCompanySuggestions(long companyId, String q, int limit) {
+    public SearchSuggestionsResponse getCompanySuggestions(UUID companyId, String q, int limit) {
         if (q == null || q.isBlank() || q.length() < 2) {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }

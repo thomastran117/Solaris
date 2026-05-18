@@ -8,10 +8,11 @@ import backend.models.enums.PromotionRuleType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 public record PromotionRuleResponse(
-        Long id,
-        Long companyId,
+        UUID id,
+        UUID companyId,
         String name,
         String description,
         PromotionRuleType ruleType,
@@ -25,10 +26,10 @@ public record PromotionRuleResponse(
         Integer maxUses,
         int usedCount,
         Integer maxUsesPerUser,
-        Long fundedByCompanyId,
-        List<Long> targetProductIds,
-        List<Long> targetBundleIds,
-        List<Long> targetSegmentIds,
+        UUID fundedByCompanyId,
+        List<UUID> targetProductIds,
+        List<UUID> targetBundleIds,
+        List<UUID> targetSegmentIds,
         Instant createdAt,
         Instant updatedAt
 ) {}

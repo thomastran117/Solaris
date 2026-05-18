@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -40,6 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class ProductIndexingService implements ApplicationRunner {
+
+    private record FailurePair(UUID documentId, UUID companyId) {}
 
     private static final Logger log = LoggerFactory.getLogger(ProductIndexingService.class);
 
@@ -119,11 +122,11 @@ public class ProductIndexingService implements ApplicationRunner {
      *                  while the entity is still loaded in the calling
      *                  JPA session (prevents lazy-load in workers)
      */
-    public void indexProduct(Product product, long companyId) {
+    public void indexProduct(Product product, UUID companyId) {
         submit(new IndexingTask.IndexProduct(product, companyId));
     }
 
-    public void removeProduct(long productId) {
+    public void removeProduct(UUID productId) {
         submit(new IndexingTask.RemoveProduct(productId));
     }
 
@@ -131,7 +134,7 @@ public class ProductIndexingService implements ApplicationRunner {
         submit(new IndexingTask.IndexBundle(bundle));
     }
 
-    public void removeBundle(long bundleId) {
+    public void removeBundle(UUID bundleId) {
         submit(new IndexingTask.RemoveBundle(bundleId));
     }
 
@@ -139,7 +142,7 @@ public class ProductIndexingService implements ApplicationRunner {
     // Full reindex — queues all documents for a company or the entire catalog
     // -------------------------------------------------------------------------
 
-    public void reindexCompany(long companyId) {
+    public void reindexCompany(UUID companyId) {
         productRepository.findAllByCompanyIdWithCompany(companyId)
                 .forEach(p -> submit(new IndexingTask.IndexProduct(p, companyId)));
         bundleRepository.findAllByCompanyId(companyId)
@@ -225,9 +228,9 @@ public class ProductIndexingService implements ApplicationRunner {
 
     private void processBatch(List<IndexingTask> batch) {
         List<ProductDocument> toIndex         = new ArrayList<>();
-        List<Long>            toRemove        = new ArrayList<>();
+        List<UUID>            toRemove        = new ArrayList<>();
         List<BundleDocument>  bundlesToIndex  = new ArrayList<>();
-        List<Long>            bundlesToRemove = new ArrayList<>();
+        List<UUID>            bundlesToRemove = new ArrayList<>();
 
         for (IndexingTask task : batch) {
             switch (task) {
@@ -242,7 +245,9 @@ public class ProductIndexingService implements ApplicationRunner {
             try { productSearchRepository.saveAll(toIndex); }
             catch (Exception e) {
                 log.warn("[SEARCH INDEX] saveAll products failed: {}", e.getMessage());
-                persistFailures("PRODUCT", "INDEX", toIndex.stream().map(d -> new long[]{d.getId(), d.getCompanyId()}).toList(), e.getMessage());
+                persistFailures("PRODUCT", "INDEX",
+                        toIndex.stream().map(d -> new FailurePair(d.getId(), d.getCompanyId())).toList(),
+                        e.getMessage());
             }
         }
         if (!toRemove.isEmpty()) {
@@ -256,7 +261,9 @@ public class ProductIndexingService implements ApplicationRunner {
             try { bundleSearchRepository.saveAll(bundlesToIndex); }
             catch (Exception e) {
                 log.warn("[SEARCH INDEX] saveAll bundles failed: {}", e.getMessage());
-                persistFailures("BUNDLE", "INDEX", bundlesToIndex.stream().map(d -> new long[]{d.getId(), d.getCompanyId()}).toList(), e.getMessage());
+                persistFailures("BUNDLE", "INDEX",
+                        bundlesToIndex.stream().map(d -> new FailurePair(d.getId(), d.getCompanyId())).toList(),
+                        e.getMessage());
             }
         }
         if (!bundlesToRemove.isEmpty()) {
@@ -268,13 +275,13 @@ public class ProductIndexingService implements ApplicationRunner {
         }
     }
 
-    private void persistFailures(String docType, String operation, List<long[]> idPairs, String errorMessage) {
+    private void persistFailures(String docType, String operation, List<FailurePair> idPairs, String errorMessage) {
         try {
-            for (long[] pair : idPairs) {
+            for (FailurePair pair : idPairs) {
                 IndexingFailure f = new IndexingFailure();
                 f.setDocumentType(docType);
-                f.setDocumentId(pair[0]);
-                f.setCompanyId(pair[1]);
+                f.setDocumentId(pair.documentId());
+                f.setCompanyId(pair.companyId());
                 f.setOperation(operation);
                 f.setErrorMessage(truncate(errorMessage, 500));
                 failureRepository.save(f);
@@ -284,9 +291,9 @@ public class ProductIndexingService implements ApplicationRunner {
         }
     }
 
-    private void persistRemoveFailures(String docType, List<Long> ids, String errorMessage) {
+    private void persistRemoveFailures(String docType, List<UUID> ids, String errorMessage) {
         try {
-            for (Long id : ids) {
+            for (UUID id : ids) {
                 IndexingFailure f = new IndexingFailure();
                 f.setDocumentType(docType);
                 f.setDocumentId(id);
@@ -307,7 +314,7 @@ public class ProductIndexingService implements ApplicationRunner {
     // Document builders
     // -------------------------------------------------------------------------
 
-    private ProductDocument toProductDocument(Product p, long companyId) {
+    private ProductDocument toProductDocument(Product p, UUID companyId) {
         Instant now = Instant.now();
         List<PromotionRule> rules = promotionRuleRepository.findActiveRulesForProduct(companyId, p.getId(), now);
 
@@ -336,11 +343,11 @@ public class ProductIndexingService implements ApplicationRunner {
 
         // Active collection ids — loaded once per indexing call. Empty when the product isn't
         // a member of any collection; null when the lookup fails (Redis-style: don't propagate).
-        List<Long> collectionIds = null;
+        List<UUID> collectionIds = null;
         try {
             collectionIds = collectionProductRepository.findProductCollectionPairs(List.of(p.getId()))
                     .stream()
-                    .map(row -> ((Number) row[1]).longValue())
+                    .map(row -> (UUID) row[1])
                     .distinct()
                     .toList();
             if (collectionIds.isEmpty()) collectionIds = null;

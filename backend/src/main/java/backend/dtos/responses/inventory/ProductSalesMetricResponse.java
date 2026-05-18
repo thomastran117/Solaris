@@ -4,11 +4,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class ProductSalesMetricResponse {
-    private Long productId;
+    private UUID productId;
     private String productName;
     private String sku;
     private Integer currentStock;

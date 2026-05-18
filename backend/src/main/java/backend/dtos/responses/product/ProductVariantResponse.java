@@ -2,9 +2,10 @@ package backend.dtos.responses.product;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 public record ProductVariantResponse(
-        Long id,
+        UUID id,
         String sku,
         BigDecimal price,
         BigDecimal compareAtPrice,

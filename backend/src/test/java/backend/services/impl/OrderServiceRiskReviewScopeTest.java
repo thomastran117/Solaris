@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.configurations.environment.RiskProperties;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
@@ -159,7 +161,7 @@ class OrderServiceRiskReviewScopeTest {
         order.setStatus(OrderStatus.RESERVED);
         order.setTotalAmount(BigDecimal.TEN);
         order.setCurrency("USD");
-        order.setUser(makeUser(9L));
+        order.setUser(makeUser(TestIds.uuid(9)));
         order.setItems(List.of(
                 makeOrderItem(1L, 10L),
                 makeOrderItem(2L, 20L)));
@@ -184,7 +186,7 @@ class OrderServiceRiskReviewScopeTest {
         return item;
     }
 
-    private User makeUser(long userId) {
+    private User makeUser(UUID userId) {
         User user = new User();
         user.setId(userId);
         user.setRole(UserRole.USER);

@@ -1,6 +1,7 @@
 package backend.dtos.responses.analytics;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * A single product entry in a hot-products ranking response.
@@ -16,7 +17,7 @@ import java.math.BigDecimal;
  *                    in the 24h response (no shorter-window baseline).
  */
 public record DemandEntry(
-        Long productId,
+        UUID productId,
         String productName,
         String sku,
         BigDecimal price,

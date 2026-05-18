@@ -5,11 +5,12 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class InventoryItemResponse {
-    private Long productId;
+    private UUID productId;
     private String productName;
     private String sku;
     private Integer stock;

@@ -6,14 +6,15 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class MarketplaceCatalogProductResponse {
-    private Long id;
-    private Long companyId;
-    private Long marketplaceId;
-    private Long vendorId;
+    private UUID id;
+    private UUID companyId;
+    private UUID marketplaceId;
+    private UUID vendorId;
     private String vendorName;
     private String vendorTier;
     private String name;

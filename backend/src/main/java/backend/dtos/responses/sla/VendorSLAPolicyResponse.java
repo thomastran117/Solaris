@@ -4,12 +4,13 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorSLAPolicyResponse {
-    private long id;
-    private long marketplaceId;
+    private UUID id;
+    private UUID marketplaceId;
     private String name;
     private double targetShipHours;
     private double targetResponseHours;

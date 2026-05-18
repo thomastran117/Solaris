@@ -9,12 +9,12 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface SavedListItemRepository extends JpaRepository<SavedListItem, Long> {
+public interface SavedListItemRepository extends JpaRepository<SavedListItem, java.util.UUID> {
 
-    Optional<SavedListItem> findByIdAndSavedListId(long id, long savedListId);
+    Optional<SavedListItem> findByIdAndSavedListId(java.util.UUID id, java.util.UUID savedListId);
 
     /** Duplicate check when variant is specified. */
-    boolean existsBySavedListIdAndProductIdAndVariantId(long savedListId, long productId, long variantId);
+    boolean existsBySavedListIdAndProductIdAndVariantId(java.util.UUID savedListId, java.util.UUID productId, java.util.UUID variantId);
 
     /** Duplicate check when no variant is specified. */
     @Query("""
@@ -24,6 +24,6 @@ public interface SavedListItemRepository extends JpaRepository<SavedListItem, Lo
               AND i.variant IS NULL
             """)
     boolean existsBySavedListIdAndProductIdAndVariantIsNull(
-            @Param("savedListId") long savedListId,
-            @Param("productId") long productId);
+            @Param("savedListId") java.util.UUID savedListId,
+            @Param("productId") java.util.UUID productId);
 }

@@ -1,5 +1,6 @@
 package backend.controllers.impl.admin;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -56,10 +57,10 @@ public class ReviewModerationController {
 
     @PostMapping("/{reviewId}/moderate")
     public ResponseEntity<Void> moderate(
-            @PathVariable long reviewId,
+            @PathVariable UUID reviewId,
             @Valid @RequestBody ModerateReviewRequest request) {
         try {
-            long moderatorId = resolveUserId();
+            UUID moderatorId = resolveUserId();
             reviewReportService.moderate(reviewId, moderatorId, request);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -82,8 +83,8 @@ public class ReviewModerationController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

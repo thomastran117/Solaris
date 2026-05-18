@@ -9,11 +9,12 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface UserDeviceRepository extends JpaRepository<UserDevice, Long> {
-    Optional<UserDevice> findByUserIdAndFingerprint(long userId, String fingerprint);
-    List<UserDevice> findByUserId(long userId);
+public interface UserDeviceRepository extends JpaRepository<UserDevice, UUID> {
+    Optional<UserDevice> findByUserIdAndFingerprint(UUID userId, String fingerprint);
+    List<UserDevice> findByUserId(UUID userId);
 
     /** Counts how many distinct user ids have seen this fingerprint — feeds multi-account velocity. */
     @Query("SELECT COUNT(DISTINCT d.user.id) FROM UserDevice d WHERE d.fingerprint = :fingerprint")

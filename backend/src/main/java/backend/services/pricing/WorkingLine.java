@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Internal mutable per-line state threaded through evaluators. Not exposed in the API;
@@ -20,7 +21,7 @@ public final class WorkingLine {
     private BigDecimal remaining;
     private BigDecimal savings = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     /** Ordered, deduped ids of rules that applied to this line. */
-    private final Set<Long> appliedRuleIds = new LinkedHashSet<>();
+    private final Set<UUID> appliedRuleIds = new LinkedHashSet<>();
     /** BOGO trigger units already consumed on this line (prevents double-counting across overlapping rules). */
     private int bogoTriggerConsumed = 0;
     /** BOGO reward units already consumed on this line. */
@@ -34,12 +35,12 @@ public final class WorkingLine {
 
     public CartLine source()                  { return source; }
     public int index()                        { return source.index(); }
-    public Long productId()                   { return source.productId(); }
-    public Long variantId()                   { return source.variantId(); }
+    public UUID productId()                   { return source.productId(); }
+    public UUID variantId()                   { return source.variantId(); }
     public int quantity()                     { return source.quantity(); }
     public BigDecimal unitBasePrice()         { return source.unitBasePrice(); }
-    public long companyId()                   { return source.companyId(); }
-    public Long bundleId()                    { return source.bundleId(); }
+    public UUID companyId()                   { return source.companyId(); }
+    public UUID bundleId()                    { return source.bundleId(); }
     public BigDecimal remaining()             { return remaining; }
     public BigDecimal savings()               { return savings; }
     public int bogoTriggerConsumed()          { return bogoTriggerConsumed; }
@@ -48,13 +49,15 @@ public final class WorkingLine {
     public int bogoRewardAvailable()          { return source.quantity() - bogoRewardConsumed - bogoTriggerConsumed; }
 
     /** Apply a positive saving to this line. Silently capped at {@link #remaining()}. Records the rule id. */
-    public BigDecimal applySavings(long ruleId, BigDecimal amount) {
+    public BigDecimal applySavings(UUID ruleId, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) return BigDecimal.ZERO;
         BigDecimal capped = amount.min(remaining).setScale(2, RoundingMode.HALF_UP);
         if (capped.signum() <= 0) return BigDecimal.ZERO;
         remaining = remaining.subtract(capped);
         savings = savings.add(capped);
-        appliedRuleIds.add(ruleId);
+        if (ruleId != null) {
+            appliedRuleIds.add(ruleId);
+        }
         return capped;
     }
 

@@ -1,5 +1,6 @@
 package backend.services.impl.marketplace;
 
+import java.util.UUID;
 import backend.dtos.requests.marketplace.CreateMarketplaceRequest;
 import backend.dtos.requests.marketplace.UpdateMarketplaceRequest;
 import backend.dtos.responses.marketplace.MarketplaceProfileResponse;
@@ -30,7 +31,7 @@ public class MarketplaceServiceImpl implements MarketplaceService {
 
     @Override
     @Transactional
-    public MarketplaceProfileResponse createMarketplace(long ownerId, long companyId, CreateMarketplaceRequest request) {
+    public MarketplaceProfileResponse createMarketplace(UUID ownerId, UUID companyId, CreateMarketplaceRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (marketplaceProfileRepository.existsByCompanyId(companyId)) {
@@ -54,7 +55,7 @@ public class MarketplaceServiceImpl implements MarketplaceService {
 
     @Override
     @Transactional(readOnly = true)
-    public MarketplaceProfileResponse getMarketplace(long marketplaceId) {
+    public MarketplaceProfileResponse getMarketplace(UUID marketplaceId) {
         MarketplaceProfile profile = marketplaceProfileRepository.findById(marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Marketplace not found"));
         return toResponse(profile);
@@ -62,7 +63,7 @@ public class MarketplaceServiceImpl implements MarketplaceService {
 
     @Override
     @Transactional
-    public MarketplaceProfileResponse updateMarketplace(long marketplaceId, long ownerId, UpdateMarketplaceRequest request) {
+    public MarketplaceProfileResponse updateMarketplace(UUID marketplaceId, UUID ownerId, UpdateMarketplaceRequest request) {
         MarketplaceProfile profile = marketplaceProfileRepository.findById(marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Marketplace not found"));
 

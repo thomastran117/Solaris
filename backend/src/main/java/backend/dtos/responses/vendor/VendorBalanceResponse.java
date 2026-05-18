@@ -4,11 +4,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorBalanceResponse {
-    private Long vendorId;
+    private UUID vendorId;
     private long pendingCents;
     private long availableCents;
     private long inTransitCents;

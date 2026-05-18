@@ -9,6 +9,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -19,8 +20,8 @@ import java.time.Instant;
 public class UserPreference {
 
     @Id
-    @Column(name = "user_id")
-    private Long userId;
+    @Column(name = "user_id", columnDefinition = "BINARY(16)")
+    private UUID userId;
 
     @Column(nullable = false)
     private boolean trackingOptOut = false;
@@ -33,7 +34,7 @@ public class UserPreference {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public UserPreference(Long userId) {
+    public UserPreference(UUID userId) {
         this.userId = userId;
     }
 }

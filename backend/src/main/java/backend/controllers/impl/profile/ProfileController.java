@@ -1,5 +1,6 @@
 package backend.controllers.impl.profile;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,7 +33,7 @@ public class ProfileController {
     @GetMapping("")
     public ResponseEntity<ProfileResponse> getProfile() {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(profileService.getProfile(userId));
         } catch (AppHttpException e) {
             throw e;
@@ -44,7 +45,7 @@ public class ProfileController {
     @PatchMapping("")
     public ResponseEntity<ProfileResponse> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             ProfileResponse response = profileService.updateProfile(
                     userId,
                     request.getFirstName(),
@@ -60,8 +61,8 @@ public class ProfileController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

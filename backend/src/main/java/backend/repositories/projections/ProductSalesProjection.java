@@ -1,6 +1,7 @@
 package backend.repositories.projections;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Interface projection for native SQL analytics queries that aggregate
@@ -8,7 +9,7 @@ import java.math.BigDecimal;
  * (case-insensitive) to the getter names declared here.
  */
 public interface ProductSalesProjection {
-    Long getProductId();
+    UUID getProductId();
     String getProductName();
     String getSku();
     Integer getCurrentStock();

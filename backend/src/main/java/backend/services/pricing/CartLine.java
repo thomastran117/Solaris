@@ -1,6 +1,7 @@
 package backend.services.pricing;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * One line item in the pricing request. Prices are server-authoritative — callers pass
@@ -19,10 +20,10 @@ import java.math.BigDecimal;
  */
 public record CartLine(
         int index,
-        Long productId,
-        Long variantId,
+        UUID productId,
+        UUID variantId,
         int quantity,
         BigDecimal unitBasePrice,
-        long companyId,
-        Long bundleId
+        UUID companyId,
+        UUID bundleId
 ) {}

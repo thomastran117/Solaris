@@ -1,5 +1,6 @@
 package backend.dtos.responses.review;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -9,9 +10,9 @@ import java.util.List;
 @Getter
 @AllArgsConstructor
 public class ReviewResponse {
-    private Long id;
-    private Long productId;
-    private Long reviewerId;
+    private UUID id;
+    private UUID productId;
+    private UUID reviewerId;
     private String reviewerFirstName;
     private String reviewerLastName;
     private int rating;

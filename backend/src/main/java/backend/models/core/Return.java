@@ -30,8 +30,9 @@ import java.util.List;
 public class Return {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /**
      * Optimistic-lock guard. Round 1 added {@code @Version} to Order/SubOrder/Coupon

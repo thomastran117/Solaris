@@ -1,5 +1,6 @@
 package backend.dtos.responses.risk;
 
+import java.util.UUID;
 import backend.models.enums.RiskAction;
 import backend.models.enums.RiskAssessmentKind;
 import backend.models.enums.RiskMode;
@@ -17,9 +18,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RiskAssessmentResponse {
-    private Long id;
-    private Long orderId;
-    private long userId;
+    private UUID id;
+    private UUID orderId;
+    private UUID userId;
     private RiskAction decision;
     private int score;
     private RiskMode mode;

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Aggregation queries for company-level product analytics.
@@ -19,7 +20,7 @@ import java.util.List;
  * time-windowed. Native SQL is used for DATE() grouping which has no JPQL equivalent.
  */
 @Repository
-public interface CompanyAnalyticsRepository extends JpaRepository<Order, Long> {
+public interface CompanyAnalyticsRepository extends JpaRepository<Order, UUID> {
 
     // -------------------------------------------------------------------------
     // Daily revenue
@@ -41,7 +42,7 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, Long> {
             ORDER BY DATE(o.created_at)
             """)
     List<DailyRevProjection> getDailyRevenue(
-            @Param("companyId") long companyId,
+            @Param("companyId") UUID companyId,
             @Param("from") Instant from,
             @Param("to") Instant to);
 
@@ -65,7 +66,7 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, Long> {
             ORDER BY totalRevenue DESC
             """)
     List<CategorySalesProjection> getCategorySales(
-            @Param("companyId") long companyId,
+            @Param("companyId") UUID companyId,
             @Param("from") Instant from,
             @Param("to") Instant to);
 
@@ -97,7 +98,7 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, Long> {
             LIMIT :limitVal
             """)
     List<SlowMoverProjection> getSlowMovers(
-            @Param("companyId") long companyId,
+            @Param("companyId") UUID companyId,
             @Param("since") Instant since,
             @Param("windowDays") double windowDays,
             @Param("maxVelocity") double maxVelocity,

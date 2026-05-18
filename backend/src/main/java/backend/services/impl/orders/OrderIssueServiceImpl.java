@@ -1,5 +1,6 @@
 package backend.services.impl.orders;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -88,7 +89,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse openIssue(long orderId, long reporterUserId, OpenIssueRequest request) {
+    public OrderIssueResponse openIssue(UUID orderId, UUID reporterUserId, OpenIssueRequest request) {
         User reporter = userRepository.findById(reporterUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + reporterUserId));
 
@@ -129,7 +130,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderIssueResponse> getIssuesByOrder(long orderId, long actorUserId) {
+    public List<OrderIssueResponse> getIssuesByOrder(UUID orderId, UUID actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
 
@@ -145,7 +146,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<OrderIssueResponse> listIssues(long actorUserId, OrderIssueState state, int page, int size) {
+    public PagedResponse<OrderIssueResponse> listIssues(UUID actorUserId, OrderIssueState state, int page, int size) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -157,7 +158,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse transitionState(long issueId, long actorUserId, TransitionIssueRequest request) {
+    public OrderIssueResponse transitionState(UUID issueId, UUID actorUserId, TransitionIssueRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -172,7 +173,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse resolveWithRefund(long issueId, long actorUserId, ResolveWithRefundRequest request) {
+    public OrderIssueResponse resolveWithRefund(UUID issueId, UUID actorUserId, ResolveWithRefundRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -198,7 +199,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse resolveWithReplacement(long issueId, long actorUserId,
+    public OrderIssueResponse resolveWithReplacement(UUID issueId, UUID actorUserId,
                                                       ResolveWithReplacementRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
@@ -222,7 +223,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse resolveWithCredit(long issueId, long actorUserId, ResolveWithCreditRequest request) {
+    public OrderIssueResponse resolveWithCredit(UUID issueId, UUID actorUserId, ResolveWithCreditRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -230,7 +231,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
         OrderIssue issue = requireIssue(issueId);
         requireNonTerminal(issue);
 
-        Long customerId = issue.getOrder().getUser().getId();
+        UUID customerId = issue.getOrder().getUser().getId();
         // Deduct any credit the customer already spent on this order so we don't
         // return more than they actually paid. E.g. $100 order paid $30 credit +
         // $70 Stripe → compensation is capped at $100 - $30 = $70 new credit.
@@ -259,7 +260,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
 
     @Override
     @Transactional
-    public OrderIssueResponse rejectIssue(long issueId, long actorUserId, RejectIssueRequest request) {
+    public OrderIssueResponse rejectIssue(UUID issueId, UUID actorUserId, RejectIssueRequest request) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -281,7 +282,7 @@ public class OrderIssueServiceImpl implements OrderIssueService {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private OrderIssue requireIssue(long issueId) {
+    private OrderIssue requireIssue(UUID issueId) {
         return issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order issue not found: " + issueId));
     }

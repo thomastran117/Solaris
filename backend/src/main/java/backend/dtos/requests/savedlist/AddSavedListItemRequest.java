@@ -8,15 +8,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.UUID;
+
 @Getter
 @Setter
 @NoArgsConstructor
 public class AddSavedListItemRequest {
 
     @NotNull
-    private Long productId;
+    private UUID productId;
 
-    private Long variantId;
+    private UUID variantId;
 
     @Min(1)
     private Integer quantity = 1;

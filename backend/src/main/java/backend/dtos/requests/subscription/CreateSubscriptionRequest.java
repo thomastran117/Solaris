@@ -6,14 +6,16 @@ import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 @Getter
 @Setter
 public class CreateSubscriptionRequest {
 
     @NotNull
-    private Long productId;
+    private UUID productId;
 
-    private Long variantId;
+    private UUID variantId;
 
     @NotNull
     @Min(1)

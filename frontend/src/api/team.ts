@@ -16,7 +16,7 @@ export type CompanyMembershipStatus = "PENDING" | "ACTIVE" | "REVOKED";
 
 export interface TeamMembership {
   id: number;
-  userId: number | null;
+  userId: string | null;
   displayName: string | null;
   email: string | null;
   role: CompanyRole;

@@ -1,6 +1,7 @@
 package backend.services.intf;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Per-user idempotency cache for write endpoints (order creation, refunds, etc.).
@@ -16,13 +17,13 @@ public interface IdempotencyService {
     /**
      * Returns the previously-stored result id for {@code (userId, key)} if one exists.
      */
-    Optional<Long> lookup(String scope, long userId, String key);
+    Optional<UUID> lookup(String scope, UUID userId, String key);
 
     /**
      * Stores the result id of a successful operation. Subsequent calls to
      * {@link #lookup} with the same {@code (scope, userId, key)} will return it.
      */
-    void store(String scope, long userId, String key, long resultId);
+    void store(String scope, UUID userId, String key, UUID resultId);
 
     /**
      * Atomically claims the key for in-flight processing. Returns {@code true} if this
@@ -33,5 +34,5 @@ public interface IdempotencyService {
      * <p>The claim is held only briefly; the final {@link #store} call replaces it with
      * the result id.
      */
-    boolean claim(String scope, long userId, String key, long claimTtlSeconds);
+    boolean claim(String scope, UUID userId, String key, long claimTtlSeconds);
 }

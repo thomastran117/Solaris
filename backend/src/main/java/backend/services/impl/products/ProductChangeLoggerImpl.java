@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Function;
 
 import backend.services.intf.products.ProductChangeLogger;
@@ -24,11 +25,11 @@ public class ProductChangeLoggerImpl implements ProductChangeLogger {
 
     private final ProductChangeLogRepository changeLogRepository;
     private final UserRepository userRepository;
-    private final AuditorAware<Long> auditorAware;
+    private final AuditorAware<UUID> auditorAware;
 
     public ProductChangeLoggerImpl(ProductChangeLogRepository changeLogRepository,
                                    UserRepository userRepository,
-                                   AuditorAware<Long> auditorAware) {
+                                   AuditorAware<UUID> auditorAware) {
         this.changeLogRepository = changeLogRepository;
         this.userRepository = userRepository;
         this.auditorAware = auditorAware;

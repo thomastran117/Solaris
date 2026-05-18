@@ -12,6 +12,7 @@ import backend.models.enums.ReportReason;
 import backend.models.enums.ReportStatus;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -30,14 +31,15 @@ import java.time.Instant;
 public class ReviewReport {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @Column(name = "review_id", nullable = false)
     private Long reviewId;
 
-    @Column(name = "reporter_id", nullable = false)
-    private Long reporterId;
+    @Column(name = "reporter_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID reporterId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
@@ -57,6 +59,6 @@ public class ReviewReport {
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
-    @Column(name = "resolved_by")
-    private Long resolvedBy;
+    @Column(name = "resolved_by", columnDefinition = "BINARY(16)")
+    private UUID resolvedBy;
 }

@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ForbiddenException;
@@ -75,11 +77,11 @@ class ReturnServicePartialRefundTest {
 
     @Test
     void issuePartialRefund_createsReturnAndFiresStripeRefund() throws Exception {
-        User customer = makeUser(1L);
+        User customer = makeUser(TestIds.uuid(1));
         Order order = makeOrder(10L, customer);
         User staff = makeStaffUser(2L);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenReturn(order);
 
@@ -101,15 +103,15 @@ class ReturnServicePartialRefundTest {
 
     @Test
     void issuePartialRefund_throwsWhenAmountZero() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeStaffUser(2L)));
-        when(orderRepository.findById(10L)).thenReturn(Optional.of(makeOrder(10L, makeUser(1L))));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeStaffUser(2L)));
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(makeOrder(10L, makeUser(TestIds.uuid(1)))));
         assertThrows(BadRequestException.class,
                 () -> service.issuePartialRefund(10L, 0L, null, 2L));
     }
 
     @Test
     void issuePartialRefund_throwsWhenOrderNotFound() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeStaffUser(2L)));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeStaffUser(2L)));
         when(orderRepository.findById(99L)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> service.issuePartialRefund(99L, 500L, null, 2L));
@@ -117,7 +119,7 @@ class ReturnServicePartialRefundTest {
 
     @Test
     void issuePartialRefund_throwsWhenActorIsNotStaff() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeUser(2L)));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeUser(TestIds.uuid(2))));
 
         assertThrows(ForbiddenException.class,
                 () -> service.issuePartialRefund(10L, 500L, null, 2L));
@@ -125,7 +127,7 @@ class ReturnServicePartialRefundTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private User makeUser(long id) {
+    private User makeUser(UUID id) {
         User u = new User();
         u.setId(id);
         u.setEmail("user" + id + "@test.com");

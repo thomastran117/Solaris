@@ -11,6 +11,7 @@ import backend.services.pricing.config.PromotionScope;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Applies a percentage discount. LINE scope discounts each eligible line independently;
@@ -59,7 +60,7 @@ public class PercentageOffEvaluator implements RuleEvaluator {
     }
 
     /** Distribute {@code target} across lines proportionally to their current remaining. */
-    static BigDecimal distribute(long ruleId, List<WorkingLine> lines, BigDecimal pool, BigDecimal target) {
+    static BigDecimal distribute(UUID ruleId, List<WorkingLine> lines, BigDecimal pool, BigDecimal target) {
         BigDecimal taken = BigDecimal.ZERO;
         int lastIdx = lines.size() - 1;
         for (int i = 0; i <= lastIdx; i++) {

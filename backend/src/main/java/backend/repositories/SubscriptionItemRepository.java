@@ -7,6 +7,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface SubscriptionItemRepository extends JpaRepository<SubscriptionItem, Long> {
-    List<SubscriptionItem> findAllBySubscriptionId(Long subscriptionId);
+public interface SubscriptionItemRepository extends JpaRepository<SubscriptionItem, java.util.UUID> {
+    List<SubscriptionItem> findAllBySubscriptionId(java.util.UUID subscriptionId);
 }

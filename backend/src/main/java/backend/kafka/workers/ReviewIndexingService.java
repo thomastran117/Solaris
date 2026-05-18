@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.UUID;
 
 /**
  * Async Elasticsearch indexer for {@link ReviewDocument}. Mirrors {@link ProductIndexingService}:
@@ -39,9 +40,11 @@ public class ReviewIndexingService implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(ReviewIndexingService.class);
     static final String DOC_TYPE = "REVIEW";
 
+    private record FailurePair(UUID documentId, UUID companyId) {}
+
     sealed interface Task permits Task.Index, Task.Remove {
         record Index(ProductReview review, boolean hasMedia) implements Task {}
-        record Remove(long reviewId) implements Task {}
+        record Remove(UUID reviewId) implements Task {}
     }
 
     private final ReviewSearchRepository reviewSearchRepository;
@@ -106,7 +109,7 @@ public class ReviewIndexingService implements ApplicationRunner {
         submit(new Task.Index(review, hasMedia));
     }
 
-    public void removeReview(long reviewId) {
+    public void removeReview(UUID reviewId) {
         submit(new Task.Remove(reviewId));
     }
 
@@ -116,7 +119,7 @@ public class ReviewIndexingService implements ApplicationRunner {
             log.info("[REVIEW INDEX] reindexAll — no reviews");
             return;
         }
-        Set<Long> hasMedia = mediaReviewIds(all);
+        Set<UUID> hasMedia = mediaReviewIds(all);
         for (ProductReview r : all) submit(new Task.Index(r, hasMedia.contains(r.getId())));
         log.info("[REVIEW INDEX] Queued {} reviews for full reindex", all.size());
     }
@@ -174,7 +177,7 @@ public class ReviewIndexingService implements ApplicationRunner {
 
     private void processBatch(List<Task> batch) {
         List<ReviewDocument> toIndex = new ArrayList<>();
-        List<Long> toRemove = new ArrayList<>();
+        List<UUID> toRemove = new ArrayList<>();
         for (Task t : batch) {
             switch (t) {
                 case Task.Index idx -> toIndex.add(toDocument(idx.review(), idx.hasMedia()));
@@ -185,7 +188,9 @@ public class ReviewIndexingService implements ApplicationRunner {
             try { reviewSearchRepository.saveAll(toIndex); }
             catch (Exception e) {
                 log.warn("[REVIEW INDEX] saveAll reviews failed: {}", e.getMessage());
-                persistFailures("INDEX", toIndex.stream().map(d -> new long[]{d.getId(), d.getCompanyId() == null ? 0L : d.getCompanyId()}).toList(), e.getMessage());
+                persistFailures("INDEX",
+                        toIndex.stream().map(d -> new FailurePair(d.getId(), d.getCompanyId())).toList(),
+                        e.getMessage());
             }
         }
         if (!toRemove.isEmpty()) {
@@ -197,13 +202,13 @@ public class ReviewIndexingService implements ApplicationRunner {
         }
     }
 
-    private void persistFailures(String operation, List<long[]> idPairs, String errorMessage) {
+    private void persistFailures(String operation, List<FailurePair> idPairs, String errorMessage) {
         try {
-            for (long[] pair : idPairs) {
+            for (FailurePair pair : idPairs) {
                 IndexingFailure f = new IndexingFailure();
                 f.setDocumentType(DOC_TYPE);
-                f.setDocumentId(pair[0]);
-                f.setCompanyId(pair[1] == 0L ? null : pair[1]);
+                f.setDocumentId(pair.documentId());
+                f.setCompanyId(pair.companyId());
                 f.setOperation(operation);
                 f.setErrorMessage(truncate(errorMessage, 500));
                 failureRepository.save(f);
@@ -213,9 +218,9 @@ public class ReviewIndexingService implements ApplicationRunner {
         }
     }
 
-    private void persistRemoveFailures(List<Long> ids, String errorMessage) {
+    private void persistRemoveFailures(List<UUID> ids, String errorMessage) {
         try {
-            for (Long id : ids) {
+            for (UUID id : ids) {
                 IndexingFailure f = new IndexingFailure();
                 f.setDocumentType(DOC_TYPE);
                 f.setDocumentId(id);
@@ -237,7 +242,7 @@ public class ReviewIndexingService implements ApplicationRunner {
     // ---------------------------------------------------------------------
 
     private ReviewDocument toDocument(ProductReview r, boolean hasMedia) {
-        Long companyId = null;
+        UUID companyId = null;
         Long marketplaceId = null;
         try {
             if (r.getProduct() != null) {
@@ -247,7 +252,7 @@ public class ReviewIndexingService implements ApplicationRunner {
         } catch (Exception ignored) {}
 
         String reviewerName = "";
-        Long reviewerId = null;
+        UUID reviewerId = null;
         try {
             User u = r.getReviewer();
             if (u != null) {
@@ -276,10 +281,10 @@ public class ReviewIndexingService implements ApplicationRunner {
         );
     }
 
-    private Set<Long> mediaReviewIds(List<ProductReview> reviews) {
+    private Set<UUID> mediaReviewIds(List<ProductReview> reviews) {
         if (reviews.isEmpty()) return Set.of();
-        List<Long> ids = reviews.stream().map(ProductReview::getId).toList();
-        Set<Long> withMedia = new HashSet<>();
+        List<UUID> ids = reviews.stream().map(ProductReview::getId).toList();
+        Set<UUID> withMedia = new HashSet<>();
         for (var m : mediaRepository.findByReviewIdInOrderByReviewIdAscPositionAsc(ids)) {
             withMedia.add(m.getReviewId());
         }

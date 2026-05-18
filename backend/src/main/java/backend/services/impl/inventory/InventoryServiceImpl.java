@@ -97,7 +97,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public CursorPagedResponse<InventoryItemResponse> getInventory(
-            long companyId, long ownerId,
+            long companyId, UUID ownerId,
             String stockStatus, String q,
             String category, String brand,
             ProductStatus status, Integer minStock, Integer maxStock,
@@ -149,7 +149,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public InventorySummaryResponse getSummary(long companyId, long ownerId) {
+    public InventorySummaryResponse getSummary(UUID companyId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
 
         long totalProducts = productRepository.count(
@@ -171,7 +171,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public InventoryItemResponse getInventoryItem(long companyId, long productId, long ownerId) {
+    public InventoryItemResponse getInventoryItem(UUID companyId, UUID productId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -182,7 +182,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public PagedResponse<AdjustmentResponse> getAdjustmentHistory(
-            long companyId, long productId, long ownerId, int page, int size) {
+            long companyId, long productId, UUID ownerId, int page, int size) {
 
         assertCompanyOwnership(companyId, ownerId);
 
@@ -201,7 +201,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public InventoryItemResponse adjustStock(
-            long companyId, long productId, long ownerId, AdjustStockRequest request) {
+            long companyId, long productId, UUID ownerId, AdjustStockRequest request) {
 
         assertCompanyOwnership(companyId, ownerId);
 
@@ -260,7 +260,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
 
             if (previousStock == 0 && delta > 0) {
-                eventPublisher.publishEvent(new StockRestoredEvent(productId, null, 0L));
+                eventPublisher.publishEvent(new StockRestoredEvent(product.getId(), null, 0L));
             }
 
             product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -281,7 +281,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional
-    public List<InventoryItemResponse> bulkAdjust(long companyId, long ownerId, BulkAdjustRequest request) {
+    public List<InventoryItemResponse> bulkAdjust(UUID companyId, UUID ownerId, BulkAdjustRequest request) {
         assertCompanyOwnership(companyId, ownerId);
 
         List<BulkAdjustItem> items = request.getItems();
@@ -386,7 +386,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public InventoryItemResponse updateSettings(
-            long companyId, long productId, long ownerId, UpdateInventorySettingsRequest request) {
+            long companyId, long productId, UUID ownerId, UpdateInventorySettingsRequest request) {
 
         assertCompanyOwnership(companyId, ownerId);
 
@@ -412,7 +412,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public List<ProductSalesMetricResponse> getTopPurchasedProducts(long companyId, long ownerId, int limit, Instant from, Instant to) {
+    public List<ProductSalesMetricResponse> getTopPurchasedProducts(UUID companyId, UUID ownerId, int limit, Instant from, Instant to) {
         assertCompanyOwnership(companyId, ownerId);
         return productRepository.findTopByUnitsSold(companyId, limit, from, to)
                 .stream()
@@ -421,7 +421,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public List<ProductSalesMetricResponse> getTopRevenueProducts(long companyId, long ownerId, int limit, Instant from, Instant to) {
+    public List<ProductSalesMetricResponse> getTopRevenueProducts(UUID companyId, UUID ownerId, int limit, Instant from, Instant to) {
         assertCompanyOwnership(companyId, ownerId);
         return productRepository.findTopByRevenue(companyId, limit, from, to)
                 .stream()
@@ -430,7 +430,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public List<ProductSalesMetricResponse> getNeverSoldProducts(long companyId, long ownerId, int limit) {
+    public List<ProductSalesMetricResponse> getNeverSoldProducts(UUID companyId, UUID ownerId, int limit) {
         assertCompanyOwnership(companyId, ownerId);
         return productRepository.findNeverSold(companyId, limit)
                 .stream()
@@ -490,7 +490,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     // --- Private mapping helpers ---
 
-    private Company assertCompanyOwnership(long companyId, long ownerId) {
+    private Company assertCompanyOwnership(long companyId, UUID ownerId) {
         return companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 
@@ -576,8 +576,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public PagedResponse<AdjustmentResponse> getCompanyAdjustmentHistory(
-            long companyId, long ownerId, AdjustmentReason reason,
-            Instant from, Instant to, Long productId, Long userId, int page, int size) {
+            long companyId, UUID ownerId, AdjustmentReason reason,
+            Instant from, Instant to, Long productId, UUID userId, int page, int size) {
 
         assertCompanyOwnership(companyId, ownerId);
 
@@ -595,7 +595,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public InventoryItemResponse adjustVariantStock(
-            long companyId, long productId, long variantId, long ownerId, AdjustStockRequest request) {
+            long companyId, long productId, long variantId, UUID ownerId, AdjustStockRequest request) {
 
         assertCompanyOwnership(companyId, ownerId);
 
@@ -659,7 +659,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
 
             if (previousStock == 0 && delta > 0) {
-                eventPublisher.publishEvent(new StockRestoredEvent(productId, variantId, variantId));
+                eventPublisher.publishEvent(new StockRestoredEvent(product.getId(), variant.getId(), variantId));
             }
 
             return toInventoryItemResponse(product);

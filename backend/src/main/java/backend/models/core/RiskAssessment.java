@@ -12,6 +12,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Immutable audit row produced by every call to the risk engine. Persisted even in
@@ -34,15 +35,16 @@ import java.time.Instant;
 public class RiskAssessment {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /** Null for assessments captured before the order row exists (not currently used, reserved for future). */
-    @Column(name = "order_id", nullable = true)
-    private Long orderId;
+    @Column(name = "order_id", nullable = true, columnDefinition = "BINARY(16)")
+    private UUID orderId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID userId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)

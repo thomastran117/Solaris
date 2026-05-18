@@ -1,5 +1,6 @@
 package backend.services.intf.orders;
 
+import java.util.UUID;
 import backend.dtos.requests.order.CreateOrderRequest;
 import backend.dtos.requests.order.ReturnOrderRequest;
 import backend.dtos.requests.order.ShipOrderRequest;
@@ -15,51 +16,51 @@ import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskReviewStatus;
 
 public interface OrderService {
-    OrderResponse createOrder(long userId, CreateOrderRequest request);
-    OrderResponse getOrder(long orderId, long userId);
-    OrderResponse getLatestOrder(long userId);
-    PagedResponse<OrderResponse> getOrders(long userId, OrderStatus status, int page, int size, String sort, String direction);
-    OrderResponse reorderOrder(long orderId, long userId);
-    OrderResponse cancelOrder(long orderId, long userId);
+    OrderResponse createOrder(UUID userId, CreateOrderRequest request);
+    OrderResponse getOrder(UUID orderId, UUID userId);
+    OrderResponse getLatestOrder(UUID userId);
+    PagedResponse<OrderResponse> getOrders(UUID userId, OrderStatus status, int page, int size, String sort, String direction);
+    OrderResponse reorderOrder(UUID orderId, UUID userId);
+    OrderResponse cancelOrder(UUID orderId, UUID userId);
     void handlePaymentSuccess(String paymentIntentId);
     void handlePaymentFailure(String paymentIntentId);
-    PagedResponse<CompanyOrderResponse> getCompanyOrders(long companyId, long ownerId, OrderStatus status, int page, int size);
-    CompanyOrderResponse getCompanyOrder(long companyId, long orderId, long ownerId);
+    PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status, int page, int size);
+    CompanyOrderResponse getCompanyOrder(UUID companyId, UUID orderId, UUID ownerId);
 
-    void fulfillPendingBackorders(long productId, Long variantId, int availableQty, Long fulfillmentLocationId);
+    void fulfillPendingBackorders(UUID productId, UUID variantId, int availableQty, UUID fulfillmentLocationId);
 
     // -------------------------------------------------------------------------
     // Merchant fulfillment transitions
     // -------------------------------------------------------------------------
 
     /** Transitions PAID order to PACKED — marks all PENDING items as PACKED. */
-    CompanyOrderResponse markAsPacked(long companyId, long orderId, long ownerId);
+    CompanyOrderResponse markAsPacked(UUID companyId, UUID orderId, UUID ownerId);
 
     /** Transitions PACKED (or PARTIALLY_FULFILLED) order items to SHIPPED; records tracking info. */
-    CompanyOrderResponse markAsShipped(long companyId, long orderId, long ownerId, ShipOrderRequest request);
+    CompanyOrderResponse markAsShipped(UUID companyId, UUID orderId, UUID ownerId, ShipOrderRequest request);
 
     /** Transitions SHIPPED (or PARTIALLY_FULFILLED) order to DELIVERED. */
-    CompanyOrderResponse markAsDelivered(long companyId, long orderId, long ownerId);
+    CompanyOrderResponse markAsDelivered(UUID companyId, UUID orderId, UUID ownerId);
 
     /** Processes a return for a DELIVERED (or SHIPPED) order — optionally restocks and refunds. */
-    CompanyOrderResponse initiateReturn(long companyId, long orderId, long ownerId, ReturnOrderRequest request);
+    CompanyOrderResponse initiateReturn(UUID companyId, UUID orderId, UUID ownerId, ReturnOrderRequest request);
 
     // -------------------------------------------------------------------------
     // Merchant risk-review queue
     // -------------------------------------------------------------------------
 
     /** Paginated list of risk-review rows for the merchant. Defaults to PENDING when status is null. */
-    PagedResponse<RiskReviewResponse> listRiskReviews(long companyId, long ownerId,
+    PagedResponse<RiskReviewResponse> listRiskReviews(UUID companyId, UUID ownerId,
                                                       RiskReviewStatus status, int page, int size);
 
     /** Returns the latest persisted risk assessment for an order, scoped to the merchant's company. */
-    RiskAssessmentResponse getOrderRisk(long companyId, long orderId, long ownerId);
+    RiskAssessmentResponse getOrderRisk(UUID companyId, UUID orderId, UUID ownerId);
 
     /** Approves an UNDER_REVIEW order — triggers the skipped Stripe payment-intent creation. */
-    OrderResponse approveRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req);
+    OrderResponse approveRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req);
 
     /** Rejects an UNDER_REVIEW order — delegates to cancelOrder to release reservation and restore stock. */
-    OrderResponse rejectRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req);
+    OrderResponse rejectRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req);
 
     // -------------------------------------------------------------------------
     // Subscription renewals

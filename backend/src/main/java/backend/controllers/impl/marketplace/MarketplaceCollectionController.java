@@ -1,5 +1,6 @@
 package backend.controllers.impl.marketplace;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,7 +32,7 @@ public class MarketplaceCollectionController {
 
     /** Featured collections, ordered by featuredRank. Used by marketplace home page. */
     @GetMapping("/featured")
-    public ResponseEntity<List<CollectionResponse>> listFeatured(@PathVariable long marketplaceId) {
+    public ResponseEntity<List<CollectionResponse>> listFeatured(@PathVariable UUID marketplaceId) {
         try {
             return ResponseEntity.ok(collectionService.listFeaturedForMarketplace(marketplaceId));
         } catch (AppHttpException e) {
@@ -44,8 +45,8 @@ public class MarketplaceCollectionController {
     /** Featured collections for a single vendor — used on the vendor storefront. */
     @GetMapping("/featured/vendor/{vendorId}")
     public ResponseEntity<List<CollectionResponse>> listFeaturedForVendor(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
             return ResponseEntity.ok(collectionService.listFeaturedForVendor(marketplaceId, vendorId));
         } catch (AppHttpException e) {
@@ -57,7 +58,7 @@ public class MarketplaceCollectionController {
 
     @GetMapping("/{slug}")
     public ResponseEntity<CollectionResponse> getBySlug(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @PathVariable String slug) {
         try {
             return ResponseEntity.ok(collectionService.getCollectionBySlug(marketplaceId, slug));
@@ -70,7 +71,7 @@ public class MarketplaceCollectionController {
 
     @GetMapping("/{slug}/products")
     public ResponseEntity<PagedResponse<CollectionProductResponse>> listProductsBySlug(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @PathVariable String slug,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {

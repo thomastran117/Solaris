@@ -7,17 +7,18 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface SavedListRepository extends JpaRepository<SavedList, Long> {
+public interface SavedListRepository extends JpaRepository<SavedList, java.util.UUID> {
 
-    List<SavedList> findAllByUserIdOrderByCreatedAtDesc(long userId);
+    List<SavedList> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
 
-    List<SavedList> findAllByUserIdAndTypeOrderByCreatedAtDesc(long userId, SavedListType type);
+    List<SavedList> findAllByUserIdAndTypeOrderByCreatedAtDesc(UUID userId, SavedListType type);
 
-    Optional<SavedList> findByIdAndUserId(long id, long userId);
+    Optional<SavedList> findByIdAndUserId(java.util.UUID id, UUID userId);
 
     Optional<SavedList> findByShareSlug(String shareSlug);
 
-    boolean existsByNameAndUserIdAndType(String name, long userId, SavedListType type);
+    boolean existsByNameAndUserIdAndType(String name, UUID userId, SavedListType type);
 }

@@ -15,6 +15,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /** All fields nullable — null means "no change". ruleType is immutable after create. */
 @Getter
@@ -54,14 +55,14 @@ public class UpdatePromotionRuleRequest {
     @Min(1)
     private Integer maxUsesPerUser;
 
-    private Long fundedByCompanyId;
+    private UUID fundedByCompanyId;
 
     /** When provided, fully replaces the product set. */
-    private List<Long> targetProductIds;
+    private List<UUID> targetProductIds;
 
     /** When provided, fully replaces the bundle set. */
-    private List<Long> targetBundleIds;
+    private List<UUID> targetBundleIds;
 
     /** When provided, fully replaces the segment set. */
-    private List<Long> targetSegmentIds;
+    private List<UUID> targetSegmentIds;
 }

@@ -1,3 +1,5 @@
 package backend.events.inventory;
 
-public record StockRestoredEvent(long productId, Long variantId, long variantRef) {}
+import java.util.UUID;
+
+public record StockRestoredEvent(UUID productId, UUID variantId, long variantRef) {}

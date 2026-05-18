@@ -4,11 +4,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class ReviewSummaryResponse {
-    private Long productId;
+    private UUID productId;
     private double averageRating;
     private long total;
     private long verifiedCount;

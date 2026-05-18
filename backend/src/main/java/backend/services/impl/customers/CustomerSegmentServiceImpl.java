@@ -1,5 +1,6 @@
 package backend.services.impl.customers;
 
+import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -38,7 +39,7 @@ public class CustomerSegmentServiceImpl implements CustomerSegmentService {
     }
 
     @Override
-    public CustomerSegmentResponse getSegment(long segmentId) {
+    public CustomerSegmentResponse getSegment(UUID segmentId) {
         return toResponse(segmentRepository.findById(segmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer segment not found with id: " + segmentId)));
     }
@@ -61,7 +62,7 @@ public class CustomerSegmentServiceImpl implements CustomerSegmentService {
 
     @Override
     @Transactional
-    public CustomerSegmentResponse updateSegment(long segmentId, UpdateCustomerSegmentRequest request) {
+    public CustomerSegmentResponse updateSegment(UUID segmentId, UpdateCustomerSegmentRequest request) {
         CustomerSegment segment = segmentRepository.findById(segmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer segment not found with id: " + segmentId));
 
@@ -73,7 +74,7 @@ public class CustomerSegmentServiceImpl implements CustomerSegmentService {
 
     @Override
     @Transactional
-    public void deleteSegment(long segmentId) {
+    public void deleteSegment(UUID segmentId) {
         CustomerSegment segment = segmentRepository.findById(segmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer segment not found with id: " + segmentId));
         segmentRepository.delete(segment);
@@ -81,7 +82,7 @@ public class CustomerSegmentServiceImpl implements CustomerSegmentService {
 
     @Override
     @Transactional
-    public void assignSegmentToUser(long userId, long segmentId) {
+    public void assignSegmentToUser(UUID userId, UUID segmentId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         CustomerSegment segment = segmentRepository.findById(segmentId)
@@ -92,10 +93,10 @@ public class CustomerSegmentServiceImpl implements CustomerSegmentService {
 
     @Override
     @Transactional
-    public void removeSegmentFromUser(long userId, long segmentId) {
+    public void removeSegmentFromUser(UUID userId, UUID segmentId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        user.getSegments().removeIf(s -> s.getId() != null && s.getId() == segmentId);
+        user.getSegments().removeIf(s -> segmentId.equals(s.getId()));
         userRepository.save(user);
     }
 

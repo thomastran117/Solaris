@@ -12,6 +12,7 @@ import org.springframework.data.elasticsearch.annotations.FieldType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Document(indexName = "products")
 @Getter
@@ -21,15 +22,17 @@ import java.util.List;
 public class ProductDocument {
 
     @Id
-    private Long id;
+    private UUID id;
 
-    private Long companyId;
+    @Field(type = FieldType.Keyword)
+    private UUID companyId;
 
     /** Non-null when the product is listed on a marketplace. */
     private Long marketplaceId;
 
     /** The owning vendor's company ID — populated when marketplaceId is set. */
-    private Long vendorId;
+    @Field(type = FieldType.Keyword)
+    private UUID vendorId;
 
     @Field(type = FieldType.Keyword)
     private String vendorName;
@@ -118,6 +121,6 @@ public class ProductDocument {
      * IDs of {@code ACTIVE} collections this product belongs to. Lets the storefront filter
      * search results by collection membership without a separate join.
      */
-    @Field(type = FieldType.Long)
-    private List<Long> collectionIds;
+    @Field(type = FieldType.Keyword)
+    private List<UUID> collectionIds;
 }

@@ -1,5 +1,6 @@
 package backend.services.intf.orders;
 
+import java.util.UUID;
 import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.responses.order.OrderResponse;
 
@@ -15,5 +16,5 @@ public interface ReplacementOrderService {
      * @param actorUserId     staff member authorising the replacement
      * @return the newly created replacement order
      */
-    OrderResponse createReplacement(long originalOrderId, ResolveWithReplacementRequest request, long actorUserId);
+    OrderResponse createReplacement(UUID originalOrderId, ResolveWithReplacementRequest request, UUID actorUserId);
 }

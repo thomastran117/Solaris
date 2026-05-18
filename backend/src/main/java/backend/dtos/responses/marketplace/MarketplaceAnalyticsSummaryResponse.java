@@ -7,11 +7,12 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class MarketplaceAnalyticsSummaryResponse {
-    private long marketplaceId;
+    private UUID marketplaceId;
     private int windowDays;
     private Instant from;
     private Instant to;

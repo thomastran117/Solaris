@@ -5,11 +5,13 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -26,14 +28,15 @@ import java.time.Instant;
 public class LoyaltyAccount {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
-    @Column(nullable = false, name = "user_id")
-    private Long userId;
+    @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
+    private UUID userId;
 
-    @Column(nullable = false, name = "company_id")
-    private Long companyId;
+    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    private UUID companyId;
 
     /** Current redeemable points balance. Never negative. */
     @Column(nullable = false)
@@ -44,8 +47,8 @@ public class LoyaltyAccount {
     private long lifetimePoints = 0L;
 
     /** Loose FK to LoyaltyTier.id. Null until the account earns enough for a tier. */
-    @Column(nullable = true, name = "current_tier_id")
-    private Long currentTierId;
+    @Column(nullable = true, name = "current_tier_id", columnDefinition = "BINARY(16)")
+    private UUID currentTierId;
 
     @Column(nullable = true)
     private Instant tierUpdatedAt;

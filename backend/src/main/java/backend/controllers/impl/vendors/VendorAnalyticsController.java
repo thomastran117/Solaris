@@ -1,5 +1,6 @@
 package backend.controllers.impl.vendors;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.responses.vendor.VendorAnalyticsSummaryResponse;
 import backend.dtos.responses.vendor.VendorOrdersMetricResponse;
@@ -28,8 +29,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/summary")
     public ResponseEntity<VendorAnalyticsSummaryResponse> getSummary(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "30") int days) {
         try {
             return ResponseEntity.ok(vendorAnalyticsService.getSummary(vendorId, marketplaceId, days, resolveUserId()));
@@ -42,8 +43,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/revenue")
     public ResponseEntity<VendorRevenueResponse> getRevenue(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "30") int days) {
         try {
             return ResponseEntity.ok(vendorAnalyticsService.getRevenue(vendorId, marketplaceId, days, resolveUserId()));
@@ -56,8 +57,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/top-products")
     public ResponseEntity<VendorTopProductsResponse> getTopProducts(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "30") int days,
             @RequestParam(defaultValue = "10") int limit) {
         try {
@@ -71,8 +72,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/orders")
     public ResponseEntity<VendorOrdersMetricResponse> getOrders(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "30") int days) {
         try {
             return ResponseEntity.ok(vendorAnalyticsService.getOrders(vendorId, marketplaceId, days, resolveUserId()));
@@ -85,8 +86,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/refunds")
     public ResponseEntity<VendorRefundsMetricResponse> getRefunds(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "30") int days) {
         try {
             return ResponseEntity.ok(vendorAnalyticsService.getRefunds(vendorId, marketplaceId, days, resolveUserId()));
@@ -99,8 +100,8 @@ public class VendorAnalyticsController {
 
     @GetMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/analytics/payouts")
     public ResponseEntity<VendorPayoutsMetricResponse> getPayouts(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam(defaultValue = "10") int recent) {
         try {
             return ResponseEntity.ok(vendorAnalyticsService.getPayouts(vendorId, marketplaceId, recent, resolveUserId()));
@@ -111,8 +112,8 @@ public class VendorAnalyticsController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

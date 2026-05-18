@@ -6,14 +6,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface StockNotificationRepository extends JpaRepository<StockNotification, Long> {
+public interface StockNotificationRepository extends JpaRepository<StockNotification, java.util.UUID> {
 
     List<StockNotification> findAllByProductIdAndVariantRefAndStatus(
-            Long productId, long variantRef, NotificationStatus status);
+            java.util.UUID productId, long variantRef, NotificationStatus status);
 
     Optional<StockNotification> findByUserIdAndProductIdAndVariantRef(
-            Long userId, Long productId, long variantRef);
+            UUID userId, java.util.UUID productId, long variantRef);
 
-    List<StockNotification> findAllByUserIdAndStatusNot(Long userId, NotificationStatus status);
+    List<StockNotification> findAllByUserIdAndStatusNot(UUID userId, NotificationStatus status);
 }

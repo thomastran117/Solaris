@@ -111,7 +111,7 @@ public class ReviewSearchServiceImpl implements ReviewSearchService {
             Map<String, List<String>> highlightMap = h.getHighlightFields();
             List<String> titleHi = highlightMap.getOrDefault("title", Collections.emptyList());
             List<String> bodyHi = highlightMap.getOrDefault("body", Collections.emptyList());
-            float score = h.getScore();
+            float score = h.getScore() == null ? Float.NaN : h.getScore();
             content.add(new ReviewSearchHit(
                     d.getId(),
                     d.getProductId(),

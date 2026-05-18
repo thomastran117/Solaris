@@ -12,23 +12,24 @@ import backend.models.enums.CompanyRole;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface CompanyMembershipRepository extends JpaRepository<CompanyMembership, Long> {
+public interface CompanyMembershipRepository extends JpaRepository<CompanyMembership, java.util.UUID> {
 
     Optional<CompanyMembership> findByCompanyIdAndUserIdAndStatus(
-            long companyId, long userId, CompanyMembershipStatus status);
+            java.util.UUID companyId, UUID userId, CompanyMembershipStatus status);
 
     boolean existsByCompanyIdAndUserIdAndStatus(
-            long companyId, long userId, CompanyMembershipStatus status);
+            java.util.UUID companyId, UUID userId, CompanyMembershipStatus status);
 
     Optional<CompanyMembership> findByCompanyIdAndInviteEmailIgnoreCaseAndStatus(
-            long companyId, String inviteEmail, CompanyMembershipStatus status);
+            java.util.UUID companyId, String inviteEmail, CompanyMembershipStatus status);
 
     Optional<CompanyMembership> findByInviteToken(String inviteToken);
 
     List<CompanyMembership> findAllByCompanyIdAndStatusIn(
-            long companyId, List<CompanyMembershipStatus> statuses);
+            java.util.UUID companyId, List<CompanyMembershipStatus> statuses);
 
     @Query("""
             select m.company from CompanyMembership m
@@ -36,9 +37,9 @@ public interface CompanyMembershipRepository extends JpaRepository<CompanyMember
             order by m.company.name asc
             """)
     List<Company> findCompaniesAccessibleByUser(
-            @Param("userId") long userId,
+            @Param("userId") UUID userId,
             @Param("status") CompanyMembershipStatus status);
 
     Optional<CompanyMembership> findByCompanyIdAndUserIdAndRoleAndStatus(
-            long companyId, long userId, CompanyRole role, CompanyMembershipStatus status);
+            java.util.UUID companyId, UUID userId, CompanyRole role, CompanyMembershipStatus status);
 }

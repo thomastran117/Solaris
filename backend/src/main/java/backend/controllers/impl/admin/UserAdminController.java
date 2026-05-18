@@ -1,5 +1,6 @@
 package backend.controllers.impl.admin;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.admin.UpdateUserRoleRequest;
 import backend.dtos.responses.general.MessageResponse;
@@ -34,11 +35,11 @@ public class UserAdminController {
     }
 
     @PutMapping("/{userId}/role")
-    public ResponseEntity<MessageResponse> updateRole(@PathVariable long userId,
+    public ResponseEntity<MessageResponse> updateRole(@PathVariable UUID userId,
                                                        @Valid @RequestBody UpdateUserRoleRequest request) {
         try {
             User updated = userService.setRole(userId, request.getRole());
-            audit.log(AuthAuditLogger.Event.ROLE_CHANGED, Long.toString(updated.getId()),
+            audit.log(AuthAuditLogger.Event.ROLE_CHANGED, updated.getId().toString(),
                     "new=" + updated.getRole());
             return ResponseEntity.ok(new MessageResponse(
                     "Role for user " + updated.getId() + " set to " + updated.getRole()));

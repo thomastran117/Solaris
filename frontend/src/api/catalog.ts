@@ -194,7 +194,7 @@ export interface ProductHistoryEntry {
   id: number;
   productId: number;
   variantId: number | null;
-  actorUserId: number | null;
+  actorUserId: string | null;
   actorRole: CompanyRole | null;
   occurredAt: string;
   fieldName: string | null;

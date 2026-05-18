@@ -1,5 +1,6 @@
 package backend.dtos.responses.imports;
 
+import java.util.UUID;
 import backend.models.enums.ImportJobStatus;
 import backend.models.enums.ImportJobType;
 import backend.models.enums.ImportMode;
@@ -11,9 +12,9 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class ImportJobResponse {
-    private long id;
-    private long companyId;
-    private long uploadedBy;
+    private UUID id;
+    private UUID companyId;
+    private UUID uploadedBy;
     private ImportJobType jobType;
     private ImportMode mode;
     private ImportJobStatus status;

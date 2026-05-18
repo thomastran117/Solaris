@@ -1,5 +1,6 @@
 package backend.dtos.requests.loyalty;
 
+import java.util.UUID;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -13,7 +14,7 @@ import lombok.Setter;
 public class IssueBonusRequest {
 
     @NotNull @Min(1)
-    private Long userId;
+    private UUID userId;
 
     @NotNull @Min(1)
     private Integer points;

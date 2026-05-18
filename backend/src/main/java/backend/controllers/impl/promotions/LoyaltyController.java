@@ -1,5 +1,6 @@
 package backend.controllers.impl.promotions;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.loyalty.AdjustPointsRequest;
 import backend.dtos.requests.loyalty.CreateLoyaltyPolicyRequest;
@@ -45,9 +46,9 @@ public class LoyaltyController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/loyalty/account")
-    public ResponseEntity<LoyaltyAccountResponse> getAccount(@RequestParam long companyId) {
+    public ResponseEntity<LoyaltyAccountResponse> getAccount(@RequestParam UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.getAccount(userId, companyId));
         } catch (AppHttpException e) {
             throw e;
@@ -58,11 +59,11 @@ public class LoyaltyController {
 
     @GetMapping("/loyalty/transactions")
     public ResponseEntity<PagedResponse<LoyaltyTransactionResponse>> getTransactions(
-            @RequestParam long companyId,
+            @RequestParam UUID companyId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.getTransactions(userId, companyId, page, size));
         } catch (AppHttpException e) {
             throw e;
@@ -73,10 +74,10 @@ public class LoyaltyController {
 
     @GetMapping("/loyalty/quote")
     public ResponseEntity<LoyaltyRedemptionQuoteResponse> getRedemptionQuote(
-            @RequestParam long companyId,
+            @RequestParam UUID companyId,
             @RequestParam int points) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.getRedemptionQuote(userId, companyId, points));
         } catch (AppHttpException e) {
             throw e;
@@ -90,7 +91,7 @@ public class LoyaltyController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/companies/{companyId}/loyalty/policy")
-    public ResponseEntity<LoyaltyPolicyResponse> getPolicy(@PathVariable long companyId) {
+    public ResponseEntity<LoyaltyPolicyResponse> getPolicy(@PathVariable UUID companyId) {
         try {
             companyAccessService.requireAnyAccess(companyId, resolveUserId());
             return ResponseEntity.ok(loyaltyService.getPolicy(companyId));
@@ -103,10 +104,10 @@ public class LoyaltyController {
 
     @PostMapping("/companies/{companyId}/loyalty/policy")
     public ResponseEntity<LoyaltyPolicyResponse> createOrUpdatePolicy(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateLoyaltyPolicyRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(loyaltyService.createOrUpdatePolicy(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -121,7 +122,7 @@ public class LoyaltyController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/companies/{companyId}/loyalty/tiers")
-    public ResponseEntity<List<LoyaltyTierResponse>> listTiers(@PathVariable long companyId) {
+    public ResponseEntity<List<LoyaltyTierResponse>> listTiers(@PathVariable UUID companyId) {
         try {
             companyAccessService.requireAnyAccess(companyId, resolveUserId());
             return ResponseEntity.ok(loyaltyService.listTiers(companyId));
@@ -134,10 +135,10 @@ public class LoyaltyController {
 
     @PostMapping("/companies/{companyId}/loyalty/tiers")
     public ResponseEntity<LoyaltyTierResponse> createTier(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateLoyaltyTierRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(loyaltyService.createTier(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -149,11 +150,11 @@ public class LoyaltyController {
 
     @PutMapping("/companies/{companyId}/loyalty/tiers/{tierId}")
     public ResponseEntity<LoyaltyTierResponse> updateTier(
-            @PathVariable long companyId,
-            @PathVariable long tierId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID tierId,
             @Valid @RequestBody CreateLoyaltyTierRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.updateTier(tierId, companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -168,10 +169,10 @@ public class LoyaltyController {
 
     @PostMapping("/companies/{companyId}/loyalty/bonus")
     public ResponseEntity<LoyaltyTransactionResponse> issueBonus(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody IssueBonusRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(loyaltyService.issueBonus(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -183,11 +184,11 @@ public class LoyaltyController {
 
     @PostMapping("/companies/{companyId}/loyalty/accounts/{accountId}/adjust")
     public ResponseEntity<LoyaltyTransactionResponse> adjustPoints(
-            @PathVariable long companyId,
-            @PathVariable long accountId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID accountId,
             @Valid @RequestBody AdjustPointsRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.adjustPoints(accountId, companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -196,8 +197,8 @@ public class LoyaltyController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

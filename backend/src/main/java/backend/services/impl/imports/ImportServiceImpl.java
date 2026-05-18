@@ -1,5 +1,6 @@
 package backend.services.impl.imports;
 
+import java.util.UUID;
 import backend.dtos.requests.imports.AttachImagesRequest;
 import backend.dtos.requests.imports.CreateImportJobRequest;
 import backend.dtos.requests.inventory.BulkAdjustItem;
@@ -107,7 +108,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional
-    public ImportJobResponse createJob(long companyId, long ownerId, CreateImportJobRequest request) {
+    public ImportJobResponse createJob(UUID companyId, UUID ownerId, CreateImportJobRequest request) {
         CompanyCapability cap = request.getJobType() == ImportJobType.INVENTORY_SYNC
                 ? CompanyCapability.MANAGE_INVENTORY
                 : CompanyCapability.MANAGE_PRODUCTS;
@@ -129,14 +130,14 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional(readOnly = true)
-    public ImportJobResponse getJob(long companyId, long ownerId, long jobId) {
+    public ImportJobResponse getJob(UUID companyId, UUID ownerId, UUID jobId) {
         companyAccessService.requireAnyAccess(companyId, ownerId);
         return toResponse(loadJob(companyId, jobId));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<ImportJobResponse> listJobs(long companyId, long ownerId, int page, int size) {
+    public PagedResponse<ImportJobResponse> listJobs(UUID companyId, UUID ownerId, int page, int size) {
         companyAccessService.requireAnyAccess(companyId, ownerId);
         Page<ImportJob> jobs = jobRepository.findAllByCompanyIdOrderByCreatedAtDesc(
                 companyId, PageRequest.of(page, size));
@@ -145,7 +146,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<ImportJobRowResponse> listErrors(long companyId, long ownerId, long jobId, int page, int size) {
+    public PagedResponse<ImportJobRowResponse> listErrors(UUID companyId, UUID ownerId, UUID jobId, int page, int size) {
         companyAccessService.requireAnyAccess(companyId, ownerId);
         ImportJob job = loadJob(companyId, jobId);
         Page<ImportJobRow> rows = rowRepository.findAllByJobIdOrderByRowNumberAsc(
@@ -155,7 +156,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional(readOnly = true)
-    public ImportDownloadResponse getErrorReport(long companyId, long ownerId, long jobId) {
+    public ImportDownloadResponse getErrorReport(UUID companyId, UUID ownerId, UUID jobId) {
         companyAccessService.requireAnyAccess(companyId, ownerId);
         ImportJob job = loadJob(companyId, jobId);
         if (job.getErrorReportS3Key() == null) {
@@ -170,7 +171,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional(readOnly = true)
-    public ImportDownloadResponse exportCatalogue(long companyId, long ownerId) {
+    public ImportDownloadResponse exportCatalogue(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         // Cheap upper-bound check first so we fail fast for absurdly large catalogues
@@ -210,7 +211,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional
-    public int attachImages(long companyId, long ownerId, AttachImagesRequest request) {
+    public int attachImages(UUID companyId, UUID ownerId, AttachImagesRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Map<String, List<AttachImagesRequest.Item>> bySku = new HashMap<>();
@@ -252,7 +253,7 @@ public class ImportServiceImpl implements ImportService {
     // -------------------------------------------------------------------------
 
     @Override
-    public void processJob(long jobId) {
+    public void processJob(UUID jobId) {
         // Idempotency claim: only the first worker to transition PENDING -> PARSING owns
         // the job. Subsequent deliveries (Kafka retries, consumer rebalances) observe a
         // non-PENDING status and bail out, preventing duplicate processing of the same
@@ -552,7 +553,7 @@ public class ImportServiceImpl implements ImportService {
         recordInvalidRowsAsErrors(job, rows);
     }
 
-    private void attachRowImages(ImportJob job, ParsedRow row, long productId) {
+    private void attachRowImages(ImportJob job, ParsedRow row, UUID productId) {
         for (String col : ImportCsvSchema.IMAGE_COLUMNS) {
             String url = blankToNull(row.values.get(col));
             if (url == null) continue;
@@ -712,7 +713,7 @@ public class ImportServiceImpl implements ImportService {
         jobRepository.save(job);
     }
 
-    private ImportJobRow buildErrorRow(long jobId, ParsedRow row) {
+    private ImportJobRow buildErrorRow(UUID jobId, ParsedRow row) {
         row.accountedAsError = true;
         ImportJobRow entity = new ImportJobRow();
         entity.setJobId(jobId);
@@ -735,7 +736,7 @@ public class ImportServiceImpl implements ImportService {
 
     @Override
     @Transactional
-    public void markJobFailed(long jobId, String reason) {
+    public void markJobFailed(UUID jobId, String reason) {
         jobRepository.findById(jobId).ifPresent(job -> {
             // Only escalate to FAILED if the job didn't already finish — we don't want a
             // late-arriving consumer error to overwrite a successful terminal state.
@@ -880,7 +881,7 @@ public class ImportServiceImpl implements ImportService {
     // Misc
     // -------------------------------------------------------------------------
 
-    private ImportJob loadJob(long companyId, long jobId) {
+    private ImportJob loadJob(UUID companyId, UUID jobId) {
         return jobRepository.findByIdAndCompanyId(jobId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Import job not found: " + jobId));
     }

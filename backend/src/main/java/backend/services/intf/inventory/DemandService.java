@@ -1,5 +1,6 @@
 package backend.services.intf.inventory;
 
+import java.util.UUID;
 import backend.dtos.responses.analytics.HotProductsResponse;
 
 public interface DemandService {
@@ -12,7 +13,7 @@ public interface DemandService {
      * @param window "1h" or "24h"
      * @param limit  number of entries to return (1–50)
      */
-    HotProductsResponse getHotProducts(long companyId, long ownerId, String window, int limit);
+    HotProductsResponse getHotProducts(UUID companyId, UUID ownerId, String window, int limit);
 
     /**
      * Bypasses auth and directly recomputes the cache for the given company
@@ -21,5 +22,5 @@ public interface DemandService {
      *
      * @param window "1h" or "24h"
      */
-    void refreshCache(long companyId, String window);
+    void refreshCache(UUID companyId, String window);
 }

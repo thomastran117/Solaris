@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -64,7 +65,7 @@ public class ReviewReportServiceImpl implements ReviewReportService {
 
     @Override
     @Transactional
-    public void reportReview(long companyId, long productId, long reviewId, long reporterId, ReportReviewRequest request) {
+    public void reportReview(long companyId, long productId, long reviewId, UUID reporterId, ReportReviewRequest request) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getProduct() == null
@@ -138,7 +139,7 @@ public class ReviewReportServiceImpl implements ReviewReportService {
 
     @Override
     @Transactional
-    public void moderate(long reviewId, long moderatorId, ModerateReviewRequest request) {
+    public void moderate(long reviewId, UUID moderatorId, ModerateReviewRequest request) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 

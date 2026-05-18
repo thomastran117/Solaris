@@ -1,9 +1,10 @@
 package backend.events.activity;
 
 import java.time.Instant;
+import java.util.UUID;
 
 public record BundleChangedEvent(
-    long bundleId,
+    UUID bundleId,
     ChangeType changeType,
     Instant occurredAt
 ) {}

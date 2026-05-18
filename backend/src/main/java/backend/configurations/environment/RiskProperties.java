@@ -4,6 +4,8 @@ import backend.models.enums.RiskMode;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.UUID;
+
 /**
  * All tunables for the fraud / risk engine. Defaults are safe for SHADOW mode;
  * override via env vars (see application.properties).
@@ -24,8 +26,8 @@ public class RiskProperties {
     /** Score ≥ blockThreshold → BLOCK. */
     private int blockThreshold = 70;
 
-    /** Segment id that short-circuits all checks (ALLOW). -1 disables. */
-    private long vipSegmentId = -1;
+    /** Segment id that short-circuits all checks (ALLOW). Null disables. */
+    private UUID vipSegmentId;
 
     private final FailedPayment failedPayment = new FailedPayment();
     private final Device device = new Device();
@@ -45,8 +47,8 @@ public class RiskProperties {
     public int getBlockThreshold() { return blockThreshold; }
     public void setBlockThreshold(int v) { this.blockThreshold = Math.max(0, Math.min(1000, v)); }
 
-    public long getVipSegmentId() { return vipSegmentId; }
-    public void setVipSegmentId(long vipSegmentId) { this.vipSegmentId = vipSegmentId; }
+    public UUID getVipSegmentId() { return vipSegmentId; }
+    public void setVipSegmentId(UUID vipSegmentId) { this.vipSegmentId = vipSegmentId; }
 
     public FailedPayment getFailedPayment() { return failedPayment; }
     public Device getDevice() { return device; }

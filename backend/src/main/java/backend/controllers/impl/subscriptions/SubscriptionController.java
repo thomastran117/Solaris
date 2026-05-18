@@ -1,5 +1,6 @@
 package backend.controllers.impl.subscriptions;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -58,7 +59,7 @@ public class SubscriptionController {
     }
 
     @DeleteMapping("/payment-methods/{id}")
-    public ResponseEntity<Void> detachPaymentMethod(@PathVariable long id) {
+    public ResponseEntity<Void> detachPaymentMethod(@PathVariable UUID id) {
         try {
             subscriptionService.detachPaymentMethod(resolveUserId(), id);
             return ResponseEntity.noContent().build();
@@ -97,7 +98,7 @@ public class SubscriptionController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<SubscriptionResponse> get(@PathVariable long id) {
+    public ResponseEntity<SubscriptionResponse> get(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(subscriptionService.get(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -109,7 +110,7 @@ public class SubscriptionController {
 
     @PatchMapping("/{id}")
     public ResponseEntity<SubscriptionResponse> update(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateSubscriptionRequest request) {
         try {
             return ResponseEntity.ok(subscriptionService.update(resolveUserId(), id, request));
@@ -121,7 +122,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/pause")
-    public ResponseEntity<SubscriptionResponse> pause(@PathVariable long id) {
+    public ResponseEntity<SubscriptionResponse> pause(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(subscriptionService.pause(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -132,7 +133,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/resume")
-    public ResponseEntity<SubscriptionResponse> resume(@PathVariable long id) {
+    public ResponseEntity<SubscriptionResponse> resume(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(subscriptionService.resume(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -143,7 +144,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/skip-next")
-    public ResponseEntity<SubscriptionResponse> skipNext(@PathVariable long id) {
+    public ResponseEntity<SubscriptionResponse> skipNext(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(subscriptionService.skipNext(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -155,7 +156,7 @@ public class SubscriptionController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<SubscriptionResponse> cancel(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @RequestParam(defaultValue = "true") boolean atPeriodEnd) {
         try {
             return ResponseEntity.ok(subscriptionService.cancel(resolveUserId(), id, atPeriodEnd));
@@ -166,8 +167,8 @@ public class SubscriptionController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

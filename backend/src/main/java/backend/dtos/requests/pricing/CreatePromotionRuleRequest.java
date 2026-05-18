@@ -14,6 +14,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -60,14 +61,14 @@ public class CreatePromotionRuleRequest {
     private Integer maxUsesPerUser;
 
     /** Platform-admin-only. Null = company funds the promotion itself. */
-    private Long fundedByCompanyId;
+    private UUID fundedByCompanyId;
 
     /** Empty or null = applies to entire company catalogue. */
-    private List<Long> targetProductIds;
+    private List<UUID> targetProductIds;
 
     /** Empty or null = not bundle-scoped. */
-    private List<Long> targetBundleIds;
+    private List<UUID> targetBundleIds;
 
     /** Empty or null = applies to all users including anonymous. */
-    private List<Long> targetSegmentIds;
+    private List<UUID> targetSegmentIds;
 }

@@ -13,25 +13,24 @@ import backend.models.core.SupportTicket;
 import backend.models.enums.TicketStatus;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface SupportTicketRepository extends JpaRepository<SupportTicket, Long> {
-
-    Optional<SupportTicket> findById(Long id);
+public interface SupportTicketRepository extends JpaRepository<SupportTicket, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT t FROM SupportTicket t WHERE t.id = :id")
-    Optional<SupportTicket> findByIdForUpdate(@Param("id") long id);
+    Optional<SupportTicket> findByIdForUpdate(@Param("id") UUID id);
 
-    Page<SupportTicket> findAllByCustomerId(long customerId, Pageable pageable);
+    Page<SupportTicket> findAllByCustomerId(UUID customerId, Pageable pageable);
 
     @Query("SELECT t FROM SupportTicket t WHERE " +
            "(:status IS NULL OR t.status = :status) AND " +
            "(:assignedToId IS NULL OR t.assignedTo.id = :assignedToId)")
     Page<SupportTicket> findAllByFilters(
             @Param("status") TicketStatus status,
-            @Param("assignedToId") Long assignedToId,
+            @Param("assignedToId") UUID assignedToId,
             Pageable pageable);
 
-    long countByCustomerIdAndStatusNot(long customerId, TicketStatus status);
+    long countByCustomerIdAndStatusNot(UUID customerId, TicketStatus status);
 }

@@ -1,5 +1,6 @@
 package backend.services.impl.orders;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -46,9 +47,9 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
 
     @Override
     @Transactional
-    public OrderResponse createReplacement(long originalOrderId,
+    public OrderResponse createReplacement(UUID originalOrderId,
                                            ResolveWithReplacementRequest request,
-                                           long actorUserId) {
+                                           UUID actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);

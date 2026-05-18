@@ -1,5 +1,6 @@
 package backend.dtos.responses.product;
 
+import java.util.UUID;
 import backend.models.enums.CompanyRole;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -18,10 +19,10 @@ public class ProductHistoryEntryResponse {
     public enum Kind { FIELD_CHANGE, INVENTORY_ADJUSTMENT }
 
     private Kind kind;
-    private Long id;
-    private Long productId;
-    private Long variantId;
-    private Long actorUserId;
+    private UUID id;
+    private UUID productId;
+    private UUID variantId;
+    private UUID actorUserId;
     private CompanyRole actorRole;
     private Instant occurredAt;
 
@@ -31,7 +32,7 @@ public class ProductHistoryEntryResponse {
     private String newValue;
     private String changeType;       // CREATED | UPDATED | DELETED
     private String source;           // USER | SYSTEM | REVERT
-    private Long revertedFromLogId;
+    private UUID revertedFromLogId;
 
     // INVENTORY_ADJUSTMENT
     private Integer delta;
@@ -39,5 +40,5 @@ public class ProductHistoryEntryResponse {
     private Integer newStock;
     private String reason;
     private String note;
-    private Long orderId;
+    private UUID orderId;
 }

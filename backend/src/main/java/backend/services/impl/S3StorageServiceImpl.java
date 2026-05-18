@@ -65,7 +65,7 @@ public class S3StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public PresignUploadResponse generatePresignedUrl(UploadFolder folder, long userId, String contentType) {
+    public PresignUploadResponse generatePresignedUrl(UploadFolder folder, UUID userId, String contentType) {
         boolean dataFolder = DATA_FOLDERS.contains(folder);
         Set<String> allowed = dataFolder ? DATA_CONTENT_TYPES : IMAGE_CONTENT_TYPES;
         if (!allowed.contains(contentType)) {
@@ -112,7 +112,7 @@ public class S3StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public PresignUploadResponse putBytes(UploadFolder folder, long userId, String contentType, byte[] data) {
+    public PresignUploadResponse putBytes(UploadFolder folder, UUID userId, String contentType, byte[] data) {
         EnvironmentSetting.S3 s3Config = environmentSetting.getS3();
         String extension = EXTENSION_MAP.getOrDefault(contentType, "bin");
         String key = folder.getPath() + "/" + userId + "/" + UUID.randomUUID() + "." + extension;

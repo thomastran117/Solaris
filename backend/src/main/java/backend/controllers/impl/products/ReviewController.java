@@ -1,5 +1,6 @@
 package backend.controllers.impl.products;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -67,8 +68,8 @@ public class ReviewController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<ReviewResponse>> getReviews(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
             @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
@@ -88,8 +89,8 @@ public class ReviewController {
 
     @GetMapping("/search")
     public ResponseEntity<PagedResponse<ReviewSearchHit>> searchReviews(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) List<Integer> rating,
             @RequestParam(required = false) Boolean verifiedOnly,
@@ -108,8 +109,8 @@ public class ReviewController {
 
     @GetMapping("/summary")
     public ResponseEntity<ReviewSummaryResponse> getSummary(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(reviewService.getReviewSummary(companyId, productId));
         } catch (AppHttpException e) {
@@ -122,10 +123,10 @@ public class ReviewController {
     @GetMapping("/me")
     @RequireAuth
     public ResponseEntity<ReviewResponse> getMyReview(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(reviewService.getMyReview(companyId, productId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -137,13 +138,13 @@ public class ReviewController {
     @PostMapping
     @RequireAuth
     public ResponseEntity<ReviewResponse> createReview(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody CreateReviewRequest request,
             HttpServletRequest httpRequest) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("review:create", Long.toString(userId), REVIEW_LIMIT, REVIEW_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("review:create", userId.toString(), REVIEW_LIMIT, REVIEW_WINDOW_SECONDS);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(reviewService.createReview(companyId, productId, userId, request));
         } catch (AppHttpException e) {
@@ -156,11 +157,11 @@ public class ReviewController {
     @PatchMapping("/me")
     @RequireAuth
     public ResponseEntity<ReviewResponse> updateReview(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody UpdateReviewRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(reviewService.updateReview(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -172,10 +173,10 @@ public class ReviewController {
     @DeleteMapping("/me")
     @RequireAuth
     public ResponseEntity<Void> deleteReview(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             reviewService.deleteReview(companyId, productId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -188,12 +189,12 @@ public class ReviewController {
     @PostMapping("/{reviewId}/helpful")
     @RequireAuth
     public ResponseEntity<HelpfulVoteResponse> voteHelpful(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long reviewId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID reviewId) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("review:vote", Long.toString(userId), VOTE_LIMIT, VOTE_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("review:vote", userId.toString(), VOTE_LIMIT, VOTE_WINDOW_SECONDS);
             return ResponseEntity.ok(reviewVoteService.voteHelpful(reviewId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -205,11 +206,11 @@ public class ReviewController {
     @DeleteMapping("/{reviewId}/helpful")
     @RequireAuth
     public ResponseEntity<HelpfulVoteResponse> removeHelpful(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long reviewId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID reviewId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(reviewVoteService.removeHelpful(reviewId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -221,13 +222,13 @@ public class ReviewController {
     @PostMapping("/{reviewId}/report")
     @RequireAuth
     public ResponseEntity<Void> reportReview(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long reviewId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID reviewId,
             @Valid @RequestBody ReportReviewRequest request) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("review:report", Long.toString(userId), REPORT_LIMIT, REPORT_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("review:report", userId.toString(), REPORT_LIMIT, REPORT_WINDOW_SECONDS);
             reviewReportService.reportReview(companyId, productId, reviewId, userId, request);
             return ResponseEntity.accepted().build();
         } catch (AppHttpException e) {
@@ -240,12 +241,12 @@ public class ReviewController {
     @PostMapping("/{reviewId}/media")
     @RequireAuth
     public ResponseEntity<ReviewMediaResponse> attachMedia(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long reviewId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID reviewId,
             @Valid @RequestBody AttachReviewMediaRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(reviewMediaService.attachMedia(companyId, productId, reviewId, userId, request));
         } catch (AppHttpException e) {
@@ -258,12 +259,12 @@ public class ReviewController {
     @DeleteMapping("/{reviewId}/media/{mediaId}")
     @RequireAuth
     public ResponseEntity<Void> deleteMedia(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long reviewId,
-            @PathVariable long mediaId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID reviewId,
+            @PathVariable UUID mediaId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             reviewMediaService.deleteMedia(companyId, productId, reviewId, mediaId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -273,8 +274,8 @@ public class ReviewController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

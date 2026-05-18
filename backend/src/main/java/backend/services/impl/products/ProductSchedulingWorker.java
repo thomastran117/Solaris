@@ -17,6 +17,7 @@ import backend.services.impl.SingleFlightCache;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Promotes products from {@link ProductStatus#SCHEDULED} to {@link ProductStatus#ACTIVE} as
@@ -62,7 +63,7 @@ public class ProductSchedulingWorker {
             }
             total += flipped.size();
             for (Product p : flipped) {
-                long companyId = p.getCompany().getId();
+                UUID companyId = p.getCompany().getId();
                 eventPublisher.publishEvent(new ProductIndexEvent(p, companyId));
                 evictCachesSafely(companyId, p.getId(), p.getMarketplaceId());
                 log.info("[PRODUCT SCHEDULE] Published product id={} companyId={} (was scheduled for {})",
@@ -102,7 +103,7 @@ public class ProductSchedulingWorker {
      * Mirrors the cache eviction pattern used by {@code ProductServiceImpl#updateProduct}.
      * Redis failures must never propagate per the project Redis convention — degrade silently.
      */
-    private void evictCachesSafely(long companyId, long productId, Long marketplaceId) {
+    private void evictCachesSafely(UUID companyId, UUID productId, Long marketplaceId) {
         try {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
             singleFlightCache.evictByPattern("products:search:" + companyId + ":*");

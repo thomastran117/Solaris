@@ -26,8 +26,9 @@ import java.time.LocalDate;
 public class RestockRequest {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /** Denormalized company FK for efficient company-scoped queries without a JOIN. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

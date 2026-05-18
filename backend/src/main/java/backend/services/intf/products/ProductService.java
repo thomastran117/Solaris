@@ -1,5 +1,6 @@
 package backend.services.intf.products;
 
+import java.util.UUID;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
@@ -30,37 +31,37 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public interface ProductService {
-    PagedResponse<ProductResponse> searchProducts(long companyId, String q, String category, String brand, BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, ProductStatus status, Boolean listed, String discountCategory, Boolean hasDiscount, int page, int size, String sort, String direction);
-    ProductResponse getProduct(long companyId, long productId);
-    List<ProductResponse> getProductsByIds(long companyId, List<Long> ids);
-    ProductResponse createProduct(long companyId, long ownerId, CreateProductRequest request);
-    ProductResponse updateProduct(long companyId, long productId, long ownerId, UpdateProductRequest request);
-    void deleteProduct(long companyId, long productId, long ownerId);
-    List<ProductResponse> batchCreateProducts(long companyId, long ownerId, BatchCreateProductsRequest request);
-    void batchDeleteProducts(long companyId, long ownerId, BatchDeleteProductsRequest request);
+    PagedResponse<ProductResponse> searchProducts(UUID companyId, String q, String category, String brand, BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, ProductStatus status, Boolean listed, String discountCategory, Boolean hasDiscount, int page, int size, String sort, String direction);
+    ProductResponse getProduct(UUID companyId, UUID productId);
+    List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids);
+    ProductResponse createProduct(UUID companyId, UUID ownerId, CreateProductRequest request);
+    ProductResponse updateProduct(UUID companyId, UUID productId, UUID ownerId, UpdateProductRequest request);
+    void deleteProduct(UUID companyId, UUID productId, UUID ownerId);
+    List<ProductResponse> batchCreateProducts(UUID companyId, UUID ownerId, BatchCreateProductsRequest request);
+    void batchDeleteProducts(UUID companyId, UUID ownerId, BatchDeleteProductsRequest request);
 
     // Images
-    List<ProductImageResponse> getProductImages(long companyId, long productId);
-    ProductImageResponse addProductImage(long companyId, long productId, long ownerId, AddProductImageRequest request);
-    void deleteProductImage(long companyId, long productId, long imageId, long ownerId);
-    List<ProductImageResponse> reorderProductImages(long companyId, long productId, long ownerId, ReorderProductImagesRequest request);
+    List<ProductImageResponse> getProductImages(UUID companyId, UUID productId);
+    ProductImageResponse addProductImage(UUID companyId, UUID productId, UUID ownerId, AddProductImageRequest request);
+    void deleteProductImage(UUID companyId, UUID productId, UUID imageId, UUID ownerId);
+    List<ProductImageResponse> reorderProductImages(UUID companyId, UUID productId, UUID ownerId, ReorderProductImagesRequest request);
 
     // Options
-    List<ProductOptionResponse> getProductOptions(long companyId, long productId);
-    ProductOptionResponse addProductOption(long companyId, long productId, long ownerId, CreateProductOptionRequest request);
-    ProductOptionResponse updateProductOption(long companyId, long productId, long optionId, long ownerId, UpdateProductOptionRequest request);
-    void deleteProductOption(long companyId, long productId, long optionId, long ownerId);
+    List<ProductOptionResponse> getProductOptions(UUID companyId, UUID productId);
+    ProductOptionResponse addProductOption(UUID companyId, UUID productId, UUID ownerId, CreateProductOptionRequest request);
+    ProductOptionResponse updateProductOption(UUID companyId, UUID productId, UUID optionId, UUID ownerId, UpdateProductOptionRequest request);
+    void deleteProductOption(UUID companyId, UUID productId, UUID optionId, UUID ownerId);
 
     // Variants
-    List<ProductVariantResponse> getProductVariants(long companyId, long productId);
-    ProductVariantResponse getProductVariant(long companyId, long productId, long variantId);
-    ProductVariantResponse createProductVariant(long companyId, long productId, long ownerId, CreateProductVariantRequest request);
-    ProductVariantResponse updateProductVariant(long companyId, long productId, long variantId, long ownerId, UpdateProductVariantRequest request);
-    void deleteProductVariant(long companyId, long productId, long variantId, long ownerId);
+    List<ProductVariantResponse> getProductVariants(UUID companyId, UUID productId);
+    ProductVariantResponse getProductVariant(UUID companyId, UUID productId, UUID variantId);
+    ProductVariantResponse createProductVariant(UUID companyId, UUID productId, UUID ownerId, CreateProductVariantRequest request);
+    ProductVariantResponse updateProductVariant(UUID companyId, UUID productId, UUID variantId, UUID ownerId, UpdateProductVariantRequest request);
+    void deleteProductVariant(UUID companyId, UUID productId, UUID variantId, UUID ownerId);
 
     // Attributes
-    List<ProductAttributeResponse> getProductAttributes(long companyId, long productId);
-    List<ProductAttributeResponse> setProductAttributes(long companyId, long productId, long ownerId, SetProductAttributesRequest request);
+    List<ProductAttributeResponse> getProductAttributes(UUID companyId, UUID productId);
+    List<ProductAttributeResponse> setProductAttributes(UUID companyId, UUID productId, UUID ownerId, SetProductAttributesRequest request);
 
     // -------------------------------------------------------------------------
     // Marketplace catalog
@@ -68,8 +69,8 @@ public interface ProductService {
 
     /** Cross-vendor product search for a marketplace storefront. Only returns ACTIVE + marketplaceListed=true products. */
     CatalogSearchResponse searchMarketplaceCatalog(
-            long marketplaceId, String q, String category, String brand,
-            BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, Long vendorId,
+            UUID marketplaceId, String q, String category, String brand,
+            BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, UUID vendorId,
             int page, int size, String sort, String direction);
 
     /**
@@ -78,28 +79,28 @@ public interface ProductService {
      * restricted to ACTIVE products — used by the public {@code /c/{id}} page.
      */
     CatalogSearchResponse searchCompanyCatalog(
-            long companyId, String q, String category, String brand,
+            UUID companyId, String q, String category, String brand,
             BigDecimal minPrice, BigDecimal maxPrice,
             int page, int size, String sort, String direction);
 
     /** Returns a single marketplace product detail including vendor information. */
-    MarketplaceCatalogProductResponse getMarketplaceProduct(long marketplaceId, long productId);
+    MarketplaceCatalogProductResponse getMarketplaceProduct(UUID marketplaceId, UUID productId);
 
     /** Returns a vendor's public storefront (profile + featured products). */
-    VendorStorefrontResponse getVendorStorefront(long marketplaceId, long vendorId);
+    VendorStorefrontResponse getVendorStorefront(UUID marketplaceId, UUID vendorId);
 
     /** Vendor lists or unlists one of their products on a marketplace. */
-    ProductResponse updateMarketplaceListing(long companyId, long productId, long ownerId, UpdateMarketplaceListingRequest request);
+    ProductResponse updateMarketplaceListing(UUID companyId, UUID productId, UUID ownerId, UpdateMarketplaceListingRequest request);
 
     /**
      * Updates the merchandising signals (boostWeight / pinnedUntil / pinnedRank) for a product.
      * Triggers a reindex so the new values reach the storefront search ranking.
      */
-    ProductResponse updateProductMerchandising(long companyId, long productId, long ownerId,
+    ProductResponse updateProductMerchandising(UUID companyId, UUID productId, UUID ownerId,
                                                 UpdateProductMerchandisingRequest request);
 
     /** Returns 2–4 products enriched with rating data for side-by-side comparison. */
-    List<ProductResponse> compareProducts(long companyId, List<Long> ids);
+    List<ProductResponse> compareProducts(UUID companyId, List<UUID> ids);
 
     // -------------------------------------------------------------------------
     // Versioning / change history
@@ -110,7 +111,7 @@ public interface ProductService {
      * {@code InventoryAdjustment} (stock movements), ordered by occurrence desc.
      */
     PagedResponse<ProductHistoryEntryResponse> getProductHistory(
-            long companyId, long productId, int page, int size);
+            UUID companyId, UUID productId, int page, int size);
 
     /**
      * Reverts one or more field-change log entries by id. Stock-related entries are
@@ -118,5 +119,5 @@ public interface ProductService {
      * with {@code source = REVERT}.
      */
     ProductResponse revertProductChanges(
-            long companyId, long productId, long ownerId, RevertProductChangesRequest request);
+            UUID companyId, UUID productId, UUID ownerId, RevertProductChangesRequest request);
 }

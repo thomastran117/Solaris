@@ -7,15 +7,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface VendorSLABreachRepository extends JpaRepository<VendorSLABreach, Long> {
+public interface VendorSLABreachRepository extends JpaRepository<VendorSLABreach, java.util.UUID> {
 
-    Page<VendorSLABreach> findByVendorId(long vendorId, Pageable pageable);
+    Page<VendorSLABreach> findByVendorId(UUID vendorId, Pageable pageable);
 
-    List<VendorSLABreach> findByVendorIdAndResolvedAtIsNull(long vendorId);
+    List<VendorSLABreach> findByVendorIdAndResolvedAtIsNull(UUID vendorId);
 
-    Page<VendorSLABreach> findByPolicyId(long policyId, Pageable pageable);
+    Page<VendorSLABreach> findByPolicyId(UUID policyId, Pageable pageable);
 
-    long countByVendorIdAndResolvedAtIsNull(long vendorId);
+    long countByVendorIdAndResolvedAtIsNull(UUID vendorId);
 }

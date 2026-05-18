@@ -1,5 +1,6 @@
 package backend.controllers.impl.products;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -32,7 +33,7 @@ public class BundleController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<BundleResponse>> listBundles(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
@@ -42,7 +43,7 @@ public class BundleController {
     @PostMapping
     @RequireAuth
     public ResponseEntity<BundleResponse> createBundle(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateBundleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bundleService.createBundle(companyId, resolveUserId(), request));
@@ -50,16 +51,16 @@ public class BundleController {
 
     @GetMapping("/{bundleId}")
     public ResponseEntity<BundleResponse> getBundle(
-            @PathVariable long companyId,
-            @PathVariable long bundleId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID bundleId) {
         return ResponseEntity.ok(bundleService.getBundle(companyId, bundleId));
     }
 
     @PatchMapping("/{bundleId}")
     @RequireAuth
     public ResponseEntity<BundleResponse> updateBundle(
-            @PathVariable long companyId,
-            @PathVariable long bundleId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID bundleId,
             @Valid @RequestBody UpdateBundleRequest request) {
         return ResponseEntity.ok(bundleService.updateBundle(companyId, bundleId, resolveUserId(), request));
     }
@@ -67,21 +68,21 @@ public class BundleController {
     @DeleteMapping("/{bundleId}")
     @RequireAuth
     public ResponseEntity<Void> deleteBundle(
-            @PathVariable long companyId,
-            @PathVariable long bundleId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID bundleId) {
         bundleService.deleteBundle(companyId, bundleId, resolveUserId());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/compare")
     public ResponseEntity<List<BundleResponse>> compareBundles(
-            @PathVariable long companyId,
-            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 bundles at once") List<Long> ids) {
+            @PathVariable UUID companyId,
+            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 bundles at once") List<UUID> ids) {
         return ResponseEntity.ok(bundleService.compareBundles(companyId, ids));
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

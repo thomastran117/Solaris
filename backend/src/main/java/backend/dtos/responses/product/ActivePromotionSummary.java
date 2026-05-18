@@ -4,6 +4,7 @@ import backend.models.enums.PromotionRuleType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Lightweight, presentation-only snapshot of an in-window {@code PromotionRule} that targets a product.
@@ -21,7 +22,7 @@ import java.time.Instant;
  * @param endDate    when the active window closes; null means the rule has no scheduled end
  */
 public record ActivePromotionSummary(
-        Long id,
+        UUID id,
         PromotionRuleType ruleType,
         BigDecimal percentOff,
         BigDecimal amountOff,

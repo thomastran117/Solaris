@@ -1,5 +1,6 @@
 package backend.controllers.impl.imports;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.imports.AttachImagesRequest;
 import backend.dtos.requests.imports.CreateImportJobRequest;
@@ -40,64 +41,64 @@ public class ImportController {
 
     @PostMapping
     public ResponseEntity<ImportJobResponse> createJob(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateImportJobRequest request) {
-        long userId = resolveUserId();
+        UUID userId = resolveUserId();
         return ResponseEntity.status(HttpStatus.CREATED).body(importService.createJob(companyId, userId, request));
     }
 
     @GetMapping
     public ResponseEntity<PagedResponse<ImportJobResponse>> listJobs(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
-        long userId = resolveUserId();
+        UUID userId = resolveUserId();
         return ResponseEntity.ok(importService.listJobs(companyId, userId, page, size));
     }
 
     @GetMapping("/{jobId}")
     public ResponseEntity<ImportJobResponse> getJob(
-            @PathVariable long companyId,
-            @PathVariable long jobId) {
-        long userId = resolveUserId();
+            @PathVariable UUID companyId,
+            @PathVariable UUID jobId) {
+        UUID userId = resolveUserId();
         return ResponseEntity.ok(importService.getJob(companyId, userId, jobId));
     }
 
     @GetMapping("/{jobId}/errors")
     public ResponseEntity<PagedResponse<ImportJobRowResponse>> listErrors(
-            @PathVariable long companyId,
-            @PathVariable long jobId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID jobId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        long userId = resolveUserId();
+        UUID userId = resolveUserId();
         return ResponseEntity.ok(importService.listErrors(companyId, userId, jobId, page, size));
     }
 
     @GetMapping("/{jobId}/error-report")
     public ResponseEntity<ImportDownloadResponse> getErrorReport(
-            @PathVariable long companyId,
-            @PathVariable long jobId) {
-        long userId = resolveUserId();
+            @PathVariable UUID companyId,
+            @PathVariable UUID jobId) {
+        UUID userId = resolveUserId();
         return ResponseEntity.ok(importService.getErrorReport(companyId, userId, jobId));
     }
 
     @PostMapping("/export")
-    public ResponseEntity<ImportDownloadResponse> exportCatalogue(@PathVariable long companyId) {
-        long userId = resolveUserId();
+    public ResponseEntity<ImportDownloadResponse> exportCatalogue(@PathVariable UUID companyId) {
+        UUID userId = resolveUserId();
         return ResponseEntity.ok(importService.exportCatalogue(companyId, userId));
     }
 
     @PostMapping("/attach-images")
     public ResponseEntity<Map<String, Integer>> attachImages(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody AttachImagesRequest request) {
-        long userId = resolveUserId();
+        UUID userId = resolveUserId();
         int attached = importService.attachImages(companyId, userId, request);
         return ResponseEntity.ok(Map.of("attached", attached));
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

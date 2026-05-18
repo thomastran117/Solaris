@@ -1,5 +1,6 @@
 package backend.services.impl.orders;
 
+import java.util.UUID;
 import backend.dtos.requests.order.CancelSubOrderRequest;
 import backend.dtos.requests.order.ShipSubOrderRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -52,7 +53,7 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<SubOrderResponse> listVendorSubOrders(long marketplaceVendorId, SubOrderStatus status, int page, int size, long ownerId) {
+    public PagedResponse<SubOrderResponse> listVendorSubOrders(UUID marketplaceVendorId, SubOrderStatus status, int page, int size, UUID ownerId) {
         assertVendorOwnership(marketplaceVendorId, ownerId);
         if (size > 50) size = 50;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -64,13 +65,13 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public SubOrderResponse getSubOrder(long subOrderId, long marketplaceVendorId, long ownerId) {
+    public SubOrderResponse getSubOrder(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId) {
         return toResponse(resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId));
     }
 
     @Override
     @Transactional
-    public SubOrderResponse markPacked(long subOrderId, long marketplaceVendorId, long ownerId) {
+    public SubOrderResponse markPacked(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId) {
         SubOrder subOrder = resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId);
         if (subOrder.getStatus() != SubOrderStatus.PENDING) {
             throw new BadRequestException("Sub-order must be PENDING to mark as packed");
@@ -90,7 +91,7 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional
-    public SubOrderResponse markShipped(long subOrderId, long marketplaceVendorId, ShipSubOrderRequest request, long ownerId) {
+    public SubOrderResponse markShipped(UUID subOrderId, UUID marketplaceVendorId, ShipSubOrderRequest request, UUID ownerId) {
         SubOrder subOrder = resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId);
         if (subOrder.getStatus() != SubOrderStatus.PACKED) {
             throw new BadRequestException("Sub-order must be PACKED before marking as shipped");
@@ -115,7 +116,7 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional
-    public SubOrderResponse markDelivered(long subOrderId, long marketplaceVendorId, long ownerId) {
+    public SubOrderResponse markDelivered(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId) {
         SubOrder subOrder = resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId);
         if (subOrder.getStatus() != SubOrderStatus.SHIPPED) {
             throw new BadRequestException("Sub-order must be SHIPPED before marking as delivered");
@@ -135,7 +136,7 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional
-    public SubOrderResponse cancelSubOrder(long subOrderId, long marketplaceVendorId, CancelSubOrderRequest request, long ownerId) {
+    public SubOrderResponse cancelSubOrder(UUID subOrderId, UUID marketplaceVendorId, CancelSubOrderRequest request, UUID ownerId) {
         SubOrder subOrder = resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId);
         if (subOrder.getStatus() == SubOrderStatus.SHIPPED
                 || subOrder.getStatus() == SubOrderStatus.DELIVERED
@@ -160,7 +161,7 @@ public class SubOrderServiceImpl implements SubOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public CommissionRecordResponse getCommissionRecord(long subOrderId, long marketplaceVendorId, long ownerId) {
+    public CommissionRecordResponse getCommissionRecord(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId) {
         resolveVendorSubOrder(subOrderId, marketplaceVendorId, ownerId);
         CommissionRecord record = commissionRecordRepository.findBySubOrderId(subOrderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Commission record not yet available for this sub-order"));
@@ -171,13 +172,13 @@ public class SubOrderServiceImpl implements SubOrderService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private SubOrder resolveVendorSubOrder(long subOrderId, long marketplaceVendorId, long ownerId) {
+    private SubOrder resolveVendorSubOrder(long subOrderId, long marketplaceVendorId, UUID ownerId) {
         assertVendorOwnership(marketplaceVendorId, ownerId);
         return subOrderRepository.findByIdAndMarketplaceVendorId(subOrderId, marketplaceVendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sub-order not found"));
     }
 
-    private MarketplaceVendor assertVendorOwnership(long marketplaceVendorId, long ownerId) {
+    private MarketplaceVendor assertVendorOwnership(long marketplaceVendorId, UUID ownerId) {
         MarketplaceVendor vendor = marketplaceVendorRepository.findById(marketplaceVendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
         if (!vendor.getVendorCompany().getOwner().getId().equals(ownerId)) {

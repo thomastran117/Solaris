@@ -11,6 +11,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import backend.models.enums.VendorAuditAction;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -26,16 +27,17 @@ import java.time.Instant;
 public class VendorAuditLog {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "marketplace_vendor_id", nullable = false)
     private MarketplaceVendor marketplaceVendor;
 
     /** Null for system-generated events (e.g. scheduled stripe status sync). */
-    @Column(nullable = true, name = "actor_user_id")
-    private Long actorUserId;
+    @Column(nullable = true, name = "actor_user_id", columnDefinition = "BINARY(16)")
+    private UUID actorUserId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)

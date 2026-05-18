@@ -1,5 +1,6 @@
 package backend.dtos.responses.order;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -10,8 +11,8 @@ import java.util.List;
 @Getter
 @AllArgsConstructor
 public class OrderResponse {
-    private Long id;
-    private Long userId;
+    private UUID id;
+    private UUID userId;
     private List<OrderItemResponse> items;
     private BigDecimal totalAmount;
     private String currency;

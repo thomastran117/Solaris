@@ -6,13 +6,14 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface SavedPaymentMethodRepository extends JpaRepository<SavedPaymentMethod, Long> {
+public interface SavedPaymentMethodRepository extends JpaRepository<SavedPaymentMethod, UUID> {
 
-    List<SavedPaymentMethod> findAllByUserId(Long userId);
+    List<SavedPaymentMethod> findAllByUserId(UUID userId);
 
     Optional<SavedPaymentMethod> findByStripePaymentMethodId(String stripePaymentMethodId);
 
-    Optional<SavedPaymentMethod> findByUserIdAndIsDefaultTrue(Long userId);
+    Optional<SavedPaymentMethod> findByUserIdAndIsDefaultTrue(UUID userId);
 }

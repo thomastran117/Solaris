@@ -1,5 +1,6 @@
 package backend.services.intf.support;
 
+import java.util.UUID;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.support.TicketResponse;
 import backend.dtos.responses.support.TicketMessageResponse;
@@ -53,8 +54,8 @@ public interface EmailService {
      * @param outOfStock   true if stock has reached zero
      */
     void sendLowStockAlertEmail(String toEmail, String firstName,
-                                long productId, String productName,
-                                Long variantId, String variantSku,
+                                UUID productId, String productName,
+                                UUID variantId, String variantSku,
                                 int currentStock, Integer threshold,
                                 boolean outOfStock);
 
@@ -100,8 +101,8 @@ public interface EmailService {
      * @param productUrl   the frontend URL to the product page
      */
     void sendBackInStockEmail(String toEmail, String firstName,
-                              long productId, String productName,
-                              Long variantId, String variantTitle,
+                              UUID productId, String productName,
+                              UUID variantId, String variantTitle,
                               String productUrl);
 
     /**

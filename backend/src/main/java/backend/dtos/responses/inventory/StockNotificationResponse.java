@@ -1,12 +1,13 @@
 package backend.dtos.responses.inventory;
 
 import java.time.Instant;
+import java.util.UUID;
 
 public record StockNotificationResponse(
-    Long id,
-    Long productId,
+    UUID id,
+    UUID productId,
     String productName,
-    Long variantId,
+    UUID variantId,
     String variantTitle,
     String status,
     Instant createdAt

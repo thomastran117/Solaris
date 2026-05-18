@@ -1,5 +1,6 @@
 package backend.services.risk;
 
+import java.util.UUID;
 import backend.http.DeviceType;
 import backend.models.enums.RiskAssessmentKind;
 
@@ -33,18 +34,18 @@ import java.util.Set;
  * @param now                 evaluation time (for window-based signals)
  */
 public record RiskContext(
-        long userId,
+        UUID userId,
         String userEmail,
         Instant userCreatedAt,
         Instant userLastLoginAt,
-        Set<Long> userSegmentIds,
-        Long orderId,
+        Set<UUID> userSegmentIds,
+        UUID orderId,
         BigDecimal orderTotal,
         Instant orderDeliveredAt,
         String currency,
         String couponCode,
         BigDecimal couponDiscountAmount,
-        List<Long> productCompanyIds,
+        List<UUID> productCompanyIds,
         String shippingCountry,
         String clientIp,
         String deviceFingerprint,

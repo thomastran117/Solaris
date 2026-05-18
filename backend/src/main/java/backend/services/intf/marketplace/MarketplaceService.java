@@ -1,14 +1,15 @@
 package backend.services.intf.marketplace;
 
+import java.util.UUID;
 import backend.dtos.requests.marketplace.CreateMarketplaceRequest;
 import backend.dtos.requests.marketplace.UpdateMarketplaceRequest;
 import backend.dtos.responses.marketplace.MarketplaceProfileResponse;
 
 public interface MarketplaceService {
 
-    MarketplaceProfileResponse createMarketplace(long ownerId, long companyId, CreateMarketplaceRequest request);
+    MarketplaceProfileResponse createMarketplace(UUID ownerId, UUID companyId, CreateMarketplaceRequest request);
 
-    MarketplaceProfileResponse getMarketplace(long marketplaceId);
+    MarketplaceProfileResponse getMarketplace(UUID marketplaceId);
 
-    MarketplaceProfileResponse updateMarketplace(long marketplaceId, long ownerId, UpdateMarketplaceRequest request);
+    MarketplaceProfileResponse updateMarketplace(UUID marketplaceId, UUID ownerId, UpdateMarketplaceRequest request);
 }

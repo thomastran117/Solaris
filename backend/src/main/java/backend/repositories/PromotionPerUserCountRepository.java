@@ -8,8 +8,10 @@ import org.springframework.stereotype.Repository;
 
 import backend.models.core.PromotionPerUserCount;
 
+import java.util.UUID;
+
 @Repository
-public interface PromotionPerUserCountRepository extends JpaRepository<PromotionPerUserCount, Long> {
+public interface PromotionPerUserCountRepository extends JpaRepository<PromotionPerUserCount, java.util.UUID> {
 
     /**
      * Atomic per-user increment. Returns 1 on success, 0 when the per-user cap has been reached.
@@ -22,8 +24,8 @@ public interface PromotionPerUserCountRepository extends JpaRepository<Promotion
             ON DUPLICATE KEY UPDATE count = IF(count < :maxUses, count + 1, count)
             """, nativeQuery = true)
     int tryIncrementUserCount(
-            @Param("ruleId") long ruleId,
-            @Param("userId") long userId,
+            @Param("ruleId") java.util.UUID ruleId,
+            @Param("userId") UUID userId,
             @Param("maxUses") int maxUses);
 
     @Modifying
@@ -33,11 +35,11 @@ public interface PromotionPerUserCountRepository extends JpaRepository<Promotion
             WHERE rule_id = :ruleId AND user_id = :userId
             """, nativeQuery = true)
     void decrementUserCount(
-            @Param("ruleId") long ruleId,
-            @Param("userId") long userId);
+            @Param("ruleId") java.util.UUID ruleId,
+            @Param("userId") UUID userId);
 
     @Query(value = "SELECT COALESCE(SUM(count), 0) FROM promotion_per_user_counts " +
                    "WHERE rule_id = :ruleId AND user_id = :userId",
            nativeQuery = true)
-    int countByRuleIdAndUserId(@Param("ruleId") long ruleId, @Param("userId") long userId);
+    int countByRuleIdAndUserId(@Param("ruleId") java.util.UUID ruleId, @Param("userId") UUID userId);
 }

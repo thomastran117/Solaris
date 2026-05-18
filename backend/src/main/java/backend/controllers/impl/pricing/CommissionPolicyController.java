@@ -1,5 +1,6 @@
 package backend.controllers.impl.pricing;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.marketplace.CreateCommissionPolicyRequest;
 import backend.dtos.responses.marketplace.CommissionPolicyResponse;
@@ -28,7 +29,7 @@ public class CommissionPolicyController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CommissionPolicyResponse>> list(@PathVariable long marketplaceId) {
+    public ResponseEntity<List<CommissionPolicyResponse>> list(@PathVariable UUID marketplaceId) {
         try {
             return ResponseEntity.ok(commissionPolicyService.listPolicies(marketplaceId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -40,7 +41,7 @@ public class CommissionPolicyController {
 
     @PostMapping
     public ResponseEntity<CommissionPolicyResponse> create(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @Valid @RequestBody CreateCommissionPolicyRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -54,8 +55,8 @@ public class CommissionPolicyController {
 
     @DeleteMapping("/{policyId}")
     public ResponseEntity<Void> delete(
-            @PathVariable long marketplaceId,
-            @PathVariable long policyId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID policyId) {
         try {
             commissionPolicyService.deletePolicy(policyId, marketplaceId, resolveUserId());
             return ResponseEntity.noContent().build();
@@ -66,8 +67,8 @@ public class CommissionPolicyController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

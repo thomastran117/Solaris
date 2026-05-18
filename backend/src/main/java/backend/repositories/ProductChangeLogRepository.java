@@ -8,13 +8,14 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
 public interface ProductChangeLogRepository
-        extends JpaRepository<ProductChangeLog, Long>,
+        extends JpaRepository<ProductChangeLog, UUID>,
                 JpaSpecificationExecutor<ProductChangeLog> {
 
-    Page<ProductChangeLog> findAllByProductIdAndCompanyId(long productId, long companyId, Pageable pageable);
+    Page<ProductChangeLog> findAllByProductIdAndCompanyId(UUID productId, UUID companyId, Pageable pageable);
 
-    List<ProductChangeLog> findAllByIdInAndCompanyId(List<Long> ids, long companyId);
+    List<ProductChangeLog> findAllByIdInAndCompanyId(List<UUID> ids, UUID companyId);
 }

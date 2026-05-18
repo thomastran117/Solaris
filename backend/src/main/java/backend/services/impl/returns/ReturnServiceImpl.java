@@ -1,5 +1,6 @@
 package backend.services.impl.returns;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -174,7 +175,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
-    public ReturnResponse requestReturn(long orderId, long buyerUserId, BuyerInitiateReturnRequest request) {
+    public ReturnResponse requestReturn(UUID orderId, UUID buyerUserId, BuyerInitiateReturnRequest request) {
         Order order = orderRepository.findByIdAndUserId(orderId, buyerUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
@@ -219,7 +220,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ReturnResponse> getReturnsByOrder(long orderId, long buyerUserId) {
+    public List<ReturnResponse> getReturnsByOrder(UUID orderId, UUID buyerUserId) {
         orderRepository.findByIdAndUserId(orderId, buyerUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         return returnRepository.findAllByOrderId(orderId).stream()
@@ -233,7 +234,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ReturnResponse> getCompanyReturnsByOrder(long orderId, long companyId, long ownerId) {
+    public List<ReturnResponse> getCompanyReturnsByOrder(UUID orderId, UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         return returnRepository.findAllByOrderIdAndCompanyId(orderId, companyId).stream()
                 .filter(ret -> returnBelongsExclusivelyToCompany(ret, companyId))
@@ -243,7 +244,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional(readOnly = true)
-    public ReturnResponse getCompanyReturn(long returnId, long companyId, long ownerId) {
+    public ReturnResponse getCompanyReturn(UUID returnId, UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Return ret = requireCompanyScopedReturn(
                 returnRepository.findByIdAndCompanyId(returnId, companyId),
@@ -255,7 +256,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public ReturnResponse approveReturn(long returnId, long companyId, long ownerId, MerchantApproveReturnRequest request) {
+    public ReturnResponse approveReturn(UUID returnId, UUID companyId, UUID ownerId, MerchantApproveReturnRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
@@ -364,7 +365,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public ReturnResponse inspectReturn(long returnId, long companyId, long ownerId, InspectReturnRequest request) {
+    public ReturnResponse inspectReturn(UUID returnId, UUID companyId, UUID ownerId, InspectReturnRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
@@ -414,7 +415,7 @@ public class ReturnServiceImpl implements ReturnService {
 
     @Override
     @Transactional
-    public ReturnResponse rejectReturn(long returnId, long companyId, long ownerId, MerchantRejectReturnRequest request) {
+    public ReturnResponse rejectReturn(UUID returnId, UUID companyId, UUID ownerId, MerchantRejectReturnRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
@@ -435,7 +436,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public ReturnResponse merchantInitiateReturn(long orderId, long companyId, long ownerId, MerchantInitiateReturnRequest request) {
+    public ReturnResponse merchantInitiateReturn(UUID orderId, UUID companyId, UUID ownerId, MerchantInitiateReturnRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyIdForUpdate(orderId, companyId)
@@ -486,7 +487,7 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public ReturnResponse issuePartialRefund(long orderId, long amountCents, String reason, long actorUserId) {
+    public ReturnResponse issuePartialRefund(UUID orderId, long amountCents, String reason, UUID actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);

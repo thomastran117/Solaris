@@ -2,14 +2,15 @@ package backend.dtos.responses.analytics;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record SlowMoversResponse(
-        long companyId,
+        UUID companyId,
         int days,
         List<SlowMoverEntry> items
 ) {
     public record SlowMoverEntry(
-            long productId,
+            UUID productId,
             String productName,
             String sku,
             Integer currentStock,

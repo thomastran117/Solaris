@@ -2,6 +2,7 @@ package backend.services.pricing.config;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Config for PromotionRuleType.BOGO (Buy-X-Get-Y).
@@ -15,9 +16,9 @@ import java.util.List;
  * @param maxApplicationsPerOrder  cap on how many times the pattern fires in one cart (&ge; 1)
  */
 public record BogoConfig(
-        List<Long> triggerProductIds,
+        List<UUID> triggerProductIds,
         int triggerQty,
-        List<Long> rewardProductIds,
+        List<UUID> rewardProductIds,
         int rewardQty,
         BigDecimal rewardPercentOff,
         int maxApplicationsPerOrder

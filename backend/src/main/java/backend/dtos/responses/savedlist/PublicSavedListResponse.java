@@ -6,11 +6,12 @@ import lombok.Getter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class PublicSavedListResponse {
-    private Long id;
+    private UUID id;
     private String ownerDisplayName;
     private String name;
     private SavedListType type;

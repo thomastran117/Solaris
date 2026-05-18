@@ -1,5 +1,6 @@
 package backend.dtos.responses.loyalty;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -9,8 +10,8 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class LoyaltyPolicyResponse {
-    private long id;
-    private long companyId;
+    private UUID id;
+    private UUID companyId;
     private String name;
     private BigDecimal earnRatePerDollar;
     private int pointValueCents;

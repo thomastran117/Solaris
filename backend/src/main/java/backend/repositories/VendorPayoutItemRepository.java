@@ -7,7 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface VendorPayoutItemRepository extends JpaRepository<VendorPayoutItem, Long> {
+public interface VendorPayoutItemRepository extends JpaRepository<VendorPayoutItem, java.util.UUID> {
 
-    List<VendorPayoutItem> findAllByPayoutId(long payoutId);
+    List<VendorPayoutItem> findAllByPayoutId(java.util.UUID payoutId);
 }

@@ -9,6 +9,7 @@ import org.springframework.data.jpa.domain.Specification;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class AdjustmentSpecification {
 
@@ -18,7 +19,7 @@ public class AdjustmentSpecification {
             Instant from,
             Instant to,
             Long productId,
-            Long userId) {
+            UUID userId) {
 
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();

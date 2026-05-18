@@ -1,5 +1,6 @@
 package backend.services.intf.subscriptions;
 
+import java.util.UUID;
 import backend.dtos.requests.subscription.CreateSubscriptionRequest;
 import backend.dtos.requests.subscription.UpdateSubscriptionRequest;
 import backend.dtos.responses.subscription.SavedPaymentMethodResponse;
@@ -20,34 +21,34 @@ public interface SubscriptionService {
     // -------------------------------------------------------------------------
 
     /** Creates a SetupIntent the client uses to save a card for off-session reuse. */
-    SetupIntentResponse createSetupIntent(long userId);
+    SetupIntentResponse createSetupIntent(UUID userId);
 
-    List<SavedPaymentMethodResponse> listPaymentMethods(long userId);
+    List<SavedPaymentMethodResponse> listPaymentMethods(UUID userId);
 
-    void detachPaymentMethod(long userId, long savedPaymentMethodId);
+    void detachPaymentMethod(UUID userId, UUID savedPaymentMethodId);
 
     // -------------------------------------------------------------------------
     // Subscription lifecycle
     // -------------------------------------------------------------------------
 
-    SubscriptionResponse create(long userId, CreateSubscriptionRequest request);
+    SubscriptionResponse create(UUID userId, CreateSubscriptionRequest request);
 
-    SubscriptionResponse get(long userId, long subscriptionId);
+    SubscriptionResponse get(UUID userId, UUID subscriptionId);
 
-    List<SubscriptionResponse> listForUser(long userId);
+    List<SubscriptionResponse> listForUser(UUID userId);
 
     /** Edits quantity, interval, or swaps the product. Any non-null field is applied. */
-    SubscriptionResponse update(long userId, long subscriptionId, UpdateSubscriptionRequest request);
+    SubscriptionResponse update(UUID userId, UUID subscriptionId, UpdateSubscriptionRequest request);
 
-    SubscriptionResponse pause(long userId, long subscriptionId);
+    SubscriptionResponse pause(UUID userId, UUID subscriptionId);
 
-    SubscriptionResponse resume(long userId, long subscriptionId);
+    SubscriptionResponse resume(UUID userId, UUID subscriptionId);
 
     /** Skips the next scheduled charge by advancing the billing anchor by one cycle. */
-    SubscriptionResponse skipNext(long userId, long subscriptionId);
+    SubscriptionResponse skipNext(UUID userId, UUID subscriptionId);
 
     /** Cancels the subscription. {@code atPeriodEnd=true} keeps service through the current cycle. */
-    SubscriptionResponse cancel(long userId, long subscriptionId, boolean atPeriodEnd);
+    SubscriptionResponse cancel(UUID userId, UUID subscriptionId, boolean atPeriodEnd);
 
     // -------------------------------------------------------------------------
     // Stripe webhook handlers

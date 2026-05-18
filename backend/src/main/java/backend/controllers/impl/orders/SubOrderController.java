@@ -1,5 +1,6 @@
 package backend.controllers.impl.orders;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.order.CancelSubOrderRequest;
 import backend.dtos.requests.order.ShipSubOrderRequest;
@@ -32,7 +33,7 @@ public class SubOrderController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<SubOrderResponse>> list(
-            @PathVariable long vendorId,
+            @PathVariable UUID vendorId,
             @RequestParam(required = false) SubOrderStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
@@ -47,8 +48,8 @@ public class SubOrderController {
 
     @GetMapping("/{subOrderId}")
     public ResponseEntity<SubOrderResponse> get(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId) {
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId) {
         try {
             return ResponseEntity.ok(subOrderService.getSubOrder(subOrderId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -60,8 +61,8 @@ public class SubOrderController {
 
     @PostMapping("/{subOrderId}/pack")
     public ResponseEntity<SubOrderResponse> pack(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId) {
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId) {
         try {
             return ResponseEntity.ok(subOrderService.markPacked(subOrderId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -73,8 +74,8 @@ public class SubOrderController {
 
     @PostMapping("/{subOrderId}/ship")
     public ResponseEntity<SubOrderResponse> ship(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId,
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId,
             @Valid @RequestBody ShipSubOrderRequest request) {
         try {
             return ResponseEntity.ok(subOrderService.markShipped(subOrderId, vendorId, request, resolveUserId()));
@@ -87,8 +88,8 @@ public class SubOrderController {
 
     @PostMapping("/{subOrderId}/deliver")
     public ResponseEntity<SubOrderResponse> deliver(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId) {
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId) {
         try {
             return ResponseEntity.ok(subOrderService.markDelivered(subOrderId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -100,8 +101,8 @@ public class SubOrderController {
 
     @PostMapping("/{subOrderId}/cancel")
     public ResponseEntity<SubOrderResponse> cancel(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId,
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId,
             @Valid @RequestBody CancelSubOrderRequest request) {
         try {
             return ResponseEntity.ok(subOrderService.cancelSubOrder(subOrderId, vendorId, request, resolveUserId()));
@@ -114,8 +115,8 @@ public class SubOrderController {
 
     @GetMapping("/{subOrderId}/commission")
     public ResponseEntity<CommissionRecordResponse> commission(
-            @PathVariable long vendorId,
-            @PathVariable long subOrderId) {
+            @PathVariable UUID vendorId,
+            @PathVariable UUID subOrderId) {
         try {
             return ResponseEntity.ok(subOrderService.getCommissionRecord(subOrderId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -125,9 +126,9 @@ public class SubOrderController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 
 }

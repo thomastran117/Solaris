@@ -1,5 +1,6 @@
 package backend.services.impl.analytics;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,7 +79,7 @@ public class ForecastingServiceImpl implements ForecastingService {
 
     @Override
     @Transactional(readOnly = true)
-    public ForecastSummaryResponse getCompanyForecast(long companyId, long ownerId, int lookbackDays, int limit) {
+    public ForecastSummaryResponse getCompanyForecast(UUID companyId, UUID ownerId, int lookbackDays, int limit) {
         verifyOwnership(companyId, ownerId);
 
         String cacheKey = CACHE_COMPANY_PREFIX + companyId + ":" + lookbackDays;
@@ -97,7 +98,7 @@ public class ForecastingServiceImpl implements ForecastingService {
 
     @Override
     @Transactional(readOnly = true)
-    public ProductForecastResponse getProductForecast(long companyId, long productId, long ownerId, int lookbackDays) {
+    public ProductForecastResponse getProductForecast(UUID companyId, UUID productId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
@@ -115,7 +116,7 @@ public class ForecastingServiceImpl implements ForecastingService {
     @Override
     @Transactional(readOnly = true)
     public List<ReorderSuggestionResponse> getReorderSuggestions(
-            long companyId, long ownerId, int lookbackDays, int limit) {
+            long companyId, UUID ownerId, int lookbackDays, int limit) {
         verifyOwnership(companyId, ownerId);
 
         String cacheKey = CACHE_REORDER_PREFIX + companyId + ":" + lookbackDays;
@@ -141,7 +142,7 @@ public class ForecastingServiceImpl implements ForecastingService {
 
     @Override
     @Transactional(readOnly = true)
-    public SeasonalPrepSummaryResponse getSeasonalPrep(long companyId, long ownerId, int limit) {
+    public SeasonalPrepSummaryResponse getSeasonalPrep(UUID companyId, UUID ownerId, int limit) {
         verifyOwnership(companyId, ownerId);
 
         Instant now           = Instant.now();
@@ -297,7 +298,7 @@ public class ForecastingServiceImpl implements ForecastingService {
         return series;
     }
 
-    private Map<Long, List<DailyDemandProjection>> groupByProduct(List<DailyDemandProjection> rows) {
+    private Map<UUID, List<DailyDemandProjection>> groupByProduct(List<DailyDemandProjection> rows) {
         Map<Long, List<DailyDemandProjection>> map = new HashMap<>();
         for (DailyDemandProjection row : rows) {
             map.computeIfAbsent(row.getProductId(), k -> new ArrayList<>()).add(row);
@@ -319,7 +320,7 @@ public class ForecastingServiceImpl implements ForecastingService {
                 full.items().stream().limit(limit).collect(Collectors.toList()));
     }
 
-    private void verifyOwnership(long companyId, long ownerId) {
+    private void verifyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 }

@@ -1,12 +1,13 @@
 package backend.dtos.responses.return_;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record ReturnItemResponse(
-        Long id,
-        Long orderItemId,
+        UUID id,
+        UUID orderItemId,
         String productName,
-        Long variantId,
+        UUID variantId,
         String variantTitle,
         int quantityReturned,
         BigDecimal unitPrice,

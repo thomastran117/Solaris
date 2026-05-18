@@ -8,17 +8,18 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Getter
 @Setter
 public class CreateRestockRequest {
 
     @NotNull
-    private Long productId;
+    private UUID productId;
 
-    private Long variantId;
+    private UUID variantId;
 
-    private Long locationId;
+    private UUID locationId;
 
     @NotNull
     @Min(1)

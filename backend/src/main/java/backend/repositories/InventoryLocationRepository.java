@@ -9,15 +9,15 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface InventoryLocationRepository extends JpaRepository<InventoryLocation, Long> {
+public interface InventoryLocationRepository extends JpaRepository<InventoryLocation, java.util.UUID> {
 
-    List<InventoryLocation> findAllByCompanyIdOrderByDisplayOrderAscNameAsc(long companyId);
+    List<InventoryLocation> findAllByCompanyIdOrderByDisplayOrderAscNameAsc(java.util.UUID companyId);
 
-    Optional<InventoryLocation> findByIdAndCompanyId(long id, long companyId);
+    Optional<InventoryLocation> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
-    boolean existsByIdAndCompanyId(long id, long companyId);
+    boolean existsByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
-    boolean existsByCodeAndCompanyId(String code, long companyId);
+    boolean existsByCodeAndCompanyId(String code, java.util.UUID companyId);
 
-    boolean existsByCodeAndCompanyIdAndIdNot(String code, long companyId, long excludeId);
+    boolean existsByCodeAndCompanyIdAndIdNot(String code, java.util.UUID companyId, java.util.UUID excludeId);
 }

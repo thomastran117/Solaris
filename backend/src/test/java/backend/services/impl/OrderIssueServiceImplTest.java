@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.requests.issue.OpenIssueRequest;
 import backend.dtos.requests.issue.RejectIssueRequest;
 import backend.dtos.requests.issue.ResolveWithCreditRequest;
@@ -69,9 +71,9 @@ class OrderIssueServiceImplTest {
 
     @Test
     void openIssue_customerCanOpenForOwnOrder() {
-        User customer = makeUser(1L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         Order order = makeOrder(10L, customer);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
         when(issueRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -84,10 +86,10 @@ class OrderIssueServiceImplTest {
 
     @Test
     void openIssue_customerCannotOpenForOtherUsersOrder() {
-        User customer = makeUser(1L, UserRole.USER);
-        User other = makeUser(2L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        User other = makeUser(TestIds.uuid(2), UserRole.USER);
         Order order = makeOrder(10L, other);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
         assertThrows(ForbiddenException.class,
@@ -98,9 +100,9 @@ class OrderIssueServiceImplTest {
 
     @Test
     void transitionState_staffCanAdvanceState() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        OrderIssue issue = makeIssue(5L, makeOrder(10L, makeUser(1L, UserRole.USER)), staff);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        OrderIssue issue = makeIssue(5L, makeOrder(10L, makeUser(TestIds.uuid(1), UserRole.USER)), staff);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(issueRepository.findById(5L)).thenReturn(Optional.of(issue));
         when(issueRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -110,8 +112,8 @@ class OrderIssueServiceImplTest {
 
     @Test
     void transitionState_customerForbidden() {
-        User customer = makeUser(1L, UserRole.USER);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
 
         assertThrows(ForbiddenException.class,
                 () -> service.transitionState(5L, 1L, new TransitionIssueRequest(OrderIssueState.INVESTIGATING)));
@@ -121,11 +123,11 @@ class OrderIssueServiceImplTest {
 
     @Test
     void resolveWithRefund_setsReturnIdAndTerminalState() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         OrderIssue issue = makeIssue(5L, makeOrder(10L, customer), staff);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(issueRepository.findById(5L)).thenReturn(Optional.of(issue));
         when(returnService.issuePartialRefund(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(makeReturnResponse(20L));
@@ -142,11 +144,11 @@ class OrderIssueServiceImplTest {
 
     @Test
     void resolveWithCredit_setsCreditIdAndTerminalState() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         OrderIssue issue = makeIssue(5L, makeOrder(10L, customer), staff);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(issueRepository.findById(5L)).thenReturn(Optional.of(issue));
         when(customerCreditService.issueCredit(anyLong(), any(), anyLong(), any(), any()))
                 .thenReturn(makeCreditResponse(30L));
@@ -162,11 +164,11 @@ class OrderIssueServiceImplTest {
 
     @Test
     void rejectIssue_setsRejectedStateAndReason() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         OrderIssue issue = makeIssue(5L, makeOrder(10L, customer), staff);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(issueRepository.findById(5L)).thenReturn(Optional.of(issue));
         when(issueRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -178,12 +180,12 @@ class OrderIssueServiceImplTest {
 
     @Test
     void resolveWithRefund_throwsWhenIssueAlreadyTerminal() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         OrderIssue issue = makeIssue(5L, makeOrder(10L, customer), staff);
         issue.setState(OrderIssueState.RESOLVED_REFUND);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(issueRepository.findById(5L)).thenReturn(Optional.of(issue));
 
         assertThrows(BadRequestException.class,
@@ -192,7 +194,7 @@ class OrderIssueServiceImplTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private User makeUser(long id, UserRole role) {
+    private User makeUser(UUID id, UserRole role) {
         User u = new User();
         u.setId(id);
         u.setEmail("user" + id + "@test.com");

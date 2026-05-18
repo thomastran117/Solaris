@@ -13,18 +13,18 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface SubOrderRepository extends JpaRepository<SubOrder, Long> {
+public interface SubOrderRepository extends JpaRepository<SubOrder, java.util.UUID> {
 
-    List<SubOrder> findAllByOrderId(long orderId);
+    List<SubOrder> findAllByOrderId(java.util.UUID orderId);
 
-    Page<SubOrder> findByMarketplaceVendorId(long marketplaceVendorId, Pageable pageable);
+    Page<SubOrder> findByMarketplaceVendorId(java.util.UUID marketplaceVendorId, Pageable pageable);
 
-    Page<SubOrder> findByMarketplaceVendorIdAndStatus(long marketplaceVendorId, SubOrderStatus status, Pageable pageable);
+    Page<SubOrder> findByMarketplaceVendorIdAndStatus(java.util.UUID marketplaceVendorId, SubOrderStatus status, Pageable pageable);
 
-    Optional<SubOrder> findByIdAndMarketplaceVendorId(long id, long marketplaceVendorId);
+    Optional<SubOrder> findByIdAndMarketplaceVendorId(java.util.UUID id, java.util.UUID marketplaceVendorId);
 
     @Query("SELECT s FROM SubOrder s WHERE s.order.id = :orderId AND s.marketplaceVendor.id = :vendorId")
     Optional<SubOrder> findByOrderIdAndMarketplaceVendorId(
-            @Param("orderId") long orderId,
-            @Param("vendorId") long vendorId);
+            @Param("orderId") java.util.UUID orderId,
+            @Param("vendorId") java.util.UUID vendorId);
 }

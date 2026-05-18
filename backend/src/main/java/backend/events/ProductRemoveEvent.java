@@ -1,3 +1,5 @@
 package backend.events;
 
-public record ProductRemoveEvent(long productId, Long marketplaceId) {}
+import java.util.UUID;
+
+public record ProductRemoveEvent(UUID productId, Long marketplaceId) {}

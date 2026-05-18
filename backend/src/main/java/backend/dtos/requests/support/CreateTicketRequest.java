@@ -7,13 +7,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.UUID;
+
 public record CreateTicketRequest(
         @NotBlank @SafeText @Size(max = 200) String subject,
         @NotBlank @SafeText @Size(max = 2000) String description,
         @NotNull TicketCategory category,
         TicketPriority priority,
         /** Optional order to associate the ticket with. */
-        Long orderId,
+        UUID orderId,
         /** Staff-only: open a ticket on behalf of this customer. */
-        Long customerId
+        UUID customerId
 ) {}

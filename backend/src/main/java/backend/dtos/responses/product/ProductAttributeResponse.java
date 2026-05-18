@@ -1,3 +1,5 @@
 package backend.dtos.responses.product;
 
-public record ProductAttributeResponse(Long id, String name, String value, int displayOrder) {}
+import java.util.UUID;
+
+public record ProductAttributeResponse(UUID id, String name, String value, int displayOrder) {}

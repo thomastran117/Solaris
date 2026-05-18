@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(./mvnw compile *)",
+      "Bash(./mvnw clean *)"
     ]
   }
 }

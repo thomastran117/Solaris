@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.requests.note.CreateNoteRequest;
 import backend.dtos.responses.note.InternalNoteResponse;
 import backend.exceptions.http.ForbiddenException;
@@ -39,8 +41,8 @@ class InternalNoteServiceImplTest {
 
     @Test
     void addNote_staffCanAddNote() {
-        User staff = makeUser(1L, UserRole.SUPPORT);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(staff));
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
         when(noteRepository.save(any())).thenAnswer(inv -> {
             InternalNote n = inv.getArgument(0);
             n.setAuthor(staff);
@@ -55,8 +57,8 @@ class InternalNoteServiceImplTest {
 
     @Test
     void addNote_customerCannotAddNote() {
-        User customer = makeUser(2L, UserRole.USER);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(2), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(customer));
 
         CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, 10L, "note");
         assertThrows(ForbiddenException.class, () -> service.addNote(2L, req));
@@ -66,8 +68,8 @@ class InternalNoteServiceImplTest {
 
     @Test
     void listNotes_staffSeeNotes() {
-        User staff = makeUser(1L, UserRole.SUPPORT);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(staff));
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
         when(noteRepository.findAllByEntityTypeAndEntityIdOrderByCreatedAtAsc(NoteEntityType.TICKET, 5L))
                 .thenReturn(List.of());
 
@@ -78,8 +80,8 @@ class InternalNoteServiceImplTest {
 
     @Test
     void listNotes_customerForbidden() {
-        User customer = makeUser(2L, UserRole.USER);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(2), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(customer));
 
         assertThrows(ForbiddenException.class, () -> service.listNotes(2L, NoteEntityType.TICKET, 5L));
     }
@@ -88,9 +90,9 @@ class InternalNoteServiceImplTest {
 
     @Test
     void deleteNote_authorCanDelete() {
-        User staff = makeUser(1L, UserRole.SUPPORT);
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
         InternalNote note = makeNote(10L, staff);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
         when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
 
         service.deleteNote(10L, 1L);
@@ -99,10 +101,10 @@ class InternalNoteServiceImplTest {
 
     @Test
     void deleteNote_adminCanDeleteOthersNotes() {
-        User author = makeUser(1L, UserRole.SUPPORT);
-        User admin = makeUser(2L, UserRole.ADMIN);
+        User author = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        User admin = makeUser(TestIds.uuid(2), UserRole.ADMIN);
         InternalNote note = makeNote(10L, author);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(admin));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(admin));
         when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
 
         service.deleteNote(10L, 2L);
@@ -111,10 +113,10 @@ class InternalNoteServiceImplTest {
 
     @Test
     void deleteNote_nonAuthorStaffForbidden() {
-        User author = makeUser(1L, UserRole.SUPPORT);
-        User other = makeUser(3L, UserRole.SUPPORT);
+        User author = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        User other = makeUser(TestIds.uuid(3), UserRole.SUPPORT);
         InternalNote note = makeNote(10L, author);
-        when(userRepository.findById(3L)).thenReturn(Optional.of(other));
+        when(userRepository.findById(TestIds.uuid(3))).thenReturn(Optional.of(other));
         when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
 
         assertThrows(ForbiddenException.class, () -> service.deleteNote(10L, 3L));
@@ -122,8 +124,8 @@ class InternalNoteServiceImplTest {
 
     @Test
     void deleteNote_throwsWhenNoteNotFound() {
-        User staff = makeUser(1L, UserRole.SUPPORT);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(staff));
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
         when(noteRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.deleteNote(99L, 1L));
@@ -131,7 +133,7 @@ class InternalNoteServiceImplTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private User makeUser(long id, UserRole role) {
+    private User makeUser(UUID id, UserRole role) {
         User u = new User();
         u.setId(id);
         u.setEmail("user" + id + "@test.com");

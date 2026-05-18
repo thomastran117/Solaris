@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -13,6 +14,7 @@ import backend.models.enums.OrderIssueState;
 import backend.models.enums.OrderIssueType;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -27,8 +29,9 @@ import java.time.Instant;
 public class OrderIssue {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
@@ -69,8 +72,8 @@ public class OrderIssue {
     private Long replacementOrderId;
 
     /** Loose FK to customer_credits.id — set when resolved via store credit. */
-    @Column(nullable = true)
-    private Long customerCreditId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private UUID customerCreditId;
 
     /** Loose FK to sub_orders.id — set for issues on marketplace vendor sub-orders. */
     @Column(nullable = true)

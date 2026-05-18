@@ -4,12 +4,14 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import backend.models.enums.CreditEntryType;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -23,8 +25,9 @@ import java.time.Instant;
 public class CustomerCredit {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
@@ -49,12 +52,12 @@ public class CustomerCredit {
     private User issuedBy;
 
     /** Loose FK to support_tickets.id. */
-    @Column(nullable = true)
-    private Long sourceTicketId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private UUID sourceTicketId;
 
     /** Loose FK to order_issues.id. */
-    @Column(nullable = true)
-    private Long sourceOrderIssueId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private UUID sourceOrderIssueId;
 
     /** Loose FK to orders.id — set on REDEEMED entries. */
     @Column(nullable = true)

@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.FieldValueFactorScoreFunction;
@@ -252,14 +253,14 @@ public class ProductServiceImpl implements ProductService {
                         .build();
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
-                List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
+                List<UUID> ids = hits.stream().map(h -> h.getContent().getId()).toList();
 
-                Map<Long, Product> productMap = productRepository
+                Map<UUID, Product> productMap = productRepository
                         .findAllByIdInAndCompanyId(ids, companyId)
                         .stream()
                         .collect(Collectors.toMap(Product::getId, p -> p));
 
-                Map<Long, ActivePromotionSummary> promoMap =
+                Map<UUID, ActivePromotionSummary> promoMap =
                         activePromotionLookupService.findForProducts(productMap.values());
 
                 List<ProductResponse> content = ids.stream()
@@ -277,7 +278,7 @@ public class ProductServiceImpl implements ProductService {
             Page<Product> jpaPage = productRepository.findAll(
                     ProductSpecification.withFilters(companyId, q, category, brand, minPrice, maxPrice, featured, status, listed, discountCategory, hasDiscount),
                     pageable);
-            Map<Long, ActivePromotionSummary> jpaPromoMap =
+            Map<UUID, ActivePromotionSummary> jpaPromoMap =
                     activePromotionLookupService.findForProducts(jpaPage.getContent());
             return new PagedResponse<>(jpaPage.map(p -> toResponse(p, jpaPromoMap.get(p.getId()))));
         }, new TypeReference<PagedResponse<ProductResponse>>() {});
@@ -304,7 +305,7 @@ public class ProductServiceImpl implements ProductService {
         String cacheKey = "products:batch:" + companyId + ":" + sortedIds;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
             List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
-            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+            Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
             return products.stream()
                     .map(p -> toResponse(p, promoMap.get(p.getId())))
                     .toList();
@@ -313,7 +314,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductResponse createProduct(long companyId, long ownerId, CreateProductRequest request) {
+    public ProductResponse createProduct(long companyId, UUID ownerId, CreateProductRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (request.getSku() != null && !request.getSku().isBlank()
@@ -355,7 +356,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductResponse updateProduct(long companyId, long productId, long ownerId, UpdateProductRequest request) {
+    public ProductResponse updateProduct(long companyId, long productId, UUID ownerId, UpdateProductRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -431,7 +432,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void deleteProduct(long companyId, long productId, long ownerId) {
+    public void deleteProduct(long companyId, long productId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -446,7 +447,7 @@ public class ProductServiceImpl implements ProductService {
         promotionRuleRepository.removeProductFromAllRules(productId);
         collectionProductRepository.deleteAllByProductId(productId);
         productRepository.delete(product);
-        eventPublisher.publishEvent(new ProductRemoveEvent(productId, marketplaceId));
+        eventPublisher.publishEvent(new ProductRemoveEvent(product.getId(), marketplaceId));
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
             singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
@@ -461,7 +462,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public List<ProductResponse> batchCreateProducts(long companyId, long ownerId, BatchCreateProductsRequest request) {
+    public List<ProductResponse> batchCreateProducts(long companyId, UUID ownerId, BatchCreateProductsRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<ProductResponse> results = new java.util.ArrayList<>();
@@ -499,7 +500,7 @@ public class ProductServiceImpl implements ProductService {
 
             Product saved = productRepository.save(product);
             productChangeLogger.logCreate(saved, ChangeSource.USER);
-            eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
+            eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
             results.add(toResponse(saved));
         }
 
@@ -512,7 +513,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void batchDeleteProducts(long companyId, long ownerId, BatchDeleteProductsRequest request) {
+    public void batchDeleteProducts(long companyId, UUID ownerId, BatchDeleteProductsRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<Product> products = productRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
@@ -561,7 +562,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductImageResponse addProductImage(long companyId, long productId, long ownerId, AddProductImageRequest request) {
+    public ProductImageResponse addProductImage(long companyId, long productId, UUID ownerId, AddProductImageRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyIdWithLock(productId, companyId)
@@ -593,7 +594,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void deleteProductImage(long companyId, long productId, long imageId, long ownerId) {
+    public void deleteProductImage(long companyId, long productId, long imageId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -615,7 +616,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public List<ProductImageResponse> reorderProductImages(long companyId, long productId, long ownerId, ReorderProductImagesRequest request) {
+    public List<ProductImageResponse> reorderProductImages(long companyId, long productId, UUID ownerId, ReorderProductImagesRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         // Pessimistic write lock prevents concurrent reorder calls from overwriting each other.
@@ -678,7 +679,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductOptionResponse addProductOption(long companyId, long productId, long ownerId, CreateProductOptionRequest request) {
+    public ProductOptionResponse addProductOption(long companyId, long productId, UUID ownerId, CreateProductOptionRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         // Pessimistic write lock serializes concurrent option-add requests so the count
@@ -706,7 +707,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductOptionResponse updateProductOption(long companyId, long productId, long optionId, long ownerId, UpdateProductOptionRequest request) {
+    public ProductOptionResponse updateProductOption(long companyId, long productId, long optionId, UUID ownerId, UpdateProductOptionRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
@@ -726,7 +727,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void deleteProductOption(long companyId, long productId, long optionId, long ownerId) {
+    public void deleteProductOption(long companyId, long productId, long optionId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
@@ -762,7 +763,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductVariantResponse createProductVariant(long companyId, long productId, long ownerId, CreateProductVariantRequest request) {
+    public ProductVariantResponse createProductVariant(long companyId, long productId, UUID ownerId, CreateProductVariantRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -798,7 +799,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductVariantResponse updateProductVariant(long companyId, long productId, long variantId, long ownerId, UpdateProductVariantRequest request) {
+    public ProductVariantResponse updateProductVariant(long companyId, long productId, long variantId, UUID ownerId, UpdateProductVariantRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
@@ -837,7 +838,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void deleteProductVariant(long companyId, long productId, long variantId, long ownerId) {
+    public void deleteProductVariant(long companyId, long productId, long variantId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         assertProductBelongsToCompany(companyId, productId);
@@ -866,7 +867,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public List<ProductAttributeResponse> setProductAttributes(long companyId, long productId, long ownerId, SetProductAttributesRequest request) {
+    public List<ProductAttributeResponse> setProductAttributes(long companyId, long productId, UUID ownerId, SetProductAttributesRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -968,13 +969,13 @@ public class ProductServiceImpl implements ProductService {
                     .build();
 
             SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
-            List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
+            List<UUID> ids = hits.stream().map(h -> h.getContent().getId()).toList();
 
             List<Product> products = productRepository.findAllByIdInAndMarketplaceId(ids, marketplaceId);
-            Map<Long, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+            Map<UUID, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
 
             Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, products);
-            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+            Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
             List<MarketplaceCatalogProductResponse> content = ids.stream()
                     .filter(productMap::containsKey)
@@ -1001,7 +1002,7 @@ public class ProductServiceImpl implements ProductService {
         // --- JPA fallback (unfiltered, no active search filters) ---
         Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
         Map<Long, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
-        Map<Long, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
+        Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
         return new CatalogSearchResponse(
                 productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()), jpaPromoMap.get(p.getId()))),
                 new SearchFacets(List.of(), List.of(), List.of()));
@@ -1071,11 +1072,11 @@ public class ProductServiceImpl implements ProductService {
                         .build();
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
-                List<Long> ids = hits.stream().map(h -> h.getContent().getId()).toList();
+                List<UUID> ids = hits.stream().map(h -> h.getContent().getId()).toList();
 
                 List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
-                Map<Long, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
-                Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+                Map<UUID, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+                Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
                 List<MarketplaceCatalogProductResponse> content = ids.stream()
                         .filter(productMap::containsKey)
@@ -1101,7 +1102,7 @@ public class ProductServiceImpl implements ProductService {
             List<Product> active = productPage.getContent().stream()
                     .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
                     .toList();
-            Map<Long, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(active);
+            Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(active);
             List<MarketplaceCatalogProductResponse> content = active.stream()
                     .map(p -> toCatalogResponse(p, null, jpaPromoMap.get(p.getId())))
                     .toList();
@@ -1143,7 +1144,7 @@ public class ProductServiceImpl implements ProductService {
                     .filter(Product::isFeatured)
                     .limit(10)
                     .toList();
-            Map<Long, ActivePromotionSummary> storefrontPromoMap =
+            Map<UUID, ActivePromotionSummary> storefrontPromoMap =
                     activePromotionLookupService.findForProducts(featuredProducts);
             List<MarketplaceCatalogProductResponse> featured = featuredProducts.stream()
                     .map(p -> toCatalogResponse(p, vendor, storefrontPromoMap.get(p.getId())))
@@ -1165,7 +1166,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductResponse updateMarketplaceListing(long companyId, long productId, long ownerId,
+    public ProductResponse updateMarketplaceListing(long companyId, long productId, UUID ownerId,
                                                      UpdateMarketplaceListingRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
@@ -1209,7 +1210,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductResponse updateProductMerchandising(long companyId, long productId, long ownerId,
+    public ProductResponse updateProductMerchandising(long companyId, long productId, UUID ownerId,
                                                        UpdateProductMerchandisingRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
@@ -1226,7 +1227,7 @@ public class ProductServiceImpl implements ProductService {
         product.setPinnedRank(request.getPinnedUntil() == null ? null : request.getPinnedRank());
 
         Product saved = productRepository.save(product);
-        eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
+        eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
 
         final Long marketplaceId = saved.getMarketplaceId();
         evictAfterCommit(() -> {
@@ -1568,9 +1569,9 @@ public class ProductServiceImpl implements ProductService {
             if (products.isEmpty()) {
                 throw new ResourceNotFoundException("No products found for the given IDs in this company");
             }
-            List<Long> foundIds = products.stream().map(Product::getId).toList();
-            Map<Long, double[]> ratingMap = buildRatingMap(foundIds);
-            Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+            List<UUID> foundIds = products.stream().map(Product::getId).toList();
+            Map<UUID, double[]> ratingMap = buildRatingMap(foundIds);
+            Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
             return products.stream().map(p -> {
                 double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
@@ -1585,12 +1586,12 @@ public class ProductServiceImpl implements ProductService {
         }, new TypeReference<List<ProductResponse>>() {});
     }
 
-    private Map<Long, double[]> buildRatingMap(List<Long> productIds) {
-        Map<Long, double[]> map = new java.util.HashMap<>();
+    private Map<UUID, double[]> buildRatingMap(List<UUID> productIds) {
+        Map<UUID, double[]> map = new java.util.HashMap<>();
         try {
             List<Object[]> rows = productReviewRepository.findAverageRatingsByProductIds(productIds);
             for (Object[] row : rows) {
-                long productId = ((Number) row[0]).longValue();
+                UUID productId = (UUID) row[0];
                 double avg = ((Number) row[1]).doubleValue();
                 double count = ((Number) row[2]).doubleValue();
                 map.put(productId, new double[]{avg, count});
@@ -1642,7 +1643,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse revertProductChanges(
-            long companyId, long productId, long ownerId, RevertProductChangesRequest request) {
+            long companyId, long productId, UUID ownerId, RevertProductChangesRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
@@ -1711,7 +1712,7 @@ public class ProductServiceImpl implements ProductService {
             productChangeLogger.logVariantUpdate(beforeVariant, savedVariant, ChangeSource.REVERT, lastEntryId);
         }
 
-        eventPublisher.publishEvent(new ProductIndexEvent(product, companyId));
+        eventPublisher.publishEvent(new ProductIndexEvent(product, product.getCompany().getId()));
         final long productIdF = productId;
         final Long marketplaceId = product.getMarketplaceId();
         evictAfterCommit(() -> {
@@ -1728,7 +1729,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductHistoryEntryResponse toHistoryEntry(ProductChangeLog c) {
-        Long actorId = c.getChangedBy() == null ? null : c.getChangedBy().getId();
+        UUID actorId = c.getChangedBy() == null ? null : c.getChangedBy().getId();
         return new ProductHistoryEntryResponse(
                 ProductHistoryEntryResponse.Kind.FIELD_CHANGE,
                 c.getId(),
@@ -1747,7 +1748,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductHistoryEntryResponse toHistoryEntry(InventoryAdjustment a) {
-        Long actorId = a.getAdjustedBy() == null ? null : a.getAdjustedBy().getId();
+        UUID actorId = a.getAdjustedBy() == null ? null : a.getAdjustedBy().getId();
         return new ProductHistoryEntryResponse(
                 ProductHistoryEntryResponse.Kind.INVENTORY_ADJUSTMENT,
                 a.getId(),
@@ -1765,7 +1766,7 @@ public class ProductServiceImpl implements ProductService {
                 a.getOrderId());
     }
 
-    private backend.models.enums.CompanyRole resolveActorRole(long companyId, Long actorId) {
+    private backend.models.enums.CompanyRole resolveActorRole(long companyId, UUID actorId) {
         if (actorId == null) return null;
         return companyAccessService.resolveRole(companyId, actorId).orElse(null);
     }

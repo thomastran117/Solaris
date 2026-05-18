@@ -1,5 +1,6 @@
 package backend.services.impl.profile;
 
+import java.util.UUID;
 import backend.models.core.UserPreference;
 import backend.repositories.UserPreferenceRepository;
 import backend.services.intf.profile.UserPreferenceService;
@@ -23,7 +24,7 @@ public class UserPreferenceServiceImpl implements UserPreferenceService {
     }
 
     @Override
-    public boolean isTrackingOptedOut(long userId) {
+    public boolean isTrackingOptedOut(UUID userId) {
         return cache.computeIfAbsent(userId, id ->
             repo.findById(id).map(UserPreference::isTrackingOptOut).orElse(false)
         );
@@ -31,7 +32,7 @@ public class UserPreferenceServiceImpl implements UserPreferenceService {
 
     @Override
     @Transactional
-    public void setTrackingOptOut(long userId, boolean optOut) {
+    public void setTrackingOptOut(UUID userId, boolean optOut) {
         UserPreference pref = repo.findById(userId).orElseGet(() -> new UserPreference(userId));
         pref.setTrackingOptOut(optOut);
         repo.save(pref);

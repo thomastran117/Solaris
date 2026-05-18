@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -52,12 +53,12 @@ public class CreateOrderRequest {
     public static class OrderItemRequest {
 
         /** Either productId or bundleId must be set, not both. Validated in service layer. */
-        private Long productId;
+        private UUID productId;
 
-        private Long variantId;
+        private UUID variantId;
 
         /** Set to order a bundle instead of a single product. Mutually exclusive with productId. */
-        private Long bundleId;
+        private UUID bundleId;
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")

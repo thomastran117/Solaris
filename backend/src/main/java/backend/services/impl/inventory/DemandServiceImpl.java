@@ -1,5 +1,6 @@
 package backend.services.impl.inventory;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +61,7 @@ public class DemandServiceImpl implements DemandService {
     }
 
     @Override
-    public HotProductsResponse getHotProducts(long companyId, long ownerId, String window, int limit) {
+    public HotProductsResponse getHotProducts(long companyId, UUID ownerId, String window, int limit) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
 
         if (!VALID_WINDOWS.contains(window)) {

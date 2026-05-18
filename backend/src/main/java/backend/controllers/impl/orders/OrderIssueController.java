@@ -1,5 +1,6 @@
 package backend.controllers.impl.orders;
 
+import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -36,7 +37,7 @@ public class OrderIssueController {
 
     @PostMapping("/orders/{orderId}/issues")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> openIssue(@PathVariable long orderId,
+    public ResponseEntity<OrderIssueResponse> openIssue(@PathVariable UUID orderId,
                                                         @Valid @RequestBody OpenIssueRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(issueService.openIssue(orderId, resolveUserId(), request));
@@ -49,7 +50,7 @@ public class OrderIssueController {
 
     @GetMapping("/orders/{orderId}/issues")
     @RequireAuth
-    public ResponseEntity<List<OrderIssueResponse>> getIssuesByOrder(@PathVariable long orderId) {
+    public ResponseEntity<List<OrderIssueResponse>> getIssuesByOrder(@PathVariable UUID orderId) {
         try {
             return ResponseEntity.ok(issueService.getIssuesByOrder(orderId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -76,7 +77,7 @@ public class OrderIssueController {
 
     @PostMapping("/support/issues/{id}/transition")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> transition(@PathVariable long id,
+    public ResponseEntity<OrderIssueResponse> transition(@PathVariable UUID id,
                                                          @Valid @RequestBody TransitionIssueRequest request) {
         try {
             return ResponseEntity.ok(issueService.transitionState(id, resolveUserId(), request));
@@ -89,7 +90,7 @@ public class OrderIssueController {
 
     @PostMapping("/support/issues/{id}/resolve/refund")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> resolveWithRefund(@PathVariable long id,
+    public ResponseEntity<OrderIssueResponse> resolveWithRefund(@PathVariable UUID id,
                                                                  @Valid @RequestBody ResolveWithRefundRequest request) {
         try {
             return ResponseEntity.ok(issueService.resolveWithRefund(id, resolveUserId(), request));
@@ -102,7 +103,7 @@ public class OrderIssueController {
 
     @PostMapping("/support/issues/{id}/resolve/replacement")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> resolveWithReplacement(@PathVariable long id,
+    public ResponseEntity<OrderIssueResponse> resolveWithReplacement(@PathVariable UUID id,
                                                                       @Valid @RequestBody ResolveWithReplacementRequest request) {
         try {
             return ResponseEntity.ok(issueService.resolveWithReplacement(id, resolveUserId(), request));
@@ -115,7 +116,7 @@ public class OrderIssueController {
 
     @PostMapping("/support/issues/{id}/resolve/credit")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> resolveWithCredit(@PathVariable long id,
+    public ResponseEntity<OrderIssueResponse> resolveWithCredit(@PathVariable UUID id,
                                                                  @Valid @RequestBody ResolveWithCreditRequest request) {
         try {
             return ResponseEntity.ok(issueService.resolveWithCredit(id, resolveUserId(), request));
@@ -128,7 +129,7 @@ public class OrderIssueController {
 
     @PostMapping("/support/issues/{id}/reject")
     @RequireAuth
-    public ResponseEntity<OrderIssueResponse> rejectIssue(@PathVariable long id,
+    public ResponseEntity<OrderIssueResponse> rejectIssue(@PathVariable UUID id,
                                                            @Valid @RequestBody RejectIssueRequest request) {
         try {
             return ResponseEntity.ok(issueService.rejectIssue(id, resolveUserId(), request));
@@ -139,8 +140,8 @@ public class OrderIssueController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

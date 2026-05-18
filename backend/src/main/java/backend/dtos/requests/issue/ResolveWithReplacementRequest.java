@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 public record ResolveWithReplacementRequest(
         /** Item variant IDs and quantities to include in the replacement order. */
@@ -15,5 +16,5 @@ public record ResolveWithReplacementRequest(
         @NotBlank @SafeText @Size(max = 100) String shippingCountry,
         @NotBlank @SafeText @Size(max = 20) String shippingPostalCode
 ) {
-    public record ReplacementItem(Long variantId, int quantity) {}
+    public record ReplacementItem(UUID variantId, int quantity) {}
 }

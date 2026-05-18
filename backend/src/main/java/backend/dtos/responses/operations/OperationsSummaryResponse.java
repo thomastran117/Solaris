@@ -6,13 +6,14 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class OperationsSummaryResponse {
-    private long companyId;
+    private UUID companyId;
     private int lookbackDays;
     private Instant from;
     private Instant to;

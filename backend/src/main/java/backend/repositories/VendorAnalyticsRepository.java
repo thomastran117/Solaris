@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Aggregation queries for vendor and marketplace analytics dashboards.
@@ -22,7 +23,7 @@ import java.util.List;
  * All queries are vendor/marketplace-scoped and time-windowed.
  */
 @Repository
-public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long> {
+public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID> {
 
     // -------------------------------------------------------------------------
     // Vendor revenue
@@ -43,7 +44,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "AND so.status != 'CANCELLED'",
             nativeQuery = true)
     VendorRevenueSummaryProjection vendorRevenueSummary(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -64,7 +65,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "ORDER BY DATE(so.created_at)",
             nativeQuery = true)
     List<VendorRevenueDailyProjection> vendorRevenueDaily(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -89,7 +90,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "LIMIT :lim",
             nativeQuery = true)
     List<VendorTopProductProjection> vendorTopProducts(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to,
@@ -107,7 +108,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "AND so.created_at BETWEEN :from AND :to",
             nativeQuery = true)
     Long vendorTotalOrders(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -122,7 +123,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "ORDER BY DATE(so.created_at)",
             nativeQuery = true)
     List<DailyCountProjection> vendorOrdersDaily(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -136,7 +137,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "AND so.created_at BETWEEN :from AND :to",
             nativeQuery = true)
     Long vendorCancelledCount(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -150,7 +151,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "AND so.created_at BETWEEN :from AND :to",
             nativeQuery = true)
     Long vendorReturnedCount(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -166,7 +167,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "ORDER BY DATE(so.cancelled_at)",
             nativeQuery = true)
     List<DailyCountProjection> vendorRefundsDaily(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -187,7 +188,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, Long>
             "AND so.created_at BETWEEN :from AND :to",
             nativeQuery = true)
     VendorShipHoursProjection vendorShipHours(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("marketplaceId") long marketplaceId,
             @Param("from") Instant from,
             @Param("to") Instant to,

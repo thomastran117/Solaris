@@ -1,5 +1,6 @@
 package backend.controllers.impl.customers;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.address.CreateCustomerAddressRequest;
 import backend.dtos.requests.address.UpdateCustomerAddressRequest;
@@ -39,7 +40,7 @@ public class CustomerAddressController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<CustomerAddressResponse> getAddress(@PathVariable long id) {
+    public ResponseEntity<CustomerAddressResponse> getAddress(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(addressService.getAddress(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -64,7 +65,7 @@ public class CustomerAddressController {
 
     @PutMapping("/{id}")
     public ResponseEntity<CustomerAddressResponse> updateAddress(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateCustomerAddressRequest request) {
         try {
             return ResponseEntity.ok(addressService.updateAddress(resolveUserId(), id, request));
@@ -76,7 +77,7 @@ public class CustomerAddressController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteAddress(@PathVariable long id) {
+    public ResponseEntity<Void> deleteAddress(@PathVariable UUID id) {
         try {
             addressService.deleteAddress(resolveUserId(), id);
             return ResponseEntity.noContent().build();
@@ -88,7 +89,7 @@ public class CustomerAddressController {
     }
 
     @PatchMapping("/{id}/default")
-    public ResponseEntity<CustomerAddressResponse> setDefault(@PathVariable long id) {
+    public ResponseEntity<CustomerAddressResponse> setDefault(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(addressService.setDefault(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -98,8 +99,8 @@ public class CustomerAddressController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -9,7 +9,7 @@ export interface ReviewMedia {
 export interface Review {
   id: number;
   productId: number;
-  reviewerId: number;
+  reviewerId: string;
   reviewerFirstName: string;
   reviewerLastName: string;
   rating: number;
@@ -40,7 +40,7 @@ export interface HelpfulVote {
 export interface ReviewSearchHit {
   id: number;
   productId: number;
-  reviewerId: number | null;
+  reviewerId: string | null;
   reviewerName: string;
   rating: number;
   title: string | null;
@@ -63,16 +63,16 @@ export type ModerationAction = "PUBLISH" | "HIDE" | "REMOVE";
 export interface ReviewReport {
   id: number;
   reviewId: number;
-  reporterId: number;
+  reporterId: string;
   reason: ReportReason;
   detail: string | null;
   status: ReportStatus;
   createdAt: string;
   resolvedAt: string | null;
-  resolvedBy: number | null;
+  resolvedBy: string | null;
 
   productId: number | null;
-  reviewerId: number | null;
+  reviewerId: string | null;
   reviewerName: string;
   rating: number;
   reviewTitle: string | null;

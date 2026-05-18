@@ -1,5 +1,6 @@
 package backend.services.impl.subscriptions;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -97,7 +98,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SetupIntentResponse createSetupIntent(long userId) {
+    public SetupIntentResponse createSetupIntent(UUID userId) {
         User user = requireUser(userId);
         String customerId = ensureStripeCustomer(user);
         SetupIntentResult result = paymentService.createSetupIntent(customerId);
@@ -105,7 +106,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
     @Override
-    public List<SavedPaymentMethodResponse> listPaymentMethods(long userId) {
+    public List<SavedPaymentMethodResponse> listPaymentMethods(UUID userId) {
         return savedPaymentMethodRepository.findAllByUserId(userId).stream()
                 .map(this::toSavedPaymentMethodResponse)
                 .toList();
@@ -113,7 +114,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public void detachPaymentMethod(long userId, long savedPaymentMethodId) {
+    public void detachPaymentMethod(UUID userId, UUID savedPaymentMethodId) {
         SavedPaymentMethod spm = savedPaymentMethodRepository.findById(savedPaymentMethodId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment method not found: " + savedPaymentMethodId));
         if (!spm.getUser().getId().equals(userId)) {
@@ -133,7 +134,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse create(long userId, CreateSubscriptionRequest req) {
+    public SubscriptionResponse create(UUID userId, CreateSubscriptionRequest req) {
         User user = requireUser(userId);
 
         Product product = productRepository.findById(req.getProductId())
@@ -232,12 +233,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
     @Override
-    public SubscriptionResponse get(long userId, long subscriptionId) {
+    public SubscriptionResponse get(UUID userId, UUID subscriptionId) {
         return toResponse(requireOwnedSubscription(userId, subscriptionId));
     }
 
     @Override
-    public List<SubscriptionResponse> listForUser(long userId) {
+    public List<SubscriptionResponse> listForUser(UUID userId) {
         return subscriptionRepository.findAllByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -245,7 +246,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse update(long userId, long subscriptionId, UpdateSubscriptionRequest req) {
+    public SubscriptionResponse update(UUID userId, UUID subscriptionId, UpdateSubscriptionRequest req) {
         Subscription sub = requireOwnedSubscription(userId, subscriptionId);
         requireMutable(sub);
 
@@ -335,7 +336,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse pause(long userId, long subscriptionId) {
+    public SubscriptionResponse pause(UUID userId, UUID subscriptionId) {
         Subscription sub = requireOwnedSubscription(userId, subscriptionId);
         if (sub.getStatus() != SubscriptionStatus.ACTIVE) {
             throw new ConflictException("Only active subscriptions can be paused");
@@ -350,7 +351,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse resume(long userId, long subscriptionId) {
+    public SubscriptionResponse resume(UUID userId, UUID subscriptionId) {
         Subscription sub = requireOwnedSubscription(userId, subscriptionId);
         if (sub.getStatus() != SubscriptionStatus.PAUSED) {
             throw new ConflictException("Only paused subscriptions can be resumed");
@@ -366,7 +367,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse skipNext(long userId, long subscriptionId) {
+    public SubscriptionResponse skipNext(UUID userId, UUID subscriptionId) {
         Subscription sub = requireOwnedSubscription(userId, subscriptionId);
         if (sub.getStatus() != SubscriptionStatus.ACTIVE) {
             throw new ConflictException("Only active subscriptions can skip a cycle");
@@ -383,7 +384,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SubscriptionResponse cancel(long userId, long subscriptionId, boolean atPeriodEnd) {
+    public SubscriptionResponse cancel(UUID userId, UUID subscriptionId, boolean atPeriodEnd) {
         Subscription sub = requireOwnedSubscriptionForUpdate(userId, subscriptionId);
         if (sub.getStatus() == SubscriptionStatus.CANCELLED) {
             throw new ConflictException("Subscription is already cancelled");
@@ -537,17 +538,17 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private User requireUser(long userId) {
+    private User requireUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
     }
 
-    private Subscription requireOwnedSubscription(long userId, long subscriptionId) {
+    private Subscription requireOwnedSubscription(UUID userId, UUID subscriptionId) {
         return subscriptionRepository.findByIdAndUserId(subscriptionId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
     }
 
-    private Subscription requireOwnedSubscriptionForUpdate(long userId, long subscriptionId) {
+    private Subscription requireOwnedSubscriptionForUpdate(UUID userId, UUID subscriptionId) {
         return subscriptionRepository.findByIdAndUserIdForUpdate(subscriptionId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
     }

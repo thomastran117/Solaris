@@ -1,5 +1,6 @@
 package backend.controllers.impl.customers;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,7 +44,7 @@ public class CustomerSegmentController {
 
     @GetMapping("/customer-segments/{segmentId}")
     @RequireAuth(roles = {"ADMIN"})
-    public ResponseEntity<CustomerSegmentResponse> getSegment(@PathVariable long segmentId) {
+    public ResponseEntity<CustomerSegmentResponse> getSegment(@PathVariable UUID segmentId) {
         try {
             return ResponseEntity.ok(segmentService.getSegment(segmentId));
         } catch (AppHttpException e) {
@@ -69,7 +70,7 @@ public class CustomerSegmentController {
     @PatchMapping("/customer-segments/{segmentId}")
     @RequireAuth(roles = {"ADMIN"})
     public ResponseEntity<CustomerSegmentResponse> updateSegment(
-            @PathVariable long segmentId,
+            @PathVariable UUID segmentId,
             @Valid @RequestBody UpdateCustomerSegmentRequest request) {
         try {
             return ResponseEntity.ok(segmentService.updateSegment(segmentId, request));
@@ -82,7 +83,7 @@ public class CustomerSegmentController {
 
     @DeleteMapping("/customer-segments/{segmentId}")
     @RequireAuth(roles = {"ADMIN"})
-    public ResponseEntity<Void> deleteSegment(@PathVariable long segmentId) {
+    public ResponseEntity<Void> deleteSegment(@PathVariable UUID segmentId) {
         try {
             segmentService.deleteSegment(segmentId);
             return ResponseEntity.noContent().build();
@@ -96,8 +97,8 @@ public class CustomerSegmentController {
     @PostMapping("/users/{userId}/segments/{segmentId}")
     @RequireAuth(roles = {"ADMIN"})
     public ResponseEntity<Void> assignSegment(
-            @PathVariable long userId,
-            @PathVariable long segmentId) {
+            @PathVariable UUID userId,
+            @PathVariable UUID segmentId) {
         try {
             segmentService.assignSegmentToUser(userId, segmentId);
             return ResponseEntity.noContent().build();
@@ -111,8 +112,8 @@ public class CustomerSegmentController {
     @DeleteMapping("/users/{userId}/segments/{segmentId}")
     @RequireAuth(roles = {"ADMIN"})
     public ResponseEntity<Void> removeSegment(
-            @PathVariable long userId,
-            @PathVariable long segmentId) {
+            @PathVariable UUID userId,
+            @PathVariable UUID segmentId) {
         try {
             segmentService.removeSegmentFromUser(userId, segmentId);
             return ResponseEntity.noContent().build();

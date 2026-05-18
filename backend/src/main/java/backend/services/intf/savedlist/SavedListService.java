@@ -1,5 +1,6 @@
 package backend.services.intf.savedlist;
 
+import java.util.UUID;
 import backend.dtos.requests.savedlist.AddSavedListItemRequest;
 import backend.dtos.requests.savedlist.CreateSavedListRequest;
 import backend.dtos.requests.savedlist.UpdateSavedListItemRequest;
@@ -14,21 +15,21 @@ import java.util.List;
 
 public interface SavedListService {
 
-    List<SavedListSummaryResponse> listSavedLists(long userId, SavedListType typeFilter);
+    List<SavedListSummaryResponse> listSavedLists(UUID userId, SavedListType typeFilter);
 
-    SavedListResponse getSavedList(long userId, long listId);
+    SavedListResponse getSavedList(UUID userId, UUID listId);
 
     PublicSavedListResponse getPublicSavedList(String shareSlug);
 
-    SavedListResponse createSavedList(long userId, CreateSavedListRequest request);
+    SavedListResponse createSavedList(UUID userId, CreateSavedListRequest request);
 
-    SavedListResponse updateSavedList(long userId, long listId, UpdateSavedListRequest request);
+    SavedListResponse updateSavedList(UUID userId, UUID listId, UpdateSavedListRequest request);
 
-    void deleteSavedList(long userId, long listId);
+    void deleteSavedList(UUID userId, UUID listId);
 
-    SavedListItemResponse addItem(long userId, long listId, AddSavedListItemRequest request);
+    SavedListItemResponse addItem(UUID userId, UUID listId, AddSavedListItemRequest request);
 
-    SavedListItemResponse updateItem(long userId, long listId, long itemId, UpdateSavedListItemRequest request);
+    SavedListItemResponse updateItem(UUID userId, UUID listId, UUID itemId, UpdateSavedListItemRequest request);
 
-    void removeItem(long userId, long listId, long itemId);
+    void removeItem(UUID userId, UUID listId, UUID itemId);
 }

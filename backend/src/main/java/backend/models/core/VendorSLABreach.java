@@ -26,16 +26,17 @@ import java.time.Instant;
 public class VendorSLABreach {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /** FK to MarketplaceVendor.id */
-    @Column(nullable = false, name = "vendor_id")
-    private Long vendorId;
+    @Column(nullable = false, name = "vendor_id", columnDefinition = "BINARY(16)")
+    private java.util.UUID vendorId;
 
     /** FK to VendorSLAPolicy.id */
-    @Column(nullable = false, name = "policy_id")
-    private Long policyId;
+    @Column(nullable = false, name = "policy_id", columnDefinition = "BINARY(16)")
+    private java.util.UUID policyId;
 
     /** Which metric threshold was violated (e.g. "cancellationRate", "lateShipmentRate"). */
     @Column(nullable = false, length = 60)

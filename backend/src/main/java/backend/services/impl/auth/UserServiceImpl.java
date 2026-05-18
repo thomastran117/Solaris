@@ -1,6 +1,7 @@
 package backend.services.impl.auth;
 
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -66,7 +67,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User setRole(long userId, UserRole role) {
+    public User setRole(UUID userId, UserRole role) {
         if (role == null) {
             throw new ForbiddenException("Role is required");
         }
@@ -77,7 +78,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void activateUser(long userId) {
+    public void activateUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         user.setStatus(UserStatus.ACTIVE);
@@ -85,20 +86,20 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User getUserByID(long id) {
+    public User getUserByID(UUID id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
     }
 
     @Override
-    public long getID(String email) {
+    public UUID getID(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email))
                 .getId();
     }
 
     @Override
-    public boolean changePassword(long id, String currentPassword, String newPassword) {
+    public boolean changePassword(UUID id, String currentPassword, String newPassword) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
         if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
@@ -110,7 +111,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public boolean delete(long id) {
+    public boolean delete(UUID id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
         userRepository.delete(user);
@@ -125,7 +126,7 @@ public class UserServiceImpl implements UserService {
             validateAccountAccessible(existing.get());
             if (existing.get().getPassword() != null) {
                 auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        Long.toString(existing.get().getId()), "provider=google");
+                        existing.get().getId().toString(), "provider=google");
             }
             return existing.get();
         }
@@ -145,7 +146,7 @@ public class UserServiceImpl implements UserService {
             validateAccountAccessible(existing.get());
             if (existing.get().getPassword() != null) {
                 auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        Long.toString(existing.get().getId()), "provider=microsoft");
+                        existing.get().getId().toString(), "provider=microsoft");
             }
             return existing.get();
         }
@@ -165,7 +166,7 @@ public class UserServiceImpl implements UserService {
             validateAccountAccessible(existing.get());
             if (existing.get().getPassword() != null) {
                 auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        Long.toString(existing.get().getId()), "provider=apple");
+                        existing.get().getId().toString(), "provider=apple");
             }
             return existing.get();
         }

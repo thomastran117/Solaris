@@ -1,5 +1,6 @@
 package backend.services.impl.collections;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,7 +128,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional(readOnly = true)
-    public CollectionResponse getCollection(long companyId, long collectionId) {
+    public CollectionResponse getCollection(UUID companyId, UUID collectionId) {
         assertCompanyExists(companyId);
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -136,7 +137,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional
-    public CollectionResponse createCollection(long companyId, long ownerId, CreateCollectionRequest request) {
+    public CollectionResponse createCollection(UUID companyId, UUID ownerId, CreateCollectionRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         String slug = normaliseSlug(request.getSlug());
@@ -173,7 +174,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional
-    public CollectionResponse updateCollection(long companyId, long collectionId, long ownerId,
+    public CollectionResponse updateCollection(UUID companyId, UUID collectionId, UUID ownerId,
                                                UpdateCollectionRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
@@ -231,7 +232,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional
-    public void deleteCollection(long companyId, long collectionId, long ownerId) {
+    public void deleteCollection(UUID companyId, UUID collectionId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
@@ -269,7 +270,7 @@ public class CollectionServiceImpl implements CollectionService {
                 .findAllByCollectionIdRanked(collection.getId(), pageable);
 
         List<Product> products = rows.getContent().stream().map(CollectionProduct::getProduct).toList();
-        Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+        Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
         List<CollectionProductResponse> items = rows.getContent().stream()
                 .map(cp -> toMembershipResponse(cp, promoMap.get(cp.getProduct().getId())))
@@ -281,7 +282,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionProductResponse addCollectionProduct(
-            long companyId, long collectionId, long ownerId, AddCollectionProductRequest request) {
+            long companyId, long collectionId, UUID ownerId, AddCollectionProductRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
@@ -314,7 +315,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionProductResponse updateCollectionProduct(
-            long companyId, long collectionId, long productId, long ownerId,
+            long companyId, long collectionId, long productId, UUID ownerId,
             UpdateCollectionProductRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
@@ -336,7 +337,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional
-    public void removeCollectionProduct(long companyId, long collectionId, long productId, long ownerId) {
+    public void removeCollectionProduct(UUID companyId, UUID collectionId, UUID productId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
@@ -352,7 +353,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional
-    public CollectionResponse refreshCollection(long companyId, long collectionId, long ownerId) {
+    public CollectionResponse refreshCollection(UUID companyId, UUID collectionId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
@@ -373,7 +374,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CollectionResponse> listFeaturedForMarketplace(long marketplaceId) {
+    public List<CollectionResponse> listFeaturedForMarketplace(UUID marketplaceId) {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
@@ -388,7 +389,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CollectionResponse> listFeaturedForVendor(long marketplaceId, long vendorId) {
+    public List<CollectionResponse> listFeaturedForVendor(UUID marketplaceId, UUID vendorId) {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
@@ -403,7 +404,7 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional(readOnly = true)
-    public CollectionResponse getCollectionBySlug(long marketplaceId, String slug) {
+    public CollectionResponse getCollectionBySlug(UUID marketplaceId, String slug) {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
@@ -437,7 +438,7 @@ public class CollectionServiceImpl implements CollectionService {
                 .toList();
 
         List<Product> products = visible.stream().map(CollectionProduct::getProduct).toList();
-        Map<Long, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
+        Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
         List<CollectionProductResponse> items = visible.stream()
                 .map(cp -> toMembershipResponse(cp, promoMap.get(cp.getProduct().getId())))
@@ -581,7 +582,7 @@ public class CollectionServiceImpl implements CollectionService {
         if (productIds == null || productIds.isEmpty()) return;
         List<Product> products = productRepository.findAllByIdInAndCompanyId(productIds, companyId);
         for (Product p : products) {
-            eventPublisher.publishEvent(new ProductIndexEvent(p, companyId));
+            eventPublisher.publishEvent(new ProductIndexEvent(p, p.getCompany().getId()));
         }
     }
 

@@ -5,6 +5,7 @@ import backend.http.DeviceType;
 import backend.models.core.UserDevice;
 
 import java.util.List;
+import java.util.UUID;
 
 public interface DeviceService {
 
@@ -12,7 +13,7 @@ public interface DeviceService {
      * Payload extracted from a device verification token stored in Redis.
      */
     record DeviceVerificationPayload(
-            long userId,
+            UUID userId,
             String fingerprint,
             String browser,
             String os,
@@ -29,19 +30,19 @@ public interface DeviceService {
     /**
      * Returns true if the device identified by the fingerprint is already known for the given user.
      */
-    boolean isKnownDevice(long userId, String fingerprint);
+    boolean isKnownDevice(UUID userId, String fingerprint);
 
     /**
      * Upsert: if the device is already known, updates lastSeenAt and lastIp.
      * If it is new, inserts a new UserDevice row.
      */
-    void recordDeviceSeen(long userId, ClientInfo clientInfo);
+    void recordDeviceSeen(UUID userId, ClientInfo clientInfo);
 
     /**
      * Generates a UUID token, stores device info in Redis with a short TTL,
      * and sends a verification email to the user.
      */
-    void initiateDeviceVerification(long userId, String email, ClientInfo clientInfo);
+    void initiateDeviceVerification(UUID userId, String email, ClientInfo clientInfo);
 
     /**
      * Atomically consumes the device verification token from Redis and returns
@@ -52,11 +53,11 @@ public interface DeviceService {
     /**
      * Returns all registered devices for the given user.
      */
-    List<UserDevice> getDevicesForUser(long userId);
+    List<UserDevice> getDevicesForUser(UUID userId);
 
     /**
      * Removes the device identified by deviceId, verifying it belongs to userId.
      * Throws ResourceNotFoundException if not found, ForbiddenException if not owned.
      */
-    void removeDevice(long userId, long deviceId);
+    void removeDevice(UUID userId, UUID deviceId);
 }

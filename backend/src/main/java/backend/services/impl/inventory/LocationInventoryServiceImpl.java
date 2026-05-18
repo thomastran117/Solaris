@@ -80,7 +80,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     // --- Location CRUD ---
 
     @Override
-    public List<LocationResponse> getLocations(long companyId, long ownerId) {
+    public List<LocationResponse> getLocations(long companyId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         return locationRepository.findAllByCompanyIdOrderByDisplayOrderAscNameAsc(companyId)
                 .stream()
@@ -89,7 +89,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     }
 
     @Override
-    public LocationResponse getLocation(long companyId, long locationId, long ownerId) {
+    public LocationResponse getLocation(long companyId, long locationId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -98,7 +98,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationResponse createLocation(long companyId, long ownerId, CreateLocationRequest request) {
+    public LocationResponse createLocation(long companyId, UUID ownerId, CreateLocationRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         if (locationRepository.existsByCodeAndCompanyId(request.getCode(), companyId)) {
@@ -128,7 +128,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationResponse updateLocation(long companyId, long locationId, long ownerId, UpdateLocationRequest request) {
+    public LocationResponse updateLocation(long companyId, long locationId, UUID ownerId, UpdateLocationRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -167,7 +167,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public void deleteLocation(long companyId, long locationId, long ownerId) {
+    public void deleteLocation(long companyId, long locationId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -183,7 +183,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     // --- Stock queries ---
 
     @Override
-    public List<LocationStockResponse> getLocationStock(long companyId, long locationId, long ownerId) {
+    public List<LocationStockResponse> getLocationStock(long companyId, long locationId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -195,7 +195,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     }
 
     @Override
-    public List<LocationStockResponse> getProductLocationStocks(long companyId, long productId, long ownerId) {
+    public List<LocationStockResponse> getProductLocationStocks(long companyId, long productId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -211,7 +211,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     @Override
     @Transactional
     public LocationStockResponse setLocationStock(long companyId, long locationId, long productId,
-                                                   long ownerId, SetLocationStockRequest request,
+                                                   UUID ownerId, SetLocationStockRequest request,
                                                    Long variantId) {
         assertCompanyOwnership(companyId, ownerId);
 
@@ -311,7 +311,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     @Override
     @Transactional
     public LocationStockResponse adjustLocationStock(long companyId, long locationId, long productId,
-                                                      long ownerId, AdjustStockRequest request,
+                                                      UUID ownerId, AdjustStockRequest request,
                                                       Long variantId) {
         assertCompanyOwnership(companyId, ownerId);
 
@@ -399,7 +399,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     // --- Helpers ---
 
-    private void assertCompanyOwnership(long companyId, long ownerId) {
+    private void assertCompanyOwnership(long companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 

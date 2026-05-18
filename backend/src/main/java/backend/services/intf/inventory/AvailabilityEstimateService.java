@@ -1,6 +1,7 @@
 package backend.services.intf.inventory;
 
 import backend.dtos.responses.inventory.AvailabilityEstimateResponse;
+import java.util.UUID;
 
 public interface AvailabilityEstimateService {
 
@@ -15,9 +16,9 @@ public interface AvailabilityEstimateService {
      * @param buyerLng      optional buyer longitude; null falls back to displayOrder ranking
      */
     AvailabilityEstimateResponse estimateForMarketplace(
-            long marketplaceId,
-            long productId,
-            Long variantId,
+            UUID marketplaceId,
+            UUID productId,
+            UUID variantId,
             Double buyerLat,
             Double buyerLng);
 }

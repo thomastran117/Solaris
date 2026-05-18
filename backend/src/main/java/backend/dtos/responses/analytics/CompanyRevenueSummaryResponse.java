@@ -4,9 +4,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 public record CompanyRevenueSummaryResponse(
-        long companyId,
+        UUID companyId,
         int lookbackDays,
         Instant from,
         Instant to,

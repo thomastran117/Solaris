@@ -1,3 +1,5 @@
 package backend.dtos.responses.product;
 
-public record ProductOptionResponse(Long id, String name, int position) {}
+import java.util.UUID;
+
+public record ProductOptionResponse(UUID id, String name, int position) {}

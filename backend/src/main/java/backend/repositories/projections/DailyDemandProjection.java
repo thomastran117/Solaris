@@ -1,9 +1,10 @@
 package backend.repositories.projections;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 public interface DailyDemandProjection {
-    Long getProductId();
+    UUID getProductId();
     LocalDate getDay();
     Long getUnits();
 }

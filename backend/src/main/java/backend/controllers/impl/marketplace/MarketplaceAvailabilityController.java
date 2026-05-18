@@ -1,5 +1,6 @@
 package backend.controllers.impl.marketplace;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -30,9 +31,9 @@ public class MarketplaceAvailabilityController {
 
     @GetMapping("/availability")
     public ResponseEntity<AvailabilityEstimateResponse> getAvailability(
-            @PathVariable long marketplaceId,
-            @PathVariable long productId,
-            @RequestParam(required = false) Long variantId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID productId,
+            @RequestParam(required = false) UUID variantId,
             @RequestParam(required = false)
             @DecimalMin(value = "-90.0",  message = "Latitude must be >= -90")
             @DecimalMax(value = "90.0",   message = "Latitude must be <= 90") Double lat,

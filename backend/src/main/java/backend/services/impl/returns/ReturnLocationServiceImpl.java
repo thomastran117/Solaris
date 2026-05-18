@@ -1,5 +1,6 @@
 package backend.services.impl.returns;
 
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +33,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
 
     @Override
     @Transactional
-    public ReturnLocationResponse createReturnLocation(long companyId, long ownerId, CreateReturnLocationRequest request) {
+    public ReturnLocationResponse createReturnLocation(UUID companyId, UUID ownerId, CreateReturnLocationRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         if (request.primary()) {
@@ -53,7 +54,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ReturnLocationResponse> getReturnLocations(long companyId, long ownerId) {
+    public List<ReturnLocationResponse> getReturnLocations(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         return locationRepository.findAllByCompanyId(companyId).stream()
                 .map(this::toResponse)
@@ -62,7 +63,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
 
     @Override
     @Transactional
-    public ReturnLocationResponse updateReturnLocation(long locationId, long companyId, long ownerId, UpdateReturnLocationRequest request) {
+    public ReturnLocationResponse updateReturnLocation(UUID locationId, UUID companyId, UUID ownerId, UpdateReturnLocationRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         CompanyReturnLocation loc = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -86,7 +87,7 @@ public class ReturnLocationServiceImpl implements ReturnLocationService {
 
     @Override
     @Transactional
-    public void deleteReturnLocation(long locationId, long companyId, long ownerId) {
+    public void deleteReturnLocation(UUID locationId, UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         CompanyReturnLocation loc = locationRepository.findByIdAndCompanyId(locationId, companyId)

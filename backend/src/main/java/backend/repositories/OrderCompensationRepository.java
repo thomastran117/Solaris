@@ -12,8 +12,8 @@ import backend.models.enums.CompensationStatus;
 import java.util.List;
 
 @Repository
-public interface OrderCompensationRepository extends JpaRepository<OrderCompensation, Long> {
-    List<OrderCompensation> findAllByOrderId(long orderId);
+public interface OrderCompensationRepository extends JpaRepository<OrderCompensation, java.util.UUID> {
+    List<OrderCompensation> findAllByOrderId(java.util.UUID orderId);
     List<OrderCompensation> findAllByStatus(CompensationStatus status);
     List<OrderCompensation> findAllByStatusAndAttemptsLessThan(CompensationStatus status, int maxAttempts);
 
@@ -23,5 +23,5 @@ public interface OrderCompensationRepository extends JpaRepository<OrderCompensa
      */
     @Modifying
     @Query("UPDATE OrderCompensation c SET c.status = 'CLAIMED' WHERE c.id = :id AND c.status = backend.models.enums.CompensationStatus.FAILED")
-    int claimForRetry(@Param("id") long id);
+    int claimForRetry(@Param("id") java.util.UUID id);
 }

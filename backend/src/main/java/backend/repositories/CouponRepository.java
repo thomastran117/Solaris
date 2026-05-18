@@ -15,18 +15,18 @@ import java.time.Instant;
 import java.util.Optional;
 
 @Repository
-public interface CouponRepository extends JpaRepository<Coupon, Long> {
+public interface CouponRepository extends JpaRepository<Coupon, java.util.UUID> {
 
     Optional<Coupon> findByCodeIgnoreCase(String code);
 
     boolean existsByCodeIgnoreCase(String code);
 
     /** Used when updating a coupon — checks uniqueness against other coupons. */
-    boolean existsByCodeIgnoreCaseAndIdNot(String code, long id);
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, java.util.UUID id);
 
-    Optional<Coupon> findByIdAndCompanyId(long id, long companyId);
+    Optional<Coupon> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
-    Page<Coupon> findAllByCompanyId(long companyId, Pageable pageable);
+    Page<Coupon> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
 
     /**
      * Atomically increments usedCount only when the coupon is still active, not expired,
@@ -42,7 +42,7 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
               AND (c.endDate IS NULL OR c.endDate > :now)
               AND (c.maxUses IS NULL OR c.usedCount < c.maxUses)
             """)
-    int tryIncrementUsedCount(@Param("id") long id, @Param("now") Instant now,
+    int tryIncrementUsedCount(@Param("id") java.util.UUID id, @Param("now") Instant now,
                               @Param("activeStatus") DiscountStatus activeStatus);
 
     /**

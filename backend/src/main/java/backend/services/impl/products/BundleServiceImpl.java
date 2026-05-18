@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -73,14 +74,14 @@ public class BundleServiceImpl implements BundleService {
     // --- Owner-authenticated CRUD ---
 
     @Override
-    public PagedResponse<BundleResponse> listBundles(long companyId, long ownerId, ProductStatus status, int page, int size) {
+    public PagedResponse<BundleResponse> listBundles(UUID companyId, UUID ownerId, ProductStatus status, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         return listBundles(companyId, status, page, size);
     }
 
     @Override
     @Transactional
-    public BundleResponse createBundle(long companyId, long ownerId, CreateBundleRequest request) {
+    public BundleResponse createBundle(UUID companyId, UUID ownerId, CreateBundleRequest request) {
         var company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         List<BundleItemRequest> itemRequests = request.getItems();
@@ -117,14 +118,14 @@ public class BundleServiceImpl implements BundleService {
     }
 
     @Override
-    public BundleResponse getBundle(long companyId, long bundleId, long ownerId) {
+    public BundleResponse getBundle(UUID companyId, UUID bundleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         return getBundle(companyId, bundleId);
     }
 
     @Override
     @Transactional
-    public BundleResponse updateBundle(long companyId, long bundleId, long ownerId, UpdateBundleRequest request) {
+    public BundleResponse updateBundle(UUID companyId, UUID bundleId, UUID ownerId, UpdateBundleRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
@@ -175,7 +176,7 @@ public class BundleServiceImpl implements BundleService {
 
     @Override
     @Transactional
-    public void deleteBundle(long companyId, long bundleId, long ownerId) {
+    public void deleteBundle(UUID companyId, UUID bundleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
@@ -192,7 +193,7 @@ public class BundleServiceImpl implements BundleService {
     // --- Public read ---
 
     @Override
-    public List<BundleResponse> compareBundles(long companyId, List<Long> ids) {
+    public List<BundleResponse> compareBundles(UUID companyId, List<UUID> ids) {
         if (ids == null || ids.size() < 2 || ids.size() > 4) {
             throw new BadRequestException("Comparison requires between 2 and 4 bundle IDs");
         }
@@ -208,7 +209,7 @@ public class BundleServiceImpl implements BundleService {
     }
 
     @Override
-    public PagedResponse<BundleResponse> listBundles(long companyId, ProductStatus status, int page, int size) {
+    public PagedResponse<BundleResponse> listBundles(UUID companyId, ProductStatus status, int page, int size) {
         final int clampedSize = Math.min(size, 50);
         String cacheKey = "bundles:list:" + companyId + ":" + page + ":" + clampedSize;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
@@ -221,7 +222,7 @@ public class BundleServiceImpl implements BundleService {
     }
 
     @Override
-    public BundleResponse getBundle(long companyId, long bundleId) {
+    public BundleResponse getBundle(UUID companyId, UUID bundleId) {
         String cacheKey = "bundle:" + companyId + ":" + bundleId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
@@ -255,7 +256,7 @@ public class BundleServiceImpl implements BundleService {
         }
     }
 
-    private List<BundleItem> buildItems(ProductBundle bundle, List<BundleItemRequest> itemRequests, long companyId) {
+    private List<BundleItem> buildItems(ProductBundle bundle, List<BundleItemRequest> itemRequests, UUID companyId) {
         if (itemRequests.size() > 10) {
             throw new BadRequestException("Bundle cannot have more than 10 products");
         }

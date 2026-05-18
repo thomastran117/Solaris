@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.requests.support.CreateTicketRequest;
 import backend.dtos.requests.support.TicketMessageRequest;
 import backend.dtos.requests.support.UpdateTicketStatusRequest;
@@ -53,8 +55,8 @@ class SupportTicketServiceImplTest {
 
     @Test
     void createTicket_customerOpensOwnTicket() {
-        User customer = makeUser(1L, UserRole.USER);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.save(any())).thenAnswer(inv -> {
             SupportTicket t = inv.getArgument(0);
             t.setId(100L);
@@ -81,10 +83,10 @@ class SupportTicketServiceImplTest {
 
     @Test
     void createTicket_staffOpensOnBehalfOfCustomer() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(5L, UserRole.USER);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
-        when(userRepository.findById(5L)).thenReturn(Optional.of(customer));
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(5), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(5))).thenReturn(Optional.of(customer));
         when(ticketRepository.save(any())).thenAnswer(inv -> {
             SupportTicket t = inv.getArgument(0);
             t.setId(101L);
@@ -110,9 +112,9 @@ class SupportTicketServiceImplTest {
 
     @Test
     void getTicket_customerCanViewOwnTicket() {
-        User customer = makeUser(1L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, customer);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
         when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(10L)).thenReturn(List.of());
 
@@ -122,10 +124,10 @@ class SupportTicketServiceImplTest {
 
     @Test
     void getTicket_customerCannotViewOtherCustomersTicket() {
-        User customer = makeUser(1L, UserRole.USER);
-        User other = makeUser(2L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        User other = makeUser(TestIds.uuid(2), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, other);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
 
         assertThrows(ForbiddenException.class, () -> service.getTicket(10L, 1L));
@@ -133,10 +135,10 @@ class SupportTicketServiceImplTest {
 
     @Test
     void getTicket_staffCanViewAnyTicket() {
-        User staff = makeUser(3L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(3), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, customer);
-        when(userRepository.findById(3L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(3))).thenReturn(Optional.of(staff));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
         when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(10L)).thenReturn(List.of());
 
@@ -148,12 +150,12 @@ class SupportTicketServiceImplTest {
 
     @Test
     void addMessage_staffReplyAdvancesStatusToPendingCustomer() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        User customer = makeUser(1L, UserRole.USER);
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, customer);
         ticket.setStatus(TicketStatus.OPEN);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
         when(messageRepository.save(any())).thenAnswer(inv -> {
             SupportTicketMessage m = inv.getArgument(0);
@@ -169,11 +171,11 @@ class SupportTicketServiceImplTest {
 
     @Test
     void addMessage_customerReplyAdvancesStatusToPendingInternal() {
-        User customer = makeUser(1L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, customer);
         ticket.setStatus(TicketStatus.PENDING_CUSTOMER);
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
         when(messageRepository.save(any())).thenAnswer(inv -> {
             SupportTicketMessage m = inv.getArgument(0);
@@ -188,11 +190,11 @@ class SupportTicketServiceImplTest {
 
     @Test
     void addMessage_closedTicketThrows() {
-        User customer = makeUser(1L, UserRole.USER);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         SupportTicket ticket = makeTicket(10L, customer);
         ticket.setStatus(TicketStatus.CLOSED);
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.findById(10L)).thenReturn(Optional.of(ticket));
 
         assertThrows(backend.exceptions.http.ConflictException.class,
@@ -203,8 +205,8 @@ class SupportTicketServiceImplTest {
 
     @Test
     void listTickets_staffSeeAllTickets() {
-        User staff = makeUser(2L, UserRole.SUPPORT);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(ticketRepository.findAllByFilters(any(), any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
@@ -215,8 +217,8 @@ class SupportTicketServiceImplTest {
 
     @Test
     void listTickets_customerSeesOnlyOwnTickets() {
-        User customer = makeUser(1L, UserRole.USER);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(ticketRepository.findAllByCustomerId(eq(1L), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
@@ -230,8 +232,8 @@ class SupportTicketServiceImplTest {
 
     @Test
     void updateStatus_nonStaffForbidden() {
-        User customer = makeUser(1L, UserRole.USER);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(customer));
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
 
         assertThrows(ForbiddenException.class,
                 () -> service.updateStatus(10L, 1L, new UpdateTicketStatusRequest(TicketStatus.RESOLVED)));
@@ -239,7 +241,7 @@ class SupportTicketServiceImplTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private User makeUser(long id, UserRole role) {
+    private User makeUser(UUID id, UserRole role) {
         User u = new User();
         u.setId(id);
         u.setEmail("user" + id + "@test.com");

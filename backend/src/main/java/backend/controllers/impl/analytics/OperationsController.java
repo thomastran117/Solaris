@@ -1,5 +1,6 @@
 package backend.controllers.impl.analytics;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,7 +32,7 @@ public class OperationsController {
 
     @GetMapping("/summary")
     public ResponseEntity<OperationsSummaryResponse> getSummary(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getSummary(companyId, resolveUserId(), lookbackDays));
@@ -44,7 +45,7 @@ public class OperationsController {
 
     @GetMapping("/fulfillment")
     public ResponseEntity<DurationMetricResponse> getFulfillment(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getFulfillmentMetric(companyId, resolveUserId(), lookbackDays));
@@ -57,7 +58,7 @@ public class OperationsController {
 
     @GetMapping("/refunds")
     public ResponseEntity<DurationMetricResponse> getRefunds(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getRefundMetric(companyId, resolveUserId(), lookbackDays));
@@ -70,7 +71,7 @@ public class OperationsController {
 
     @GetMapping("/pick-delays")
     public ResponseEntity<DurationMetricResponse> getPickDelays(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getPickDelayMetric(companyId, resolveUserId(), lookbackDays));
@@ -83,7 +84,7 @@ public class OperationsController {
 
     @GetMapping("/stockouts")
     public ResponseEntity<StockoutMetricResponse> getStockouts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getStockoutMetric(companyId, resolveUserId(), lookbackDays));
@@ -96,7 +97,7 @@ public class OperationsController {
 
     @GetMapping("/supplier-lateness")
     public ResponseEntity<SupplierLatenessMetricResponse> getSupplierLateness(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getSupplierLatenessMetric(companyId, resolveUserId(), lookbackDays));
@@ -109,7 +110,7 @@ public class OperationsController {
 
     @GetMapping("/cancellations")
     public ResponseEntity<CancellationMetricResponse> getCancellations(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(operationsService.getCancellationMetric(companyId, resolveUserId(), lookbackDays));
@@ -120,8 +121,8 @@ public class OperationsController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

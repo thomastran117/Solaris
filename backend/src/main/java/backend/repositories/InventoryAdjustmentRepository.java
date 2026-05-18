@@ -10,8 +10,8 @@ import backend.models.core.InventoryAdjustment;
 
 @Repository
 public interface InventoryAdjustmentRepository
-        extends JpaRepository<InventoryAdjustment, Long>,
+        extends JpaRepository<InventoryAdjustment, java.util.UUID>,
                 JpaSpecificationExecutor<InventoryAdjustment> {
 
-    Page<InventoryAdjustment> findAllByProductIdAndProductCompanyId(long productId, long companyId, Pageable pageable);
+    Page<InventoryAdjustment> findAllByProductIdAndProductCompanyId(java.util.UUID productId, java.util.UUID companyId, Pageable pageable);
 }

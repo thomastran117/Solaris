@@ -1,6 +1,7 @@
 package backend.events.activity;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Kafka payload for the user-activity topic.
@@ -8,10 +9,10 @@ import java.time.Instant;
  * marketplaceId is guaranteed non-null before publish (publisher drops events where it is absent).
  */
 public record UserActivityEvent(
-    Long userId,
+    UUID userId,
     String sessionId,
-    long productId,
-    long marketplaceId,
+    UUID productId,
+    Long marketplaceId,
     ActivityType activityType,
     Instant occurredAt
 ) {}

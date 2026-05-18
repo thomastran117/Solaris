@@ -1,5 +1,6 @@
 package backend.controllers.impl.company;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -69,7 +70,7 @@ public class CompanyController {
     @RequireAuth
     public ResponseEntity<CompanyResponse> getMyCompany() {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(companyService.getMyCompany(userId));
         } catch (AppHttpException e) {
             throw e;
@@ -83,7 +84,7 @@ public class CompanyController {
      * {@code /c/{id}}. Returns 404 for any non-ACTIVE company so existence is not leaked.
      */
     @GetMapping("/{id}/public")
-    public ResponseEntity<PublicCompanyResponse> getPublicCompany(@PathVariable long id) {
+    public ResponseEntity<PublicCompanyResponse> getPublicCompany(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(companyService.getPublicCompany(id));
         } catch (AppHttpException e) {
@@ -95,9 +96,9 @@ public class CompanyController {
 
     @GetMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<CompanyResponse> getCompany(@PathVariable long id) {
+    public ResponseEntity<CompanyResponse> getCompany(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(companyService.getCompany(id, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -110,7 +111,7 @@ public class CompanyController {
     @RequireAuth
     public ResponseEntity<List<CompanyResponse>> getCompaniesByIds(@Valid @RequestBody BatchGetCompaniesRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(companyService.getCompaniesByIds(request.getIds(), userId));
         } catch (AppHttpException e) {
             throw e;
@@ -123,7 +124,7 @@ public class CompanyController {
     @RequireAuth
     public ResponseEntity<CompanyResponse> createCompany(@Valid @RequestBody CreateCompanyRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             CompanyResponse response = companyService.createCompany(userId, request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (AppHttpException e) {
@@ -136,10 +137,10 @@ public class CompanyController {
     @PatchMapping("/{id}")
     @RequireAuth
     public ResponseEntity<CompanyResponse> updateCompany(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateCompanyRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(companyService.updateCompany(id, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -151,10 +152,10 @@ public class CompanyController {
     @PostMapping("/{id}/logo/presign")
     @RequireAuth
     public ResponseEntity<PresignUploadResponse> presignLogoUpload(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @RequestParam String contentType) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(companyService.generateLogoUploadUrl(id, userId, contentType));
         } catch (AppHttpException e) {
             throw e;
@@ -165,9 +166,9 @@ public class CompanyController {
 
     @DeleteMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<Void> deleteCompany(@PathVariable long id) {
+    public ResponseEntity<Void> deleteCompany(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             companyService.deleteCompany(id, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -177,8 +178,8 @@ public class CompanyController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

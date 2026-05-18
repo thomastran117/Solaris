@@ -1,12 +1,13 @@
 package backend.dtos.responses.return_;
 
+import java.util.UUID;
 import java.time.Instant;
 import java.util.List;
 
 public record ReturnResponse(
-        Long id,
-        Long orderId,
-        Long requestedByUserId,
+        UUID id,
+        UUID orderId,
+        UUID requestedByUserId,
         String status,
         String reason,
         String buyerNote,

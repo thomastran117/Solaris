@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Builds presentation-only {@link ActivePromotionSummary} entries for a collection of products.
@@ -62,14 +63,14 @@ public class ActivePromotionLookupService {
      * product-level discounts.
      */
     @Transactional(readOnly = true)
-    public Map<Long, ActivePromotionSummary> findForProducts(Collection<Product> products) {
+    public Map<UUID, ActivePromotionSummary> findForProducts(Collection<Product> products) {
         if (products == null || products.isEmpty()) {
             return Collections.emptyMap();
         }
 
         // Group input product ids by their company so we can issue one rule query per cart of
         // companies. Most catalog pages target a single company, so this is usually one bucket.
-        Map<Long, Set<Long>> productIdsByCompany = new HashMap<>();
+        Map<UUID, Set<UUID>> productIdsByCompany = new HashMap<>();
         for (Product p : products) {
             if (p == null || p.getCompany() == null) continue;
             productIdsByCompany
@@ -86,18 +87,18 @@ public class ActivePromotionLookupService {
             return Collections.emptyMap();
         }
 
-        Map<Long, PromotionRule> bestRuleByProduct = new LinkedHashMap<>();
+        Map<UUID, PromotionRule> bestRuleByProduct = new LinkedHashMap<>();
         for (PromotionRule rule : candidates) {
             if (!rule.getTargetBundles().isEmpty()) {
                 // Bundle-scoped rules don't surface as per-product discounts.
                 continue;
             }
-            Long ruleCompanyId = rule.getCompany().getId();
-            Set<Long> productsInCompany = productIdsByCompany.get(ruleCompanyId);
+            UUID ruleCompanyId = rule.getCompany().getId();
+            Set<UUID> productsInCompany = productIdsByCompany.get(ruleCompanyId);
             if (productsInCompany == null) continue;
 
-            Set<Long> coveredProductIds = coverageFor(rule, productsInCompany);
-            for (Long productId : coveredProductIds) {
+            Set<UUID> coveredProductIds = coverageFor(rule, productsInCompany);
+            for (UUID productId : coveredProductIds) {
                 PromotionRule current = bestRuleByProduct.get(productId);
                 if (current == null || rulePrecedesCurrent(rule, current)) {
                     bestRuleByProduct.put(productId, rule);
@@ -105,8 +106,8 @@ public class ActivePromotionLookupService {
             }
         }
 
-        Map<Long, ActivePromotionSummary> result = new HashMap<>(bestRuleByProduct.size());
-        for (Map.Entry<Long, PromotionRule> e : bestRuleByProduct.entrySet()) {
+        Map<UUID, ActivePromotionSummary> result = new HashMap<>(bestRuleByProduct.size());
+        for (Map.Entry<UUID, PromotionRule> e : bestRuleByProduct.entrySet()) {
             ActivePromotionSummary summary = toSummary(e.getValue());
             if (summary != null) {
                 result.put(e.getKey(), summary);
@@ -119,11 +120,11 @@ public class ActivePromotionLookupService {
      * Resolves which of {@code productsInCompany} this rule covers. An empty {@code targetProducts}
      * means the rule applies to the entire company catalogue.
      */
-    private Set<Long> coverageFor(PromotionRule rule, Set<Long> productsInCompany) {
+    private Set<UUID> coverageFor(PromotionRule rule, Set<UUID> productsInCompany) {
         if (rule.getTargetProducts().isEmpty()) {
             return productsInCompany;
         }
-        Set<Long> ruleProductIds = new HashSet<>();
+        Set<UUID> ruleProductIds = new HashSet<>();
         rule.getTargetProducts().forEach(p -> ruleProductIds.add(p.getId()));
         ruleProductIds.retainAll(productsInCompany);
         return ruleProductIds;

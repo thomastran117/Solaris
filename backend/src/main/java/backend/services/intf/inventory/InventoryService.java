@@ -1,5 +1,6 @@
 package backend.services.intf.inventory;
 
+import java.util.UUID;
 import backend.dtos.requests.inventory.AdjustStockRequest;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.ProductStatus;
@@ -18,38 +19,38 @@ import java.util.List;
 public interface InventoryService {
 
     CursorPagedResponse<InventoryItemResponse> getInventory(
-            long companyId, long ownerId,
+            UUID companyId, UUID ownerId,
             String stockStatus, String q,
             String category, String brand,
             ProductStatus status, Integer minStock, Integer maxStock,
             String cursor, int size);
 
-    InventorySummaryResponse getSummary(long companyId, long ownerId);
+    InventorySummaryResponse getSummary(UUID companyId, UUID ownerId);
 
-    InventoryItemResponse getInventoryItem(long companyId, long productId, long ownerId);
+    InventoryItemResponse getInventoryItem(UUID companyId, UUID productId, UUID ownerId);
 
     PagedResponse<AdjustmentResponse> getAdjustmentHistory(
-            long companyId, long productId, long ownerId, int page, int size);
+            UUID companyId, UUID productId, UUID ownerId, int page, int size);
 
     InventoryItemResponse adjustStock(
-            long companyId, long productId, long ownerId, AdjustStockRequest request);
+            UUID companyId, UUID productId, UUID ownerId, AdjustStockRequest request);
 
     List<InventoryItemResponse> bulkAdjust(
-            long companyId, long ownerId, BulkAdjustRequest request);
+            UUID companyId, UUID ownerId, BulkAdjustRequest request);
 
     InventoryItemResponse updateSettings(
-            long companyId, long productId, long ownerId, UpdateInventorySettingsRequest request);
+            UUID companyId, UUID productId, UUID ownerId, UpdateInventorySettingsRequest request);
 
-    List<ProductSalesMetricResponse> getTopPurchasedProducts(long companyId, long ownerId, int limit, Instant from, Instant to);
+    List<ProductSalesMetricResponse> getTopPurchasedProducts(UUID companyId, UUID ownerId, int limit, Instant from, Instant to);
 
-    List<ProductSalesMetricResponse> getTopRevenueProducts(long companyId, long ownerId, int limit, Instant from, Instant to);
+    List<ProductSalesMetricResponse> getTopRevenueProducts(UUID companyId, UUID ownerId, int limit, Instant from, Instant to);
 
-    List<ProductSalesMetricResponse> getNeverSoldProducts(long companyId, long ownerId, int limit);
+    List<ProductSalesMetricResponse> getNeverSoldProducts(UUID companyId, UUID ownerId, int limit);
 
     InventoryItemResponse adjustVariantStock(
-            long companyId, long productId, long variantId, long ownerId, AdjustStockRequest request);
+            UUID companyId, UUID productId, UUID variantId, UUID ownerId, AdjustStockRequest request);
 
     PagedResponse<AdjustmentResponse> getCompanyAdjustmentHistory(
-            long companyId, long ownerId, AdjustmentReason reason,
-            Instant from, Instant to, Long productId, Long userId, int page, int size);
+            UUID companyId, UUID ownerId, AdjustmentReason reason,
+            Instant from, Instant to, UUID productId, UUID userId, int page, int size);
 }

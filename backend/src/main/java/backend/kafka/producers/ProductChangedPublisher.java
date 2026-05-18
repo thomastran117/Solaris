@@ -13,6 +13,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Component
 public class ProductChangedPublisher {
@@ -47,7 +48,7 @@ public class ProductChangedPublisher {
         send(event.productId(), event.marketplaceId(), ChangeType.DELETED);
     }
 
-    private void send(long productId, long marketplaceId, ChangeType changeType) {
+    private void send(UUID productId, Long marketplaceId, ChangeType changeType) {
         try {
             var payload = new ProductChangedEvent(productId, marketplaceId, changeType, Instant.now());
             kafkaTemplate.send(topic, String.valueOf(productId), payload).whenComplete((res, ex) -> {

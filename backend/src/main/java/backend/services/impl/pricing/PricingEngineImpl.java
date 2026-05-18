@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -92,7 +93,7 @@ public class PricingEngineImpl implements PricingEngine {
             return emptyResult(ctx);
         }
 
-        Set<Long> companyIds = ctx.lines().stream()
+        Set<UUID> companyIds = ctx.lines().stream()
                 .map(CartLine::companyId)
                 .collect(Collectors.toCollection(HashSet::new));
         List<PromotionRule> candidates = ruleRepository.findActiveCandidates(companyIds, ctx.now());
@@ -223,7 +224,7 @@ public class PricingEngineImpl implements PricingEngine {
         if (cfg.requiresAllTargetProducts()
                 && rule.getTargetProducts() != null
                 && !rule.getTargetProducts().isEmpty()) {
-            Set<Long> cartProductIds = lines.stream()
+            Set<UUID> cartProductIds = lines.stream()
                     .filter(l -> l.productId() != null)
                     .map(WorkingLine::productId)
                     .collect(Collectors.toSet());
@@ -286,7 +287,7 @@ public class PricingEngineImpl implements PricingEngine {
     private boolean segmentGateOk(PromotionRule rule, CartContext ctx) {
         if (rule.getTargetSegments() == null || rule.getTargetSegments().isEmpty()) return true;
         if (ctx.userId() == null) return false;
-        Set<Long> userSegments = ctx.userSegmentIds() == null
+        Set<UUID> userSegments = ctx.userSegmentIds() == null
                 ? Collections.emptySet() : ctx.userSegmentIds();
         return rule.getTargetSegments().stream()
                 .anyMatch(s -> userSegments.contains(s.getId()));
@@ -294,7 +295,7 @@ public class PricingEngineImpl implements PricingEngine {
 
     private List<WorkingLine> linesForRule(PromotionRule rule, List<WorkingLine> allLines) {
         List<WorkingLine> companyLines = allLines.stream()
-                .filter(l -> l.companyId() == rule.getCompany().getId())
+                .filter(l -> l.companyId().equals(rule.getCompany().getId()))
                 .toList();
 
         boolean hasProductTargets = rule.getTargetProducts() != null && !rule.getTargetProducts().isEmpty();
@@ -304,10 +305,10 @@ public class PricingEngineImpl implements PricingEngine {
             return companyLines;
         }
 
-        Set<Long> productIds = hasProductTargets
+        Set<UUID> productIds = hasProductTargets
                 ? rule.getTargetProducts().stream().map(Product::getId).collect(Collectors.toSet())
                 : Set.of();
-        Set<Long> bundleIds = hasBundleTargets
+        Set<UUID> bundleIds = hasBundleTargets
                 ? rule.getTargetBundles().stream().map(ProductBundle::getId).collect(Collectors.toSet())
                 : Set.of();
 
@@ -385,7 +386,7 @@ public class PricingEngineImpl implements PricingEngine {
                             .divide(pool, 2, RoundingMode.HALF_UP);
                 }
                 if (share.signum() > 0) {
-                    taken = taken.add(line.applySavings(-coupon.getId(), share));
+                    taken = taken.add(line.applySavings(null, share));
                 }
             }
             // if any rounding left uncommitted (cap), use actual taken

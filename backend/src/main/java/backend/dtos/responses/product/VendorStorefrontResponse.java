@@ -4,12 +4,13 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorStorefrontResponse {
-    private Long vendorId;
-    private Long marketplaceId;
+    private UUID vendorId;
+    private UUID marketplaceId;
     private String vendorCompanyName;
     private String vendorDescription;
     private String vendorLogoUrl;

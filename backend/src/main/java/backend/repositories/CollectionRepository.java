@@ -15,19 +15,19 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CollectionRepository extends JpaRepository<Collection, Long> {
+public interface CollectionRepository extends JpaRepository<Collection, java.util.UUID> {
 
-    Optional<Collection> findByIdAndCompanyId(long id, long companyId);
+    Optional<Collection> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
-    Optional<Collection> findBySlugAndCompanyId(String slug, long companyId);
+    Optional<Collection> findBySlugAndCompanyId(String slug, java.util.UUID companyId);
 
-    boolean existsBySlugAndCompanyId(String slug, long companyId);
+    boolean existsBySlugAndCompanyId(String slug, java.util.UUID companyId);
 
-    Page<Collection> findAllByCompanyId(long companyId, Pageable pageable);
+    Page<Collection> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
 
-    Page<Collection> findAllByCompanyIdAndType(long companyId, CollectionType type, Pageable pageable);
+    Page<Collection> findAllByCompanyIdAndType(java.util.UUID companyId, CollectionType type, Pageable pageable);
 
-    Page<Collection> findAllByCompanyIdAndStatus(long companyId, CollectionStatus status, Pageable pageable);
+    Page<Collection> findAllByCompanyIdAndStatus(java.util.UUID companyId, CollectionStatus status, Pageable pageable);
 
     /**
      * Featured collections, ordered by {@code featuredRank} asc (nulls last). Used by the
@@ -46,7 +46,7 @@ public interface CollectionRepository extends JpaRepository<Collection, Long> {
     @Query("SELECT c FROM Collection c WHERE c.company.id = :vendorCompanyId "
             + "AND c.featured = true AND c.status = backend.models.enums.CollectionStatus.ACTIVE "
             + "ORDER BY CASE WHEN c.featuredRank IS NULL THEN 1 ELSE 0 END, c.featuredRank ASC, c.id ASC")
-    List<Collection> findFeaturedForVendor(@Param("vendorCompanyId") long vendorCompanyId);
+    List<Collection> findFeaturedForVendor(@Param("vendorCompanyId") java.util.UUID vendorCompanyId);
 
     /**
      * Used by {@code DynamicCollectionWorker} to find dynamic collections eligible for a

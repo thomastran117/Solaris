@@ -13,9 +13,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface ImportJobRepository extends JpaRepository<ImportJob, Long> {
-    Optional<ImportJob> findByIdAndCompanyId(long id, long companyId);
-    Page<ImportJob> findAllByCompanyIdOrderByCreatedAtDesc(long companyId, Pageable pageable);
+public interface ImportJobRepository extends JpaRepository<ImportJob, java.util.UUID> {
+    Optional<ImportJob> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
+    Page<ImportJob> findAllByCompanyIdOrderByCreatedAtDesc(java.util.UUID companyId, Pageable pageable);
 
     /**
      * Atomically claims a job for processing. Returns 1 if the calling worker is the
@@ -24,7 +24,7 @@ public interface ImportJobRepository extends JpaRepository<ImportJob, Long> {
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE ImportJob j SET j.status = :to WHERE j.id = :id AND j.status = :from")
-    int claimForProcessing(@Param("id") long id,
+    int claimForProcessing(@Param("id") java.util.UUID id,
                            @Param("from") ImportJobStatus from,
                            @Param("to") ImportJobStatus to);
 }

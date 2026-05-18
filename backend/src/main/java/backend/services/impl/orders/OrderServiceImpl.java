@@ -1,5 +1,6 @@
 package backend.services.impl.orders;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -278,7 +279,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse createOrder(long userId, CreateOrderRequest request) {
+    public OrderResponse createOrder(UUID userId, CreateOrderRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
@@ -600,7 +601,7 @@ public class OrderServiceImpl implements OrderService {
             }
 
             // --- Invoke the pricing engine on product lines ---
-            Set<Long> userSegmentIds = new HashSet<>(userRepository.findSegmentIdsByUserId(userId));
+            Set<UUID> userSegmentIds = new HashSet<>(userRepository.findSegmentIdsByUserId(userId));
             CartContext ctx = new CartContext(
                     cartLines,
                     userId,
@@ -636,10 +637,9 @@ public class OrderServiceImpl implements OrderService {
                 item.setDiscountAmount(perUnit);
                 item.setPromotionSavings(lb.savings());
                 if (lb.appliedRuleIds() != null && !lb.appliedRuleIds().isEmpty()) {
-                    // Strip the synthetic negative coupon marker the engine records.
                     StringBuilder csv = new StringBuilder();
-                    for (Long id : lb.appliedRuleIds()) {
-                        if (id == null || id <= 0) continue;
+                    for (UUID id : lb.appliedRuleIds()) {
+                        if (id == null) continue;
                         if (csv.length() > 0) csv.append(',');
                         csv.append(id);
                     }
@@ -885,7 +885,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public OrderResponse getOrder(long orderId, long userId) {
+    public OrderResponse getOrder(UUID orderId, UUID userId) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         return toResponse(order);
@@ -893,7 +893,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public OrderResponse getLatestOrder(long userId) {
+    public OrderResponse getLatestOrder(UUID userId) {
         Order order = orderRepository.findFirstByUserIdOrderByCreatedAtDesc(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("No orders found"));
         return toResponse(order);
@@ -901,7 +901,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse reorderOrder(long orderId, long userId) {
+    public OrderResponse reorderOrder(UUID orderId, UUID userId) {
         Order original = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
@@ -934,7 +934,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public PagedResponse<OrderResponse> getOrders(long userId, OrderStatus status, int page, int size, String sort, String direction) {
+    public PagedResponse<OrderResponse> getOrders(UUID userId, OrderStatus status, int page, int size, String sort, String direction) {
         if (size > 50) size = 50;
 
         String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
@@ -965,7 +965,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public OrderResponse cancelOrder(long orderId, long userId) {
+    public OrderResponse cancelOrder(UUID orderId, UUID userId) {
         return cancelOrderInternal(orderId, userId, backend.models.enums.CancellationReason.CUSTOMER_REQUEST);
     }
 
@@ -974,7 +974,7 @@ public class OrderServiceImpl implements OrderService {
      * (risk reject, payment failure escalation, etc.) tag the cancellation
      * with the correct {@link backend.models.enums.CancellationReason}.
      */
-    OrderResponse cancelOrderInternal(long orderId, long userId, backend.models.enums.CancellationReason reason) {
+    OrderResponse cancelOrderInternal(long orderId, UUID userId, backend.models.enums.CancellationReason reason) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
@@ -1704,7 +1704,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void fulfillPendingBackorders(long productId, Long variantId, int availableQty, Long fulfillmentLocationId) {
+    public void fulfillPendingBackorders(UUID productId, UUID variantId, int availableQty, UUID fulfillmentLocationId) {
         String lockToken = UUID.randomUUID().toString();
         List<String> acquiredLocks = new ArrayList<>();
 
@@ -1823,7 +1823,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public PagedResponse<CompanyOrderResponse> getCompanyOrders(long companyId, long ownerId, OrderStatus status, int page, int size) {
+    public PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         if (size > 50) size = 50;
@@ -1840,7 +1840,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public CompanyOrderResponse getCompanyOrder(long companyId, long orderId, long ownerId) {
+    public CompanyOrderResponse getCompanyOrder(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
@@ -1849,7 +1849,7 @@ public class OrderServiceImpl implements OrderService {
         return toCompanyOrderResponse(order, companyId);
     }
 
-    private CompanyOrderResponse toCompanyOrderResponse(Order order, long companyId) {
+    private CompanyOrderResponse toCompanyOrderResponse(Order order, UUID companyId) {
         List<OrderItem> companyItems = order.getItems().stream()
                 .filter(item -> item.getBundle() != null
                         ? item.getBundle().getCompany().getId() == companyId
@@ -1942,7 +1942,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public CompanyOrderResponse markAsPacked(long companyId, long orderId, long ownerId) {
+    public CompanyOrderResponse markAsPacked(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
@@ -1963,7 +1963,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public CompanyOrderResponse markAsShipped(long companyId, long orderId, long ownerId, ShipOrderRequest request) {
+    public CompanyOrderResponse markAsShipped(UUID companyId, UUID orderId, UUID ownerId, ShipOrderRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
@@ -2008,7 +2008,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     @RetryOnConcurrency
-    public CompanyOrderResponse markAsDelivered(long companyId, long orderId, long ownerId) {
+    public CompanyOrderResponse markAsDelivered(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
@@ -2028,7 +2028,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public CompanyOrderResponse initiateReturn(long companyId, long orderId, long ownerId, ReturnOrderRequest request) {
+    public CompanyOrderResponse initiateReturn(UUID companyId, UUID orderId, UUID ownerId, ReturnOrderRequest request) {
         // Load order to translate legacy itemIds → BuyerReturnItemRequest list with full quantities
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -2098,7 +2098,7 @@ public class OrderServiceImpl implements OrderService {
     private RiskAssessment runRiskAssessment(
             User user,
             Order order,
-            Set<Long> userSegmentIds,
+            Set<UUID> userSegmentIds,
             PricingResult pricing,
             String suppliedVerificationToken) {
 
@@ -2108,7 +2108,7 @@ public class OrderServiceImpl implements OrderService {
                 ? deviceService.computeFingerprint(clientInfo.userAgent())
                 : null;
 
-        List<Long> companyIds = order.getItems().stream()
+        List<UUID> companyIds = order.getItems().stream()
                 .map(item -> item.getProduct() != null ? item.getProduct().getCompany().getId()
                         : (item.getBundle() != null ? item.getBundle().getCompany().getId() : null))
                 .filter(Objects::nonNull)
@@ -2152,7 +2152,7 @@ public class OrderServiceImpl implements OrderService {
                 if (suppliedVerificationToken == null || suppliedVerificationToken.isBlank()) {
                     throw new RiskStepUpRequiredException(order.getId(), "EMAIL");
                 }
-                long tokenUserId;
+                UUID tokenUserId;
                 try {
                     tokenUserId = emailVerificationService.consumeVerificationToken(suppliedVerificationToken);
                 } catch (RuntimeException ex) {
@@ -2216,7 +2216,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public PagedResponse<RiskReviewResponse> listRiskReviews(long companyId, long ownerId,
+    public PagedResponse<RiskReviewResponse> listRiskReviews(UUID companyId, UUID ownerId,
                                                              RiskReviewStatus status, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         if (size > 50) size = 50;
@@ -2229,7 +2229,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public RiskAssessmentResponse getOrderRisk(long companyId, long orderId, long ownerId) {
+    public RiskAssessmentResponse getOrderRisk(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -2241,7 +2241,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse approveRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req) {
+    public OrderResponse approveRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -2289,7 +2289,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse rejectRiskReview(long companyId, long orderId, long ownerId, RiskDecisionRequest req) {
+    public OrderResponse rejectRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -2337,13 +2337,13 @@ public class OrderServiceImpl implements OrderService {
         return r;
     }
 
-    private void requireExclusiveCompanyOrder(Order order, long orderId, long companyId) {
+    private void requireExclusiveCompanyOrder(Order order, UUID orderId, UUID companyId) {
         if (!orderBelongsExclusivelyToCompany(order, companyId)) {
             throw new ResourceNotFoundException("Order not found with id: " + orderId);
         }
     }
 
-    private boolean orderBelongsExclusivelyToCompany(Order order, long companyId) {
+    private boolean orderBelongsExclusivelyToCompany(Order order, UUID companyId) {
         return order.getItems() != null
                 && !order.getItems().isEmpty()
                 && order.getItems().stream()

@@ -6,13 +6,14 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorPayoutResponse {
-    private Long id;
-    private Long vendorId;
-    private Long marketplaceId;
+    private UUID id;
+    private UUID vendorId;
+    private UUID marketplaceId;
     private Instant periodStart;
     private Instant periodEnd;
     private BigDecimal grossAmount;

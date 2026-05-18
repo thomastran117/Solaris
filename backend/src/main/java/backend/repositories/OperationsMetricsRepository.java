@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Aggregation queries for the SLA / Operations Dashboard. Bound to {@link Order}
@@ -24,7 +25,7 @@ import java.util.List;
  * stats use JPQL where possible.
  */
 @Repository
-public interface OperationsMetricsRepository extends JpaRepository<Order, Long> {
+public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> {
 
     // -------------------------------------------------------------------------
     // 1) Average fulfillment time (createdAt -> shippedAt)
@@ -41,7 +42,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "  AND o.shipped_at BETWEEN :from AND :to" +
             ") t",
             nativeQuery = true)
-    DurationStatsProjection fulfillmentStats(@Param("companyId") long companyId,
+    DurationStatsProjection fulfillmentStats(@Param("companyId") UUID companyId,
                                              @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
@@ -56,7 +57,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "  AND o.shipped_at BETWEEN :from AND :to" +
             ") t GROUP BY day ORDER BY day",
             nativeQuery = true)
-    List<DailyDurationProjection> fulfillmentDaily(@Param("companyId") long companyId,
+    List<DailyDurationProjection> fulfillmentDaily(@Param("companyId") UUID companyId,
                                                    @Param("from") Instant from, @Param("to") Instant to);
 
     // -------------------------------------------------------------------------
@@ -74,7 +75,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "AND r.completed_at IS NOT NULL " +
             "AND r.completed_at BETWEEN :from AND :to",
             nativeQuery = true)
-    DurationStatsProjection refundStats(@Param("companyId") long companyId,
+    DurationStatsProjection refundStats(@Param("companyId") UUID companyId,
                                         @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
@@ -92,7 +93,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "  GROUP BY DATE(r.completed_at)" +
             ") t ORDER BY day",
             nativeQuery = true)
-    List<DailyDurationProjection> refundDaily(@Param("companyId") long companyId,
+    List<DailyDurationProjection> refundDaily(@Param("companyId") UUID companyId,
                                               @Param("from") Instant from, @Param("to") Instant to);
 
     // -------------------------------------------------------------------------
@@ -110,7 +111,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "  AND o.packed_at BETWEEN :from AND :to" +
             ") t",
             nativeQuery = true)
-    DurationStatsProjection pickDelayStats(@Param("companyId") long companyId,
+    DurationStatsProjection pickDelayStats(@Param("companyId") UUID companyId,
                                            @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
@@ -125,7 +126,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "  AND o.packed_at BETWEEN :from AND :to" +
             ") t GROUP BY day ORDER BY day",
             nativeQuery = true)
-    List<DailyDurationProjection> pickDelayDaily(@Param("companyId") long companyId,
+    List<DailyDurationProjection> pickDelayDaily(@Param("companyId") UUID companyId,
                                                  @Param("from") Instant from, @Param("to") Instant to);
 
     // -------------------------------------------------------------------------
@@ -142,7 +143,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "AND rr.expected_arrival_date IS NOT NULL AND rr.received_at IS NOT NULL " +
             "AND rr.received_at BETWEEN :from AND :to",
             nativeQuery = true)
-    SupplierLatenessProjection supplierLatenessStats(@Param("companyId") long companyId,
+    SupplierLatenessProjection supplierLatenessStats(@Param("companyId") UUID companyId,
                                                      @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
@@ -155,7 +156,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "GROUP BY DATE(rr.received_at) " +
             "ORDER BY DATE(rr.received_at)",
             nativeQuery = true)
-    List<DailyCountProjection> supplierLatenessDaily(@Param("companyId") long companyId,
+    List<DailyCountProjection> supplierLatenessDaily(@Param("companyId") UUID companyId,
                                                      @Param("from") Instant from, @Param("to") Instant to);
 
     // -------------------------------------------------------------------------
@@ -168,7 +169,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
            "AND o.cancelledAt IS NOT NULL " +
            "AND o.cancelledAt BETWEEN :from AND :to " +
            "GROUP BY o.cancellationReason")
-    List<CancellationReasonCountProjection> cancellationsByReason(@Param("companyId") long companyId,
+    List<CancellationReasonCountProjection> cancellationsByReason(@Param("companyId") UUID companyId,
                                                                   @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
@@ -182,6 +183,6 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, Long> 
             "GROUP BY DATE(o.cancelled_at) " +
             "ORDER BY DATE(o.cancelled_at)",
             nativeQuery = true)
-    List<DailyCountProjection> cancellationsDaily(@Param("companyId") long companyId,
+    List<DailyCountProjection> cancellationsDaily(@Param("companyId") UUID companyId,
                                                   @Param("from") Instant from, @Param("to") Instant to);
 }

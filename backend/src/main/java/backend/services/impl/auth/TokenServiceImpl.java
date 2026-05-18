@@ -79,13 +79,13 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public int getUserIdFromToken(HttpServletRequest request) {
+    public UUID getUserIdFromToken(HttpServletRequest request) {
         String token = request.getHeader("Authorization");
         if (token == null || !token.startsWith("Bearer ")) {
             throw new IllegalArgumentException("Token is missing or improperly formatted");
         }
         String tokenWithoutBearer = token.substring(7);
-        return Integer.parseInt(getClaimFromToken(tokenWithoutBearer, Claims::getSubject));
+        return UUID.fromString(getClaimFromToken(tokenWithoutBearer, Claims::getSubject));
     }
 
     @Override
@@ -97,7 +97,7 @@ public class TokenServiceImpl implements TokenService {
     @Override
     public Authentication getAuthentication(String token) {
         Claims claims = getAllClaimsFromToken(token);
-        int userId = Integer.parseInt(claims.getSubject());
+        UUID userId = UUID.fromString(claims.getSubject());
         String role = claims.get("role", String.class);
 
         Collection<GrantedAuthority> authorities = new ArrayList<>();
@@ -132,11 +132,11 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public String generateAccessToken(int userId, String role, String email) {
+    public String generateAccessToken(UUID userId, String role, String email) {
         long ttlMs = env.getSecurity().getJwt().getAccessTokenTtlSeconds() * 1000L;
         return Jwts.builder()
                 .setIssuer(env.getSecurity().getJwt().getIssuer())
-                .setSubject(String.valueOf(userId))
+                .setSubject(userId.toString())
                 .claim("role", role)
                 .claim("email", email)
                 .setIssuedAt(new Date())
@@ -146,7 +146,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public String generateRefreshToken(int userId, String role, String email) {
+    public String generateRefreshToken(UUID userId, String role, String email) {
         long ttlSeconds = env.getSecurity().getJwt().getRefreshTokenTtlSeconds();
         String tokenId = generateOpaqueToken();
         String payload = userId + PAYLOAD_SEP + (role != null ? role : "") + PAYLOAD_SEP + (email != null ? email : "");
@@ -180,7 +180,7 @@ public class TokenServiceImpl implements TokenService {
         int sep1 = raw.indexOf(PAYLOAD_SEP);
         if (sep1 <= 0) return null;
         try {
-            int userId = Integer.parseInt(raw.substring(0, sep1));
+            UUID userId = UUID.fromString(raw.substring(0, sep1));
             int sep2 = raw.indexOf(PAYLOAD_SEP, sep1 + 1);
             String role;
             String email;
@@ -192,7 +192,7 @@ public class TokenServiceImpl implements TokenService {
                 email = "";
             }
             return new RefreshTokenPayload(userId, role, email);
-        } catch (NumberFormatException e) {
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }
@@ -220,7 +220,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public Map<String, Object> generateTokenPair(int userId, String role, String email) {
+    public Map<String, Object> generateTokenPair(UUID userId, String role, String email) {
         String accessToken = generateAccessToken(userId, role, email);
         String refreshToken = generateRefreshToken(userId, role, email);
 
@@ -249,7 +249,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public void revokeAllRefreshTokensForUser(int userId) {
+    public void revokeAllRefreshTokensForUser(UUID userId) {
         Set<String> tokenIds = cache.setMembers(REFRESH_USER_SET_PREFIX + userId);
         for (String tokenId : tokenIds) {
             cache.delete(REFRESH_TOKEN_PREFIX + tokenId);

@@ -1,5 +1,6 @@
 package backend.controllers.impl.payments;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.marketplace.VendorAdjustmentRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -35,7 +36,7 @@ public class VendorPayoutController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/vendors/{vendorId}/balance")
-    public ResponseEntity<VendorBalanceResponse> getBalance(@PathVariable long vendorId) {
+    public ResponseEntity<VendorBalanceResponse> getBalance(@PathVariable UUID vendorId) {
         try {
             return ResponseEntity.ok(vendorPayoutService.getBalance(vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -47,7 +48,7 @@ public class VendorPayoutController {
 
     @GetMapping("/vendors/{vendorId}/payouts")
     public ResponseEntity<PagedResponse<VendorPayoutResponse>> listPayouts(
-            @PathVariable long vendorId,
+            @PathVariable UUID vendorId,
             @RequestParam(required = false) PayoutStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
@@ -62,8 +63,8 @@ public class VendorPayoutController {
 
     @GetMapping("/vendors/{vendorId}/payouts/{payoutId}")
     public ResponseEntity<VendorPayoutResponse> getPayoutDetail(
-            @PathVariable long vendorId,
-            @PathVariable long payoutId) {
+            @PathVariable UUID vendorId,
+            @PathVariable UUID payoutId) {
         try {
             return ResponseEntity.ok(vendorPayoutService.getPayoutDetail(payoutId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -79,10 +80,10 @@ public class VendorPayoutController {
 
     @PostMapping("/marketplaces/{marketplaceId}/payouts/run")
     public ResponseEntity<VendorPayoutResponse> triggerManualPayout(
-            @PathVariable long marketplaceId,
-            @RequestParam long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @RequestParam UUID vendorId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(vendorPayoutService.triggerManualPayout(vendorId, marketplaceId, userId));
         } catch (AppHttpException e) {
@@ -94,11 +95,11 @@ public class VendorPayoutController {
 
     @PostMapping("/marketplaces/{marketplaceId}/vendors/{vendorId}/adjustments")
     public ResponseEntity<VendorAdjustmentResponse> createAdjustment(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody VendorAdjustmentRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(vendorPayoutService.createAdjustment(vendorId, userId, request));
         } catch (AppHttpException e) {
@@ -108,8 +109,8 @@ public class VendorPayoutController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

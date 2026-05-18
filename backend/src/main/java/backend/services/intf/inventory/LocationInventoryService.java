@@ -1,5 +1,6 @@
 package backend.services.intf.inventory;
 
+import java.util.UUID;
 import backend.dtos.requests.inventory.AdjustStockRequest;
 import backend.dtos.requests.inventory.CreateLocationRequest;
 import backend.dtos.requests.inventory.SetLocationStockRequest;
@@ -11,25 +12,25 @@ import java.util.List;
 
 public interface LocationInventoryService {
 
-    List<LocationResponse> getLocations(long companyId, long ownerId);
+    List<LocationResponse> getLocations(UUID companyId, UUID ownerId);
 
-    LocationResponse getLocation(long companyId, long locationId, long ownerId);
+    LocationResponse getLocation(UUID companyId, UUID locationId, UUID ownerId);
 
-    LocationResponse createLocation(long companyId, long ownerId, CreateLocationRequest request);
+    LocationResponse createLocation(UUID companyId, UUID ownerId, CreateLocationRequest request);
 
-    LocationResponse updateLocation(long companyId, long locationId, long ownerId, UpdateLocationRequest request);
+    LocationResponse updateLocation(UUID companyId, UUID locationId, UUID ownerId, UpdateLocationRequest request);
 
-    void deleteLocation(long companyId, long locationId, long ownerId);
+    void deleteLocation(UUID companyId, UUID locationId, UUID ownerId);
 
-    List<LocationStockResponse> getLocationStock(long companyId, long locationId, long ownerId);
+    List<LocationStockResponse> getLocationStock(UUID companyId, UUID locationId, UUID ownerId);
 
-    List<LocationStockResponse> getProductLocationStocks(long companyId, long productId, long ownerId);
+    List<LocationStockResponse> getProductLocationStocks(UUID companyId, UUID productId, UUID ownerId);
 
     /** variantId=null means product-level stock. */
-    LocationStockResponse setLocationStock(long companyId, long locationId, long productId,
-                                           long ownerId, SetLocationStockRequest request, Long variantId);
+    LocationStockResponse setLocationStock(UUID companyId, UUID locationId, UUID productId,
+                                           UUID ownerId, SetLocationStockRequest request, UUID variantId);
 
     /** variantId=null means product-level stock. Reuses AdjustStockRequest (delta, reason, note). */
-    LocationStockResponse adjustLocationStock(long companyId, long locationId, long productId,
-                                              long ownerId, AdjustStockRequest request, Long variantId);
+    LocationStockResponse adjustLocationStock(UUID companyId, UUID locationId, UUID productId,
+                                              UUID ownerId, AdjustStockRequest request, UUID variantId);
 }

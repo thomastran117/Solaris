@@ -1,5 +1,6 @@
 package backend.services.impl.savedlist;
 
+import java.util.UUID;
 import backend.dtos.requests.savedlist.AddSavedListItemRequest;
 import backend.dtos.requests.savedlist.CreateSavedListRequest;
 import backend.dtos.requests.savedlist.UpdateSavedListItemRequest;
@@ -60,7 +61,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SavedListSummaryResponse> listSavedLists(long userId, SavedListType typeFilter) {
+    public List<SavedListSummaryResponse> listSavedLists(UUID userId, SavedListType typeFilter) {
         List<SavedList> lists = (typeFilter == null)
                 ? savedListRepository.findAllByUserIdOrderByCreatedAtDesc(userId)
                 : savedListRepository.findAllByUserIdAndTypeOrderByCreatedAtDesc(userId, typeFilter);
@@ -69,7 +70,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional(readOnly = true)
-    public SavedListResponse getSavedList(long userId, long listId) {
+    public SavedListResponse getSavedList(UUID userId, UUID listId) {
         return toResponse(findOwned(userId, listId));
     }
 
@@ -84,7 +85,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional
-    public SavedListResponse createSavedList(long userId, CreateSavedListRequest req) {
+    public SavedListResponse createSavedList(UUID userId, CreateSavedListRequest req) {
         SavedListType type = req.getType();
         if (savedListRepository.existsByNameAndUserIdAndType(req.getName(), userId, type)) {
             throw new ConflictException("A " + type.name().toLowerCase()
@@ -109,7 +110,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional
-    public SavedListResponse updateSavedList(long userId, long listId, UpdateSavedListRequest req) {
+    public SavedListResponse updateSavedList(UUID userId, UUID listId, UpdateSavedListRequest req) {
         SavedList list = findOwned(userId, listId);
 
         SavedListType targetType = req.getType() != null ? req.getType() : list.getType();
@@ -141,13 +142,13 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional
-    public void deleteSavedList(long userId, long listId) {
+    public void deleteSavedList(UUID userId, UUID listId) {
         savedListRepository.delete(findOwned(userId, listId));
     }
 
     @Override
     @Transactional
-    public SavedListItemResponse addItem(long userId, long listId, AddSavedListItemRequest req) {
+    public SavedListItemResponse addItem(UUID userId, UUID listId, AddSavedListItemRequest req) {
         SavedList list = findOwned(userId, listId);
 
         Product product = productRepository.findById(req.getProductId())
@@ -193,7 +194,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional
-    public SavedListItemResponse updateItem(long userId, long listId, long itemId,
+    public SavedListItemResponse updateItem(UUID userId, UUID listId, UUID itemId,
                                             UpdateSavedListItemRequest req) {
         findOwned(userId, listId); // ownership check
         SavedListItem item = savedListItemRepository.findByIdAndSavedListId(itemId, listId)
@@ -212,7 +213,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     @Override
     @Transactional
-    public void removeItem(long userId, long listId, long itemId) {
+    public void removeItem(UUID userId, UUID listId, UUID itemId) {
         findOwned(userId, listId); // ownership check
         SavedListItem item = savedListItemRepository.findByIdAndSavedListId(itemId, listId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -232,7 +233,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     // -------------------------------------------------------------------------
 
-    private SavedList findOwned(long userId, long listId) {
+    private SavedList findOwned(UUID userId, long listId) {
         return savedListRepository.findByIdAndUserId(listId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Saved list not found with id: " + listId));

@@ -9,6 +9,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -23,11 +24,12 @@ import java.time.Instant;
 public class ReviewMedia {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
-    @Column(name = "review_id", nullable = false)
-    private Long reviewId;
+    @Column(name = "review_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID reviewId;
 
     @Column(nullable = false, length = 1024)
     private String url;

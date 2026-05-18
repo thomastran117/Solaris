@@ -1,5 +1,6 @@
 package backend.controllers.impl.analytics;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,11 +33,11 @@ public class ForecastingController {
 
     @GetMapping
     public ResponseEntity<ForecastSummaryResponse> getCompanyForecast(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "56") @Min(14) @Max(365) int lookbackDays,
             @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(forecastingService.getCompanyForecast(companyId, userId, lookbackDays, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -47,11 +48,11 @@ public class ForecastingController {
 
     @GetMapping("/products/{productId}")
     public ResponseEntity<ProductForecastResponse> getProductForecast(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @RequestParam(defaultValue = "56") @Min(14) @Max(365) int lookbackDays) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(
                     forecastingService.getProductForecast(companyId, productId, userId, lookbackDays));
         } catch (AppHttpException e) {
@@ -63,11 +64,11 @@ public class ForecastingController {
 
     @GetMapping("/reorder-suggestions")
     public ResponseEntity<List<ReorderSuggestionResponse>> getReorderSuggestions(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "56") @Min(14) @Max(365) int lookbackDays,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(
                     forecastingService.getReorderSuggestions(companyId, userId, lookbackDays, limit));
         } catch (AppHttpException e) {
@@ -79,10 +80,10 @@ public class ForecastingController {
 
     @GetMapping("/seasonal-prep")
     public ResponseEntity<SeasonalPrepSummaryResponse> getSeasonalPrep(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(forecastingService.getSeasonalPrep(companyId, userId, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -91,8 +92,8 @@ public class ForecastingController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

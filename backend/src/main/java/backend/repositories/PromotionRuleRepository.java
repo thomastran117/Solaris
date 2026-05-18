@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Long> {
+public interface PromotionRuleRepository extends JpaRepository<PromotionRule, java.util.UUID> {
 
-    Optional<PromotionRule> findByIdAndCompanyId(long id, long companyId);
+    Optional<PromotionRule> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
-    Page<PromotionRule> findAllByCompanyId(long companyId, Pageable pageable);
+    Page<PromotionRule> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
 
     Optional<PromotionRule> findByLegacyDiscountId(long legacyDiscountId);
 
@@ -41,7 +41,7 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Lo
               AND (r.maxUses IS NULL OR r.usedCount < r.maxUses)
             """)
     List<PromotionRule> findActiveCandidates(
-            @Param("companyIds") Collection<Long> companyIds,
+            @Param("companyIds") Collection<java.util.UUID> companyIds,
             @Param("now") Instant now);
 
     /**
@@ -50,7 +50,7 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Lo
      */
     @Modifying
     @Query("UPDATE PromotionRule r SET r.usedCount = r.usedCount + 1 WHERE r.id = :id AND (r.maxUses IS NULL OR r.usedCount < r.maxUses)")
-    int tryIncrementUsedCount(@Param("id") long id);
+    int tryIncrementUsedCount(@Param("id") java.util.UUID id);
 
     /**
      * Active, in-window rules for a product: either explicitly targeting the product or
@@ -68,8 +68,8 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Lo
               AND r.targetBundles IS EMPTY
             """)
     List<PromotionRule> findActiveRulesForProduct(
-            @Param("companyId") long companyId,
-            @Param("productId") long productId,
+            @Param("companyId") java.util.UUID companyId,
+            @Param("productId") java.util.UUID productId,
             @Param("now") Instant now);
 
     /**
@@ -88,8 +88,8 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Lo
               AND r.targetProducts IS EMPTY
             """)
     List<PromotionRule> findActiveRulesForBundle(
-            @Param("companyId") long companyId,
-            @Param("bundleId") long bundleId,
+            @Param("companyId") java.util.UUID companyId,
+            @Param("bundleId") java.util.UUID bundleId,
             @Param("now") Instant now);
 
     /** Bulk-deletes expired rules. Called by an expiry scheduler analogous to DiscountExpiryScheduler. */
@@ -100,9 +100,9 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, Lo
     /** Cleanup when a product is deleted. */
     @Modifying
     @Query(value = "DELETE FROM promotion_rule_products WHERE product_id = :productId", nativeQuery = true)
-    void removeProductFromAllRules(@Param("productId") long productId);
+    void removeProductFromAllRules(@Param("productId") java.util.UUID productId);
 
     @Modifying
     @Query(value = "DELETE FROM promotion_rule_products WHERE product_id IN :productIds", nativeQuery = true)
-    void removeProductsFromAllRules(@Param("productIds") List<Long> productIds);
+    void removeProductsFromAllRules(@Param("productIds") List<java.util.UUID> productIds);
 }

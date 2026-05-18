@@ -1,5 +1,6 @@
 package backend.services.intf.company;
 
+import java.util.UUID;
 import backend.models.core.Company;
 import backend.models.enums.CompanyCapability;
 import backend.models.enums.CompanyRole;
@@ -13,23 +14,23 @@ public interface CompanyAccessService {
      * Loads the company and verifies the user's active role grants the capability.
      * Throws ForbiddenException if not.
      */
-    Company require(long companyId, long userId, CompanyCapability capability);
+    Company require(UUID companyId, UUID userId, CompanyCapability capability);
 
     /**
      * Loads the company and verifies the user has any active membership.
      * Used for plain reads where any role suffices (e.g. fetching company identity).
      */
-    Company requireAnyAccess(long companyId, long userId);
+    Company requireAnyAccess(UUID companyId, UUID userId);
 
     /**
      * Returns the user's active role for this company, or empty if no active membership.
      */
-    Optional<CompanyRole> resolveRole(long companyId, long userId);
+    Optional<CompanyRole> resolveRole(UUID companyId, UUID userId);
 
     /**
      * Returns every company the user has an active membership in.
      */
-    List<Company> listAccessibleCompanies(long userId);
+    List<Company> listAccessibleCompanies(UUID userId);
 
     /**
      * True iff the role grants the capability. Pure lookup.
@@ -40,5 +41,5 @@ public interface CompanyAccessService {
      * Invalidates any cached role for this (companyId, userId). Called by the
      * membership service after invite-accept, role change, or revoke.
      */
-    void invalidate(long companyId, long userId);
+    void invalidate(UUID companyId, UUID userId);
 }

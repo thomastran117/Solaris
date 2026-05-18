@@ -1,5 +1,6 @@
 package backend.services.impl.customers;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -37,8 +38,8 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
 
     @Override
     @Transactional
-    public CreditEntryResponse issueCredit(long userId, IssueCreditRequest request,
-                                           long issuedByUserId, Long sourceTicketId, Long sourceOrderIssueId) {
+    public CreditEntryResponse issueCredit(UUID userId, IssueCreditRequest request,
+                                           UUID issuedByUserId, UUID sourceTicketId, UUID sourceOrderIssueId) {
         if (sourceOrderIssueId != null) {
             java.util.Optional<CustomerCredit> existing = creditRepository.findFirstBySourceOrderIssueId(sourceOrderIssueId);
             if (existing.isPresent()) {
@@ -71,7 +72,7 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
 
     @Override
     @Transactional(readOnly = true)
-    public CreditBalanceResponse getBalance(long userId) {
+    public CreditBalanceResponse getBalance(UUID userId) {
         userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
@@ -87,7 +88,7 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
 
     @Override
     @Transactional
-    public CreditEntryResponse redeemCredit(long userId, long orderId, long amountCents) {
+    public CreditEntryResponse redeemCredit(UUID userId, UUID orderId, long amountCents) {
         if (amountCents <= 0) {
             throw new BadRequestException("Redemption amount must be greater than zero");
         }
@@ -114,7 +115,7 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
 
     @Override
     @Transactional
-    public CreditEntryResponse reverseCredit(long creditEntryId, long actorUserId) {
+    public CreditEntryResponse reverseCredit(UUID creditEntryId, UUID actorUserId) {
         CustomerCredit original = creditRepository.findById(creditEntryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Credit entry not found: " + creditEntryId));
 

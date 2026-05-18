@@ -1,5 +1,6 @@
 package backend.services.intf.pricing;
 
+import java.util.UUID;
 import backend.dtos.responses.pricing.PayoutAttributionResponse;
 import backend.dtos.responses.pricing.PromotionRuleAnalyticsResponse;
 
@@ -20,5 +21,5 @@ public interface PricingReportService {
      * {@code companyId}.
      */
     PromotionRuleAnalyticsResponse getRuleAnalytics(
-            long companyId, long ruleId, long ownerId, Instant from, Instant to);
+            UUID companyId, UUID ruleId, UUID ownerId, Instant from, Instant to);
 }

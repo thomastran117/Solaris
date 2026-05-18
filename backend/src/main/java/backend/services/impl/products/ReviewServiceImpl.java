@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -146,7 +147,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse getMyReview(long companyId, long productId, long userId) {
+    public ReviewResponse getMyReview(long companyId, long productId, UUID userId) {
         resolveProduct(companyId, productId);
         String cacheKey = "review:me:" + companyId + ":" + productId + ":" + userId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
@@ -157,7 +158,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse createReview(long companyId, long productId, long userId, CreateReviewRequest request) {
+    public ReviewResponse createReview(long companyId, long productId, UUID userId, CreateReviewRequest request) {
         Product product = resolveProduct(companyId, productId);
         User reviewer = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
@@ -198,7 +199,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse updateReview(long companyId, long productId, long userId, UpdateReviewRequest request) {
+    public ReviewResponse updateReview(long companyId, long productId, UUID userId, UpdateReviewRequest request) {
         resolveProduct(companyId, productId);
         ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
@@ -220,7 +221,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public void deleteReview(long companyId, long productId, long userId) {
+    public void deleteReview(long companyId, long productId, UUID userId) {
         resolveProduct(companyId, productId);
         ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));

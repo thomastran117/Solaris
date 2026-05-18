@@ -1,5 +1,6 @@
 package backend.controllers.impl.inventory;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,9 +35,9 @@ public class RestockController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<RestockRequestResponse>> listRestockRequests(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) RestockStatus status,
-            @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) UUID productId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         return ResponseEntity.ok(
@@ -45,7 +46,7 @@ public class RestockController {
 
     @PostMapping
     public ResponseEntity<RestockRequestResponse> createRestockRequest(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateRestockRequest request) {
         sanitizationService.normalize(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -54,16 +55,16 @@ public class RestockController {
 
     @GetMapping("/{restockId}")
     public ResponseEntity<RestockRequestResponse> getRestockRequest(
-            @PathVariable long companyId,
-            @PathVariable long restockId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID restockId) {
         return ResponseEntity.ok(
                 restockService.getRestockRequest(companyId, restockId, resolveUserId()));
     }
 
     @PatchMapping("/{restockId}")
     public ResponseEntity<RestockRequestResponse> updateRestockRequest(
-            @PathVariable long companyId,
-            @PathVariable long restockId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID restockId,
             @Valid @RequestBody UpdateRestockRequest request) {
         sanitizationService.normalize(request);
         return ResponseEntity.ok(
@@ -72,14 +73,14 @@ public class RestockController {
 
     @DeleteMapping("/{restockId}")
     public ResponseEntity<Void> deleteRestockRequest(
-            @PathVariable long companyId,
-            @PathVariable long restockId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID restockId) {
         restockService.deleteRestockRequest(companyId, restockId, resolveUserId());
         return ResponseEntity.noContent().build();
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -2,9 +2,10 @@ package backend.dtos.responses.analytics;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record CategorySalesResponse(
-        long companyId,
+        UUID companyId,
         int lookbackDays,
         List<CategoryEntry> categories
 ) {

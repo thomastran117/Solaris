@@ -5,12 +5,14 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -25,11 +27,12 @@ import java.time.Instant;
 public class LoyaltyTier {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
-    @Column(nullable = false, name = "company_id")
-    private Long companyId;
+    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    private UUID companyId;
 
     @Column(nullable = false, length = 60)
     private String name;

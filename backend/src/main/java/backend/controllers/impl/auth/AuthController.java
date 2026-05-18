@@ -2,6 +2,7 @@ package backend.controllers.impl.auth;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import backend.configurations.environment.EnvironmentSetting;
@@ -180,7 +181,7 @@ public class AuthController {
     @GetMapping("/devices")
     public ResponseEntity<?> listDevices() {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             List<DeviceResponse> devices = deviceService.getDevicesForUser(userId).stream()
                     .map(d -> new DeviceResponse(
                             d.getId(),
@@ -203,9 +204,9 @@ public class AuthController {
 
     @RequireAuth
     @DeleteMapping("/devices/{id}")
-    public ResponseEntity<?> removeDevice(@PathVariable long id) {
+    public ResponseEntity<?> removeDevice(@PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             deviceService.removeDevice(userId, id);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -356,8 +357,8 @@ public class AuthController {
                 new AuthResponse(result.accessToken(), result.email(), result.usertype(), result.userId()));
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

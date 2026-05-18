@@ -1,5 +1,6 @@
 package backend.services.intf.inventory;
 
+import java.util.UUID;
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
 
@@ -7,11 +8,11 @@ import java.util.List;
 
 public interface StockNotificationService {
 
-    StockNotificationResponse subscribe(long userId, SubscribeBackInStockRequest request);
+    StockNotificationResponse subscribe(UUID userId, SubscribeBackInStockRequest request);
 
-    void cancel(long userId, long notificationId);
+    void cancel(UUID userId, UUID notificationId);
 
-    List<StockNotificationResponse> listByUser(long userId);
+    List<StockNotificationResponse> listByUser(UUID userId);
 
-    void notifySubscribers(long productId, long variantRef);
+    void notifySubscribers(UUID productId, long variantRef);
 }

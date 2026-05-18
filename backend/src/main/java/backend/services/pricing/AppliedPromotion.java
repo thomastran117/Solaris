@@ -3,6 +3,7 @@ package backend.services.pricing;
 import backend.models.enums.PromotionRuleType;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * A rule that fired against the cart, with its net saving and the vendor that funds it.
@@ -10,9 +11,9 @@ import java.math.BigDecimal;
  * explicit funder set — this lets the order flow snapshot attribution unambiguously.
  */
 public record AppliedPromotion(
-        long ruleId,
+        UUID ruleId,
         String name,
         PromotionRuleType ruleType,
         BigDecimal savings,
-        long fundedByCompanyId
+        UUID fundedByCompanyId
 ) {}

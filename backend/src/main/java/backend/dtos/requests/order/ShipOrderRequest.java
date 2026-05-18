@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 public record ShipOrderRequest(
         /** Required carrier tracking number. */
@@ -18,5 +19,5 @@ public record ShipOrderRequest(
          * transitioned to SHIPPED. When provided, only the specified items are shipped,
          * enabling partial shipments that set order status to PARTIALLY_FULFILLED.
          */
-        List<Long> itemIds
+        List<UUID> itemIds
 ) {}

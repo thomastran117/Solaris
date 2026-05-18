@@ -1,5 +1,6 @@
 package backend.services.intf.analytics;
 
+import java.util.UUID;
 import backend.dtos.responses.forecasting.ForecastSummaryResponse;
 import backend.dtos.responses.forecasting.ProductForecastResponse;
 import backend.dtos.responses.forecasting.ReorderSuggestionResponse;
@@ -15,14 +16,14 @@ public interface ForecastingService {
      * @param lookbackDays number of past days of PAID order history to use (14–365)
      * @param limit        maximum number of products to include in the response
      */
-    ForecastSummaryResponse getCompanyForecast(long companyId, long ownerId, int lookbackDays, int limit);
+    ForecastSummaryResponse getCompanyForecast(UUID companyId, UUID ownerId, int lookbackDays, int limit);
 
     /**
      * Returns a single-product demand forecast scoped to the given company.
      *
      * @param lookbackDays number of past days of PAID order history to use (14–365)
      */
-    ProductForecastResponse getProductForecast(long companyId, long productId, long ownerId, int lookbackDays);
+    ProductForecastResponse getProductForecast(UUID companyId, UUID productId, UUID ownerId, int lookbackDays);
 
     /**
      * Returns products that need restocking, ranked by urgency.
@@ -30,7 +31,7 @@ public interface ForecastingService {
      * @param lookbackDays number of past days used to estimate daily velocity
      * @param limit        maximum number of suggestions to return
      */
-    List<ReorderSuggestionResponse> getReorderSuggestions(long companyId, long ownerId, int lookbackDays, int limit);
+    List<ReorderSuggestionResponse> getReorderSuggestions(UUID companyId, UUID ownerId, int lookbackDays, int limit);
 
     /**
      * Compares current 28-day demand to the same calendar window one year ago.
@@ -39,5 +40,5 @@ public interface ForecastingService {
      *
      * @param limit maximum number of products to include
      */
-    SeasonalPrepSummaryResponse getSeasonalPrep(long companyId, long ownerId, int limit);
+    SeasonalPrepSummaryResponse getSeasonalPrep(UUID companyId, UUID ownerId, int limit);
 }

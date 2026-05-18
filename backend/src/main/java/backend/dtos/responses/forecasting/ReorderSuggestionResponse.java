@@ -1,9 +1,10 @@
 package backend.dtos.responses.forecasting;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 public record ReorderSuggestionResponse(
-        long productId,
+        UUID productId,
         String productName,
         String sku,
         Integer currentStock,

@@ -6,12 +6,13 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class LocationResponse {
-    private Long id;
-    private Long companyId;
+    private UUID id;
+    private UUID companyId;
     private String name;
     private String code;
     private String address;

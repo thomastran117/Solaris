@@ -9,19 +9,20 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface CommissionRecordRepository extends JpaRepository<CommissionRecord, Long> {
+public interface CommissionRecordRepository extends JpaRepository<CommissionRecord, java.util.UUID> {
 
-    Optional<CommissionRecord> findBySubOrderId(long subOrderId);
+    Optional<CommissionRecord> findBySubOrderId(java.util.UUID subOrderId);
 
-    List<CommissionRecord> findAllByVendorId(long vendorId);
+    List<CommissionRecord> findAllByVendorId(UUID vendorId);
 
-    List<CommissionRecord> findAllByMarketplaceId(long marketplaceId);
+    List<CommissionRecord> findAllByMarketplaceId(UUID marketplaceId);
 
     /** Returns unreleased commission records whose hold period has expired. */
     @Query("SELECT r FROM CommissionRecord r WHERE r.holdReleased = false AND r.computedAt < :cutoff")
     List<CommissionRecord> findEligibleForRelease(@Param("cutoff") Instant cutoff);
 
-    List<CommissionRecord> findAllByVendorIdAndHoldReleasedFalse(long vendorId);
+    List<CommissionRecord> findAllByVendorIdAndHoldReleasedFalse(UUID vendorId);
 }

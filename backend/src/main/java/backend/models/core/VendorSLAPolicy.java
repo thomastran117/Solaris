@@ -26,11 +26,12 @@ import java.time.Instant;
 public class VendorSLAPolicy {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
-    @Column(nullable = false, name = "marketplace_id")
-    private Long marketplaceId;
+    @Column(nullable = false, name = "marketplace_id", columnDefinition = "BINARY(16)")
+    private java.util.UUID marketplaceId;
 
     @Column(nullable = false, length = 120)
     private String name;

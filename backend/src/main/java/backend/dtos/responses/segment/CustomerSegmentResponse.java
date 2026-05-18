@@ -1,9 +1,10 @@
 package backend.dtos.responses.segment;
 
+import java.util.UUID;
 import java.time.Instant;
 
 public record CustomerSegmentResponse(
-        Long id,
+        UUID id,
         String code,
         String name,
         String description,

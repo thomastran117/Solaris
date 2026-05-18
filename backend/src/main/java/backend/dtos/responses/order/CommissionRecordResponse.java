@@ -5,14 +5,15 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class CommissionRecordResponse {
-    private Long id;
-    private Long subOrderId;
-    private Long vendorId;
-    private Long marketplaceId;
+    private UUID id;
+    private UUID subOrderId;
+    private UUID vendorId;
+    private UUID marketplaceId;
     private BigDecimal commissionRate;
     private BigDecimal grossAmount;
     private BigDecimal commissionAmount;

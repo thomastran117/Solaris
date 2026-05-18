@@ -61,7 +61,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     @Override
     @Transactional
-    public TeamMembershipResponse inviteMember(long companyId, long inviterUserId, InviteTeamMemberRequest request) {
+    public TeamMembershipResponse inviteMember(UUID companyId, UUID inviterUserId, InviteTeamMemberRequest request) {
         Company company = companyAccessService.require(companyId, inviterUserId, CompanyCapability.MANAGE_COMPANY);
 
         CompanyRole role = request.getRole();
@@ -121,7 +121,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TeamMembershipResponse> listMembers(long companyId, long requestingUserId) {
+    public List<TeamMembershipResponse> listMembers(UUID companyId, UUID requestingUserId) {
         companyAccessService.require(companyId, requestingUserId, CompanyCapability.MANAGE_COMPANY);
         return membershipRepository
                 .findAllByCompanyIdAndStatusIn(companyId,
@@ -134,7 +134,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
     @Override
     @Transactional
     public TeamMembershipResponse updateMemberRole(
-            long companyId, long membershipId, long requestingUserId, UpdateTeamMemberRoleRequest request) {
+            UUID companyId, UUID membershipId, UUID requestingUserId, UpdateTeamMemberRoleRequest request) {
         companyAccessService.require(companyId, requestingUserId, CompanyCapability.MANAGE_COMPANY);
 
         CompanyMembership membership = membershipRepository.findById(membershipId)
@@ -161,7 +161,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     @Override
     @Transactional
-    public void revokeMember(long companyId, long membershipId, long requestingUserId) {
+    public void revokeMember(UUID companyId, UUID membershipId, UUID requestingUserId) {
         companyAccessService.require(companyId, requestingUserId, CompanyCapability.MANAGE_COMPANY);
 
         CompanyMembership membership = membershipRepository.findById(membershipId)
@@ -199,7 +199,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     @Override
     @Transactional
-    public TeamMembershipResponse acceptInvite(String token, long acceptingUserId) {
+    public TeamMembershipResponse acceptInvite(String token, UUID acceptingUserId) {
         CompanyMembership invite = loadValidPendingInvite(token);
 
         User acceptingUser = userRepository.findById(acceptingUserId)
@@ -228,7 +228,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     @Override
     @Transactional(readOnly = true)
-    public CompanyRoleResponse describeMyAccess(long companyId, long userId) {
+    public CompanyRoleResponse describeMyAccess(UUID companyId, UUID userId) {
         CompanyRole role = companyAccessService.resolveRole(companyId, userId)
                 .orElseThrow(() -> new ForbiddenException("You do not have access to this company"));
         Set<CompanyCapability> capabilities = CompanyCapability.capabilitiesFor(role);
@@ -252,7 +252,7 @@ public class CompanyMembershipServiceImpl implements CompanyMembershipService {
 
     private TeamMembershipResponse toResponse(CompanyMembership m) {
         User u = m.getUser();
-        Long userId = u == null ? null : u.getId();
+        UUID userId = u == null ? null : u.getId();
         String displayName = u == null ? null : displayName(u);
         String email = u != null && u.getEmail() != null ? u.getEmail() : m.getInviteEmail();
         return new TeamMembershipResponse(

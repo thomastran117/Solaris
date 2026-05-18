@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -48,7 +49,7 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
 
     @Override
     @Transactional
-    public ReviewMediaResponse attachMedia(long companyId, long productId, long reviewId, long userId, AttachReviewMediaRequest request) {
+    public ReviewMediaResponse attachMedia(long companyId, long productId, long reviewId, UUID userId, AttachReviewMediaRequest request) {
         ProductReview review = loadOwnedReview(companyId, productId, reviewId, userId);
 
         String url = request.getUrl();
@@ -80,7 +81,7 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
 
     @Override
     @Transactional
-    public void deleteMedia(long companyId, long productId, long reviewId, long mediaId, long userId) {
+    public void deleteMedia(long companyId, long productId, long reviewId, long mediaId, UUID userId) {
         ProductReview review = loadOwnedReview(companyId, productId, reviewId, userId);
         ReviewMedia media = mediaRepository.findByIdAndReviewId(mediaId, reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found"));
@@ -104,7 +105,7 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
                 .toList();
     }
 
-    private ProductReview loadOwnedReview(long companyId, long productId, long reviewId, long userId) {
+    private ProductReview loadOwnedReview(long companyId, long productId, long reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getProduct() == null
@@ -119,7 +120,7 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
         return review;
     }
 
-    private boolean isUrlInOurReviewMediaFolder(String url, long userId) {
+    private boolean isUrlInOurReviewMediaFolder(String url, UUID userId) {
         if (url == null || url.isBlank()) return false;
         EnvironmentSetting.S3 s3 = environmentSetting.getS3();
         String base = s3.getPublicUrlBase();

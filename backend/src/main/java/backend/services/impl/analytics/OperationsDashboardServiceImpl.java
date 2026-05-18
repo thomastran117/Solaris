@@ -1,5 +1,6 @@
 package backend.services.impl.analytics;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +71,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
 
     @Override
     @Transactional(readOnly = true)
-    public OperationsSummaryResponse getSummary(long companyId, long ownerId, int lookbackDays) {
+    public OperationsSummaryResponse getSummary(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         int days = clampLookback(lookbackDays);
         Window w = window(days);
@@ -93,28 +94,28 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
 
     @Override
     @Transactional(readOnly = true)
-    public DurationMetricResponse getFulfillmentMetric(long companyId, long ownerId, int lookbackDays) {
+    public DurationMetricResponse getFulfillmentMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         return cachedDuration(companyId, "fulfillment", lookbackDays, this::buildFulfillment);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public DurationMetricResponse getRefundMetric(long companyId, long ownerId, int lookbackDays) {
+    public DurationMetricResponse getRefundMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         return cachedDuration(companyId, "refunds", lookbackDays, this::buildRefund);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public DurationMetricResponse getPickDelayMetric(long companyId, long ownerId, int lookbackDays) {
+    public DurationMetricResponse getPickDelayMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         return cachedDuration(companyId, "pick-delays", lookbackDays, this::buildPickDelay);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public StockoutMetricResponse getStockoutMetric(long companyId, long ownerId, int lookbackDays) {
+    public StockoutMetricResponse getStockoutMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         int days = clampLookback(lookbackDays);
         Window w = window(days);
@@ -129,7 +130,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
 
     @Override
     @Transactional(readOnly = true)
-    public SupplierLatenessMetricResponse getSupplierLatenessMetric(long companyId, long ownerId, int lookbackDays) {
+    public SupplierLatenessMetricResponse getSupplierLatenessMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         int days = clampLookback(lookbackDays);
         Window w = window(days);
@@ -144,7 +145,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
 
     @Override
     @Transactional(readOnly = true)
-    public CancellationMetricResponse getCancellationMetric(long companyId, long ownerId, int lookbackDays) {
+    public CancellationMetricResponse getCancellationMetric(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwnership(companyId, ownerId);
         int days = clampLookback(lookbackDays);
         Window w = window(days);
@@ -289,7 +290,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         }
     }
 
-    private void verifyOwnership(long companyId, long ownerId) {
+    private void verifyOwnership(long companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 

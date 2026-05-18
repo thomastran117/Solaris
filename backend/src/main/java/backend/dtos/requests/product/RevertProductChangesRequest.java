@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Reverts one or more {@code ProductChangeLog} entries by id. Each entry must belong to the
@@ -17,7 +18,7 @@ import java.util.List;
 public class RevertProductChangesRequest {
 
     @NotEmpty(message = "logEntryIds must not be empty")
-    private List<@NotNull Long> logEntryIds;
+    private List<@NotNull UUID> logEntryIds;
 
     /**
      * Optimistic-lock guard: caller's expected {@code Product.version}. When non-null and the

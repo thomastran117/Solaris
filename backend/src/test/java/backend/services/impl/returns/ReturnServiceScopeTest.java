@@ -1,5 +1,7 @@
 package backend.services.impl.returns;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.configurations.environment.RiskProperties;
 import backend.dtos.requests.return_.BuyerInitiateReturnRequest;
 import backend.dtos.requests.return_.BuyerReturnItemRequest;
@@ -85,14 +87,14 @@ class ReturnServiceScopeTest {
 
     @Test
     void requestReturn_rejectsMixedCompanyItems() {
-        User buyer = makeUser(7L);
+        User buyer = makeUser(TestIds.uuid(7));
         Order order = makeOrder(55L, buyer, OrderStatus.DELIVERED);
         order.setItems(List.of(
                 makeProductOrderItem(101L, 1L),
                 makeProductOrderItem(102L, 2L)));
 
         when(orderRepository.findByIdAndUserId(55L, 7L)).thenReturn(Optional.of(order));
-        when(userRepository.getReferenceById(7L)).thenReturn(buyer);
+        when(userRepository.getReferenceById(TestIds.uuid(7))).thenReturn(buyer);
         when(returnItemRepository.sumReturnedQuantityByOrderItemId(101L)).thenReturn(0);
 
         BuyerInitiateReturnRequest request = new BuyerInitiateReturnRequest(
@@ -109,7 +111,7 @@ class ReturnServiceScopeTest {
     @Test
     void merchantInitiateReturn_rejectsItemsOutsideCompanyScope() {
         Company company = makeCompany(1L);
-        Order order = makeOrder(44L, makeUser(5L), OrderStatus.DELIVERED);
+        Order order = makeOrder(44L, makeUser(TestIds.uuid(5)), OrderStatus.DELIVERED);
         order.setItems(List.of(
                 makeProductOrderItem(201L, 1L),
                 makeProductOrderItem(202L, 2L)));
@@ -176,7 +178,7 @@ class ReturnServiceScopeTest {
         return company;
     }
 
-    private User makeUser(long id) {
+    private User makeUser(UUID id) {
         User user = new User();
         user.setId(id);
         return user;

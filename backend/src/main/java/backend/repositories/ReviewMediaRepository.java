@@ -8,15 +8,16 @@ import backend.models.core.ReviewMedia;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface ReviewMediaRepository extends JpaRepository<ReviewMedia, Long> {
+public interface ReviewMediaRepository extends JpaRepository<ReviewMedia, UUID> {
 
-    List<ReviewMedia> findByReviewIdOrderByPositionAsc(long reviewId);
+    List<ReviewMedia> findByReviewIdOrderByPositionAsc(UUID reviewId);
 
-    List<ReviewMedia> findByReviewIdInOrderByReviewIdAscPositionAsc(Collection<Long> reviewIds);
+    List<ReviewMedia> findByReviewIdInOrderByReviewIdAscPositionAsc(Collection<UUID> reviewIds);
 
-    long countByReviewId(long reviewId);
+    long countByReviewId(UUID reviewId);
 
-    Optional<ReviewMedia> findByIdAndReviewId(long id, long reviewId);
+    Optional<ReviewMedia> findByIdAndReviewId(UUID id, UUID reviewId);
 }

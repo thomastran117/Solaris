@@ -1,5 +1,6 @@
 package backend.services.intf.promotions;
 
+import java.util.UUID;
 import backend.dtos.requests.loyalty.AdjustPointsRequest;
 import backend.dtos.requests.loyalty.CreateLoyaltyPolicyRequest;
 import backend.dtos.requests.loyalty.CreateLoyaltyTierRequest;
@@ -20,11 +21,11 @@ public interface LoyaltyService {
     // Customer self-service
     // -------------------------------------------------------------------------
 
-    LoyaltyAccountResponse getAccount(long userId, long companyId);
+    LoyaltyAccountResponse getAccount(UUID userId, UUID companyId);
 
-    PagedResponse<LoyaltyTransactionResponse> getTransactions(long userId, long companyId, int page, int size);
+    PagedResponse<LoyaltyTransactionResponse> getTransactions(UUID userId, UUID companyId, int page, int size);
 
-    LoyaltyRedemptionQuoteResponse getRedemptionQuote(long userId, long companyId, int pointsToRedeem);
+    LoyaltyRedemptionQuoteResponse getRedemptionQuote(UUID userId, UUID companyId, int pointsToRedeem);
 
     // -------------------------------------------------------------------------
     // Order integration (called from OrderServiceImpl)
@@ -35,19 +36,19 @@ public interface LoyaltyService {
      * discount in cents. Called during createOrder, before PaymentIntent creation.
      * Caller must call restoreRedeemedPoints on failure.
      */
-    long applyRedemption(long userId, long companyId, long orderId, int pointsToRedeem);
+    long applyRedemption(UUID userId, UUID companyId, UUID orderId, int pointsToRedeem);
 
     /**
      * Awards points (and optionally cashback credits) for a completed order.
      * Called from handlePaymentSuccess and createRenewalOrder paths.
      */
-    void recordOrderEarn(Order order, long companyId);
+    void recordOrderEarn(Order order, UUID companyId);
 
     /**
      * Reverses a REDEEM_ORDER transaction for the given order.
      * Safe to call even if no redemption exists (idempotent).
      */
-    void restoreRedeemedPoints(long orderId);
+    void restoreRedeemedPoints(UUID orderId);
 
     /**
      * Claws back loyalty points earned from a now-refunded order. Proportional to the
@@ -55,27 +56,27 @@ public interface LoyaltyService {
      * multiple times — incremental partial refunds reverse only the new delta beyond
      * what's already been reversed. No-op if the order never earned points.
      */
-    void clawbackEarnedPoints(long orderId, long refundedAmountCents, long orderTotalCents);
+    void clawbackEarnedPoints(UUID orderId, long refundedAmountCents, long orderTotalCents);
 
     // -------------------------------------------------------------------------
     // Operator actions
     // -------------------------------------------------------------------------
 
-    LoyaltyTransactionResponse issueBonus(long companyId, long ownerId, IssueBonusRequest request);
+    LoyaltyTransactionResponse issueBonus(UUID companyId, UUID ownerId, IssueBonusRequest request);
 
-    LoyaltyTransactionResponse adjustPoints(long accountId, long companyId, long ownerId, AdjustPointsRequest request);
+    LoyaltyTransactionResponse adjustPoints(UUID accountId, UUID companyId, UUID ownerId, AdjustPointsRequest request);
 
     // -------------------------------------------------------------------------
     // Policy & tier management (operator)
     // -------------------------------------------------------------------------
 
-    LoyaltyPolicyResponse createOrUpdatePolicy(long companyId, long ownerId, CreateLoyaltyPolicyRequest request);
+    LoyaltyPolicyResponse createOrUpdatePolicy(UUID companyId, UUID ownerId, CreateLoyaltyPolicyRequest request);
 
-    LoyaltyPolicyResponse getPolicy(long companyId);
+    LoyaltyPolicyResponse getPolicy(UUID companyId);
 
-    LoyaltyTierResponse createTier(long companyId, long ownerId, CreateLoyaltyTierRequest request);
+    LoyaltyTierResponse createTier(UUID companyId, UUID ownerId, CreateLoyaltyTierRequest request);
 
-    LoyaltyTierResponse updateTier(long tierId, long companyId, long ownerId, CreateLoyaltyTierRequest request);
+    LoyaltyTierResponse updateTier(UUID tierId, UUID companyId, UUID ownerId, CreateLoyaltyTierRequest request);
 
-    List<LoyaltyTierResponse> listTiers(long companyId);
+    List<LoyaltyTierResponse> listTiers(UUID companyId);
 }

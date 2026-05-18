@@ -1,5 +1,6 @@
 package backend.seeds;
 
+import java.util.UUID;
 import backend.models.core.LoyaltyAccount;
 import backend.repositories.LoyaltyAccountRepository;
 import backend.seeds.CompanySeeder.SeededCompanies;
@@ -21,7 +22,7 @@ public class LoyaltySeeder {
         account(users.carol().getId(),  companies.wellness().getId(),  890L,  1200L);
     }
 
-    private void account(Long userId, Long companyId, long points, long lifetime) {
+    private void account(UUID userId, Long companyId, long points, long lifetime) {
         if (loyaltyAccountRepository.findByUserIdAndCompanyId(userId, companyId).isPresent()) return;
         LoyaltyAccount la = new LoyaltyAccount();
         la.setUserId(userId);

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -56,8 +57,8 @@ public class AuthServiceImpl implements AuthService {
         User user = userService.getUserByID(payload.userId());
 
         tokenService.revokeRefreshToken(refreshToken);
-        String newRefreshToken = tokenService.generateRefreshToken(user.getId().intValue(), user.getRole().toString(), user.getEmail());
-        String newAccessToken = tokenService.generateAccessToken(user.getId().intValue(), user.getRole().toString(), user.getEmail());
+        String newRefreshToken = tokenService.generateRefreshToken(user.getId(), user.getRole().toString(), user.getEmail());
+        String newAccessToken = tokenService.generateAccessToken(user.getId(), user.getRole().toString(), user.getEmail());
         long expiresIn = tokenService.getAccessTokenExpiresInSeconds();
 
         return new RefreshResult(newAccessToken, newRefreshToken, expiresIn);
@@ -94,7 +95,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void verifyEmail(String token) {
-        long userId = emailVerificationService.consumeVerificationToken(token);
+        UUID userId = emailVerificationService.consumeVerificationToken(token);
         userService.activateUser(userId);
     }
 
@@ -119,7 +120,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void revokeAllRefreshTokensForUser(int userId) {
+    public void revokeAllRefreshTokensForUser(UUID userId) {
         tokenService.revokeAllRefreshTokensForUser(userId);
     }
 
@@ -139,7 +140,7 @@ public class AuthServiceImpl implements AuthService {
 
     private LoginResult buildLoginResult(User user) {
         Map<String, Object> tokens = tokenService.generateTokenPair(
-                user.getId().intValue(), user.getRole().toString(), user.getEmail());
+                user.getId(), user.getRole().toString(), user.getEmail());
         return new LoginResult(
                 (String) tokens.get("accessToken"),
                 (String) tokens.get("refreshToken"),

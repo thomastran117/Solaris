@@ -1,5 +1,6 @@
 package backend.controllers.impl.returns;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -30,9 +31,9 @@ public class CompanyReturnLocationController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ReturnLocationResponse>> getReturnLocations(@PathVariable long companyId) {
+    public ResponseEntity<List<ReturnLocationResponse>> getReturnLocations(@PathVariable UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(returnLocationService.getReturnLocations(companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -43,10 +44,10 @@ public class CompanyReturnLocationController {
 
     @PostMapping
     public ResponseEntity<ReturnLocationResponse> createReturnLocation(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestBody @Valid CreateReturnLocationRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(returnLocationService.createReturnLocation(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -58,11 +59,11 @@ public class CompanyReturnLocationController {
 
     @PatchMapping("/{locationId}")
     public ResponseEntity<ReturnLocationResponse> updateReturnLocation(
-            @PathVariable long companyId,
-            @PathVariable long locationId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId,
             @RequestBody @Valid UpdateReturnLocationRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(returnLocationService.updateReturnLocation(locationId, companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -73,10 +74,10 @@ public class CompanyReturnLocationController {
 
     @DeleteMapping("/{locationId}")
     public ResponseEntity<Void> deleteReturnLocation(
-            @PathVariable long companyId,
-            @PathVariable long locationId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             returnLocationService.deleteReturnLocation(locationId, companyId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -86,8 +87,8 @@ public class CompanyReturnLocationController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -5,15 +5,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface MarketplaceProfileRepository extends JpaRepository<MarketplaceProfile, Long> {
+public interface MarketplaceProfileRepository extends JpaRepository<MarketplaceProfile, UUID> {
 
-    Optional<MarketplaceProfile> findByCompanyId(long companyId);
+    Optional<MarketplaceProfile> findByCompanyId(UUID companyId);
 
     Optional<MarketplaceProfile> findBySlug(String slug);
 
-    boolean existsByCompanyId(long companyId);
+    boolean existsByCompanyId(UUID companyId);
 
     boolean existsBySlug(String slug);
 }

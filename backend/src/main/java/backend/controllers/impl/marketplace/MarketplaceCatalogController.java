@@ -1,5 +1,6 @@
 package backend.controllers.impl.marketplace;
 
+import java.util.UUID;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
@@ -41,40 +42,40 @@ public class MarketplaceCatalogController {
 
     @PostMapping("/products/{productId}/view")
     public ResponseEntity<Void> trackView(
-            @PathVariable long marketplaceId,
-            @PathVariable long productId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID productId,
             @RequestBody(required = false) TrackViewRequest body,
             HttpServletRequest request) {
         if ("1".equals(request.getHeader("DNT"))) {
             return ResponseEntity.noContent().build();
         }
-        Long userId = resolveUserIdOrNull();
+        UUID userId = resolveUserIdOrNull();
         String sessionId = (body != null) ? body.sessionId() : null;
         activityEventPublisher.publish(new UserActivityEvent(
-                userId, sessionId, productId, marketplaceId, ActivityType.VIEW, Instant.now()));
+                userId, sessionId, productId, null, ActivityType.VIEW, Instant.now()));
         return ResponseEntity.noContent().build();
     }
 
-    private Long resolveUserIdOrNull() {
+    private UUID resolveUserIdOrNull() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth == null || !auth.isAuthenticated()) return null;
             Object principal = auth.getPrincipal();
-            if (principal instanceof Number) return ((Number) principal).longValue();
+            if (principal instanceof UUID uuid) return uuid;
         } catch (Exception ignored) {}
         return null;
     }
 
     @GetMapping("/products")
     public ResponseEntity<CatalogSearchResponse> searchCatalog(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) @Size(max = 100) String category,
             @RequestParam(required = false) @Size(max = 100) String brand,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Boolean featured,
-            @RequestParam(required = false) Long vendorId,
+            @RequestParam(required = false) UUID vendorId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
             @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
@@ -92,8 +93,8 @@ public class MarketplaceCatalogController {
 
     @GetMapping("/products/{productId}")
     public ResponseEntity<MarketplaceCatalogProductResponse> getProduct(
-            @PathVariable long marketplaceId,
-            @PathVariable long productId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(productService.getMarketplaceProduct(marketplaceId, productId));
         } catch (AppHttpException e) {
@@ -105,8 +106,8 @@ public class MarketplaceCatalogController {
 
     @GetMapping("/vendors/{vendorId}/storefront")
     public ResponseEntity<VendorStorefrontResponse> getVendorStorefront(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
             return ResponseEntity.ok(productService.getVendorStorefront(marketplaceId, vendorId));
         } catch (AppHttpException e) {

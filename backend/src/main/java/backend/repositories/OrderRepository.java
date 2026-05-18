@@ -17,18 +17,19 @@ import backend.models.enums.OrderStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface OrderRepository extends JpaRepository<Order, Long> {
-    Page<Order> findAllByUserId(long userId, Pageable pageable);
-    Optional<Order> findByIdAndUserId(long id, long userId);
-    Optional<Order> findFirstByUserIdOrderByCreatedAtDesc(long userId);
+public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
+    Page<Order> findAllByUserId(UUID userId, Pageable pageable);
+    Optional<Order> findByIdAndUserId(java.util.UUID id, UUID userId);
+    Optional<Order> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
 
     @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.id = :id AND o.user.id = :userId")
-    Optional<Order> findByIdAndUserIdWithItems(@Param("id") long id, @Param("userId") long userId);
+    Optional<Order> findByIdAndUserIdWithItems(@Param("id") java.util.UUID id, @Param("userId") UUID userId);
 
     /** Total orders placed by this user — feeds CouponAbuseEvaluator's first-order heuristic. */
-    long countByUserId(long userId);
+    long countByUserId(UUID userId);
 
     /**
      * Count of the user's orders that have moved past the just-created RESERVED state.
@@ -38,25 +39,25 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * neither is really a "prior" order.
      */
     @Query("SELECT COUNT(o) FROM Order o WHERE o.user.id = :userId AND o.status <> :excludeStatus")
-    long countByUserIdExcludingStatus(@Param("userId") long userId,
+    long countByUserIdExcludingStatus(@Param("userId") UUID userId,
                                       @Param("excludeStatus") OrderStatus excludeStatus);
     Optional<Order> findByPaymentIntentId(String paymentIntentId);
     Optional<Order> findByStripeInvoiceId(String stripeInvoiceId);
-    Page<Order> findAllByUserIdAndStatus(long userId, OrderStatus status, Pageable pageable);
+    Page<Order> findAllByUserIdAndStatus(UUID userId, OrderStatus status, Pageable pageable);
     List<Order> findAllByStatusAndCompensatedFalseAndCreatedAtBefore(OrderStatus status, Instant before);
 
     @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId")
-    Page<Order> findAllByProductCompanyId(@Param("companyId") long companyId, Pageable pageable);
+    Page<Order> findAllByProductCompanyId(@Param("companyId") java.util.UUID companyId, Pageable pageable);
 
     @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId AND o.status = :status")
-    Page<Order> findAllByProductCompanyIdAndStatus(@Param("companyId") long companyId, @Param("status") OrderStatus status, Pageable pageable);
+    Page<Order> findAllByProductCompanyIdAndStatus(@Param("companyId") java.util.UUID companyId, @Param("status") OrderStatus status, Pageable pageable);
 
     @Query("SELECT o FROM Order o JOIN o.items oi WHERE o.id = :orderId AND oi.product.company.id = :companyId")
-    Optional<Order> findByIdAndProductCompanyId(@Param("orderId") long orderId, @Param("companyId") long companyId);
+    Optional<Order> findByIdAndProductCompanyId(@Param("orderId") java.util.UUID orderId, @Param("companyId") java.util.UUID companyId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM Order o JOIN o.items oi WHERE o.id = :orderId AND oi.product.company.id = :companyId")
-    Optional<Order> findByIdAndProductCompanyIdForUpdate(@Param("orderId") long orderId, @Param("companyId") long companyId);
+    Optional<Order> findByIdAndProductCompanyIdForUpdate(@Param("orderId") java.util.UUID orderId, @Param("companyId") java.util.UUID companyId);
 
     /**
      * Atomically claims compensation rights for an order. Returns 1 if this caller is the
@@ -65,7 +66,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      */
     @Modifying
     @Query("UPDATE Order o SET o.compensated = true WHERE o.id = :id AND o.compensated = false")
-    int markCompensated(@Param("id") long id);
+    int markCompensated(@Param("id") java.util.UUID id);
 
     /**
      * Atomically transitions an order from expectedStatus to newStatus. Returns 1 if the
@@ -74,7 +75,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      */
     @Modifying
     @Query("UPDATE Order o SET o.status = :newStatus WHERE o.id = :id AND o.status = :expectedStatus")
-    int transitionStatus(@Param("id") long id,
+    int transitionStatus(@Param("id") java.util.UUID id,
                          @Param("expectedStatus") OrderStatus expectedStatus,
                          @Param("newStatus") OrderStatus newStatus);
 
@@ -90,7 +91,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("UPDATE Order o SET o.refundedAmountCents = " +
            "CASE WHEN o.refundedAmountCents + :delta < 0 THEN 0 ELSE o.refundedAmountCents + :delta END " +
            "WHERE o.id = :id")
-    int addRefundAmountDelta(@Param("id") long id, @Param("delta") long delta);
+    int addRefundAmountDelta(@Param("id") java.util.UUID id, @Param("delta") long delta);
 
     /**
      * FIFO: PAID orders that contain at least one BACKORDERED item for the given product.
@@ -102,7 +103,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "AND i.fulfillmentStatus = :backordered " +
            "ORDER BY o.createdAt ASC")
     List<Order> findPaidOrdersWithBackorderedProduct(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("backordered") FulfillmentStatus backordered);
 
     /**
@@ -115,7 +116,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "AND i.fulfillmentStatus = :backordered " +
            "ORDER BY o.createdAt ASC")
     List<Order> findPaidOrdersWithBackorderedVariant(
-            @Param("variantId") long variantId,
+            @Param("variantId") java.util.UUID variantId,
             @Param("backordered") FulfillmentStatus backordered);
 
     // -------------------------------------------------------------------------
@@ -129,7 +130,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COUNT(DISTINCT o) FROM Order o JOIN o.items i " +
            "WHERE i.product.company.id = :companyId " +
            "AND o.createdAt BETWEEN :from AND :to")
-    long countOrdersInWindow(@Param("companyId") long companyId,
+    long countOrdersInWindow(@Param("companyId") java.util.UUID companyId,
                              @Param("from") Instant from, @Param("to") Instant to);
 
     /**
@@ -140,13 +141,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "WHERE i.product.company.id = :companyId " +
            "AND o.createdAt BETWEEN :from AND :to " +
            "AND i.fulfillmentStatus = backend.models.enums.FulfillmentStatus.BACKORDERED")
-    long countOrdersWithBackorderedItemsInWindow(@Param("companyId") long companyId,
+    long countOrdersWithBackorderedItemsInWindow(@Param("companyId") java.util.UUID companyId,
                                                  @Param("from") Instant from, @Param("to") Instant to);
 
     @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items i " +
            "WHERE o.user.id = :userId " +
            "AND i.product.id = :productId " +
            "AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)")
-    boolean existsDeliveredOrShippedOrderForProduct(@Param("userId") long userId,
-                                                    @Param("productId") long productId);
+    boolean existsDeliveredOrShippedOrderForProduct(@Param("userId") UUID userId,
+                                                    @Param("productId") java.util.UUID productId);
 }

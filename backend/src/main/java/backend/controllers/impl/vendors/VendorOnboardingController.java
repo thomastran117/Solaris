@@ -1,5 +1,6 @@
 package backend.controllers.impl.vendors;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.vendor.*;
 import backend.dtos.responses.general.PagedResponse;
@@ -40,10 +41,10 @@ public class VendorOnboardingController {
     @PostMapping("/apply")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> apply(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @Valid @RequestBody ApplyVendorRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(vendorOnboardingService.applyToMarketplace(marketplaceId, userId, request));
         } catch (AppHttpException e) {
@@ -56,11 +57,11 @@ public class VendorOnboardingController {
     @PatchMapping("/{vendorId}/onboarding/profile")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> updateProfile(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody UpdateVendorProfileRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.updateProfile(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -72,11 +73,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/onboarding/tax")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> submitTax(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody SubmitVendorTaxRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.submitTaxInfo(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -88,11 +89,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/onboarding/stripe-link")
     @RequireAuth
     public ResponseEntity<StripeOnboardingLinkResponse> getStripeOnboardingLink(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody GenerateStripeOnboardingLinkRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(
                     vendorOnboardingService.generateStripeOnboardingLink(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
@@ -105,12 +106,12 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/onboarding/documents")
     @RequireAuth
     public ResponseEntity<VendorDocumentResponse> recordDocument(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @RequestParam VendorDocumentType documentType,
             @RequestParam String s3Key) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(vendorOnboardingService.recordDocumentUpload(
                             marketplaceId, vendorId, userId, documentType, s3Key));
@@ -124,10 +125,10 @@ public class VendorOnboardingController {
     @GetMapping("/{vendorId}/onboarding/documents")
     @RequireAuth
     public ResponseEntity<List<VendorDocumentResponse>> listDocuments(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.listDocuments(marketplaceId, vendorId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -139,10 +140,10 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/submit")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> submitForReview(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.submitForReview(marketplaceId, vendorId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -153,9 +154,9 @@ public class VendorOnboardingController {
 
     @GetMapping("/me")
     @RequireAuth
-    public ResponseEntity<MarketplaceVendorResponse> getMyVendorRecord(@PathVariable long marketplaceId) {
+    public ResponseEntity<MarketplaceVendorResponse> getMyVendorRecord(@PathVariable UUID marketplaceId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.getMyVendorRecord(marketplaceId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -171,7 +172,7 @@ public class VendorOnboardingController {
     @GetMapping
     @RequireAuth
     public ResponseEntity<PagedResponse<MarketplaceVendorResponse>> listVendors(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @RequestParam(required = false) VendorStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
@@ -187,8 +188,8 @@ public class VendorOnboardingController {
     @GetMapping("/{vendorId}")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> getVendor(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
             return ResponseEntity.ok(vendorOnboardingService.getVendor(marketplaceId, vendorId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -201,11 +202,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/approve")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> approve(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody VendorActionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.approveVendor(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -217,11 +218,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/reject")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> reject(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody VendorActionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.rejectVendor(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -233,11 +234,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/suspend")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> suspend(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody VendorActionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.suspendVendor(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -249,10 +250,10 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/reinstate")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> reinstate(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId) {
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.reinstateVendor(marketplaceId, vendorId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -264,11 +265,11 @@ public class VendorOnboardingController {
     @PostMapping("/{vendorId}/needs-info")
     @RequireAuth
     public ResponseEntity<MarketplaceVendorResponse> requestMoreInfo(
-            @PathVariable long marketplaceId,
-            @PathVariable long vendorId,
+            @PathVariable UUID marketplaceId,
+            @PathVariable UUID vendorId,
             @Valid @RequestBody VendorActionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(vendorOnboardingService.requestMoreInfo(marketplaceId, vendorId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -277,8 +278,8 @@ public class VendorOnboardingController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

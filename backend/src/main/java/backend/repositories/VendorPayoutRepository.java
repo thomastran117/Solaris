@@ -11,21 +11,22 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface VendorPayoutRepository extends JpaRepository<VendorPayout, Long> {
+public interface VendorPayoutRepository extends JpaRepository<VendorPayout, java.util.UUID> {
 
-    Page<VendorPayout> findByVendorId(long vendorId, Pageable pageable);
+    Page<VendorPayout> findByVendorId(UUID vendorId, Pageable pageable);
 
-    Page<VendorPayout> findByVendorIdAndStatus(long vendorId, PayoutStatus status, Pageable pageable);
+    Page<VendorPayout> findByVendorIdAndStatus(UUID vendorId, PayoutStatus status, Pageable pageable);
 
     Optional<VendorPayout> findByStripeTransferId(String stripeTransferId);
 
     List<VendorPayout> findAllByStatus(PayoutStatus status);
 
-    Optional<VendorPayout> findByIdAndVendorId(long id, long vendorId);
+    Optional<VendorPayout> findByIdAndVendorId(java.util.UUID id, UUID vendorId);
 
     @Query("SELECT p FROM VendorPayout p WHERE p.vendorId = :vendorId AND p.status = :status")
     List<VendorPayout> findByVendorIdAndStatusList(
-            @Param("vendorId") long vendorId, @Param("status") PayoutStatus status);
+            @Param("vendorId") UUID vendorId, @Param("status") PayoutStatus status);
 }

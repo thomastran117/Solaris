@@ -4,15 +4,16 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class MarketplaceProfileResponse {
-    private Long id;
-    private Long companyId;
+    private UUID id;
+    private UUID companyId;
     private String companyName;
     private String slug;
-    private Long defaultCommissionPolicyId;
+    private UUID defaultCommissionPolicyId;
     private String payoutSchedule;
     private int holdPeriodDays;
     private String defaultCurrency;

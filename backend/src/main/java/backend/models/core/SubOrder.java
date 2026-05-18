@@ -29,8 +29,9 @@ import java.time.Instant;
 public class SubOrder {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /**
      * Optimistic-lock guard. Vendor and marketplace operators can concurrently approve,

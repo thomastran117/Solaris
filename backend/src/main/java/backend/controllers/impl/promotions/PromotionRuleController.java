@@ -1,5 +1,6 @@
 package backend.controllers.impl.promotions;
 
+import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,7 +42,7 @@ public class PromotionRuleController {
     @GetMapping
     @RequireAuth
     public ResponseEntity<PagedResponse<PromotionRuleResponse>> listRules(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
@@ -56,8 +57,8 @@ public class PromotionRuleController {
     @GetMapping("/{ruleId}")
     @RequireAuth
     public ResponseEntity<PromotionRuleResponse> getRule(
-            @PathVariable long companyId,
-            @PathVariable long ruleId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID ruleId) {
         try {
             return ResponseEntity.ok(promotionRuleService.getRule(companyId, ruleId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -70,7 +71,7 @@ public class PromotionRuleController {
     @PostMapping
     @RequireAuth
     public ResponseEntity<PromotionRuleResponse> createRule(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreatePromotionRuleRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -85,8 +86,8 @@ public class PromotionRuleController {
     @PatchMapping("/{ruleId}")
     @RequireAuth
     public ResponseEntity<PromotionRuleResponse> updateRule(
-            @PathVariable long companyId,
-            @PathVariable long ruleId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID ruleId,
             @Valid @RequestBody UpdatePromotionRuleRequest request) {
         try {
             return ResponseEntity.ok(promotionRuleService.updateRule(companyId, ruleId, resolveUserId(), request));
@@ -100,8 +101,8 @@ public class PromotionRuleController {
     @DeleteMapping("/{ruleId}")
     @RequireAuth
     public ResponseEntity<Void> deleteRule(
-            @PathVariable long companyId,
-            @PathVariable long ruleId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID ruleId) {
         try {
             promotionRuleService.deleteRule(companyId, ruleId, resolveUserId());
             return ResponseEntity.noContent().build();
@@ -115,8 +116,8 @@ public class PromotionRuleController {
     @GetMapping("/{ruleId}/analytics")
     @RequireAuth
     public ResponseEntity<PromotionRuleAnalyticsResponse> getRuleAnalytics(
-            @PathVariable long companyId,
-            @PathVariable long ruleId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID ruleId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         try {
@@ -129,8 +130,8 @@ public class PromotionRuleController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

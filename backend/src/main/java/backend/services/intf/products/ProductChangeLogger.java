@@ -1,5 +1,6 @@
 package backend.services.intf.products;
 
+import java.util.UUID;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.enums.ChangeSource;
@@ -18,13 +19,13 @@ public interface ProductChangeLogger {
 
     void logCreate(Product saved, ChangeSource source);
 
-    void logUpdate(Product before, Product after, ChangeSource source, Long revertedFromLogId);
+    void logUpdate(Product before, Product after, ChangeSource source, UUID revertedFromLogId);
 
     void logDelete(Product before);
 
     void logVariantCreate(ProductVariant saved, ChangeSource source);
 
-    void logVariantUpdate(ProductVariant before, ProductVariant after, ChangeSource source, Long revertedFromLogId);
+    void logVariantUpdate(ProductVariant before, ProductVariant after, ChangeSource source, UUID revertedFromLogId);
 
     void logVariantDelete(ProductVariant before);
 

@@ -1,5 +1,6 @@
 package backend.controllers.impl.profile;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.preference.SetTrackingOptOutRequest;
 import backend.dtos.responses.preference.UserPreferenceResponse;
@@ -26,7 +27,7 @@ public class UserPreferenceController {
     @GetMapping
     public ResponseEntity<UserPreferenceResponse> getPreferences() {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             boolean optedOut = userPreferenceService.isTrackingOptedOut(userId);
             return ResponseEntity.ok(new UserPreferenceResponse(optedOut));
         } catch (AppHttpException e) {
@@ -48,8 +49,8 @@ public class UserPreferenceController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -1,5 +1,6 @@
 package backend.controllers.impl.analytics;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,11 +47,11 @@ public class AnalyticsController {
     @GetMapping("/hot-products")
     @RequireAuth
     public ResponseEntity<HotProductsResponse> getHotProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "1h") String window,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int limit) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(demandService.getHotProducts(companyId, userId, window, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -62,7 +63,7 @@ public class AnalyticsController {
     @GetMapping("/revenue-summary")
     @RequireAuth
     public ResponseEntity<CompanyRevenueSummaryResponse> getRevenueSummary(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(
@@ -77,7 +78,7 @@ public class AnalyticsController {
     @GetMapping("/category-sales")
     @RequireAuth
     public ResponseEntity<CategorySalesResponse> getCategorySales(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(
@@ -92,7 +93,7 @@ public class AnalyticsController {
     @GetMapping("/slow-movers")
     @RequireAuth
     public ResponseEntity<SlowMoversResponse> getSlowMovers(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "90") @Min(7) @Max(365) int days) {
         try {
             return ResponseEntity.ok(
@@ -107,7 +108,7 @@ public class AnalyticsController {
     @GetMapping("/product-performance")
     @RequireAuth
     public ResponseEntity<ProductPerformanceResponse> getProductPerformance(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "30") @Min(7) @Max(365) int lookbackDays) {
         try {
             return ResponseEntity.ok(
@@ -119,8 +120,8 @@ public class AnalyticsController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

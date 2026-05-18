@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface VendorAuditLogRepository extends JpaRepository<VendorAuditLog, Long> {
+public interface VendorAuditLogRepository extends JpaRepository<VendorAuditLog, java.util.UUID> {
 
-    Page<VendorAuditLog> findByMarketplaceVendorIdOrderByCreatedAtDesc(long marketplaceVendorId, Pageable pageable);
+    Page<VendorAuditLog> findByMarketplaceVendorIdOrderByCreatedAtDesc(java.util.UUID marketplaceVendorId, Pageable pageable);
 }

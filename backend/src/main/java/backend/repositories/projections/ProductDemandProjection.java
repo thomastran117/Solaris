@@ -1,6 +1,7 @@
 package backend.repositories.projections;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Lightweight projection for demand-tracking queries.
@@ -8,7 +9,7 @@ import java.math.BigDecimal;
  * cares only about what sold, not what remains on the shelf.
  */
 public interface ProductDemandProjection {
-    Long getProductId();
+    UUID getProductId();
     String getProductName();
     String getSku();
     BigDecimal getPrice();

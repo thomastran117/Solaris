@@ -1,5 +1,6 @@
 package backend.services.impl.customers;
 
+import java.util.UUID;
 import backend.dtos.requests.address.CreateCustomerAddressRequest;
 import backend.dtos.requests.address.UpdateCustomerAddressRequest;
 import backend.dtos.responses.address.CustomerAddressResponse;
@@ -28,20 +29,20 @@ public class CustomerAddressServiceImpl implements CustomerAddressService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CustomerAddressResponse> listAddresses(long userId) {
+    public List<CustomerAddressResponse> listAddresses(UUID userId) {
         return addressRepository.findAllByUserIdOrderByIsDefaultDescCreatedAtAsc(userId)
                 .stream().map(this::toResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public CustomerAddressResponse getAddress(long userId, long addressId) {
+    public CustomerAddressResponse getAddress(UUID userId, UUID addressId) {
         return toResponse(findOwned(userId, addressId));
     }
 
     @Override
     @Transactional
-    public CustomerAddressResponse createAddress(long userId, CreateCustomerAddressRequest req) {
+    public CustomerAddressResponse createAddress(UUID userId, CreateCustomerAddressRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -71,7 +72,7 @@ public class CustomerAddressServiceImpl implements CustomerAddressService {
 
     @Override
     @Transactional
-    public CustomerAddressResponse updateAddress(long userId, long addressId,
+    public CustomerAddressResponse updateAddress(UUID userId, UUID addressId,
                                                  UpdateCustomerAddressRequest req) {
         CustomerAddress address = findOwned(userId, addressId);
 
@@ -90,7 +91,7 @@ public class CustomerAddressServiceImpl implements CustomerAddressService {
 
     @Override
     @Transactional
-    public void deleteAddress(long userId, long addressId) {
+    public void deleteAddress(UUID userId, UUID addressId) {
         CustomerAddress address = findOwned(userId, addressId);
         addressRepository.delete(address);
 
@@ -106,7 +107,7 @@ public class CustomerAddressServiceImpl implements CustomerAddressService {
 
     @Override
     @Transactional
-    public CustomerAddressResponse setDefault(long userId, long addressId) {
+    public CustomerAddressResponse setDefault(UUID userId, UUID addressId) {
         findOwned(userId, addressId); // ownership check
         addressRepository.clearDefaultForUser(userId);
         CustomerAddress address = findOwned(userId, addressId);
@@ -116,7 +117,7 @@ public class CustomerAddressServiceImpl implements CustomerAddressService {
 
     // -------------------------------------------------------------------------
 
-    private CustomerAddress findOwned(long userId, long addressId) {
+    private CustomerAddress findOwned(UUID userId, UUID addressId) {
         return addressRepository.findByIdAndUserId(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Address not found with id: " + addressId));

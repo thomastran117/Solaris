@@ -13,15 +13,16 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTransaction, Long> {
+public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTransaction, UUID> {
 
-    Page<LoyaltyTransaction> findByAccountId(long accountId, Pageable pageable);
+    Page<LoyaltyTransaction> findByAccountId(UUID accountId, Pageable pageable);
 
-    Optional<LoyaltyTransaction> findFirstBySourceOrderIdAndType(long sourceOrderId, LoyaltyTransactionType type);
+    Optional<LoyaltyTransaction> findFirstBySourceOrderIdAndType(UUID sourceOrderId, LoyaltyTransactionType type);
 
-    boolean existsBySourceOrderIdAndType(long sourceOrderId, LoyaltyTransactionType type);
+    boolean existsBySourceOrderIdAndType(UUID sourceOrderId, LoyaltyTransactionType type);
 
     /**
      * Sum of absolute points already reversed for {@code orderId} (used to compute the
@@ -29,16 +30,16 @@ public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTrans
      */
     @Query("SELECT COALESCE(SUM(ABS(t.pointsDelta)), 0) FROM LoyaltyTransaction t " +
            "WHERE t.sourceOrderId = :orderId AND t.type = :type")
-    long sumAbsPointsForOrderAndType(@Param("orderId") long orderId,
+    long sumAbsPointsForOrderAndType(@Param("orderId") UUID orderId,
                                      @Param("type") LoyaltyTransactionType type);
 
-    List<LoyaltyTransaction> findByUserIdAndCompanyId(long userId, long companyId);
+    List<LoyaltyTransaction> findByUserIdAndCompanyId(UUID userId, UUID companyId);
 
     /** Earn transactions that have expired and haven't been claimed by a prior expiry run. */
     @Query("SELECT t FROM LoyaltyTransaction t WHERE t.account.id = :accountId " +
            "AND t.type IN ('EARN_ORDER', 'EARN_BONUS', 'EARN_BIRTHDAY') " +
            "AND t.expiresAt IS NOT NULL AND t.expiresAt < :now AND t.expired = false")
-    List<LoyaltyTransaction> findExpiredEarns(@Param("accountId") long accountId, @Param("now") Instant now);
+    List<LoyaltyTransaction> findExpiredEarns(@Param("accountId") UUID accountId, @Param("now") Instant now);
 
     /**
      * Atomically claims an earn row for expiry. Returns 1 if this caller won the race,
@@ -46,12 +47,12 @@ public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTrans
      */
     @Modifying
     @Query("UPDATE LoyaltyTransaction t SET t.expired = true WHERE t.id = :id AND t.expired = false")
-    int claimForExpiry(@Param("id") long id);
+    int claimForExpiry(@Param("id") UUID id);
 
     /** Check whether a birthday reward has already been given this calendar year. */
     @Query("SELECT COUNT(t) > 0 FROM LoyaltyTransaction t WHERE t.account.id = :accountId " +
            "AND t.type = 'EARN_BIRTHDAY' AND YEAR(t.createdAt) = :year")
-    boolean existsBirthdayRewardForYear(@Param("accountId") long accountId, @Param("year") int year);
+    boolean existsBirthdayRewardForYear(@Param("accountId") UUID accountId, @Param("year") int year);
 
     /** Accounts with at least one unclaimed expired earn row and a positive balance — candidates for expiry run. */
     @Query(value =
@@ -62,5 +63,5 @@ public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTrans
            "AND t.expired = false " +
            "AND a.points_balance > 0",
            nativeQuery = true)
-    List<Long> findAccountIdsWithExpiredPoints(@Param("now") Instant now);
+    List<UUID> findAccountIdsWithExpiredPoints(@Param("now") Instant now);
 }

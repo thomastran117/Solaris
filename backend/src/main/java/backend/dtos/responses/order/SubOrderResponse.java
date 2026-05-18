@@ -6,14 +6,15 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class SubOrderResponse {
-    private Long id;
-    private Long orderId;
-    private Long marketplaceVendorId;
-    private Long marketplaceId;
+    private UUID id;
+    private UUID orderId;
+    private UUID marketplaceVendorId;
+    private UUID marketplaceId;
     private String vendorCompanyName;
     private String status;
     private BigDecimal subtotal;

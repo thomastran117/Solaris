@@ -5,12 +5,14 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import backend.models.enums.LoyaltyTransactionType;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -27,20 +29,21 @@ import java.time.Instant;
 public class LoyaltyTransaction {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "account_id", nullable = false)
     private LoyaltyAccount account;
 
     /** Denormalized from account.userId for efficient user-scoped queries. */
-    @Column(nullable = false, name = "user_id")
-    private Long userId;
+    @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
+    private UUID userId;
 
     /** Denormalized from account.companyId. */
-    @Column(nullable = false, name = "company_id")
-    private Long companyId;
+    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    private UUID companyId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 25)
@@ -55,8 +58,8 @@ public class LoyaltyTransaction {
     private long valueCents = 0L;
 
     /** Loose FK to orders.id. Set on EARN_ORDER, REDEEM_ORDER, and CONVERT_TO_CREDIT entries. */
-    @Column(nullable = true, name = "source_order_id")
-    private Long sourceOrderId;
+    @Column(nullable = true, name = "source_order_id", columnDefinition = "BINARY(16)")
+    private UUID sourceOrderId;
 
     /** When this earn entry's points expire. Null if the policy has no expiry or for non-earn entries. */
     @Column(nullable = true, name = "expires_at")

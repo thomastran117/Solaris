@@ -1,5 +1,6 @@
 package backend.dtos.responses.savedlist;
 
+import java.util.UUID;
 import backend.models.core.SavedListType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -9,8 +10,8 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class SavedListSummaryResponse {
-    private Long id;
-    private Long userId;
+    private UUID id;
+    private UUID userId;
     private String name;
     private SavedListType type;
     private String description;

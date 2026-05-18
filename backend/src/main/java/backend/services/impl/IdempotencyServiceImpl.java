@@ -5,6 +5,7 @@ import backend.services.intf.IdempotencyService;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class IdempotencyServiceImpl implements IdempotencyService {
@@ -20,32 +21,32 @@ public class IdempotencyServiceImpl implements IdempotencyService {
         this.cache = cache;
     }
 
-    private static String redisKey(String scope, long userId, String key) {
+    private static String redisKey(String scope, UUID userId, String key) {
         return "idempotency:" + scope + ":" + userId + ":" + key;
     }
 
     @Override
-    public Optional<Long> lookup(String scope, long userId, String key) {
+    public Optional<UUID> lookup(String scope, UUID userId, String key) {
         if (key == null || key.isBlank()) return Optional.empty();
         String raw = cache.get(redisKey(scope, userId, key));
         if (raw == null || raw.isBlank() || IN_FLIGHT_MARKER.equals(raw)) {
             return Optional.empty();
         }
         try {
-            return Optional.of(Long.parseLong(raw));
+            return Optional.of(UUID.fromString(raw));
         } catch (NumberFormatException ex) {
             return Optional.empty();
         }
     }
 
     @Override
-    public void store(String scope, long userId, String key, long resultId) {
+    public void store(String scope, UUID userId, String key, UUID resultId) {
         if (key == null || key.isBlank()) return;
         cache.set(redisKey(scope, userId, key), Long.toString(resultId), RESULT_TTL_SECONDS);
     }
 
     @Override
-    public boolean claim(String scope, long userId, String key, long claimTtlSeconds) {
+    public boolean claim(String scope, UUID userId, String key, long claimTtlSeconds) {
         if (key == null || key.isBlank()) return true;
         return cache.tryLock(redisKey(scope, userId, key), IN_FLIGHT_MARKER, claimTtlSeconds);
     }

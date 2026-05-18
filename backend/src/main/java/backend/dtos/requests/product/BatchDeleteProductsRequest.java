@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -13,5 +14,5 @@ public class BatchDeleteProductsRequest {
 
     @NotEmpty(message = "IDs list must not be empty")
     @Size(max = 50, message = "Batch delete is limited to 50 products per request")
-    private List<Long> ids;
+    private List<UUID> ids;
 }

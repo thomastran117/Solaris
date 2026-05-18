@@ -1,5 +1,7 @@
 package backend.services.intf.auth;
 
+import java.util.UUID;
+
 public interface EmailVerificationService {
 
     /**
@@ -9,7 +11,7 @@ public interface EmailVerificationService {
      * @param userId the newly created user's DB id
      * @param email  the address to send the verification email to
      */
-    void initiateVerification(long userId, String email);
+    void initiateVerification(UUID userId, String email);
 
     /**
      * Atomically consumes the verification token from Redis and returns the associated userId.
@@ -19,5 +21,5 @@ public interface EmailVerificationService {
      * @param token the raw UUID token from the query parameter
      * @return the userId associated with the token
      */
-    long consumeVerificationToken(String token);
+    UUID consumeVerificationToken(String token);
 }

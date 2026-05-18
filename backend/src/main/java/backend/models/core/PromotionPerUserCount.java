@@ -21,8 +21,9 @@ import lombok.Setter;
 public class PromotionPerUserCount {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @Column(name = "rule_id", nullable = false)
     private long ruleId;

@@ -12,17 +12,18 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Long> {
+public interface VendorBalanceRepository extends JpaRepository<VendorBalance, java.util.UUID> {
 
-    Optional<VendorBalance> findByVendorId(long vendorId);
+    Optional<VendorBalance> findByVendorId(UUID vendorId);
 
     Slice<VendorBalance> findByAvailableCentsGreaterThan(long threshold, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT b FROM VendorBalance b WHERE b.vendorId = :vendorId")
-    Optional<VendorBalance> findByVendorIdForUpdate(@Param("vendorId") long vendorId);
+    Optional<VendorBalance> findByVendorIdForUpdate(@Param("vendorId") UUID vendorId);
 
     /**
      * Upserts the pending balance for a vendor. Creates the row if it doesn't exist,
@@ -42,7 +43,7 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Lo
                 updated_at                 = NOW()
             """)
     void upsertPending(
-            @Param("vendorId") long vendorId,
+            @Param("vendorId") UUID vendorId,
             @Param("pendingAmount") long pendingAmount,
             @Param("grossAmount") long grossAmount,
             @Param("commissionAmount") long commissionAmount,
@@ -60,7 +61,7 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Lo
             WHERE b.vendorId = :vendorId
               AND b.pendingCents >= :amount
             """)
-    int releasePending(@Param("vendorId") long vendorId, @Param("amount") long amount);
+    int releasePending(@Param("vendorId") UUID vendorId, @Param("amount") long amount);
 
     /**
      * Moves amount from availableCents to inTransitCents when a payout is dispatched.
@@ -74,7 +75,7 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Lo
             WHERE b.vendorId = :vendorId
               AND b.availableCents >= :amount
             """)
-    int moveToInTransit(@Param("vendorId") long vendorId, @Param("amount") long amount);
+    int moveToInTransit(@Param("vendorId") UUID vendorId, @Param("amount") long amount);
 
     /**
      * Confirms a payout: clears inTransitCents and increments lifetimePaidOutCents.
@@ -87,7 +88,7 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Lo
             WHERE b.vendorId = :vendorId
               AND b.inTransitCents >= :amount
             """)
-    int confirmPayout(@Param("vendorId") long vendorId, @Param("amount") long amount);
+    int confirmPayout(@Param("vendorId") UUID vendorId, @Param("amount") long amount);
 
     /**
      * Returns funds from inTransitCents back to availableCents on payout failure.
@@ -100,5 +101,5 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, Lo
             WHERE b.vendorId = :vendorId
               AND b.inTransitCents >= :amount
             """)
-    int returnFromInTransit(@Param("vendorId") long vendorId, @Param("amount") long amount);
+    int returnFromInTransit(@Param("vendorId") UUID vendorId, @Param("amount") long amount);
 }

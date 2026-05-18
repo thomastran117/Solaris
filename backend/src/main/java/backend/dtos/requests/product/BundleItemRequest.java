@@ -6,14 +6,16 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 @Getter
 @Setter
 public class BundleItemRequest {
 
     @NotNull
-    private Long productId;
+    private UUID productId;
 
-    private Long variantId;
+    private UUID variantId;
 
     @Min(1)
     @Max(999)

@@ -1,5 +1,6 @@
 package backend.services.impl.pricing;
 
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,7 +67,7 @@ public class PricingReportServiceImpl implements PricingReportService {
     @Override
     @Transactional(readOnly = true)
     public PromotionRuleAnalyticsResponse getRuleAnalytics(
-            long companyId, long ruleId, long ownerId, Instant from, Instant to) {
+            UUID companyId, UUID ruleId, UUID ownerId, Instant from, Instant to) {
         validateWindow(from, to);
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
         ruleRepository.findByIdAndCompanyId(ruleId, companyId)

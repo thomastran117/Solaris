@@ -1,5 +1,6 @@
 package backend.controllers.impl.company;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -32,10 +33,10 @@ public class TeamController {
     @PostMapping("/companies/{companyId}/team/invites")
     @RequireAuth
     public ResponseEntity<TeamMembershipResponse> invite(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody InviteTeamMemberRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(membershipService.inviteMember(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -47,9 +48,9 @@ public class TeamController {
 
     @GetMapping("/companies/{companyId}/team")
     @RequireAuth
-    public ResponseEntity<List<TeamMembershipResponse>> list(@PathVariable long companyId) {
+    public ResponseEntity<List<TeamMembershipResponse>> list(@PathVariable UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(membershipService.listMembers(companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -61,11 +62,11 @@ public class TeamController {
     @PatchMapping("/companies/{companyId}/team/{membershipId}")
     @RequireAuth
     public ResponseEntity<TeamMembershipResponse> updateRole(
-            @PathVariable long companyId,
-            @PathVariable long membershipId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID membershipId,
             @Valid @RequestBody UpdateTeamMemberRoleRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(
                     membershipService.updateMemberRole(companyId, membershipId, userId, request));
         } catch (AppHttpException e) {
@@ -78,10 +79,10 @@ public class TeamController {
     @DeleteMapping("/companies/{companyId}/team/{membershipId}")
     @RequireAuth
     public ResponseEntity<Void> revoke(
-            @PathVariable long companyId,
-            @PathVariable long membershipId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID membershipId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             membershipService.revokeMember(companyId, membershipId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -93,9 +94,9 @@ public class TeamController {
 
     @GetMapping("/companies/{companyId}/me")
     @RequireAuth
-    public ResponseEntity<CompanyRoleResponse> describeMyAccess(@PathVariable long companyId) {
+    public ResponseEntity<CompanyRoleResponse> describeMyAccess(@PathVariable UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(membershipService.describeMyAccess(companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -119,7 +120,7 @@ public class TeamController {
     @RequireAuth
     public ResponseEntity<TeamMembershipResponse> accept(@PathVariable String token) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(membershipService.acceptInvite(token, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -128,8 +129,8 @@ public class TeamController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

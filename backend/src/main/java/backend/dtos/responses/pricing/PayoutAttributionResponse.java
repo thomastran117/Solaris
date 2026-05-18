@@ -3,6 +3,7 @@ package backend.dtos.responses.pricing;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Settlement report for the admin payout-attribution endpoint. One {@link Row} per
@@ -22,7 +23,7 @@ public record PayoutAttributionResponse(
         long totalRedemptions
 ) {
     public record Row(
-            long fundedByCompanyId,
+            UUID fundedByCompanyId,
             String companyName,
             BigDecimal totalSavings,
             long redemptionCount,

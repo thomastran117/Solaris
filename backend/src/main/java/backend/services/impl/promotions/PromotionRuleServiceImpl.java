@@ -1,5 +1,6 @@
 package backend.services.impl.promotions;
 
+import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,7 +73,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     }
 
     @Override
-    public PagedResponse<PromotionRuleResponse> listRules(long companyId, long ownerId, int page, int size) {
+    public PagedResponse<PromotionRuleResponse> listRules(long companyId, UUID ownerId, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -81,7 +82,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     }
 
     @Override
-    public PromotionRuleResponse getRule(long companyId, long ruleId, long ownerId) {
+    public PromotionRuleResponse getRule(long companyId, long ruleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -91,7 +92,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     @Transactional
-    public PromotionRuleResponse createRule(long companyId, long ownerId, CreatePromotionRuleRequest request) {
+    public PromotionRuleResponse createRule(long companyId, UUID ownerId, CreatePromotionRuleRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRuleType type = parseType(request.getRuleType());
@@ -122,7 +123,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     @Override
     @Transactional
     public PromotionRuleResponse updateRule(
-            long companyId, long ruleId, long ownerId, UpdatePromotionRuleRequest request) {
+            long companyId, long ruleId, UUID ownerId, UpdatePromotionRuleRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -181,7 +182,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     @Transactional
-    public void deleteRule(long companyId, long ruleId, long ownerId) {
+    public void deleteRule(long companyId, long ruleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -236,9 +237,9 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
         return new HashSet<>(found);
     }
 
-    private Set<CustomerSegment> resolveSegments(List<Long> ids) {
+    private Set<CustomerSegment> resolveSegments(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) return new HashSet<>();
-        List<Long> deduped = new ArrayList<>(new HashSet<>(ids));
+        List<UUID> deduped = new ArrayList<>(new HashSet<>(ids));
         List<CustomerSegment> found = segmentRepository.findAllById(deduped);
         if (found.size() != deduped.size()) {
             throw new BadRequestException("One or more segment IDs are invalid");
@@ -261,7 +262,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
         List<Long> productIds = r.getTargetProducts().stream().map(Product::getId).sorted().toList();
         List<Long> bundleIds  = r.getTargetBundles().stream().map(ProductBundle::getId).sorted().toList();
-        List<Long> segmentIds = r.getTargetSegments().stream().map(CustomerSegment::getId).sorted().toList();
+        List<UUID> segmentIds = r.getTargetSegments().stream().map(CustomerSegment::getId).sorted().toList();
         Long fundedById = r.getFundedByCompany() != null ? r.getFundedByCompany().getId() : null;
 
         return new PromotionRuleResponse(

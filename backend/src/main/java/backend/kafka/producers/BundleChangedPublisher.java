@@ -13,6 +13,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Component
 public class BundleChangedPublisher {
@@ -39,7 +40,7 @@ public class BundleChangedPublisher {
         send(event.bundleId(), ChangeType.DELETED);
     }
 
-    private void send(long bundleId, ChangeType changeType) {
+    private void send(UUID bundleId, ChangeType changeType) {
         try {
             var payload = new BundleChangedEvent(bundleId, changeType, Instant.now());
             kafkaTemplate.send(topic, String.valueOf(bundleId), payload).whenComplete((res, ex) -> {

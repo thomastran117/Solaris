@@ -2,9 +2,10 @@ package backend.dtos.responses.forecasting;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 public record ForecastSummaryResponse(
-        long companyId,
+        UUID companyId,
         int windowDays,
         Instant computedAt,
         int productCount,

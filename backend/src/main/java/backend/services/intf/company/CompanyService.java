@@ -1,5 +1,6 @@
 package backend.services.intf.company;
 
+import java.util.UUID;
 import backend.dtos.requests.company.CreateCompanyRequest;
 import backend.dtos.requests.company.UpdateCompanyRequest;
 import backend.dtos.responses.company.CompanyResponse;
@@ -20,17 +21,17 @@ public interface CompanyService {
      */
     PagedResponse<PublicCompanyResponse> searchPublicCompanies(String q, String industry, String country, CompanyStatus status, int page, int size, String sort, String direction);
 
-    CompanyResponse getCompany(long companyId, long ownerId);
+    CompanyResponse getCompany(UUID companyId, UUID ownerId);
 
     /**
      * Public, anonymous-safe single-company read. Returns 404 if the company is not
      * {@code ACTIVE} (rather than 403) so non-active companies do not leak existence.
      */
-    PublicCompanyResponse getPublicCompany(long companyId);
-    List<CompanyResponse> getCompaniesByIds(List<Long> ids, long ownerId);
-    CompanyResponse createCompany(long ownerId, CreateCompanyRequest request);
-    CompanyResponse updateCompany(long companyId, long ownerId, UpdateCompanyRequest request);
-    void deleteCompany(long companyId, long ownerId);
-    PresignUploadResponse generateLogoUploadUrl(long companyId, long ownerId, String contentType);
-    CompanyResponse getMyCompany(long ownerId);
+    PublicCompanyResponse getPublicCompany(UUID companyId);
+    List<CompanyResponse> getCompaniesByIds(List<UUID> ids, UUID ownerId);
+    CompanyResponse createCompany(UUID ownerId, CreateCompanyRequest request);
+    CompanyResponse updateCompany(UUID companyId, UUID ownerId, UpdateCompanyRequest request);
+    void deleteCompany(UUID companyId, UUID ownerId);
+    PresignUploadResponse generateLogoUploadUrl(UUID companyId, UUID ownerId, String contentType);
+    CompanyResponse getMyCompany(UUID ownerId);
 }

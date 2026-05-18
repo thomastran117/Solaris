@@ -1,5 +1,6 @@
 package backend.controllers.impl.company;
 
+import java.util.UUID;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
@@ -33,7 +34,7 @@ public class CompanyCatalogController {
 
     @GetMapping("/search")
     public ResponseEntity<CatalogSearchResponse> searchCatalog(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) @Size(max = 100) String category,
             @RequestParam(required = false) @Size(max = 100) String brand,

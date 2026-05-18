@@ -1,5 +1,6 @@
 package backend.services.pricing;
 
+import java.util.UUID;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -20,8 +21,8 @@ import java.util.Set;
  */
 public record CartContext(
         List<CartLine> lines,
-        Long userId,
-        Set<Long> userSegmentIds,
+        UUID userId,
+        Set<UUID> userSegmentIds,
         String currency,
         String couponCode,
         BigDecimal shippingAmount,

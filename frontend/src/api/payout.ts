@@ -51,7 +51,7 @@ export interface VendorAdjustment {
   amountCents: number;
   currency: string;
   reason: string;
-  createdByUserId: number;
+  createdByUserId: string;
   appliedToPayoutId: number | null;
   createdAt: string;
 }

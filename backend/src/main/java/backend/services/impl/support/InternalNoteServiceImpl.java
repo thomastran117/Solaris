@@ -1,5 +1,6 @@
 package backend.services.impl.support;
 
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,7 @@ public class InternalNoteServiceImpl implements InternalNoteService {
 
     @Override
     @Transactional
-    public InternalNoteResponse addNote(long authorUserId, CreateNoteRequest request) {
+    public InternalNoteResponse addNote(UUID authorUserId, CreateNoteRequest request) {
         User author = userRepository.findById(authorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + authorUserId));
         SecurityUtils.requireStaff(author);
@@ -53,7 +54,7 @@ public class InternalNoteServiceImpl implements InternalNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<InternalNoteResponse> listNotes(long actorUserId, NoteEntityType entityType, long entityId) {
+    public List<InternalNoteResponse> listNotes(UUID actorUserId, NoteEntityType entityType, long entityId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);
@@ -67,7 +68,7 @@ public class InternalNoteServiceImpl implements InternalNoteService {
 
     @Override
     @Transactional
-    public void deleteNote(long noteId, long actorUserId) {
+    public void deleteNote(UUID noteId, UUID actorUserId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);

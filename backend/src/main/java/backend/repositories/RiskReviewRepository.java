@@ -10,11 +10,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface RiskReviewRepository extends JpaRepository<RiskReview, Long> {
+public interface RiskReviewRepository extends JpaRepository<RiskReview, UUID> {
 
-    Optional<RiskReview> findByOrderId(long orderId);
+    Optional<RiskReview> findByOrderId(UUID orderId);
 
     /**
      * Paginated queue of reviews for a given company.
@@ -36,7 +37,7 @@ public interface RiskReviewRepository extends JpaRepository<RiskReview, Long> {
            "    OR (oi2.product IS NULL AND oi2.bundle IS NULL))" +
            ")")
     Page<RiskReview> findByCompanyIdAndStatus(
-            @Param("companyId") long companyId,
+            @Param("companyId") UUID companyId,
             @Param("status") RiskReviewStatus status,
             Pageable pageable);
 }

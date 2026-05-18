@@ -13,11 +13,11 @@ import java.time.Instant;
 import java.util.List;
 
 @Repository
-public interface PromotionRedemptionRepository extends JpaRepository<PromotionRedemption, Long> {
+public interface PromotionRedemptionRepository extends JpaRepository<PromotionRedemption, java.util.UUID> {
 
-    List<PromotionRedemption> findAllByOrderId(long orderId);
+    List<PromotionRedemption> findAllByOrderId(java.util.UUID orderId);
 
-    List<PromotionRedemption> findAllByRuleId(long ruleId);
+    List<PromotionRedemption> findAllByRuleId(java.util.UUID ruleId);
 
     /**
      * Aggregates settlement amounts per funding company across all rule redemptions in the
@@ -57,7 +57,7 @@ public interface PromotionRedemptionRepository extends JpaRepository<PromotionRe
               AND (:to   IS NULL OR pr.redeemed_at <= :to)
             """)
     PromotionRuleAnalyticsProjection aggregateRuleAnalytics(
-            @Param("ruleId") long ruleId,
+            @Param("ruleId") java.util.UUID ruleId,
             @Param("from") Instant from,
             @Param("to") Instant to);
 }

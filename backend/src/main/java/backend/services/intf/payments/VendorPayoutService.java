@@ -1,5 +1,6 @@
 package backend.services.intf.payments;
 
+import java.util.UUID;
 import backend.dtos.requests.marketplace.VendorAdjustmentRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.vendor.VendorAdjustmentResponse;
@@ -9,17 +10,17 @@ import backend.models.enums.PayoutStatus;
 
 public interface VendorPayoutService {
 
-    VendorBalanceResponse getBalance(long vendorId, long actorUserId);
+    VendorBalanceResponse getBalance(UUID vendorId, UUID actorUserId);
 
-    PagedResponse<VendorPayoutResponse> listPayouts(long vendorId, PayoutStatus status, int page, int size, long actorUserId);
+    PagedResponse<VendorPayoutResponse> listPayouts(UUID vendorId, PayoutStatus status, int page, int size, UUID actorUserId);
 
-    VendorPayoutResponse getPayoutDetail(long payoutId, long vendorId, long actorUserId);
+    VendorPayoutResponse getPayoutDetail(UUID payoutId, UUID vendorId, UUID actorUserId);
 
     /** Operator-triggered manual payout for a vendor with available balance. */
-    VendorPayoutResponse triggerManualPayout(long vendorId, long marketplaceId, long operatorUserId);
+    VendorPayoutResponse triggerManualPayout(UUID vendorId, UUID marketplaceId, UUID operatorUserId);
 
     /** Called by operator to post a manual credit/debit to a vendor's balance. */
-    VendorAdjustmentResponse createAdjustment(long vendorId, long operatorUserId, VendorAdjustmentRequest request);
+    VendorAdjustmentResponse createAdjustment(UUID vendorId, UUID operatorUserId, VendorAdjustmentRequest request);
 
     // -------------------------------------------------------------------------
     // Webhook callbacks (called from OrderController)

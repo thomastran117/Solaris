@@ -22,5 +22,5 @@ public record MerchantInitiateReturnRequest(
          * ID of the CompanyReturnLocation the buyer should ship items to.
          * null = auto-select the primary location, or the first available if no primary is set.
          */
-        Long returnLocationId
+        java.util.UUID returnLocationId
 ) {}

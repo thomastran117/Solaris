@@ -1,5 +1,6 @@
 package backend.services.impl.analytics;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +80,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public CompanyRevenueSummaryResponse getRevenueSummary(long companyId, long ownerId, int lookbackDays) {
+    public CompanyRevenueSummaryResponse getRevenueSummary(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwner(companyId, ownerId);
         String key = KEY_REVENUE + companyId + ":" + lookbackDays;
         CompanyRevenueSummaryResponse cached = fromCache(key, CompanyRevenueSummaryResponse.class);
@@ -89,7 +90,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public CategorySalesResponse getCategorySales(long companyId, long ownerId, int lookbackDays) {
+    public CategorySalesResponse getCategorySales(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwner(companyId, ownerId);
         String key = KEY_CATEGORY + companyId + ":" + lookbackDays;
         CategorySalesResponse cached = fromCache(key, CategorySalesResponse.class);
@@ -99,7 +100,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public SlowMoversResponse getSlowMovers(long companyId, long ownerId, int days) {
+    public SlowMoversResponse getSlowMovers(UUID companyId, UUID ownerId, int days) {
         verifyOwner(companyId, ownerId);
         String key = KEY_SLOW + companyId;
         SlowMoversResponse cached = fromCache(key, SlowMoversResponse.class);
@@ -109,7 +110,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public ProductPerformanceResponse getProductPerformance(long companyId, long ownerId, int lookbackDays) {
+    public ProductPerformanceResponse getProductPerformance(UUID companyId, UUID ownerId, int lookbackDays) {
         verifyOwner(companyId, ownerId);
         String key = KEY_PERF + companyId + ":" + lookbackDays;
         ProductPerformanceResponse cached = fromCache(key, ProductPerformanceResponse.class);
@@ -123,7 +124,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public void precomputeAll(long companyId) {
+    public void precomputeAll(UUID companyId) {
         computeAndCacheRevenue(companyId, 30);
         computeAndCacheCategories(companyId, 30);
         computeAndCacheSlowMovers(companyId, SLOW_MOVER_DAYS);
@@ -282,7 +283,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private void verifyOwner(long companyId, long ownerId) {
+    private void verifyOwner(long companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 

@@ -1,5 +1,6 @@
 package backend.services.impl.profile;
 
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import backend.dtos.responses.profile.ProfileResponse;
@@ -18,14 +19,14 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
-    public ProfileResponse getProfile(long userId) {
+    public ProfileResponse getProfile(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         return toResponse(user);
     }
 
     @Override
-    public ProfileResponse updateProfile(long userId, String firstName, String lastName, String phoneNumber, String address) {
+    public ProfileResponse updateProfile(UUID userId, String firstName, String lastName, String phoneNumber, String address) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 

@@ -1,5 +1,6 @@
 package backend.services.intf.orders;
 
+import java.util.UUID;
 import backend.dtos.requests.order.CancelSubOrderRequest;
 import backend.dtos.requests.order.ShipSubOrderRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -10,17 +11,17 @@ import backend.models.enums.SubOrderStatus;
 public interface SubOrderService {
 
     /** Returns paginated sub-orders for a vendor, optionally filtered by status. */
-    PagedResponse<SubOrderResponse> listVendorSubOrders(long marketplaceVendorId, SubOrderStatus status, int page, int size, long ownerId);
+    PagedResponse<SubOrderResponse> listVendorSubOrders(UUID marketplaceVendorId, SubOrderStatus status, int page, int size, UUID ownerId);
 
-    SubOrderResponse getSubOrder(long subOrderId, long marketplaceVendorId, long ownerId);
+    SubOrderResponse getSubOrder(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId);
 
-    SubOrderResponse markPacked(long subOrderId, long marketplaceVendorId, long ownerId);
+    SubOrderResponse markPacked(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId);
 
-    SubOrderResponse markShipped(long subOrderId, long marketplaceVendorId, ShipSubOrderRequest request, long ownerId);
+    SubOrderResponse markShipped(UUID subOrderId, UUID marketplaceVendorId, ShipSubOrderRequest request, UUID ownerId);
 
-    SubOrderResponse markDelivered(long subOrderId, long marketplaceVendorId, long ownerId);
+    SubOrderResponse markDelivered(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId);
 
-    SubOrderResponse cancelSubOrder(long subOrderId, long marketplaceVendorId, CancelSubOrderRequest request, long ownerId);
+    SubOrderResponse cancelSubOrder(UUID subOrderId, UUID marketplaceVendorId, CancelSubOrderRequest request, UUID ownerId);
 
-    CommissionRecordResponse getCommissionRecord(long subOrderId, long marketplaceVendorId, long ownerId);
+    CommissionRecordResponse getCommissionRecord(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId);
 }

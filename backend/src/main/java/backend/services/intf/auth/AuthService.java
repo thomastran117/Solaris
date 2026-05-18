@@ -1,5 +1,7 @@
 package backend.services.intf.auth;
 
+import java.util.UUID;
+
 /**
  * Handles authentication flows (login, refresh). Delegates JWT operations to {@link TokenService}
  * and user operations to {@link UserService}.
@@ -9,7 +11,7 @@ public interface AuthService {
     /**
      * Result of a successful login: tokens and user info for the response.
      */
-    record LoginResult(String accessToken, String refreshToken, String email, String usertype, long userId) {}
+    record LoginResult(String accessToken, String refreshToken, String email, String usertype, UUID userId) {}
 
     /**
      * Result of a login attempt. When {@code deviceVerificationRequired} is true, no tokens
@@ -88,5 +90,5 @@ public interface AuthService {
     /**
      * Revoke all refresh tokens for a user (e.g. security reset, password change).
      */
-    void revokeAllRefreshTokensForUser(int userId);
+    void revokeAllRefreshTokensForUser(UUID userId);
 }

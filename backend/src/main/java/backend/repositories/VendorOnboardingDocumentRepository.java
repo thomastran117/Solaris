@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface VendorOnboardingDocumentRepository extends JpaRepository<VendorOnboardingDocument, Long> {
+public interface VendorOnboardingDocumentRepository extends JpaRepository<VendorOnboardingDocument, java.util.UUID> {
 
-    List<VendorOnboardingDocument> findAllByMarketplaceVendorId(long marketplaceVendorId);
+    List<VendorOnboardingDocument> findAllByMarketplaceVendorId(java.util.UUID marketplaceVendorId);
 
     Optional<VendorOnboardingDocument> findByMarketplaceVendorIdAndDocumentType(
-            long marketplaceVendorId, VendorDocumentType documentType);
+            java.util.UUID marketplaceVendorId, VendorDocumentType documentType);
 }

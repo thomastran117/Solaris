@@ -8,9 +8,10 @@ import org.springframework.stereotype.Repository;
 import backend.models.core.CustomerSegment;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface CustomerSegmentRepository extends JpaRepository<CustomerSegment, Long> {
+public interface CustomerSegmentRepository extends JpaRepository<CustomerSegment, UUID> {
 
     Optional<CustomerSegment> findByCodeIgnoreCase(String code);
 

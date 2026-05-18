@@ -1,3 +1,5 @@
 package backend.events;
 
-public record BundleRemoveEvent(long bundleId) {}
+import java.util.UUID;
+
+public record BundleRemoveEvent(UUID bundleId) {}

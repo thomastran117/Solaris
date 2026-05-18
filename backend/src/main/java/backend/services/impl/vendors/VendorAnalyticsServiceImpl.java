@@ -1,5 +1,6 @@
 package backend.services.impl.vendors;
 
+import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +81,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorAnalyticsSummaryResponse getSummary(long vendorId, long marketplaceId, int lookbackDays, long actorUserId) {
+    public VendorAnalyticsSummaryResponse getSummary(UUID vendorId, UUID marketplaceId, int lookbackDays, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -117,7 +118,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorRevenueResponse getRevenue(long vendorId, long marketplaceId, int lookbackDays, long actorUserId) {
+    public VendorRevenueResponse getRevenue(UUID vendorId, UUID marketplaceId, int lookbackDays, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -151,7 +152,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorTopProductsResponse getTopProducts(long vendorId, long marketplaceId, int lookbackDays, int limit, long actorUserId) {
+    public VendorTopProductsResponse getTopProducts(UUID vendorId, UUID marketplaceId, int lookbackDays, int limit, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -178,7 +179,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorOrdersMetricResponse getOrders(long vendorId, long marketplaceId, int lookbackDays, long actorUserId) {
+    public VendorOrdersMetricResponse getOrders(UUID vendorId, UUID marketplaceId, int lookbackDays, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -200,7 +201,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorRefundsMetricResponse getRefunds(long vendorId, long marketplaceId, int lookbackDays, long actorUserId) {
+    public VendorRefundsMetricResponse getRefunds(UUID vendorId, UUID marketplaceId, int lookbackDays, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -221,7 +222,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public VendorPayoutsMetricResponse getPayouts(long vendorId, long marketplaceId, int recentCount, long actorUserId) {
+    public VendorPayoutsMetricResponse getPayouts(UUID vendorId, UUID marketplaceId, int recentCount, UUID actorUserId) {
         assertVendorAccess(vendorId, marketplaceId, actorUserId);
         int cap = Math.min(recentCount, 50);
         var page = payoutRepository.findByVendorIdAndStatus(
@@ -246,7 +247,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public MarketplaceAnalyticsSummaryResponse getMarketplaceSummary(long marketplaceId, long operatorUserId, int lookbackDays) {
+    public MarketplaceAnalyticsSummaryResponse getMarketplaceSummary(UUID marketplaceId, UUID operatorUserId, int lookbackDays) {
         assertOperator(marketplaceId, operatorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -275,7 +276,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TopVendorResponse> getTopVendors(long marketplaceId, long operatorUserId, int lookbackDays, int limit) {
+    public List<TopVendorResponse> getTopVendors(UUID marketplaceId, UUID operatorUserId, int lookbackDays, int limit) {
         assertOperator(marketplaceId, operatorUserId);
         int days = clamp(lookbackDays);
         Window w = window(days);
@@ -299,12 +300,12 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private double resolveTargetShipHours(long marketplaceId) {
+    private double resolveTargetShipHours(UUID marketplaceId) {
         // Use a fixed default; SLA policy target is consulted by the SLA service
         return DEFAULT_TARGET_SHIP_HOURS;
     }
 
-    private void assertVendorAccess(long vendorId, long marketplaceId, long userId) {
+    private void assertVendorAccess(UUID vendorId, UUID marketplaceId, UUID userId) {
         MarketplaceVendor vendor = marketplaceVendorRepository.findById(vendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
         if (!vendor.getMarketplace().getId().equals(marketplaceId)) {
@@ -316,7 +317,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
         assertOperator(marketplaceId, userId);
     }
 
-    private void assertOperator(long marketplaceId, long userId) {
+    private void assertOperator(UUID marketplaceId, UUID userId) {
         marketplaceProfileRepository.findByCompanyId(marketplaceId)
                 .filter(p -> p.getCompany().getOwner().getId() == userId)
                 .orElseThrow(() -> new ForbiddenException("You are not an operator of this marketplace"));
@@ -333,7 +334,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
         return new Window(now.minus(days, ChronoUnit.DAYS), now);
     }
 
-    private String cacheKey(long vendorId, String metric, int days) {
+    private String cacheKey(UUID vendorId, String metric, int days) {
         return CACHE_PREFIX + vendorId + ":" + metric + ":" + days;
     }
 

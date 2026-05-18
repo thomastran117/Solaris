@@ -1,5 +1,6 @@
 package backend.controllers.impl.orders;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,12 +45,12 @@ public class CompanyOrderController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<CompanyOrderResponse>> getCompanyOrders(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getCompanyOrders(companyId, userId, status, page, size));
         } catch (AppHttpException e) {
             throw e;
@@ -60,10 +61,10 @@ public class CompanyOrderController {
 
     @GetMapping("/{orderId}")
     public ResponseEntity<CompanyOrderResponse> getCompanyOrder(
-            @PathVariable long companyId,
-            @PathVariable long orderId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getCompanyOrder(companyId, orderId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -74,10 +75,10 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/pack")
     public ResponseEntity<CompanyOrderResponse> markAsPacked(
-            @PathVariable long companyId,
-            @PathVariable long orderId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.markAsPacked(companyId, orderId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -88,11 +89,11 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/ship")
     public ResponseEntity<CompanyOrderResponse> markAsShipped(
-            @PathVariable long companyId,
-            @PathVariable long orderId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
             @RequestBody @Valid ShipOrderRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.markAsShipped(companyId, orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -103,10 +104,10 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/deliver")
     public ResponseEntity<CompanyOrderResponse> markAsDelivered(
-            @PathVariable long companyId,
-            @PathVariable long orderId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.markAsDelivered(companyId, orderId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -117,11 +118,11 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/return")
     public ResponseEntity<CompanyOrderResponse> initiateReturn(
-            @PathVariable long companyId,
-            @PathVariable long orderId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
             @RequestBody @Valid ReturnOrderRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.initiateReturn(companyId, orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -132,10 +133,10 @@ public class CompanyOrderController {
 
     @GetMapping("/{orderId}/returns")
     public ResponseEntity<List<ReturnResponse>> getCompanyReturnsByOrder(
-            @PathVariable long companyId,
-            @PathVariable long orderId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(returnService.getCompanyReturnsByOrder(orderId, companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -146,11 +147,11 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/returns")
     public ResponseEntity<ReturnResponse> merchantInitiateReturn(
-            @PathVariable long companyId,
-            @PathVariable long orderId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
             @RequestBody @Valid MerchantInitiateReturnRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(returnService.merchantInitiateReturn(orderId, companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -165,12 +166,12 @@ public class CompanyOrderController {
 
     @GetMapping("/risk-review")
     public ResponseEntity<PagedResponse<RiskReviewResponse>> listRiskReviews(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) RiskReviewStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.listRiskReviews(companyId, userId, status, page, size));
         } catch (AppHttpException e) {
             throw e;
@@ -181,10 +182,10 @@ public class CompanyOrderController {
 
     @GetMapping("/{orderId}/risk")
     public ResponseEntity<RiskAssessmentResponse> getOrderRisk(
-            @PathVariable long companyId,
-            @PathVariable long orderId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getOrderRisk(companyId, orderId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -195,11 +196,11 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/risk/approve")
     public ResponseEntity<OrderResponse> approveRiskReview(
-            @PathVariable long companyId,
-            @PathVariable long orderId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
             @RequestBody(required = false) @Valid RiskDecisionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.approveRiskReview(companyId, orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -210,11 +211,11 @@ public class CompanyOrderController {
 
     @PostMapping("/{orderId}/risk/reject")
     public ResponseEntity<OrderResponse> rejectRiskReview(
-            @PathVariable long companyId,
-            @PathVariable long orderId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
             @RequestBody(required = false) @Valid RiskDecisionRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.rejectRiskReview(companyId, orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -223,8 +224,8 @@ public class CompanyOrderController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

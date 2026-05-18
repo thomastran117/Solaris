@@ -2,6 +2,7 @@ package backend.dtos.responses.pricing;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Per-rule redemption analytics over a time window. Powers
@@ -16,7 +17,7 @@ import java.time.Instant;
  * @param uniqueUserCount     distinct users that redeemed the rule
  */
 public record PromotionRuleAnalyticsResponse(
-        long ruleId,
+        UUID ruleId,
         Instant from,
         Instant to,
         long redemptionCount,

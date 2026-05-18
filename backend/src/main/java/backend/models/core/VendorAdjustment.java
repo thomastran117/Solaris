@@ -9,6 +9,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -22,12 +23,13 @@ import java.time.Instant;
 public class VendorAdjustment {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /** MarketplaceVendor.id. */
-    @Column(nullable = false, name = "vendor_id")
-    private Long vendorId;
+    @Column(nullable = false, name = "vendor_id", columnDefinition = "BINARY(16)")
+    private UUID vendorId;
 
     /** Signed amount in smallest currency unit (positive = credit, negative = debit). */
     @Column(nullable = false)
@@ -39,8 +41,8 @@ public class VendorAdjustment {
     @Column(nullable = false, length = 500)
     private String reason;
 
-    @Column(nullable = false, name = "created_by_user_id")
-    private Long createdByUserId;
+    @Column(nullable = false, name = "created_by_user_id", columnDefinition = "BINARY(16)")
+    private UUID createdByUserId;
 
     /** Loose FK to vendor_payouts.id — set when this adjustment is included in a payout batch. */
     @Column(nullable = true, name = "applied_to_payout_id")

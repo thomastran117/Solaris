@@ -1,5 +1,6 @@
 package backend.controllers.impl.returns;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -30,10 +31,10 @@ public class ReturnController {
     @PostMapping("/{orderId}/returns")
     @RequireAuth
     public ResponseEntity<ReturnResponse> requestReturn(
-            @PathVariable long orderId,
+            @PathVariable UUID orderId,
             @RequestBody @Valid BuyerInitiateReturnRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED).body(returnService.requestReturn(orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -44,9 +45,9 @@ public class ReturnController {
 
     @GetMapping("/{orderId}/returns")
     @RequireAuth
-    public ResponseEntity<List<ReturnResponse>> getReturnsByOrder(@PathVariable long orderId) {
+    public ResponseEntity<List<ReturnResponse>> getReturnsByOrder(@PathVariable UUID orderId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(returnService.getReturnsByOrder(orderId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -55,8 +56,8 @@ public class ReturnController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

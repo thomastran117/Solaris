@@ -1,5 +1,6 @@
 package backend.services.impl.products;
 
+import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +43,7 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
     @Override
     @Transactional
-    public HelpfulVoteResponse voteHelpful(long reviewId, long userId) {
+    public HelpfulVoteResponse voteHelpful(long reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getStatus() != ReviewStatus.PUBLISHED) {
@@ -78,7 +79,7 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
     @Override
     @Transactional
-    public HelpfulVoteResponse removeHelpful(long reviewId, long userId) {
+    public HelpfulVoteResponse removeHelpful(long reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 

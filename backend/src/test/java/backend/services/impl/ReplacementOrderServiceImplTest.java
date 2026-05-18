@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.responses.order.OrderResponse;
 import backend.exceptions.http.BadRequestException;
@@ -46,12 +48,12 @@ class ReplacementOrderServiceImplTest {
 
     @Test
     void createReplacement_setsReplacementOfOrderIdAndZeroTotal() {
-        User customer = makeUser(1L);
+        User customer = makeUser(TestIds.uuid(1));
         User staff = makeStaffUser(2L);
         Order original = makeOrder(10L, customer);
         ProductVariant variant = makeVariant(5L);
 
-        when(userRepository.findById(2L)).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(orderRepository.findById(10L)).thenReturn(Optional.of(original));
         when(variantRepository.findById(5L)).thenReturn(Optional.of(variant));
         when(orderRepository.save(any())).thenAnswer(inv -> {
@@ -74,8 +76,8 @@ class ReplacementOrderServiceImplTest {
 
     @Test
     void createReplacement_throwsWhenNoItems() {
-        User customer = makeUser(1L);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeStaffUser(2L)));
+        User customer = makeUser(TestIds.uuid(1));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeStaffUser(2L)));
         Order original = makeOrder(10L, customer);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(original));
 
@@ -87,8 +89,8 @@ class ReplacementOrderServiceImplTest {
 
     @Test
     void createReplacement_throwsWhenVariantNotFound() {
-        User customer = makeUser(1L);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeStaffUser(2L)));
+        User customer = makeUser(TestIds.uuid(1));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeStaffUser(2L)));
         Order original = makeOrder(10L, customer);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(original));
         when(variantRepository.findById(999L)).thenReturn(Optional.empty());
@@ -102,7 +104,7 @@ class ReplacementOrderServiceImplTest {
 
     @Test
     void createReplacement_throwsWhenOriginalOrderNotFound() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeStaffUser(2L)));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeStaffUser(2L)));
         when(orderRepository.findById(99L)).thenReturn(Optional.empty());
 
         ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
@@ -114,7 +116,7 @@ class ReplacementOrderServiceImplTest {
 
     @Test
     void createReplacement_throwsWhenActorIsNotStaff() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(makeUser(2L)));
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeUser(TestIds.uuid(2))));
 
         ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
                 List.of(new ResolveWithReplacementRequest.ReplacementItem(1L, 1)),
@@ -125,7 +127,7 @@ class ReplacementOrderServiceImplTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private User makeUser(long id) {
+    private User makeUser(UUID id) {
         User u = new User();
         u.setId(id);
         u.setEmail("user" + id + "@test.com");

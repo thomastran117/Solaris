@@ -94,7 +94,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     public PagedResponse<RestockRequestResponse> listRestockRequests(
-            long companyId, long ownerId, RestockStatus status, Long productId, int page, int size) {
+            long companyId, UUID ownerId, RestockStatus status, Long productId, int page, int size) {
         assertCompanyOwnership(companyId, ownerId);
 
         if (size > 50) size = 50;
@@ -120,7 +120,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public RestockRequestResponse createRestockRequest(long companyId, long ownerId, CreateRestockRequest request) {
+    public RestockRequestResponse createRestockRequest(long companyId, UUID ownerId, CreateRestockRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         Product product = productRepository.findByIdAndCompanyId(request.getProductId(), companyId)
@@ -153,7 +153,7 @@ public class RestockServiceImpl implements RestockService {
     }
 
     @Override
-    public RestockRequestResponse getRestockRequest(long companyId, long restockId, long ownerId) {
+    public RestockRequestResponse getRestockRequest(long companyId, long restockId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Restock request not found with id: " + restockId));
@@ -162,7 +162,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public RestockRequestResponse updateRestockRequest(long companyId, long restockId, long ownerId, UpdateRestockRequest request) {
+    public RestockRequestResponse updateRestockRequest(long companyId, long restockId, UUID ownerId, UpdateRestockRequest request) {
         assertCompanyOwnership(companyId, ownerId);
 
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
@@ -180,7 +180,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public void deleteRestockRequest(long companyId, long restockId, long ownerId) {
+    public void deleteRestockRequest(long companyId, long restockId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
 
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
@@ -195,7 +195,7 @@ public class RestockServiceImpl implements RestockService {
 
     // --- Status transitions ---
 
-    private void applyStatusTransition(RestockRequest rr, UpdateRestockRequest request, long ownerId) {
+    private void applyStatusTransition(RestockRequest rr, UpdateRestockRequest request, UUID ownerId) {
         RestockStatus current = rr.getStatus();
         RestockStatus target = request.getStatus();
 
@@ -229,7 +229,7 @@ public class RestockServiceImpl implements RestockService {
         }
     }
 
-    private void handleReceivedTransition(RestockRequest rr, int receivedQty, long ownerId) {
+    private void handleReceivedTransition(RestockRequest rr, int receivedQty, UUID ownerId) {
         long productId = rr.getProduct().getId();
         Long variantId = rr.getVariant() != null ? rr.getVariant().getId() : null;
         Long locationId = rr.getLocation() != null ? rr.getLocation().getId() : null;
@@ -321,7 +321,10 @@ public class RestockServiceImpl implements RestockService {
 
             if (previousStock == 0) {
                 long variantRefValue = variantId != null ? variantId : 0L;
-                eventPublisher.publishEvent(new StockRestoredEvent(productId, variantId, variantRefValue));
+                eventPublisher.publishEvent(new StockRestoredEvent(
+                        rr.getProduct().getId(),
+                        rr.getVariant() != null ? rr.getVariant().getId() : null,
+                        variantRefValue));
             }
 
             // Trigger backorder fulfillment FIFO
@@ -373,7 +376,7 @@ public class RestockServiceImpl implements RestockService {
 
     // --- Helpers ---
 
-    private void assertCompanyOwnership(long companyId, long ownerId) {
+    private void assertCompanyOwnership(long companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 

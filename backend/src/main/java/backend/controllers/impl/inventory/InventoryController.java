@@ -1,5 +1,6 @@
 package backend.controllers.impl.inventory;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -58,7 +59,7 @@ public class InventoryController {
 
     @GetMapping
     public ResponseEntity<CursorPagedResponse<InventoryItemResponse>> getInventory(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) @Size(max = 50) String stockStatus,
             @RequestParam(required = false) @Size(max = 100) String category,
@@ -69,7 +70,7 @@ public class InventoryController {
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getInventory(
                     companyId, userId, stockStatus, q, category, brand, status, minStock, maxStock,
                     cursor, size));
@@ -82,9 +83,9 @@ public class InventoryController {
 
     @GetMapping("/summary")
     public ResponseEntity<InventorySummaryResponse> getSummary(
-            @PathVariable long companyId) {
+            @PathVariable UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getSummary(companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -95,10 +96,10 @@ public class InventoryController {
 
     @GetMapping("/{productId}")
     public ResponseEntity<InventoryItemResponse> getInventoryItem(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getInventoryItem(companyId, productId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -109,12 +110,12 @@ public class InventoryController {
 
     @GetMapping("/{productId}/history")
     public ResponseEntity<PagedResponse<AdjustmentResponse>> getAdjustmentHistory(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getAdjustmentHistory(companyId, productId, userId, page, size));
         } catch (AppHttpException e) {
             throw e;
@@ -125,12 +126,12 @@ public class InventoryController {
 
     @PostMapping("/{productId}/adjust")
     public ResponseEntity<InventoryItemResponse> adjustStock(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody AdjustStockRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.adjustStock(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -141,11 +142,11 @@ public class InventoryController {
 
     @PostMapping("/bulk-adjust")
     public ResponseEntity<List<InventoryItemResponse>> bulkAdjust(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody BulkAdjustRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.bulkAdjust(companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -156,13 +157,13 @@ public class InventoryController {
 
     @GetMapping("/analytics/top-purchased")
     public ResponseEntity<List<ProductSalesMetricResponse>> getTopPurchasedProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         try {
             validateDateRange(from, to);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getTopPurchasedProducts(
                     companyId, userId, limit, toStartOfDay(from), toEndOfDay(to)));
         } catch (AppHttpException e) {
@@ -174,13 +175,13 @@ public class InventoryController {
 
     @GetMapping("/analytics/top-revenue")
     public ResponseEntity<List<ProductSalesMetricResponse>> getTopRevenueProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         try {
             validateDateRange(from, to);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getTopRevenueProducts(
                     companyId, userId, limit, toStartOfDay(from), toEndOfDay(to)));
         } catch (AppHttpException e) {
@@ -192,10 +193,10 @@ public class InventoryController {
 
     @GetMapping("/analytics/never-sold")
     public ResponseEntity<List<ProductSalesMetricResponse>> getNeverSoldProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int limit) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getNeverSoldProducts(companyId, userId, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -206,11 +207,11 @@ public class InventoryController {
 
     @PatchMapping("/{productId}/settings")
     public ResponseEntity<InventoryItemResponse> updateSettings(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody UpdateInventorySettingsRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(inventoryService.updateSettings(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -221,17 +222,17 @@ public class InventoryController {
 
     @GetMapping("/adjustments")
     public ResponseEntity<PagedResponse<AdjustmentResponse>> getCompanyAdjustmentHistory(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) AdjustmentReason reason,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) Long productId,
-            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) UUID productId,
+            @RequestParam(required = false) UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
             validateDateRange(from, to);
-            long ownerId = resolveUserId();
+            UUID ownerId = resolveUserId();
             return ResponseEntity.ok(inventoryService.getCompanyAdjustmentHistory(
                     companyId, ownerId, reason, toStartOfDay(from), toEndOfDay(to),
                     productId, userId, page, size));
@@ -244,10 +245,10 @@ public class InventoryController {
 
     @GetMapping("/{productId}/locations")
     public ResponseEntity<List<LocationStockResponse>> getProductLocationStocks(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.getProductLocationStocks(companyId, productId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -256,9 +257,9 @@ public class InventoryController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 
     private static void validateDateRange(LocalDate from, LocalDate to) {

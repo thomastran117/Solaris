@@ -27,15 +27,15 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     }
 
     @Override
-    public void initiateVerification(long userId, String email) {
+    public void initiateVerification(UUID userId, String email) {
         String token = UUID.randomUUID().toString();
         long ttl = env.getEmail().getVerificationTokenTtlSeconds();
-        cache.set(EMAIL_VERIFY_PREFIX + token, String.valueOf(userId), ttl);
+        cache.set(EMAIL_VERIFY_PREFIX + token, userId.toString(), ttl);
         emailService.sendVerificationEmail(email, token);
     }
 
     @Override
-    public long consumeVerificationToken(String token) {
+    public UUID consumeVerificationToken(String token) {
         if (token == null || token.isBlank()) {
             throw new BadRequestException("Verification token is required.");
         }
@@ -44,8 +44,8 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
             throw new BadRequestException("Invalid or expired verification token.");
         }
         try {
-            return Long.parseLong(raw);
-        } catch (NumberFormatException e) {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
             throw new BadRequestException("Malformed verification token.");
         }
     }

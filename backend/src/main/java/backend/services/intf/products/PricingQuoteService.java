@@ -1,5 +1,6 @@
 package backend.services.intf.products;
 
+import java.util.UUID;
 import backend.dtos.requests.pricing.PricingQuoteRequest;
 import backend.dtos.responses.pricing.PricingQuoteResponse;
 
@@ -9,5 +10,5 @@ import backend.dtos.responses.pricing.PricingQuoteResponse;
  * to the DTO returned by the quote API.
  */
 public interface PricingQuoteService {
-    PricingQuoteResponse quote(PricingQuoteRequest request, Long userId);
+    PricingQuoteResponse quote(PricingQuoteRequest request, UUID userId);
 }

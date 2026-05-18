@@ -5,17 +5,18 @@ import lombok.Getter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class TicketResponse {
-    private Long id;
-    private Long customerId;
+    private UUID id;
+    private UUID customerId;
     private String customerName;
-    private Long openedById;
-    private Long assignedToId;
+    private UUID openedById;
+    private UUID assignedToId;
     private String assignedToName;
-    private Long orderId;
+    private UUID orderId;
     private String subject;
     private String description;
     private String status;

@@ -1,5 +1,6 @@
 package backend.dtos.responses.address;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -8,8 +9,8 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class CustomerAddressResponse {
-    private Long id;
-    private Long userId;
+    private UUID id;
+    private UUID userId;
     private String label;
     private String recipientName;
     private String street;

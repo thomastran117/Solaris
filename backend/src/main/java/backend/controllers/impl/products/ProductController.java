@@ -1,5 +1,6 @@
 package backend.controllers.impl.products;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -74,7 +75,7 @@ public class ProductController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<ProductResponse>> getProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) @Size(max = 100) String category,
             @RequestParam(required = false) @Size(max = 100) String brand,
@@ -102,8 +103,8 @@ public class ProductController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponse> getProduct(
-            @PathVariable long companyId,
-            @PathVariable long id) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID id) {
         try {
             ProductResponse product = productService.getProduct(companyId, id);
             // Non-members can only see ACTIVE products; hide drafts/scheduled/archived
@@ -121,11 +122,11 @@ public class ProductController {
     @PostMapping("/batch-create")
     @RequireAuth
     public ResponseEntity<List<ProductResponse>> batchCreateProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody BatchCreateProductsRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED).body(productService.batchCreateProducts(companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -137,10 +138,10 @@ public class ProductController {
     @PostMapping("/batch-delete")
     @RequireAuth
     public ResponseEntity<Void> batchDeleteProducts(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody BatchDeleteProductsRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             productService.batchDeleteProducts(companyId, userId, request);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -153,8 +154,8 @@ public class ProductController {
     @PostMapping("/batch")
     @RequireAuth
     public ResponseEntity<List<ProductResponse>> getProductsByIds(
-            @PathVariable long companyId,
-            @RequestBody @jakarta.validation.constraints.Size(max = 100, message = "Cannot fetch more than 100 products at once") List<Long> ids) {
+            @PathVariable UUID companyId,
+            @RequestBody @jakarta.validation.constraints.Size(max = 100, message = "Cannot fetch more than 100 products at once") List<UUID> ids) {
         try {
             return ResponseEntity.ok(productService.getProductsByIds(companyId, ids));
         } catch (AppHttpException e) {
@@ -167,11 +168,11 @@ public class ProductController {
     @PostMapping
     @RequireAuth
     public ResponseEntity<ProductResponse> createProduct(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateProductRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED).body(productService.createProduct(companyId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -183,12 +184,12 @@ public class ProductController {
     @PatchMapping("/{id}")
     @RequireAuth
     public ResponseEntity<ProductResponse> updateProduct(
-            @PathVariable long companyId,
-            @PathVariable long id,
+            @PathVariable UUID companyId,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateProductRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.updateProduct(companyId, id, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -200,10 +201,10 @@ public class ProductController {
     @DeleteMapping("/{id}")
     @RequireAuth
     public ResponseEntity<Void> deleteProduct(
-            @PathVariable long companyId,
-            @PathVariable long id) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID id) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             productService.deleteProduct(companyId, id, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -215,8 +216,8 @@ public class ProductController {
 
     @GetMapping("/{productId}/images")
     public ResponseEntity<List<ProductImageResponse>> getProductImages(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(productService.getProductImages(companyId, productId));
         } catch (AppHttpException e) {
@@ -229,12 +230,12 @@ public class ProductController {
     @PostMapping("/{productId}/images")
     @RequireAuth
     public ResponseEntity<ProductImageResponse> addProductImage(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody AddProductImageRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(productService.addProductImage(companyId, productId, userId, request));
         } catch (AppHttpException e) {
@@ -247,11 +248,11 @@ public class ProductController {
     @DeleteMapping("/{productId}/images/{imageId}")
     @RequireAuth
     public ResponseEntity<Void> deleteProductImage(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long imageId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID imageId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             productService.deleteProductImage(companyId, productId, imageId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -264,11 +265,11 @@ public class ProductController {
     @PatchMapping("/{productId}/images/reorder")
     @RequireAuth
     public ResponseEntity<List<ProductImageResponse>> reorderProductImages(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody ReorderProductImagesRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.reorderProductImages(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -281,8 +282,8 @@ public class ProductController {
 
     @GetMapping("/{productId}/options")
     public ResponseEntity<List<ProductOptionResponse>> getProductOptions(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(productService.getProductOptions(companyId, productId));
         } catch (AppHttpException e) {
@@ -295,12 +296,12 @@ public class ProductController {
     @PostMapping("/{productId}/options")
     @RequireAuth
     public ResponseEntity<ProductOptionResponse> addProductOption(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody CreateProductOptionRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(productService.addProductOption(companyId, productId, userId, request));
         } catch (AppHttpException e) {
@@ -313,13 +314,13 @@ public class ProductController {
     @PatchMapping("/{productId}/options/{optionId}")
     @RequireAuth
     public ResponseEntity<ProductOptionResponse> updateProductOption(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long optionId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID optionId,
             @Valid @RequestBody UpdateProductOptionRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.updateProductOption(companyId, productId, optionId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -331,11 +332,11 @@ public class ProductController {
     @DeleteMapping("/{productId}/options/{optionId}")
     @RequireAuth
     public ResponseEntity<Void> deleteProductOption(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long optionId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID optionId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             productService.deleteProductOption(companyId, productId, optionId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -349,8 +350,8 @@ public class ProductController {
 
     @GetMapping("/{productId}/variants")
     public ResponseEntity<List<ProductVariantResponse>> getProductVariants(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(productService.getProductVariants(companyId, productId));
         } catch (AppHttpException e) {
@@ -362,9 +363,9 @@ public class ProductController {
 
     @GetMapping("/{productId}/variants/{variantId}")
     public ResponseEntity<ProductVariantResponse> getProductVariant(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long variantId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID variantId) {
         try {
             return ResponseEntity.ok(productService.getProductVariant(companyId, productId, variantId));
         } catch (AppHttpException e) {
@@ -377,12 +378,12 @@ public class ProductController {
     @PostMapping("/{productId}/variants")
     @RequireAuth
     public ResponseEntity<ProductVariantResponse> createProductVariant(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody CreateProductVariantRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(productService.createProductVariant(companyId, productId, userId, request));
         } catch (AppHttpException e) {
@@ -395,13 +396,13 @@ public class ProductController {
     @PatchMapping("/{productId}/variants/{variantId}")
     @RequireAuth
     public ResponseEntity<ProductVariantResponse> updateProductVariant(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long variantId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID variantId,
             @Valid @RequestBody UpdateProductVariantRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.updateProductVariant(companyId, productId, variantId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -413,11 +414,11 @@ public class ProductController {
     @DeleteMapping("/{productId}/variants/{variantId}")
     @RequireAuth
     public ResponseEntity<Void> deleteProductVariant(
-            @PathVariable long companyId,
-            @PathVariable long productId,
-            @PathVariable long variantId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID variantId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             productService.deleteProductVariant(companyId, productId, variantId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -431,8 +432,8 @@ public class ProductController {
 
     @GetMapping("/{productId}/attributes")
     public ResponseEntity<List<ProductAttributeResponse>> getProductAttributes(
-            @PathVariable long companyId,
-            @PathVariable long productId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
         try {
             return ResponseEntity.ok(productService.getProductAttributes(companyId, productId));
         } catch (AppHttpException e) {
@@ -445,12 +446,12 @@ public class ProductController {
     @PutMapping("/{productId}/attributes")
     @RequireAuth
     public ResponseEntity<List<ProductAttributeResponse>> setProductAttributes(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody SetProductAttributesRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.setProductAttributes(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -463,7 +464,7 @@ public class ProductController {
 
     @GetMapping("/bundles")
     public ResponseEntity<PagedResponse<BundleResponse>> listBundles(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
@@ -472,19 +473,19 @@ public class ProductController {
 
     @GetMapping("/bundles/{bundleId}")
     public ResponseEntity<BundleResponse> getBundle(
-            @PathVariable long companyId,
-            @PathVariable long bundleId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID bundleId) {
         return ResponseEntity.ok(bundleService.getBundle(companyId, bundleId));
     }
 
     @PatchMapping("/{productId}/marketplace")
     @RequireAuth
     public ResponseEntity<ProductResponse> updateMarketplaceListing(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody UpdateMarketplaceListingRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.updateMarketplaceListing(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -496,11 +497,11 @@ public class ProductController {
     @PatchMapping("/{productId}/merchandising")
     @RequireAuth
     public ResponseEntity<ProductResponse> updateProductMerchandising(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody UpdateProductMerchandisingRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.updateProductMerchandising(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -513,8 +514,8 @@ public class ProductController {
 
     @GetMapping("/compare")
     public ResponseEntity<List<ProductResponse>> compareProducts(
-            @PathVariable long companyId,
-            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 products at once") List<Long> ids) {
+            @PathVariable UUID companyId,
+            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 products at once") List<UUID> ids) {
         try {
             return ResponseEntity.ok(productService.compareProducts(companyId, ids));
         } catch (AppHttpException e) {
@@ -527,8 +528,8 @@ public class ProductController {
     @GetMapping("/{productId}/history")
     @RequireAuth
     public ResponseEntity<PagedResponse<ProductHistoryEntryResponse>> getProductHistory(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         try {
@@ -543,11 +544,11 @@ public class ProductController {
     @PostMapping("/{productId}/revert")
     @RequireAuth
     public ResponseEntity<ProductResponse> revertProductChanges(
-            @PathVariable long companyId,
-            @PathVariable long productId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
             @Valid @RequestBody RevertProductChangesRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.revertProductChanges(companyId, productId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -558,7 +559,7 @@ public class ProductController {
 
     @PostMapping("/reindex")
     @RequireAuth
-    public ResponseEntity<Void> triggerReindex(@PathVariable long companyId) {
+    public ResponseEntity<Void> triggerReindex(@PathVariable UUID companyId) {
         try {
             companyAccessService.requireAnyAccess(companyId, resolveUserId());
             productIndexingService.reindexCompany(companyId);
@@ -570,20 +571,20 @@ public class ProductController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 
-    private Long resolveUserIdOptional() {
+    private UUID resolveUserIdOptional() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             return null;
         }
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 
-    private boolean isCompanyMember(long companyId, Long userId) {
+    private boolean isCompanyMember(UUID companyId, UUID userId) {
         if (userId == null) return false;
         return companyAccessService.resolveRole(companyId, userId).isPresent();
     }

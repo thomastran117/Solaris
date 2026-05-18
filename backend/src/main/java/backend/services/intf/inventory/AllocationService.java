@@ -2,6 +2,7 @@ package backend.services.intf.inventory;
 
 import backend.models.enums.AllocationStrategy;
 
+import java.util.UUID;
 import java.util.List;
 
 public interface AllocationService {
@@ -25,8 +26,8 @@ public interface AllocationService {
      * @return list of allocation results; empty means no location stock is available
      */
     List<AllocationResult> allocate(
-            long productId,
-            Long variantId,
+            UUID productId,
+            UUID variantId,
             int qty,
             AllocationStrategy strategy,
             Double buyerLat,
@@ -40,7 +41,7 @@ public interface AllocationService {
      * @param allocatedQty    units decremented from this location
      */
     record AllocationResult(
-            long locationStockId,
+            UUID locationStockId,
             backend.models.core.InventoryLocation location,
             int allocatedQty) {}
 }

@@ -2,7 +2,7 @@ import api from "../api";
 
 export interface LoyaltyAccount {
   id: number;
-  userId: number;
+  userId: string;
   companyId: number;
   pointsBalance: number;
   lifetimePoints: number;
@@ -16,7 +16,7 @@ export interface LoyaltyAccount {
 export interface LoyaltyTransaction {
   id: number;
   accountId: number;
-  userId: number;
+  userId: string;
   companyId: number;
   type:
     | "EARN_ORDER"
@@ -35,7 +35,7 @@ export interface LoyaltyTransaction {
 }
 
 export interface LoyaltyRedemptionQuote {
-  userId: number;
+  userId: string;
   companyId: number;
   pointsToRedeem: number;
   discountCents: number;
@@ -97,7 +97,7 @@ export interface CreateLoyaltyTierRequest {
 }
 
 export interface IssueBonusRequest {
-  userId: number;
+  userId: string;
   points: number;
   reason?: string;
 }

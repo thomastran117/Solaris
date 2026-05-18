@@ -1,5 +1,6 @@
 package backend.services.impl.pricing;
 
+import java.util.UUID;
 import backend.dtos.requests.marketplace.CreateCommissionPolicyRequest;
 import backend.dtos.responses.marketplace.CommissionPolicyResponse;
 import backend.exceptions.http.ForbiddenException;
@@ -31,7 +32,7 @@ public class CommissionPolicyServiceImpl implements CommissionPolicyService {
 
     @Override
     @Transactional
-    public CommissionPolicyResponse createPolicy(long marketplaceId, long operatorUserId, CreateCommissionPolicyRequest request) {
+    public CommissionPolicyResponse createPolicy(UUID marketplaceId, UUID operatorUserId, CreateCommissionPolicyRequest request) {
         assertOperator(marketplaceId, operatorUserId);
 
         CommissionPolicy policy = new CommissionPolicy();
@@ -59,17 +60,17 @@ public class CommissionPolicyServiceImpl implements CommissionPolicyService {
 
     @Override
     @Transactional
-    public void deletePolicy(long policyId, long marketplaceId, long operatorUserId) {
+    public void deletePolicy(UUID policyId, UUID marketplaceId, UUID operatorUserId) {
         assertOperator(marketplaceId, operatorUserId);
         CommissionPolicy policy = policyRepository.findById(policyId)
-                .filter(p -> p.getMarketplaceId() == marketplaceId)
+                .filter(p -> p.getMarketplaceId().equals(marketplaceId))
                 .orElseThrow(() -> new ResourceNotFoundException("Commission policy not found"));
         policyRepository.delete(policy);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<CommissionPolicyResponse> listPolicies(long marketplaceId, long operatorUserId) {
+    public List<CommissionPolicyResponse> listPolicies(UUID marketplaceId, UUID operatorUserId) {
         assertOperator(marketplaceId, operatorUserId);
         return policyRepository.findByMarketplaceIdAndActiveTrue(marketplaceId)
                 .stream()
@@ -77,9 +78,9 @@ public class CommissionPolicyServiceImpl implements CommissionPolicyService {
                 .toList();
     }
 
-    private void assertOperator(long marketplaceId, long userId) {
+    private void assertOperator(UUID marketplaceId, UUID userId) {
         marketplaceProfileRepository.findByCompanyId(marketplaceId)
-                .filter(p -> p.getCompany().getOwner().getId() == userId)
+                .filter(p -> p.getCompany().getOwner().getId().equals(userId))
                 .orElseThrow(() -> new ForbiddenException("You are not an operator of this marketplace"));
     }
 

@@ -16,7 +16,7 @@ export interface SavedListItem {
 
 export interface SavedList {
   id: number;
-  userId: number;
+  userId: string;
   name: string;
   type: SavedListType;
   description: string | null;
@@ -29,7 +29,7 @@ export interface SavedList {
 
 export interface SavedListSummary {
   id: number;
-  userId: number;
+  userId: string;
   name: string;
   type: SavedListType;
   description: string | null;

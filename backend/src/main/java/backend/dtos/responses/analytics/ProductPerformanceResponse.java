@@ -3,15 +3,16 @@ package backend.dtos.responses.analytics;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 public record ProductPerformanceResponse(
-        long companyId,
+        UUID companyId,
         int lookbackDays,
         Instant computedAt,
         List<ProductPerfEntry> products
 ) {
     public record ProductPerfEntry(
-            long productId,
+            UUID productId,
             String productName,
             String sku,
             BigDecimal currentRevenue,

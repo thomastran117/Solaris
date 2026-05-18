@@ -13,19 +13,19 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface LocationStockRepository extends JpaRepository<LocationStock, Long> {
+public interface LocationStockRepository extends JpaRepository<LocationStock, java.util.UUID> {
 
-    List<LocationStock> findAllByLocationId(long locationId);
+    List<LocationStock> findAllByLocationId(java.util.UUID locationId);
 
-    List<LocationStock> findAllByProductId(long productId);
+    List<LocationStock> findAllByProductId(java.util.UUID productId);
 
     Optional<LocationStock> findByLocationIdAndProductIdAndVariantRef(
-            long locationId, long productId, long variantRef);
+            java.util.UUID locationId, java.util.UUID productId, long variantRef);
 
     @Query("SELECT ls FROM LocationStock ls WHERE ls.product.id = :productId " +
            "AND ls.location.company.id = :companyId ORDER BY ls.location.displayOrder ASC, ls.location.name ASC")
     List<LocationStock> findAllByProductIdAndCompanyId(
-            @Param("productId") long productId, @Param("companyId") long companyId);
+            @Param("productId") java.util.UUID productId, @Param("companyId") java.util.UUID companyId);
 
     /**
      * Picks the best-stocked active location for a product (product-level stock).
@@ -34,7 +34,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
            "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
            "AND loc.active = true AND ls.stock > 0 ORDER BY ls.stock DESC")
-    List<LocationStock> findTopByProductStockDesc(@Param("productId") long productId, Pageable pageable);
+    List<LocationStock> findTopByProductStockDesc(@Param("productId") java.util.UUID productId, Pageable pageable);
 
     /**
      * Picks the best-stocked active location for a specific variant.
@@ -44,7 +44,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "WHERE ls.product.id = :productId AND ls.variantRef = :variantRef " +
            "AND loc.active = true AND ls.stock > 0 ORDER BY ls.stock DESC")
     List<LocationStock> findTopByVariantStockDesc(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("variantRef") long variantRef,
             Pageable pageable);
 
@@ -57,7 +57,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
            "AND loc.active = true AND ls.stock > 0 " +
            "ORDER BY loc.displayOrder ASC, loc.name ASC")
-    List<LocationStock> findStockedByProduct(@Param("productId") long productId);
+    List<LocationStock> findStockedByProduct(@Param("productId") java.util.UUID productId);
 
     /**
      * All active, stocked locations for a specific variant, sorted by displayOrder.
@@ -68,7 +68,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "AND loc.active = true AND ls.stock > 0 " +
            "ORDER BY loc.displayOrder ASC, loc.name ASC")
     List<LocationStock> findStockedByVariant(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("variantRef") long variantRef);
 
     /** Picks active locations for a product ordered by Haversine distance to buyer (product-level stock). */
@@ -82,7 +82,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.longitude - :buyerLng) / 2), 2) " +
            ")) ASC")
     List<LocationStock> findByProductOrderedByDistance(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("buyerLat") double buyerLat,
             @Param("buyerLng") double buyerLng,
             Pageable pageable);
@@ -98,7 +98,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.longitude - :buyerLng) / 2), 2) " +
            ")) ASC")
     List<LocationStock> findByVariantOrderedByDistance(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("variantRef") long variantRef,
             @Param("buyerLat") double buyerLat,
             @Param("buyerLng") double buyerLng,
@@ -111,7 +111,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "AND loc.fulfillmentCost IS NOT NULL " +
            "ORDER BY loc.fulfillmentCost ASC, ls.stock DESC")
     List<LocationStock> findByProductOrderedByCost(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             Pageable pageable);
 
     /** Picks active locations for a variant ordered by fulfillmentCost ASC (variant-level stock). */
@@ -121,12 +121,12 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
            "AND loc.fulfillmentCost IS NOT NULL " +
            "ORDER BY loc.fulfillmentCost ASC, ls.stock DESC")
     List<LocationStock> findByVariantOrderedByCost(
-            @Param("productId") long productId,
+            @Param("productId") java.util.UUID productId,
             @Param("variantRef") long variantRef,
             Pageable pageable);
 
     /** Guards deletion: true only when at least one record still has stock above zero. */
-    boolean existsByLocationIdAndStockGreaterThan(long locationId, int stock);
+    boolean existsByLocationIdAndStockGreaterThan(java.util.UUID locationId, int stock);
 
     /**
      * Atomically decrements stock. Returns 1 on success (stock >= qty), 0 on failure.
@@ -134,14 +134,14 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
     @Modifying
     @Query("UPDATE LocationStock ls SET ls.stock = ls.stock - :qty " +
            "WHERE ls.id = :id AND ls.stock >= :qty")
-    int decrementStock(@Param("id") long id, @Param("qty") int qty);
+    int decrementStock(@Param("id") java.util.UUID id, @Param("qty") int qty);
 
     /**
      * Unconditional restore — used in cancel/compensation flows.
      */
     @Modifying
     @Query("UPDATE LocationStock ls SET ls.stock = ls.stock + :qty WHERE ls.id = :id")
-    int restoreStock(@Param("id") long id, @Param("qty") int qty);
+    int restoreStock(@Param("id") java.util.UUID id, @Param("qty") int qty);
 
     /**
      * Signed delta adjustment with negative-stock guard.
@@ -150,7 +150,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
     @Modifying(clearAutomatically = true)
     @Query("UPDATE LocationStock ls SET ls.stock = ls.stock + :delta " +
            "WHERE ls.id = :id AND (ls.stock + :delta) >= 0")
-    int adjustStock(@Param("id") long id, @Param("delta") int delta);
+    int adjustStock(@Param("id") java.util.UUID id, @Param("delta") int delta);
 
     /**
      * Direct set — used by setLocationStock to replace stock and threshold entirely.
@@ -158,6 +158,6 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, Lo
     @Modifying(clearAutomatically = true)
     @Query("UPDATE LocationStock ls SET ls.stock = :stock, ls.lowStockThreshold = :threshold " +
            "WHERE ls.id = :id")
-    int setStock(@Param("id") long id, @Param("stock") int stock,
+    int setStock(@Param("id") java.util.UUID id, @Param("stock") int stock,
                  @Param("threshold") Integer threshold);
 }

@@ -8,11 +8,12 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface CommissionPolicyRepository extends JpaRepository<CommissionPolicy, Long> {
+public interface CommissionPolicyRepository extends JpaRepository<CommissionPolicy, UUID> {
 
-    List<CommissionPolicy> findByMarketplaceIdAndActiveTrue(long marketplaceId);
+    List<CommissionPolicy> findByMarketplaceIdAndActiveTrue(UUID marketplaceId);
 
     /** Finds the active policy valid at a given point in time. */
     @Query("""
@@ -23,5 +24,5 @@ public interface CommissionPolicyRepository extends JpaRepository<CommissionPoli
               AND (p.effectiveTo IS NULL OR p.effectiveTo >= :at)
             ORDER BY p.id DESC
             """)
-    List<CommissionPolicy> findActiveAt(@Param("marketplaceId") long marketplaceId, @Param("at") Instant at);
+    List<CommissionPolicy> findActiveAt(@Param("marketplaceId") UUID marketplaceId, @Param("at") Instant at);
 }

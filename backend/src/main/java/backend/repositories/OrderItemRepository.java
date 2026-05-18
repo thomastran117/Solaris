@@ -11,13 +11,13 @@ import java.util.Collection;
 import java.util.List;
 
 @Repository
-public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+public interface OrderItemRepository extends JpaRepository<OrderItem, java.util.UUID> {
 
-    List<OrderItem> findAllByOrderId(long orderId);
+    List<OrderItem> findAllByOrderId(java.util.UUID orderId);
 
-    List<OrderItem> findAllBySubOrderId(long subOrderId);
+    List<OrderItem> findAllBySubOrderId(java.util.UUID subOrderId);
 
     @Modifying
     @Query("UPDATE OrderItem i SET i.subOrderId = :subOrderId WHERE i.id IN :itemIds")
-    void setSubOrderId(@Param("subOrderId") Long subOrderId, @Param("itemIds") Collection<Long> itemIds);
+    void setSubOrderId(@Param("subOrderId") java.util.UUID subOrderId, @Param("itemIds") Collection<java.util.UUID> itemIds);
 }

@@ -25,8 +25,8 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpecificationExecutor<Product> {
-    Optional<Product> findByIdAndCompanyId(long id, long companyId);
+public interface ProductRepository extends JpaRepository<Product, java.util.UUID>, JpaSpecificationExecutor<Product> {
+    Optional<Product> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
     // -------------------------------------------------------------------------
     // Marketplace catalog queries
@@ -39,9 +39,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
            countQuery = "SELECT COUNT(p) FROM Product p WHERE p.marketplaceId = :marketplaceId AND p.marketplaceListed = true AND p.status = 'ACTIVE'")
     Page<Product> findMarketplaceListedPaged(@Param("marketplaceId") Long marketplaceId, Pageable pageable);
 
-    Optional<Product> findByIdAndMarketplaceId(long id, long marketplaceId);
+    Optional<Product> findByIdAndMarketplaceId(java.util.UUID id, long marketplaceId);
 
-    List<Product> findAllByIdInAndMarketplaceId(Collection<Long> ids, long marketplaceId);
+    List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, long marketplaceId);
 
     // -------------------------------------------------------------------------
     // JOIN FETCH queries used by indexing workers to avoid LazyInitializationException
@@ -52,32 +52,32 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     List<Product> findAllWithCompany();
 
     @Query("SELECT p FROM Product p JOIN FETCH p.company WHERE p.company.id = :companyId")
-    List<Product> findAllByCompanyIdWithCompany(@Param("companyId") long companyId);
+    List<Product> findAllByCompanyIdWithCompany(@Param("companyId") java.util.UUID companyId);
 
     /** Acquires a pessimistic write lock on the product row — use inside @Transactional to serialize concurrent mutations. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Product p WHERE p.id = :id AND p.company.id = :companyId")
-    Optional<Product> findByIdAndCompanyIdWithLock(@Param("id") long id, @Param("companyId") long companyId);
+    Optional<Product> findByIdAndCompanyIdWithLock(@Param("id") java.util.UUID id, @Param("companyId") java.util.UUID companyId);
 
-    List<Product> findAllByCompanyId(long companyId);
+    List<Product> findAllByCompanyId(java.util.UUID companyId);
 
     /**
      * Paginated catalogue listing for the company — used by export-to-CSV and other
      * large-result-set flows. The unpaginated overload above is OOM-prone for large
      * companies; prefer this method for new callers and migrate existing ones over time.
      */
-    Page<Product> findAllByCompanyId(long companyId, Pageable pageable);
+    Page<Product> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
 
     /** Cheap upper-bound check so callers can short-circuit before paging through a huge result set. */
-    long countByCompanyId(long companyId);
+    long countByCompanyId(java.util.UUID companyId);
 
     /** Fetches a product with its company and the company's owner in one query — used by stock alert notifications. */
     @Query("SELECT p FROM Product p JOIN FETCH p.company c JOIN FETCH c.owner WHERE p.id = :id")
-    Optional<Product> findByIdWithCompanyOwner(@Param("id") long id);
-    List<Product> findAllByIdInAndCompanyId(Collection<Long> ids, long companyId);
-    boolean existsBySkuAndCompanyId(String sku, long companyId);
-    Optional<Product> findBySkuAndCompanyId(String sku, long companyId);
-    List<Product> findAllBySkuInAndCompanyId(Collection<String> skus, long companyId);
+    Optional<Product> findByIdWithCompanyOwner(@Param("id") java.util.UUID id);
+    List<Product> findAllByIdInAndCompanyId(Collection<java.util.UUID> ids, java.util.UUID companyId);
+    boolean existsBySkuAndCompanyId(String sku, java.util.UUID companyId);
+    Optional<Product> findBySkuAndCompanyId(String sku, java.util.UUID companyId);
+    List<Product> findAllBySkuInAndCompanyId(Collection<String> skus, java.util.UUID companyId);
 
     /**
      * Atomically decrements stock. Returns 1 (success) when stock >= quantity or stock IS NULL
@@ -87,12 +87,12 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
      */
     @Modifying
     @Query("UPDATE Product p SET p.stock = p.stock - :quantity WHERE p.id = :id AND (p.stock IS NULL OR p.stock >= :quantity)")
-    int decrementStock(@Param("id") long id, @Param("quantity") int quantity);
+    int decrementStock(@Param("id") java.util.UUID id, @Param("quantity") int quantity);
 
     /** Restores stock after a failed or cancelled order. */
     @Modifying
     @Query("UPDATE Product p SET p.stock = p.stock + :quantity WHERE p.id = :id")
-    int restoreStock(@Param("id") long id, @Param("quantity") int quantity);
+    int restoreStock(@Param("id") java.util.UUID id, @Param("quantity") int quantity);
 
     /**
      * Atomically applies a signed delta to stock. Prevents negative stock.
@@ -100,19 +100,19 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE Product p SET p.stock = p.stock + :delta WHERE p.id = :id AND p.stock IS NOT NULL AND (p.stock + :delta) >= 0")
-    int adjustStock(@Param("id") long id, @Param("delta") int delta);
+    int adjustStock(@Param("id") java.util.UUID id, @Param("delta") int delta);
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.company.id = :cid AND p.stock IS NOT NULL AND p.stock = 0")
-    long countOutOfStock(@Param("cid") long companyId);
+    long countOutOfStock(@Param("cid") java.util.UUID companyId);
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.company.id = :cid AND p.stock IS NOT NULL AND p.lowStockThreshold IS NOT NULL AND p.stock > 0 AND p.stock <= p.lowStockThreshold")
-    long countLowStock(@Param("cid") long companyId);
+    long countLowStock(@Param("cid") java.util.UUID companyId);
 
     @Query("SELECT COALESCE(SUM(p.stock * p.price), 0) FROM Product p WHERE p.company.id = :cid AND p.stock IS NOT NULL AND p.stock > 0")
-    BigDecimal totalInventoryValue(@Param("cid") long companyId);
+    BigDecimal totalInventoryValue(@Param("cid") java.util.UUID companyId);
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.company.id = :cid AND p.stock IS NOT NULL")
-    long countTrackedProducts(@Param("cid") long companyId);
+    long countTrackedProducts(@Param("cid") java.util.UUID companyId);
 
     /**
      * Returns the top N products for a company ranked by total units sold across PAID orders.
@@ -141,7 +141,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             LIMIT :limit
             """)
     List<ProductSalesProjection> findTopByUnitsSold(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("limit") int limit,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -172,7 +172,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             LIMIT :limit
             """)
     List<ProductSalesProjection> findTopByRevenue(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("limit") int limit,
             @Param("from") Instant from,
             @Param("to") Instant to);
@@ -205,7 +205,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             LIMIT :limit
             """)
     List<ProductSalesProjection> findNeverSold(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("limit") int limit);
 
     /**
@@ -234,7 +234,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             LIMIT :limit
             """)
     List<ProductDemandProjection> findTopByDemandSince(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("since") Instant since,
             @Param("limit") int limit);
 
@@ -259,7 +259,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandSince(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("since") Instant since);
 
     /**
@@ -283,7 +283,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandBetween(
-            @Param("companyId") long companyId,
+            @Param("companyId") java.util.UUID companyId,
             @Param("from") Instant from,
             @Param("to") Instant to);
 
@@ -299,7 +299,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             WHERE o.status     = 'PAID'
               AND o.created_at >= :since
             """)
-    List<Long> findDistinctCompanyIdsWithPaidOrdersSince(@Param("since") Instant since);
+    List<java.util.UUID> findDistinctCompanyIdsWithPaidOrdersSince(@Param("since") Instant since);
 
     /**
      * Used by {@code ProductSchedulingWorker} to find scheduled products whose publish time has arrived.

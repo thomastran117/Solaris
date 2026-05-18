@@ -11,11 +11,12 @@ import backend.models.core.OrderIssue;
 import backend.models.enums.OrderIssueState;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface OrderIssueRepository extends JpaRepository<OrderIssue, Long> {
+public interface OrderIssueRepository extends JpaRepository<OrderIssue, UUID> {
 
-    List<OrderIssue> findAllByOrderId(long orderId);
+    List<OrderIssue> findAllByOrderId(UUID orderId);
 
     @Query("SELECT i FROM OrderIssue i WHERE " +
            "(:state IS NULL OR i.state = :state)")

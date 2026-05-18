@@ -1,5 +1,7 @@
 package backend.services.impl;
 
+import java.util.UUID;
+import backend.testutil.TestIds;
 import backend.dtos.requests.subscription.CreateSubscriptionRequest;
 import backend.dtos.requests.subscription.ShippingAddressRequest;
 import backend.dtos.requests.subscription.UpdateSubscriptionRequest;
@@ -81,9 +83,9 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_rejectsNonSubscribableProduct() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         Product product = makeProduct(10L, false, null);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
         assertThrows(BadRequestException.class,
@@ -92,9 +94,9 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_rejectsDisallowedInterval() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         Product product = makeProduct(10L, true, "MONTH:1,MONTH:3");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
         CreateSubscriptionRequest req = makeCreateRequest(10L);
@@ -106,10 +108,10 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_rejectsUnavailableProduct() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         Product product = makeProduct(10L, true, null);
         product.setListed(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
         assertThrows(BadRequestException.class,
@@ -118,11 +120,11 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_rejectsUnavailableVariant() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         user.setStripeCustomerId("cus_123");
         Product product = makeProduct(10L, true, null);
         ProductVariant variant = makeVariant(55L, product, false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
         when(variantRepository.findByIdAndProductId(55L, 10L)).thenReturn(Optional.of(variant));
 
@@ -134,10 +136,10 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_acceptsAllowedIntervalAndPersistsSubscription() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         user.setStripeCustomerId("cus_123");
         Product product = makeProduct(10L, true, "MONTH:1");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
         when(paymentService.retrievePaymentMethod("pm_test"))
@@ -162,10 +164,10 @@ class SubscriptionServiceImplTest {
 
     @Test
     void create_rejectsPaymentMethodOwnedByDifferentCustomer() {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         user.setStripeCustomerId("cus_123");
         Product product = makeProduct(10L, true, null);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
         when(paymentService.retrievePaymentMethod("pm_test"))
                 .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_OTHER",
@@ -372,7 +374,7 @@ class SubscriptionServiceImplTest {
 
     // ─── helpers ────────────────────────────────────────────────────────────
 
-    private User makeUser(long id) {
+    private User makeUser(UUID id) {
         User u = new User();
         u.setId(id);
         u.setEmail("u" + id + "@example.com");
@@ -426,7 +428,7 @@ class SubscriptionServiceImplTest {
     }
 
     private Subscription makeSubscription(SubscriptionStatus status) {
-        User user = makeUser(1L);
+        User user = makeUser(TestIds.uuid(1));
         Product product = makeProduct(10L, true, null);
 
         Subscription sub = new Subscription();

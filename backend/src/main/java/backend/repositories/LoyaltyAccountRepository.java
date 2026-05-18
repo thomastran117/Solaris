@@ -11,15 +11,16 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, Long> {
+public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, UUID> {
 
-    Optional<LoyaltyAccount> findByIdAndCompanyId(long id, long companyId);
+    Optional<LoyaltyAccount> findByIdAndCompanyId(UUID id, UUID companyId);
 
-    Optional<LoyaltyAccount> findByUserIdAndCompanyId(long userId, long companyId);
+    Optional<LoyaltyAccount> findByUserIdAndCompanyId(UUID userId, UUID companyId);
 
-    Page<LoyaltyAccount> findByCompanyId(long companyId, Pageable pageable);
+    Page<LoyaltyAccount> findByCompanyId(UUID companyId, Pageable pageable);
 
     /**
      * Atomically deducts points. Returns 1 on success, 0 if balance would go negative.
@@ -28,16 +29,16 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
     @Modifying
     @Query("UPDATE LoyaltyAccount a SET a.pointsBalance = a.pointsBalance - :delta " +
            "WHERE a.id = :id AND a.pointsBalance >= :delta")
-    int deductPoints(@Param("id") long id, @Param("delta") long delta);
+    int deductPoints(@Param("id") UUID id, @Param("delta") long delta);
 
     @Modifying
     @Query("UPDATE LoyaltyAccount a SET a.pointsBalance = a.pointsBalance + :delta, " +
            "a.lifetimePoints = a.lifetimePoints + :delta WHERE a.id = :id")
-    void addPoints(@Param("id") long id, @Param("delta") long delta);
+    void addPoints(@Param("id") UUID id, @Param("delta") long delta);
 
     @Modifying
     @Query("UPDATE LoyaltyAccount a SET a.pointsBalance = a.pointsBalance + :delta WHERE a.id = :id")
-    void addToBalance(@Param("id") long id, @Param("delta") long delta);
+    void addToBalance(@Param("id") UUID id, @Param("delta") long delta);
 
     /**
      * Atomically promotes or demotes the account tier only if it has actually changed.
@@ -51,7 +52,7 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
            "  (:tierId IS NULL AND a.currentTierId IS NOT NULL) OR " +
            "  (:tierId IS NOT NULL AND a.currentTierId != :tierId)" +
            ")")
-    int updateTierIfChanged(@Param("id") long id, @Param("tierId") Long tierId, @Param("now") Instant now);
+    int updateTierIfChanged(@Param("id") UUID id, @Param("tierId") UUID tierId, @Param("now") Instant now);
 
     /**
      * Atomically claims the birthday reward slot for the given calendar year.
@@ -61,5 +62,5 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
     @Modifying
     @Query("UPDATE LoyaltyAccount a SET a.lastBirthdayRewardYear = :year " +
            "WHERE a.id = :id AND (a.lastBirthdayRewardYear IS NULL OR a.lastBirthdayRewardYear != :year)")
-    int claimBirthdayRewardForYear(@Param("id") long id, @Param("year") int year);
+    int claimBirthdayRewardForYear(@Param("id") UUID id, @Param("year") int year);
 }

@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 /**
  * Partial-update DTO for a subscription. Any non-null field is applied.
  * When {@code productId} or {@code billingInterval} / {@code intervalCount} changes,
@@ -15,9 +17,9 @@ import lombok.Setter;
 @Setter
 public class UpdateSubscriptionRequest {
 
-    private Long productId;
+    private UUID productId;
 
-    private Long variantId;
+    private UUID variantId;
 
     @Min(1)
     @Max(999)

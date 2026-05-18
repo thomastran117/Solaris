@@ -1,5 +1,6 @@
 package backend.controllers.impl.marketplace;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.marketplace.CreateMarketplaceRequest;
 import backend.dtos.requests.marketplace.UpdateMarketplaceRequest;
@@ -28,10 +29,10 @@ public class MarketplaceController {
     @PostMapping("/companies/{companyId}")
     @RequireAuth
     public ResponseEntity<MarketplaceProfileResponse> createMarketplace(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateMarketplaceRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(marketplaceService.createMarketplace(userId, companyId, request));
         } catch (AppHttpException e) {
@@ -42,7 +43,7 @@ public class MarketplaceController {
     }
 
     @GetMapping("/{marketplaceId}")
-    public ResponseEntity<MarketplaceProfileResponse> getMarketplace(@PathVariable long marketplaceId) {
+    public ResponseEntity<MarketplaceProfileResponse> getMarketplace(@PathVariable UUID marketplaceId) {
         try {
             return ResponseEntity.ok(marketplaceService.getMarketplace(marketplaceId));
         } catch (AppHttpException e) {
@@ -55,10 +56,10 @@ public class MarketplaceController {
     @PatchMapping("/{marketplaceId}")
     @RequireAuth
     public ResponseEntity<MarketplaceProfileResponse> updateMarketplace(
-            @PathVariable long marketplaceId,
+            @PathVariable UUID marketplaceId,
             @Valid @RequestBody UpdateMarketplaceRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(marketplaceService.updateMarketplace(marketplaceId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -67,8 +68,8 @@ public class MarketplaceController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

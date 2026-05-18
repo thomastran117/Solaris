@@ -9,15 +9,16 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface VendorSLAMetricRepository extends JpaRepository<VendorSLAMetric, Long> {
+public interface VendorSLAMetricRepository extends JpaRepository<VendorSLAMetric, java.util.UUID> {
 
-    Optional<VendorSLAMetric> findByVendorIdAndDate(long vendorId, LocalDate date);
+    Optional<VendorSLAMetric> findByVendorIdAndDate(UUID vendorId, LocalDate date);
 
-    List<VendorSLAMetric> findByVendorIdOrderByDateDesc(long vendorId);
+    List<VendorSLAMetric> findByVendorIdOrderByDateDesc(UUID vendorId);
 
-    Page<VendorSLAMetric> findByVendorId(long vendorId, Pageable pageable);
+    Page<VendorSLAMetric> findByVendorId(UUID vendorId, Pageable pageable);
 
-    List<VendorSLAMetric> findByVendorIdAndDateBetweenOrderByDateAsc(long vendorId, LocalDate from, LocalDate to);
+    List<VendorSLAMetric> findByVendorIdAndDateBetweenOrderByDateAsc(UUID vendorId, LocalDate from, LocalDate to);
 }

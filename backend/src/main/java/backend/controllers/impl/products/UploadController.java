@@ -1,5 +1,6 @@
 package backend.controllers.impl.products;
 
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,8 +38,8 @@ public class UploadController {
     @RequireAuth
     public ResponseEntity<PresignUploadResponse> presign(@Valid @RequestBody PresignUploadRequest request) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("upload:presign", Long.toString(userId), PRESIGN_LIMIT, PRESIGN_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("upload:presign", userId.toString(), PRESIGN_LIMIT, PRESIGN_WINDOW_SECONDS);
             PresignUploadResponse response = storageService.generatePresignedUrl(
                     request.getFolder(),
                     userId,
@@ -52,8 +53,8 @@ public class UploadController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -7,11 +7,12 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class VendorRevenueResponse {
-    private long vendorId;
+    private UUID vendorId;
     private int windowDays;
     private Instant from;
     private Instant to;

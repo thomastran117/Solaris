@@ -1,5 +1,6 @@
 package backend.controllers.impl.inventory;
 
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -37,9 +38,9 @@ public class LocationInventoryController {
 
     @GetMapping
     @RequireAuth
-    public ResponseEntity<List<LocationResponse>> getLocations(@PathVariable long companyId) {
+    public ResponseEntity<List<LocationResponse>> getLocations(@PathVariable UUID companyId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.getLocations(companyId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -51,11 +52,11 @@ public class LocationInventoryController {
     @PostMapping
     @RequireAuth
     public ResponseEntity<LocationResponse> createLocation(
-            @PathVariable long companyId,
+            @PathVariable UUID companyId,
             @Valid @RequestBody CreateLocationRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(locationInventoryService.createLocation(companyId, userId, request));
         } catch (AppHttpException e) {
@@ -68,10 +69,10 @@ public class LocationInventoryController {
     @GetMapping("/{locationId}")
     @RequireAuth
     public ResponseEntity<LocationResponse> getLocation(
-            @PathVariable long companyId,
-            @PathVariable long locationId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.getLocation(companyId, locationId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -83,12 +84,12 @@ public class LocationInventoryController {
     @PatchMapping("/{locationId}")
     @RequireAuth
     public ResponseEntity<LocationResponse> updateLocation(
-            @PathVariable long companyId,
-            @PathVariable long locationId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId,
             @Valid @RequestBody UpdateLocationRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.updateLocation(companyId, locationId, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -100,10 +101,10 @@ public class LocationInventoryController {
     @DeleteMapping("/{locationId}")
     @RequireAuth
     public ResponseEntity<Void> deleteLocation(
-            @PathVariable long companyId,
-            @PathVariable long locationId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             locationInventoryService.deleteLocation(companyId, locationId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
@@ -116,10 +117,10 @@ public class LocationInventoryController {
     @GetMapping("/{locationId}/stock")
     @RequireAuth
     public ResponseEntity<List<LocationStockResponse>> getLocationStock(
-            @PathVariable long companyId,
-            @PathVariable long locationId) {
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.getLocationStock(companyId, locationId, userId));
         } catch (AppHttpException e) {
             throw e;
@@ -131,13 +132,13 @@ public class LocationInventoryController {
     @PutMapping("/{locationId}/stock/{productId}")
     @RequireAuth
     public ResponseEntity<LocationStockResponse> setLocationStock(
-            @PathVariable long companyId,
-            @PathVariable long locationId,
-            @PathVariable long productId,
-            @RequestParam(required = false) Long variantId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId,
+            @PathVariable UUID productId,
+            @RequestParam(required = false) UUID variantId,
             @Valid @RequestBody SetLocationStockRequest request) {
         try {
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.setLocationStock(
                     companyId, locationId, productId, userId, request, variantId));
         } catch (AppHttpException e) {
@@ -150,14 +151,14 @@ public class LocationInventoryController {
     @PostMapping("/{locationId}/stock/{productId}/adjust")
     @RequireAuth
     public ResponseEntity<LocationStockResponse> adjustLocationStock(
-            @PathVariable long companyId,
-            @PathVariable long locationId,
-            @PathVariable long productId,
-            @RequestParam(required = false) Long variantId,
+            @PathVariable UUID companyId,
+            @PathVariable UUID locationId,
+            @PathVariable UUID productId,
+            @RequestParam(required = false) UUID variantId,
             @Valid @RequestBody AdjustStockRequest request) {
         try {
             sanitizationService.normalize(request);
-            long userId = resolveUserId();
+            UUID userId = resolveUserId();
             return ResponseEntity.ok(locationInventoryService.adjustLocationStock(
                     companyId, locationId, productId, userId, request, variantId));
         } catch (AppHttpException e) {
@@ -167,8 +168,8 @@ public class LocationInventoryController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -1,12 +1,13 @@
 package backend.dtos.responses.order;
 
+import java.util.UUID;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
 public record CompanyOrderResponse(
-        Long orderId,
-        Long buyerUserId,
+        UUID orderId,
+        UUID buyerUserId,
         String orderStatus,
         String currency,
         BigDecimal companyItemsTotal,

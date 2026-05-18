@@ -6,13 +6,14 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface LoyaltyPolicyRepository extends JpaRepository<LoyaltyPolicy, Long> {
+public interface LoyaltyPolicyRepository extends JpaRepository<LoyaltyPolicy, UUID> {
 
-    Optional<LoyaltyPolicy> findFirstByCompanyIdAndActiveTrue(long companyId);
+    Optional<LoyaltyPolicy> findFirstByCompanyIdAndActiveTrue(UUID companyId);
 
-    List<LoyaltyPolicy> findByCompanyId(long companyId);
+    List<LoyaltyPolicy> findByCompanyId(UUID companyId);
 
     List<LoyaltyPolicy> findAllByActiveTrue();
 }

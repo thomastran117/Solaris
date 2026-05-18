@@ -9,11 +9,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 
-public interface BundleRepository extends JpaRepository<ProductBundle, Long> {
-    Optional<ProductBundle> findByIdAndCompanyId(long id, long companyId);
-    List<ProductBundle> findAllByIdInAndCompanyId(List<Long> ids, long companyId);
-    List<ProductBundle> findAllByCompanyId(long companyId);
-    Page<ProductBundle> findAllByCompanyId(long companyId, Pageable pageable);
-    Page<ProductBundle> findAllByCompanyIdAndStatus(long companyId, ProductStatus status, Pageable pageable);
-    boolean existsByItemsProductId(long productId);
+public interface BundleRepository extends JpaRepository<ProductBundle, java.util.UUID> {
+    Optional<ProductBundle> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
+    List<ProductBundle> findAllByIdInAndCompanyId(List<java.util.UUID> ids, java.util.UUID companyId);
+    List<ProductBundle> findAllByCompanyId(java.util.UUID companyId);
+    Page<ProductBundle> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
+    Page<ProductBundle> findAllByCompanyIdAndStatus(java.util.UUID companyId, ProductStatus status, Pageable pageable);
+    boolean existsByItemsProductId(java.util.UUID productId);
 }

@@ -1,7 +1,9 @@
 package backend.dtos.responses.forecasting;
 
+import java.util.UUID;
+
 public record SeasonalPrepResponse(
-        long productId,
+        UUID productId,
         String productName,
         String sku,
         Integer currentStock,

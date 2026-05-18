@@ -9,9 +9,10 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface RiskBlocklistRepository extends JpaRepository<RiskBlocklist, Long> {
+public interface RiskBlocklistRepository extends JpaRepository<RiskBlocklist, UUID> {
 
     /**
      * Returns an unexpired entry for the given (type, value) pair, if any.

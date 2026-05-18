@@ -1,5 +1,6 @@
 package backend.controllers.impl.customers;
 
+import java.util.UUID;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,7 +39,7 @@ public class CustomerCreditController {
 
     @GetMapping("/support/customers/{userId}/credits")
     @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
-    public ResponseEntity<CreditBalanceResponse> getCustomerCredits(@PathVariable long userId) {
+    public ResponseEntity<CreditBalanceResponse> getCustomerCredits(@PathVariable UUID userId) {
         try {
             return ResponseEntity.ok(creditService.getBalance(userId));
         } catch (AppHttpException e) {
@@ -50,7 +51,7 @@ public class CustomerCreditController {
 
     @PostMapping("/support/customers/{userId}/credits")
     @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
-    public ResponseEntity<CreditEntryResponse> issueCredit(@PathVariable long userId,
+    public ResponseEntity<CreditEntryResponse> issueCredit(@PathVariable UUID userId,
                                                             @Valid @RequestBody IssueCreditRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -64,7 +65,7 @@ public class CustomerCreditController {
 
     @PostMapping("/support/credits/{entryId}/reverse")
     @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
-    public ResponseEntity<CreditEntryResponse> reverseCredit(@PathVariable long entryId) {
+    public ResponseEntity<CreditEntryResponse> reverseCredit(@PathVariable UUID entryId) {
         try {
             return ResponseEntity.ok(creditService.reverseCredit(entryId, resolveUserId()));
         } catch (AppHttpException e) {
@@ -74,8 +75,8 @@ public class CustomerCreditController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Document(indexName = "reviews")
 @Getter
@@ -19,19 +20,19 @@ import java.time.Instant;
 public class ReviewDocument {
 
     @Id
-    private Long id;
+    private UUID id;
 
-    @Field(type = FieldType.Long)
-    private Long productId;
+    @Field(type = FieldType.Keyword)
+    private UUID productId;
 
-    @Field(type = FieldType.Long)
-    private Long companyId;
+    @Field(type = FieldType.Keyword)
+    private UUID companyId;
 
     @Field(type = FieldType.Long)
     private Long marketplaceId;
 
-    @Field(type = FieldType.Long)
-    private Long reviewerId;
+    @Field(type = FieldType.Keyword)
+    private UUID reviewerId;
 
     @Field(type = FieldType.Keyword)
     private String reviewerName;

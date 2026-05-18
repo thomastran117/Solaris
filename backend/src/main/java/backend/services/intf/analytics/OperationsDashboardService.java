@@ -1,5 +1,6 @@
 package backend.services.intf.analytics;
 
+import java.util.UUID;
 import backend.dtos.responses.operations.CancellationMetricResponse;
 import backend.dtos.responses.operations.DurationMetricResponse;
 import backend.dtos.responses.operations.OperationsSummaryResponse;
@@ -13,17 +14,17 @@ import backend.dtos.responses.operations.SupplierLatenessMetricResponse;
  */
 public interface OperationsDashboardService {
 
-    OperationsSummaryResponse        getSummary(long companyId, long ownerId, int lookbackDays);
+    OperationsSummaryResponse        getSummary(UUID companyId, UUID ownerId, int lookbackDays);
 
-    DurationMetricResponse           getFulfillmentMetric(long companyId, long ownerId, int lookbackDays);
+    DurationMetricResponse           getFulfillmentMetric(UUID companyId, UUID ownerId, int lookbackDays);
 
-    DurationMetricResponse           getRefundMetric(long companyId, long ownerId, int lookbackDays);
+    DurationMetricResponse           getRefundMetric(UUID companyId, UUID ownerId, int lookbackDays);
 
-    DurationMetricResponse           getPickDelayMetric(long companyId, long ownerId, int lookbackDays);
+    DurationMetricResponse           getPickDelayMetric(UUID companyId, UUID ownerId, int lookbackDays);
 
-    StockoutMetricResponse           getStockoutMetric(long companyId, long ownerId, int lookbackDays);
+    StockoutMetricResponse           getStockoutMetric(UUID companyId, UUID ownerId, int lookbackDays);
 
-    SupplierLatenessMetricResponse   getSupplierLatenessMetric(long companyId, long ownerId, int lookbackDays);
+    SupplierLatenessMetricResponse   getSupplierLatenessMetric(UUID companyId, UUID ownerId, int lookbackDays);
 
-    CancellationMetricResponse       getCancellationMetric(long companyId, long ownerId, int lookbackDays);
+    CancellationMetricResponse       getCancellationMetric(UUID companyId, UUID ownerId, int lookbackDays);
 }

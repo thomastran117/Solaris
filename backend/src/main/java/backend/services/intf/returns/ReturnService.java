@@ -1,5 +1,6 @@
 package backend.services.intf.returns;
 
+import java.util.UUID;
 import backend.dtos.requests.return_.BuyerInitiateReturnRequest;
 import backend.dtos.requests.return_.InspectReturnRequest;
 import backend.dtos.requests.return_.MerchantApproveReturnRequest;
@@ -19,20 +20,20 @@ public interface ReturnService {
      * Buyer submits a return request. Order must be DELIVERED.
      * Return is created in REQUESTED status for merchant review.
      */
-    ReturnResponse requestReturn(long orderId, long buyerUserId, BuyerInitiateReturnRequest request);
+    ReturnResponse requestReturn(UUID orderId, UUID buyerUserId, BuyerInitiateReturnRequest request);
 
     /** Buyer views all return requests for a specific order. */
-    List<ReturnResponse> getReturnsByOrder(long orderId, long buyerUserId);
+    List<ReturnResponse> getReturnsByOrder(UUID orderId, UUID buyerUserId);
 
     // -------------------------------------------------------------------------
     // Merchant-facing
     // -------------------------------------------------------------------------
 
     /** Merchant views all return requests for a specific order scoped to their company's items. */
-    List<ReturnResponse> getCompanyReturnsByOrder(long orderId, long companyId, long ownerId);
+    List<ReturnResponse> getCompanyReturnsByOrder(UUID orderId, UUID companyId, UUID ownerId);
 
     /** Merchant retrieves a single return scoped to their company. */
-    ReturnResponse getCompanyReturn(long returnId, long companyId, long ownerId);
+    ReturnResponse getCompanyReturn(UUID returnId, UUID companyId, UUID ownerId);
 
     /**
      * Merchant approves a REQUESTED return: marks items RETURNED and issues refund.
@@ -40,26 +41,26 @@ public interface ReturnService {
      * restored here — that happens in inspectReturn() once items are received.
      * Transitions to FAILED if the Stripe refund call errors.
      */
-    ReturnResponse approveReturn(long returnId, long companyId, long ownerId, MerchantApproveReturnRequest request);
+    ReturnResponse approveReturn(UUID returnId, UUID companyId, UUID ownerId, MerchantApproveReturnRequest request);
 
     /**
      * Merchant records per-item condition after physical inspection of returned goods
      * and decides whether to restock each item. Transitions Return from APPROVED to COMPLETED.
      */
-    ReturnResponse inspectReturn(long returnId, long companyId, long ownerId, InspectReturnRequest request);
+    ReturnResponse inspectReturn(UUID returnId, UUID companyId, UUID ownerId, InspectReturnRequest request);
 
     /**
      * Merchant rejects a REQUESTED return. Transitions to REJECTED.
      * No stock or refund changes are made.
      */
-    ReturnResponse rejectReturn(long returnId, long companyId, long ownerId, MerchantRejectReturnRequest request);
+    ReturnResponse rejectReturn(UUID returnId, UUID companyId, UUID ownerId, MerchantRejectReturnRequest request);
 
     /**
      * Merchant directly initiates a return without a prior buyer request.
      * Creates the Return entity and immediately processes stock + refund in a single transaction.
      * Valid for orders in DELIVERED or SHIPPED status.
      */
-    ReturnResponse merchantInitiateReturn(long orderId, long companyId, long ownerId, MerchantInitiateReturnRequest request);
+    ReturnResponse merchantInitiateReturn(UUID orderId, UUID companyId, UUID ownerId, MerchantInitiateReturnRequest request);
 
     // -------------------------------------------------------------------------
     // Support operations
@@ -76,7 +77,7 @@ public interface ReturnService {
      * @param actorUserId   staff member authorising the refund
      * @return the created Return record
      */
-    ReturnResponse issuePartialRefund(long orderId, long amountCents, String reason, long actorUserId);
+    ReturnResponse issuePartialRefund(UUID orderId, long amountCents, String reason, UUID actorUserId);
 
     // -------------------------------------------------------------------------
     // Webhook

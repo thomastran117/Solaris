@@ -14,22 +14,22 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface MarketplaceVendorRepository extends JpaRepository<MarketplaceVendor, Long> {
+public interface MarketplaceVendorRepository extends JpaRepository<MarketplaceVendor, java.util.UUID> {
 
-    Optional<MarketplaceVendor> findByMarketplaceIdAndVendorCompanyId(long marketplaceId, long vendorCompanyId);
+    Optional<MarketplaceVendor> findByMarketplaceIdAndVendorCompanyId(java.util.UUID marketplaceId, java.util.UUID vendorCompanyId);
 
-    Optional<MarketplaceVendor> findByIdAndMarketplaceId(long id, long marketplaceId);
+    Optional<MarketplaceVendor> findByIdAndMarketplaceId(java.util.UUID id, java.util.UUID marketplaceId);
 
-    Page<MarketplaceVendor> findByMarketplaceId(long marketplaceId, Pageable pageable);
+    Page<MarketplaceVendor> findByMarketplaceId(java.util.UUID marketplaceId, Pageable pageable);
 
-    Page<MarketplaceVendor> findByMarketplaceIdAndStatus(long marketplaceId, VendorStatus status, Pageable pageable);
+    Page<MarketplaceVendor> findByMarketplaceIdAndStatus(java.util.UUID marketplaceId, VendorStatus status, Pageable pageable);
 
-    boolean existsByMarketplaceIdAndVendorCompanyId(long marketplaceId, long vendorCompanyId);
+    boolean existsByMarketplaceIdAndVendorCompanyId(java.util.UUID marketplaceId, java.util.UUID vendorCompanyId);
 
     Optional<MarketplaceVendor> findByStripeConnectAccountId(String stripeConnectAccountId);
 
     @Query("SELECT mv FROM MarketplaceVendor mv WHERE mv.marketplace.id = :marketplaceId AND mv.vendorCompany.id IN :vendorCompanyIds")
     List<MarketplaceVendor> findByMarketplaceIdAndVendorCompanyIdIn(
-            @Param("marketplaceId") long marketplaceId,
-            @Param("vendorCompanyIds") Collection<Long> vendorCompanyIds);
+            @Param("marketplaceId") java.util.UUID marketplaceId,
+            @Param("vendorCompanyIds") Collection<java.util.UUID> vendorCompanyIds);
 }

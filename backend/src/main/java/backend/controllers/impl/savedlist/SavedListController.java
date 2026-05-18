@@ -1,5 +1,6 @@
 package backend.controllers.impl.savedlist;
 
+import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.savedlist.AddSavedListItemRequest;
 import backend.dtos.requests.savedlist.CreateSavedListRequest;
@@ -51,7 +52,7 @@ public class SavedListController {
 
     @GetMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<SavedListResponse> getSavedList(@PathVariable long id) {
+    public ResponseEntity<SavedListResponse> getSavedList(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(savedListService.getSavedList(resolveUserId(), id));
         } catch (AppHttpException e) {
@@ -89,7 +90,7 @@ public class SavedListController {
     @PutMapping("/{id}")
     @RequireAuth
     public ResponseEntity<SavedListResponse> updateSavedList(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UpdateSavedListRequest request) {
         try {
             return ResponseEntity.ok(savedListService.updateSavedList(resolveUserId(), id, request));
@@ -102,7 +103,7 @@ public class SavedListController {
 
     @DeleteMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<Void> deleteSavedList(@PathVariable long id) {
+    public ResponseEntity<Void> deleteSavedList(@PathVariable UUID id) {
         try {
             savedListService.deleteSavedList(resolveUserId(), id);
             return ResponseEntity.noContent().build();
@@ -116,7 +117,7 @@ public class SavedListController {
     @PostMapping("/{id}/items")
     @RequireAuth
     public ResponseEntity<SavedListItemResponse> addItem(
-            @PathVariable long id,
+            @PathVariable UUID id,
             @Valid @RequestBody AddSavedListItemRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -131,8 +132,8 @@ public class SavedListController {
     @PatchMapping("/{id}/items/{itemId}")
     @RequireAuth
     public ResponseEntity<SavedListItemResponse> updateItem(
-            @PathVariable long id,
-            @PathVariable long itemId,
+            @PathVariable UUID id,
+            @PathVariable UUID itemId,
             @Valid @RequestBody UpdateSavedListItemRequest request) {
         try {
             return ResponseEntity.ok(savedListService.updateItem(resolveUserId(), id, itemId, request));
@@ -145,7 +146,7 @@ public class SavedListController {
 
     @DeleteMapping("/{id}/items/{itemId}")
     @RequireAuth
-    public ResponseEntity<Void> removeItem(@PathVariable long id, @PathVariable long itemId) {
+    public ResponseEntity<Void> removeItem(@PathVariable UUID id, @PathVariable UUID itemId) {
         try {
             savedListService.removeItem(resolveUserId(), id, itemId);
             return ResponseEntity.noContent().build();
@@ -156,8 +157,8 @@ public class SavedListController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

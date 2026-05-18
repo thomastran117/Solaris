@@ -8,8 +8,10 @@ import org.springframework.stereotype.Repository;
 
 import backend.models.core.CouponPerUserCount;
 
+import java.util.UUID;
+
 @Repository
-public interface CouponPerUserCountRepository extends JpaRepository<CouponPerUserCount, Long> {
+public interface CouponPerUserCountRepository extends JpaRepository<CouponPerUserCount, java.util.UUID> {
 
     /**
      * Atomically increments the per-user redemption count, inserting a new row if none exists.
@@ -24,8 +26,8 @@ public interface CouponPerUserCountRepository extends JpaRepository<CouponPerUse
             ON DUPLICATE KEY UPDATE count = IF(count < :maxUses, count + 1, count)
             """, nativeQuery = true)
     int tryIncrementUserCount(
-            @Param("couponId") long couponId,
-            @Param("userId") long userId,
+            @Param("couponId") java.util.UUID couponId,
+            @Param("userId") UUID userId,
             @Param("maxUses") int maxUses);
 
     /**
@@ -39,6 +41,6 @@ public interface CouponPerUserCountRepository extends JpaRepository<CouponPerUse
             WHERE coupon_id = :couponId AND user_id = :userId
             """, nativeQuery = true)
     void decrementUserCount(
-            @Param("couponId") long couponId,
-            @Param("userId") long userId);
+            @Param("couponId") java.util.UUID couponId,
+            @Param("userId") UUID userId);
 }

@@ -1,5 +1,6 @@
 package backend.services.impl.promotions;
 
+import java.util.UUID;
 import backend.models.core.LoyaltyAccount;
 import backend.models.core.LoyaltyPolicy;
 import backend.repositories.LoyaltyAccountRepository;
@@ -99,7 +100,7 @@ public class LoyaltyScheduler {
         log.info("[LOYALTY SCHEDULER] Policy {} (company {}) — {} users have birthdays today",
                 policy.getId(), policy.getCompanyId(), birthdayUserIds.size());
 
-        for (Long userId : birthdayUserIds) {
+        for (UUID userId : birthdayUserIds) {
             try {
                 LoyaltyAccount account = accountRepository
                         .findByUserIdAndCompanyId(userId, policy.getCompanyId())

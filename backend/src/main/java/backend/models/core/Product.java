@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -36,8 +37,9 @@ import java.util.List;
 public class Product {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
@@ -213,12 +215,12 @@ public class Product {
     private Instant updatedAt;
 
     @CreatedBy
-    @Column(name = "created_by", nullable = true, updatable = false)
-    private Long createdBy;
+    @Column(name = "created_by", nullable = true, updatable = false, columnDefinition = "BINARY(16)")
+    private UUID createdBy;
 
     @LastModifiedBy
-    @Column(name = "updated_by", nullable = true)
-    private Long updatedBy;
+    @Column(name = "updated_by", nullable = true, columnDefinition = "BINARY(16)")
+    private UUID updatedBy;
 
     @Version
     @Column(name = "version", nullable = false)

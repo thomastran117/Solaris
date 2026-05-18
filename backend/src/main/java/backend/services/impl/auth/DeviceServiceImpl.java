@@ -60,13 +60,13 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public boolean isKnownDevice(long userId, String fingerprint) {
+    public boolean isKnownDevice(UUID userId, String fingerprint) {
         return userDeviceRepository.findByUserIdAndFingerprint(userId, fingerprint).isPresent();
     }
 
     @Override
     @Transactional
-    public void recordDeviceSeen(long userId, ClientInfo clientInfo) {
+    public void recordDeviceSeen(UUID userId, ClientInfo clientInfo) {
         String fingerprint = computeFingerprint(clientInfo.userAgent());
         Optional<UserDevice> existing = userDeviceRepository.findByUserIdAndFingerprint(userId, fingerprint);
         if (existing.isPresent()) {
@@ -89,7 +89,7 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public void initiateDeviceVerification(long userId, String email, ClientInfo clientInfo) {
+    public void initiateDeviceVerification(UUID userId, String email, ClientInfo clientInfo) {
         String fingerprint = computeFingerprint(clientInfo.userAgent());
         String payload = userId + "|" +
                 fingerprint + "|" +
@@ -119,10 +119,10 @@ public class DeviceServiceImpl implements DeviceService {
         if (parts.length != 7) {
             throw new BadRequestException("Malformed device verification token.");
         }
-        long userId;
+        UUID userId;
         try {
-            userId = Long.parseLong(parts[0]);
-        } catch (NumberFormatException e) {
+            userId = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
             throw new BadRequestException("Malformed device verification token.");
         }
         DeviceType deviceType;
@@ -135,16 +135,16 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public List<UserDevice> getDevicesForUser(long userId) {
+    public List<UserDevice> getDevicesForUser(UUID userId) {
         return userDeviceRepository.findByUserId(userId);
     }
 
     @Override
     @Transactional
-    public void removeDevice(long userId, long deviceId) {
+    public void removeDevice(UUID userId, UUID deviceId) {
         UserDevice device = userDeviceRepository.findById(deviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Device not found."));
-        if (device.getUser().getId() != userId) {
+        if (!device.getUser().getId().equals(userId)) {
             throw new ForbiddenException("You do not have permission to remove this device.");
         }
         userDeviceRepository.deleteById(deviceId);

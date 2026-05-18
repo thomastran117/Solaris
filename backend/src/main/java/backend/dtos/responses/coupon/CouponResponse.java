@@ -5,10 +5,11 @@ import backend.models.enums.DiscountType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 public record CouponResponse(
-        Long id,
-        Long companyId,
+        UUID id,
+        UUID companyId,
         String code,
         String name,
         DiscountType type,

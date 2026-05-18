@@ -1,5 +1,6 @@
 package backend.controllers.impl.support;
 
+import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -44,8 +45,8 @@ public class SupportTicketController {
     @RequireAuth
     public ResponseEntity<TicketResponse> createTicket(@Valid @RequestBody CreateTicketRequest request) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("ticket:create", Long.toString(userId), TICKET_CREATE_LIMIT, TICKET_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("ticket:create", userId.toString(), TICKET_CREATE_LIMIT, TICKET_WINDOW_SECONDS);
             return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.createTicket(userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -58,7 +59,7 @@ public class SupportTicketController {
     @RequireAuth
     public ResponseEntity<PagedResponse<TicketResponse>> listTickets(
             @RequestParam(required = false) TicketStatus status,
-            @RequestParam(required = false) Long assignedToId,
+            @RequestParam(required = false) UUID assignedToId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
@@ -72,7 +73,7 @@ public class SupportTicketController {
 
     @GetMapping("/{id}")
     @RequireAuth
-    public ResponseEntity<TicketResponse> getTicket(@PathVariable long id) {
+    public ResponseEntity<TicketResponse> getTicket(@PathVariable UUID id) {
         try {
             return ResponseEntity.ok(ticketService.getTicket(id, resolveUserId()));
         } catch (AppHttpException e) {
@@ -84,11 +85,11 @@ public class SupportTicketController {
 
     @PostMapping("/{id}/messages")
     @RequireAuth
-    public ResponseEntity<TicketMessageResponse> addMessage(@PathVariable long id,
+    public ResponseEntity<TicketMessageResponse> addMessage(@PathVariable UUID id,
                                                             @Valid @RequestBody TicketMessageRequest request) {
         try {
-            long userId = resolveUserId();
-            rateLimitService.enforce("ticket:message", Long.toString(userId), TICKET_MESSAGE_LIMIT, TICKET_WINDOW_SECONDS);
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("ticket:message", userId.toString(), TICKET_MESSAGE_LIMIT, TICKET_WINDOW_SECONDS);
             return ResponseEntity.status(HttpStatus.CREATED).body(ticketService.addMessage(id, userId, request));
         } catch (AppHttpException e) {
             throw e;
@@ -99,7 +100,7 @@ public class SupportTicketController {
 
     @PatchMapping("/{id}/status")
     @RequireAuth
-    public ResponseEntity<TicketResponse> updateStatus(@PathVariable long id,
+    public ResponseEntity<TicketResponse> updateStatus(@PathVariable UUID id,
                                                        @Valid @RequestBody UpdateTicketStatusRequest request) {
         try {
             return ResponseEntity.ok(ticketService.updateStatus(id, resolveUserId(), request));
@@ -112,7 +113,7 @@ public class SupportTicketController {
 
     @PatchMapping("/{id}/assign")
     @RequireAuth
-    public ResponseEntity<TicketResponse> assignTicket(@PathVariable long id,
+    public ResponseEntity<TicketResponse> assignTicket(@PathVariable UUID id,
                                                        @Valid @RequestBody AssignTicketRequest request) {
         try {
             return ResponseEntity.ok(ticketService.assignTicket(id, resolveUserId(), request));
@@ -125,7 +126,7 @@ public class SupportTicketController {
 
     @PatchMapping("/{id}/priority")
     @RequireAuth
-    public ResponseEntity<TicketResponse> updatePriority(@PathVariable long id,
+    public ResponseEntity<TicketResponse> updatePriority(@PathVariable UUID id,
                                                          @Valid @RequestBody UpdateTicketPriorityRequest request) {
         try {
             return ResponseEntity.ok(ticketService.updatePriority(id, resolveUserId(), request));
@@ -136,8 +137,8 @@ public class SupportTicketController {
         }
     }
 
-    private long resolveUserId() {
+    private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return ((Number) auth.getPrincipal()).longValue();
+        return (UUID) auth.getPrincipal();
     }
 }

@@ -1,14 +1,15 @@
 package backend.dtos.responses.collection;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Admin/marketplace view of a {@code Collection}. Carries enum names as Strings so the
  * frontend can string-compare without bundling enum schemas.
  */
 public record CollectionResponse(
-        Long id,
-        Long companyId,
+        UUID id,
+        UUID companyId,
         String name,
         String slug,
         String description,

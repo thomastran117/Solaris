@@ -1,5 +1,6 @@
 package backend.services.intf.products;
 
+import java.util.UUID;
 import backend.dtos.requests.review.CreateReviewRequest;
 import backend.dtos.requests.review.UpdateReviewRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -10,8 +11,8 @@ import java.util.List;
 
 public interface ReviewService {
     PagedResponse<ReviewResponse> getReviews(
-            long companyId,
-            long productId,
+            UUID companyId,
+            UUID productId,
             int page,
             int size,
             String sort,
@@ -19,9 +20,9 @@ public interface ReviewService {
             List<Integer> ratings,
             Boolean verifiedOnly,
             Boolean hasMedia);
-    ReviewResponse getMyReview(long companyId, long productId, long userId);
-    ReviewSummaryResponse getReviewSummary(long companyId, long productId);
-    ReviewResponse createReview(long companyId, long productId, long userId, CreateReviewRequest request);
-    ReviewResponse updateReview(long companyId, long productId, long userId, UpdateReviewRequest request);
-    void deleteReview(long companyId, long productId, long userId);
+    ReviewResponse getMyReview(UUID companyId, UUID productId, UUID userId);
+    ReviewSummaryResponse getReviewSummary(UUID companyId, UUID productId);
+    ReviewResponse createReview(UUID companyId, UUID productId, UUID userId, CreateReviewRequest request);
+    ReviewResponse updateReview(UUID companyId, UUID productId, UUID userId, UpdateReviewRequest request);
+    void deleteReview(UUID companyId, UUID productId, UUID userId);
 }

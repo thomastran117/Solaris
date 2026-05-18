@@ -5,29 +5,30 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 public interface TokenService {
 
-    int getUserIdFromToken(HttpServletRequest request);
+    UUID getUserIdFromToken(HttpServletRequest request);
 
     <T> T getClaimFromToken(String token, Function<Claims, T> claimsResolver);
 
     Authentication getAuthentication(String token);
 
-    String generateAccessToken(int userId, String role, String email);
+    String generateAccessToken(UUID userId, String role, String email);
 
     /**
      * Creates an opaque refresh token and stores it in cache (revocable). Not a JWT.
      */
-    String generateRefreshToken(int userId, String role, String email);
+    String generateRefreshToken(UUID userId, String role, String email);
 
     boolean validateRefreshToken(String token);
 
     /**
      * Payload stored with a refresh token in cache.
      */
-    record RefreshTokenPayload(int userId, String role, String email) {}
+    record RefreshTokenPayload(UUID userId, String role, String email) {}
 
     /**
      * Returns payload for a valid cache-backed refresh token, or null if invalid/expired/revoked.
@@ -39,7 +40,7 @@ public interface TokenService {
      */
     String rotateRefreshToken(String oldToken);
 
-    Map<String, Object> generateTokenPair(int userId, String role, String email);
+    Map<String, Object> generateTokenPair(UUID userId, String role, String email);
 
     long getAccessTokenExpiresInSeconds();
 
@@ -51,5 +52,5 @@ public interface TokenService {
     /**
      * Revoke all refresh tokens for a user (e.g. security reset, password change).
      */
-    void revokeAllRefreshTokensForUser(int userId);
+    void revokeAllRefreshTokensForUser(UUID userId);
 }

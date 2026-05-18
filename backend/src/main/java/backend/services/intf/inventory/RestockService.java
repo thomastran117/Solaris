@@ -1,5 +1,6 @@
 package backend.services.intf.inventory;
 
+import java.util.UUID;
 import backend.dtos.requests.inventory.CreateRestockRequest;
 import backend.dtos.requests.inventory.UpdateRestockRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -7,9 +8,9 @@ import backend.dtos.responses.inventory.RestockRequestResponse;
 import backend.models.enums.RestockStatus;
 
 public interface RestockService {
-    PagedResponse<RestockRequestResponse> listRestockRequests(long companyId, long ownerId, RestockStatus status, Long productId, int page, int size);
-    RestockRequestResponse createRestockRequest(long companyId, long ownerId, CreateRestockRequest request);
-    RestockRequestResponse getRestockRequest(long companyId, long restockId, long ownerId);
-    RestockRequestResponse updateRestockRequest(long companyId, long restockId, long ownerId, UpdateRestockRequest request);
-    void deleteRestockRequest(long companyId, long restockId, long ownerId);
+    PagedResponse<RestockRequestResponse> listRestockRequests(UUID companyId, UUID ownerId, RestockStatus status, UUID productId, int page, int size);
+    RestockRequestResponse createRestockRequest(UUID companyId, UUID ownerId, CreateRestockRequest request);
+    RestockRequestResponse getRestockRequest(UUID companyId, UUID restockId, UUID ownerId);
+    RestockRequestResponse updateRestockRequest(UUID companyId, UUID restockId, UUID ownerId, UpdateRestockRequest request);
+    void deleteRestockRequest(UUID companyId, UUID restockId, UUID ownerId);
 }

@@ -10,6 +10,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Merchant review queue row. One per UNDER_REVIEW order. Created when the engine returns
@@ -27,24 +28,25 @@ import java.time.Instant;
 public class RiskReview {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
+    @Column(columnDefinition = "BINARY(16)")
+    private java.util.UUID id;
 
     /** Order held under review. Unique to prevent duplicate queue rows. */
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID orderId;
 
     /** FK to the {@code risk_assessments} row that produced this review (not a JPA relationship). */
-    @Column(name = "assessment_id", nullable = false)
-    private Long assessmentId;
+    @Column(name = "assessment_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID assessmentId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private RiskReviewStatus status = RiskReviewStatus.PENDING;
 
     /** User id of the merchant who approved/rejected. Null while PENDING. */
-    @Column(nullable = true)
-    private Long decidedByUserId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private UUID decidedByUserId;
 
     @Column(nullable = true)
     private Instant decidedAt;

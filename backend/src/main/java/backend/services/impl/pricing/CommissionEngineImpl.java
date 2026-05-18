@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class CommissionEngineImpl implements CommissionEngine {
@@ -40,7 +41,7 @@ public class CommissionEngineImpl implements CommissionEngine {
     @Override
     public CommissionResult compute(SubOrder subOrder) {
         MarketplaceVendor vendor = subOrder.getMarketplaceVendor();
-        long marketplaceId = subOrder.getMarketplaceId();
+        UUID marketplaceId = vendor.getMarketplace().getId();
         BigDecimal gross = subOrder.getTotalAmount();
         String currency = subOrder.getCurrency();
 
@@ -60,14 +61,14 @@ public class CommissionEngineImpl implements CommissionEngine {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private CommissionPolicy resolvePolicy(MarketplaceVendor vendor, long marketplaceId) {
+    private CommissionPolicy resolvePolicy(MarketplaceVendor vendor, UUID marketplaceId) {
         // 1. Vendor-specific override
         if (vendor.getCommissionPolicyId() != null) {
             return policyRepository.findById(vendor.getCommissionPolicyId()).orElse(null);
         }
 
         // 2. Marketplace default policy ID from MarketplaceProfile
-        Long defaultPolicyId = marketplaceProfileRepository.findByCompanyId(marketplaceId)
+        UUID defaultPolicyId = marketplaceProfileRepository.findByCompanyId(marketplaceId)
                 .map(p -> p.getDefaultCommissionPolicyId())
                 .orElse(null);
 

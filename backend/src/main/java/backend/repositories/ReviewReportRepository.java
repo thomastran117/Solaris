@@ -13,11 +13,12 @@ import backend.models.enums.ReportStatus;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface ReviewReportRepository extends JpaRepository<ReviewReport, Long> {
+public interface ReviewReportRepository extends JpaRepository<ReviewReport, UUID> {
 
-    boolean existsByReviewIdAndReporterId(long reviewId, long reporterId);
+    boolean existsByReviewIdAndReporterId(long reviewId, UUID reporterId);
 
     Page<ReviewReport> findByStatus(ReportStatus status, Pageable pageable);
 
@@ -30,5 +31,5 @@ public interface ReviewReportRepository extends JpaRepository<ReviewReport, Long
             @Param("reviewId") long reviewId,
             @Param("status") ReportStatus status,
             @Param("resolvedAt") Instant resolvedAt,
-            @Param("resolvedBy") long resolvedBy);
+            @Param("resolvedBy") UUID resolvedBy);
 }
