@@ -1,11 +1,11 @@
 export type SavedListType = "WISHLIST" | "GIFT" | "SHOPPING" | "PROJECT";
 
 export interface SavedListItem {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   productName: string;
   productThumbnailUrl: string | null;
-  variantId: number | null;
+  variantId: string | null;
   variantSku: string | null;
   quantity: number;
   note: string | null;
@@ -15,7 +15,7 @@ export interface SavedListItem {
 }
 
 export interface SavedList {
-  id: number;
+  id: string;
   userId: string;
   name: string;
   type: SavedListType;
@@ -28,7 +28,7 @@ export interface SavedList {
 }
 
 export interface SavedListSummary {
-  id: number;
+  id: string;
   userId: string;
   name: string;
   type: SavedListType;
@@ -42,7 +42,7 @@ export interface SavedListSummary {
 }
 
 export interface PublicSavedList {
-  id: number;
+  id: string;
   ownerDisplayName: string;
   name: string;
   type: SavedListType;
@@ -68,8 +68,8 @@ export interface UpdateSavedListRequest {
 }
 
 export interface AddSavedListItemRequest {
-  productId: number;
-  variantId?: number;
+  productId: string;
+  variantId?: string;
   quantity?: number;
   note?: string;
 }

@@ -20,7 +20,7 @@ export interface CollectionWritePayload {
 }
 
 export interface AddCollectionProductPayload {
-  productId: number;
+  productId: string;
   boostWeight?: number | null;
   pinnedRank?: number | null;
 }
@@ -59,42 +59,42 @@ export interface CollectionProductsPage {
 }
 
 export const adminCollectionsApi = {
-  list: (companyId: number, params: CollectionListParams = {}) =>
+  list: (companyId: string, params: CollectionListParams = {}) =>
     api.get<CollectionsPage>(`/companies/${companyId}/collections`, { params }),
 
-  get: (companyId: number, collectionId: number) =>
+  get: (companyId: string, collectionId: string) =>
     api.get<Collection>(`/companies/${companyId}/collections/${collectionId}`),
 
-  create: (companyId: number, payload: CollectionWritePayload) =>
+  create: (companyId: string, payload: CollectionWritePayload) =>
     api.post<Collection>(`/companies/${companyId}/collections`, payload),
 
-  update: (companyId: number, collectionId: number, payload: Partial<CollectionWritePayload>) =>
+  update: (companyId: string, collectionId: string, payload: Partial<CollectionWritePayload>) =>
     api.patch<Collection>(`/companies/${companyId}/collections/${collectionId}`, payload),
 
-  remove: (companyId: number, collectionId: number) =>
+  remove: (companyId: string, collectionId: string) =>
     api.delete<void>(`/companies/${companyId}/collections/${collectionId}`),
 
-  refresh: (companyId: number, collectionId: number) =>
+  refresh: (companyId: string, collectionId: string) =>
     api.post<Collection>(`/companies/${companyId}/collections/${collectionId}/refresh`),
 
   // --- Membership ---
 
-  listProducts: (companyId: number, collectionId: number, page = 0, size = 20) =>
+  listProducts: (companyId: string, collectionId: string, page = 0, size = 20) =>
     api.get<CollectionProductsPage>(
       `/companies/${companyId}/collections/${collectionId}/products`,
       { params: { page, size } }
     ),
 
-  addProduct: (companyId: number, collectionId: number, payload: AddCollectionProductPayload) =>
+  addProduct: (companyId: string, collectionId: string, payload: AddCollectionProductPayload) =>
     api.post<CollectionProductRow>(
       `/companies/${companyId}/collections/${collectionId}/products`,
       payload
     ),
 
   updateProduct: (
-    companyId: number,
-    collectionId: number,
-    productId: number,
+    companyId: string,
+    collectionId: string,
+    productId: string,
     payload: UpdateCollectionProductPayload
   ) =>
     api.patch<CollectionProductRow>(
@@ -102,25 +102,25 @@ export const adminCollectionsApi = {
       payload
     ),
 
-  removeProduct: (companyId: number, collectionId: number, productId: number) =>
+  removeProduct: (companyId: string, collectionId: string, productId: string) =>
     api.delete<void>(
       `/companies/${companyId}/collections/${collectionId}/products/${productId}`
     ),
 };
 
 export const marketplaceCollectionsApi = {
-  listFeatured: (marketplaceId: number) =>
+  listFeatured: (marketplaceId: string) =>
     api.get<Collection[]>(`/marketplaces/${marketplaceId}/collections/featured`),
 
-  listFeaturedForVendor: (marketplaceId: number, vendorId: number) =>
+  listFeaturedForVendor: (marketplaceId: string, vendorId: string) =>
     api.get<Collection[]>(
       `/marketplaces/${marketplaceId}/collections/featured/vendor/${vendorId}`
     ),
 
-  getBySlug: (marketplaceId: number, slug: string) =>
+  getBySlug: (marketplaceId: string, slug: string) =>
     api.get<Collection>(`/marketplaces/${marketplaceId}/collections/${slug}`),
 
-  listProductsBySlug: (marketplaceId: number, slug: string, page = 0, size = 20) =>
+  listProductsBySlug: (marketplaceId: string, slug: string, page = 0, size = 20) =>
     api.get<CollectionProductsPage>(
       `/marketplaces/${marketplaceId}/collections/${slug}/products`,
       { params: { page, size } }

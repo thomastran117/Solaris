@@ -18,7 +18,7 @@ export type PromotionRuleType =
  * Order/cart pricing is authoritative and runs server-side — this is for badge/strikethrough UI only.
  */
 export interface ActivePromotionSummary {
-  id: number;
+  id: string;
   ruleType: PromotionRuleType;
   percentOff: number | null;
   amountOff: number | null;
@@ -26,10 +26,10 @@ export interface ActivePromotionSummary {
 }
 
 export interface CatalogProduct {
-  id: number;
-  companyId: number;
-  marketplaceId: number;
-  vendorId: number | null;
+  id: string;
+  companyId: string;
+  marketplaceId: string;
+  vendorId: string | null;
   vendorName: string | null;
   vendorTier: string | null;
   name: string;
@@ -42,8 +42,8 @@ export interface CatalogProduct {
   brand: string | null;
   tags: string | null;
   thumbnailUrl: string | null;
-  images: { id: number; imageUrl: string; displayOrder: number }[];
-  variants: { id: number; sku: string | null; price: number; stock: number | null; option1: string | null; option2: string | null; option3: string | null }[];
+  images: { id: string; imageUrl: string; displayOrder: number }[];
+  variants: { id: string; sku: string | null; price: number; stock: number | null; option1: string | null; option2: string | null; option3: string | null }[];
   stock: number | null;
   status: string;
   scheduledPublishAt: string | null;
@@ -56,8 +56,8 @@ export interface CatalogProduct {
 }
 
 export interface VendorStorefront {
-  vendorId: number;
-  marketplaceId: number;
+  vendorId: string;
+  marketplaceId: string;
   vendorCompanyName: string;
   vendorDescription: string | null;
   vendorLogoUrl: string | null;
@@ -84,7 +84,7 @@ export interface CatalogSearchParams {
   minPrice?: number;
   maxPrice?: number;
   featured?: boolean;
-  vendorId?: number;
+  vendorId?: string;
   page?: number;
   size?: number;
   sort?: string;
@@ -99,8 +99,8 @@ export type AdminProductStatus = "DRAFT" | "ACTIVE" | "SCHEDULED" | "ARCHIVED";
  * customer-facing endpoints don't surface (e.g. {@link AdminProduct.status}).
  */
 export interface AdminProduct {
-  id: number;
-  companyId: number;
+  id: string;
+  companyId: string;
   name: string;
   description: string | null;
   sku: string | null;
@@ -191,9 +191,9 @@ export type CompanyRole = "OWNER" | "MANAGER" | "EMPLOYEE";
 
 export interface ProductHistoryEntry {
   kind: ProductHistoryKind;
-  id: number;
-  productId: number;
-  variantId: number | null;
+  id: string;
+  productId: string;
+  variantId: string | null;
   actorUserId: string | null;
   actorRole: CompanyRole | null;
   occurredAt: string;
@@ -202,13 +202,13 @@ export interface ProductHistoryEntry {
   newValue: string | null;
   changeType: ProductHistoryChangeType | null;
   source: ProductHistorySource | null;
-  revertedFromLogId: number | null;
+  revertedFromLogId: string | null;
   delta: number | null;
   previousStock: number | null;
   newStock: number | null;
   reason: string | null;
   note: string | null;
-  orderId: number | null;
+  orderId: string | null;
 }
 
 export interface ProductHistoryPage {
@@ -222,29 +222,29 @@ export interface ProductHistoryPage {
 }
 
 export interface RevertProductChangesPayload {
-  logEntryIds: number[];
+  logEntryIds: string[];
   expectedVersion?: number | null;
 }
 
 export const adminProductsApi = {
-  list: (companyId: number, params: AdminListParams = {}) =>
+  list: (companyId: string, params: AdminListParams = {}) =>
     api.get<AdminProductsPage>(`/companies/${companyId}/products`, { params }),
 
-  get: (companyId: number, productId: number) =>
+  get: (companyId: string, productId: string) =>
     api.get<AdminProduct>(`/companies/${companyId}/products/${productId}`),
 
-  create: (companyId: number, payload: AdminProductWritePayload) =>
+  create: (companyId: string, payload: AdminProductWritePayload) =>
     api.post<AdminProduct>(`/companies/${companyId}/products`, payload),
 
-  update: (companyId: number, productId: number, payload: AdminProductWritePayload) =>
+  update: (companyId: string, productId: string, payload: AdminProductWritePayload) =>
     api.patch<AdminProduct>(`/companies/${companyId}/products/${productId}`, payload),
 
-  remove: (companyId: number, productId: number) =>
+  remove: (companyId: string, productId: string) =>
     api.delete<void>(`/companies/${companyId}/products/${productId}`),
 
   getHistory: (
-    companyId: number,
-    productId: number,
+    companyId: string,
+    productId: string,
     params: { page?: number; size?: number } = {}
   ) =>
     api.get<ProductHistoryPage>(
@@ -252,36 +252,36 @@ export const adminProductsApi = {
       { params }
     ),
 
-  revertChanges: (companyId: number, productId: number, payload: RevertProductChangesPayload) =>
+  revertChanges: (companyId: string, productId: string, payload: RevertProductChangesPayload) =>
     api.post<AdminProduct>(`/companies/${companyId}/products/${productId}/revert`, payload),
 };
 
 export const adminMerchandisingApi = {
   /** Update a product's pin/boost without touching the rest of the catalog fields. */
-  update: (companyId: number, productId: number, payload: UpdateProductMerchandisingPayload) =>
+  update: (companyId: string, productId: string, payload: UpdateProductMerchandisingPayload) =>
     api.patch<AdminProduct>(`/companies/${companyId}/products/${productId}/merchandising`, payload),
 };
 
 export const catalogApi = {
-  search: (marketplaceId: number, params: CatalogSearchParams = {}) =>
+  search: (marketplaceId: string, params: CatalogSearchParams = {}) =>
     api.get<CatalogSearchResponse>(`/marketplaces/${marketplaceId}/catalog/products`, { params }),
 
-  getSuggestions: (marketplaceId: number, q: string, limit = 8) =>
+  getSuggestions: (marketplaceId: string, q: string, limit = 8) =>
     api.get<SearchSuggestionsResponse>(
       `/marketplaces/${marketplaceId}/catalog/search/suggestions`,
       { params: { q, limit } }
     ),
 
-  getProduct: (marketplaceId: number, productId: number) =>
+  getProduct: (marketplaceId: string, productId: string) =>
     api.get<CatalogProduct>(`/marketplaces/${marketplaceId}/catalog/products/${productId}`),
 
-  getVendorStorefront: (marketplaceId: number, vendorId: number) =>
+  getVendorStorefront: (marketplaceId: string, vendorId: string) =>
     api.get<VendorStorefront>(`/marketplaces/${marketplaceId}/catalog/vendors/${vendorId}/storefront`),
 
   getAvailability: (
-    marketplaceId: number,
-    productId: number,
-    opts: { variantId?: number; lat?: number; lng?: number } = {}
+    marketplaceId: string,
+    productId: string,
+    opts: { variantId?: string; lat?: number; lng?: number } = {}
   ) =>
     api.get<AvailabilityEstimate>(
       `/marketplaces/${marketplaceId}/catalog/products/${productId}/availability`,
@@ -289,10 +289,10 @@ export const catalogApi = {
     ),
 
   /** ES-backed search scoped to a single company's storefront at /c/:id. */
-  companyCatalogSearch: (companyId: number, params: CatalogSearchParams = {}) =>
+  companyCatalogSearch: (companyId: string, params: CatalogSearchParams = {}) =>
     api.get<CatalogSearchResponse>(`/companies/${companyId}/catalog/search`, { params }),
 
-  getCompanySuggestions: (companyId: number, q: string, limit = 8) =>
+  getCompanySuggestions: (companyId: string, q: string, limit = 8) =>
     api.get<SearchSuggestionsResponse>(
       `/companies/${companyId}/catalog/search/suggestions`,
       { params: { q, limit } }

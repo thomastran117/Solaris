@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { teamApi, type CompanyCapability, type CompanyRoleInfo } from "../api/team";
 
-export function useCompanyRole(companyId: number | null | undefined) {
+export function useCompanyRole(companyId: string | null | undefined) {
   return useQuery<CompanyRoleInfo>({
     queryKey: ["companies", companyId, "role"],
     queryFn: () => teamApi.describeMyAccess(companyId!).then(r => r.data),
@@ -10,7 +10,7 @@ export function useCompanyRole(companyId: number | null | undefined) {
   });
 }
 
-export function useCompanyCapabilities(companyId: number | null | undefined) {
+export function useCompanyCapabilities(companyId: string | null | undefined) {
   const query = useCompanyRole(companyId);
   const capabilities = query.data?.capabilities ?? [];
   const can = (cap: CompanyCapability) => capabilities.includes(cap);

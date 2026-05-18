@@ -9,8 +9,8 @@ export type CollectionMembershipSource = "MANUAL" | "AUTO";
  * dynamic collections; admin pages parse/produce it through the {@code dynamicRulesSchema}.
  */
 export interface Collection {
-  id: number;
-  companyId: number | null;
+  id: string;
+  companyId: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -27,9 +27,9 @@ export interface Collection {
 }
 
 export interface CollectionProductRow {
-  id: number;
-  collectionId: number;
-  productId: number;
+  id: string;
+  collectionId: string;
+  productId: string;
   productName: string;
   productSku: string | null;
   productThumbnailUrl: string | null;

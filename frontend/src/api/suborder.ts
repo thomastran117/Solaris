@@ -1,27 +1,27 @@
 import api from "../api";
 
 export interface SubOrderItem {
-  id: number;
-  productId: number | null;
+  id: string;
+  productId: string | null;
   productName: string;
-  variantId: number | null;
+  variantId: string | null;
   variantTitle: string | null;
   variantSku: string | null;
   quantity: number;
   unitPrice: number;
-  fulfillmentLocationId: number | null;
+  fulfillmentLocationId: string | null;
   fulfillmentLocationName: string | null;
   fulfillmentStatus: string;
-  bundleId: number | null;
+  bundleId: string | null;
   bundleName: string | null;
   discountAmount: number;
 }
 
 export interface SubOrder {
-  id: number;
-  orderId: number;
-  marketplaceVendorId: number;
-  marketplaceId: number;
+  id: string;
+  orderId: string;
+  marketplaceVendorId: string;
+  marketplaceId: string;
   vendorCompanyName: string;
   status: string;
   subtotal: number;
@@ -44,10 +44,10 @@ export interface SubOrder {
 }
 
 export interface CommissionRecord {
-  id: number;
-  subOrderId: number;
-  vendorId: number;
-  marketplaceId: number;
+  id: string;
+  subOrderId: string;
+  vendorId: string;
+  marketplaceId: string;
   commissionRate: number;
   grossAmount: number;
   commissionAmount: number;
@@ -67,26 +67,26 @@ export interface CancelSubOrderRequest {
 }
 
 export const subOrderApi = {
-  list: (vendorId: number, status?: string, page = 0, size = 20) =>
+  list: (vendorId: string, status?: string, page = 0, size = 20) =>
     api.get<SubOrder[]>(`/vendors/${vendorId}/sub-orders`, {
       params: { status, page, size },
     }),
 
-  get: (vendorId: number, subOrderId: number) =>
+  get: (vendorId: string, subOrderId: string) =>
     api.get<SubOrder>(`/vendors/${vendorId}/sub-orders/${subOrderId}`),
 
-  pack: (vendorId: number, subOrderId: number) =>
+  pack: (vendorId: string, subOrderId: string) =>
     api.post<SubOrder>(`/vendors/${vendorId}/sub-orders/${subOrderId}/pack`),
 
-  ship: (vendorId: number, subOrderId: number, data: ShipSubOrderRequest) =>
+  ship: (vendorId: string, subOrderId: string, data: ShipSubOrderRequest) =>
     api.post<SubOrder>(`/vendors/${vendorId}/sub-orders/${subOrderId}/ship`, data),
 
-  deliver: (vendorId: number, subOrderId: number) =>
+  deliver: (vendorId: string, subOrderId: string) =>
     api.post<SubOrder>(`/vendors/${vendorId}/sub-orders/${subOrderId}/deliver`),
 
-  cancel: (vendorId: number, subOrderId: number, data: CancelSubOrderRequest) =>
+  cancel: (vendorId: string, subOrderId: string, data: CancelSubOrderRequest) =>
     api.post<SubOrder>(`/vendors/${vendorId}/sub-orders/${subOrderId}/cancel`, data),
 
-  getCommission: (vendorId: number, subOrderId: number) =>
+  getCommission: (vendorId: string, subOrderId: string) =>
     api.get<CommissionRecord>(`/vendors/${vendorId}/sub-orders/${subOrderId}/commission`),
 };

@@ -14,7 +14,7 @@ import type { SavedList } from "../../types/savedList";
 interface Props {
   open: boolean;
   onClose: () => void;
-  productId: number;
+  productId: string;
   productName: string;
 }
 
@@ -35,7 +35,7 @@ export default function SaveToListModal({ open, onClose, productId, productName 
   });
 
   const containsProduct = useMemo(() => {
-    const map = new Map<number, boolean>();
+    const map = new Map<string, boolean>();
     detailQueries.forEach((q, i) => {
       const list = lists.data?.[i];
       if (!list || !q.data) return;
@@ -163,12 +163,12 @@ function SaveTargetRow({
   onError,
   onSuccess,
 }: {
-  listId: number;
+  listId: string;
   name: string;
   typeLabel: string;
   Icon: React.ComponentType<{ className?: string }>;
   already: boolean;
-  productId: number;
+  productId: string;
   onError: (msg: string) => void;
   onSuccess: () => void;
 }) {

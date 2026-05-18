@@ -16,8 +16,8 @@ export const TERMINAL_STATUSES: ReadonlyArray<ImportJobStatus> = [
 ];
 
 export interface ImportJob {
-  id: number;
-  companyId: number;
+  id: string;
+  companyId: string;
   uploadedBy: string;
   jobType: ImportJobType;
   mode: ImportMode;
@@ -35,8 +35,8 @@ export interface ImportJob {
 }
 
 export interface ImportJobRow {
-  id: number;
-  jobId: number;
+  id: string;
+  jobId: string;
   rowNumber: number;
   sku: string | null;
   errorMessage: string;

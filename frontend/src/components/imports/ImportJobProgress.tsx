@@ -32,8 +32,8 @@ function StatusIcon({ status }: { status: ImportJobStatus }) {
 }
 
 interface Props {
-  companyId: number;
-  jobId: number;
+  companyId: string;
+  jobId: string;
   onTerminal?: (job: ImportJob) => void;
 }
 

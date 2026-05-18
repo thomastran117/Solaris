@@ -4,7 +4,7 @@ interface AuthState {
   accessToken: string | null;
   email: string | null;
   role: string | null;
-  companyId: number | null;
+  companyId: string | null;
 }
 
 const initialState: AuthState = {
@@ -24,7 +24,7 @@ const authSlice = createSlice({
         accessToken?: string | null;
         email?: string | null;
         role?: string | null;
-        companyId?: number | null;
+        companyId?: string | null;
       }>
     ) => {
       if (action.payload.accessToken !== undefined) {

@@ -32,14 +32,14 @@ const useAnims = () => {
 export default function SavedListDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const listId = Number(id);
+  const listId = id ?? null;
   const { fadeInUp } = useAnims();
 
-  const list = useSavedList(Number.isFinite(listId) && listId > 0 ? listId : null);
-  const update = useUpdateSavedList(listId);
+  const list = useSavedList(listId);
+  const update = useUpdateSavedList(listId ?? "");
   const remove = useDeleteSavedList();
-  const updateItem = useUpdateSavedListItem(listId);
-  const removeItem = useRemoveSavedListItem(listId);
+  const updateItem = useUpdateSavedListItem(listId ?? "");
+  const removeItem = useRemoveSavedListItem(listId ?? "");
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -138,7 +138,7 @@ export default function SavedListDetailPage() {
   const showProgress = showsProgress(data.type) && total > 0;
   const sortedItems = [...data.items].sort((a, b) => {
     if (a.purchased !== b.purchased) return a.purchased ? 1 : -1;
-    return a.id - b.id;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
   return (

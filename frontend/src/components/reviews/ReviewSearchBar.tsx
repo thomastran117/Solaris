@@ -5,8 +5,8 @@ import { reviewsApi } from "../../api/reviews";
 import type { ReviewSearchHit } from "../../types/review";
 
 interface Props {
-  companyId: number;
-  productId: number;
+  companyId: string;
+  productId: string;
   onResults?: (hits: ReviewSearchHit[] | null, query: string) => void;
 }
 

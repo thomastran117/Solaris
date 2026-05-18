@@ -7,9 +7,9 @@ import type { RootState } from "../../stores";
 import type { HelpfulVote } from "../../types/review";
 
 interface Props {
-  companyId: number;
-  productId: number;
-  reviewId: number;
+  companyId: string;
+  productId: string;
+  reviewId: string;
   helpfulCount: number;
   userHasVoted: boolean;
   onChange?: (vote: HelpfulVote) => void;

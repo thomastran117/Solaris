@@ -10,7 +10,7 @@ import type {
 
 const KEYS = {
   list: (type?: SavedListType) => ["savedLists", "list", { type: type ?? null }] as const,
-  detail: (id: number) => ["savedLists", "detail", id] as const,
+  detail: (id: string) => ["savedLists", "detail", id] as const,
   public: (slug: string) => ["savedLists", "public", slug] as const,
 };
 
@@ -22,11 +22,11 @@ export function useSavedLists(type?: SavedListType, enabled: boolean = true) {
   });
 }
 
-export function useSavedList(id: number | null) {
+export function useSavedList(id: string | null) {
   return useQuery({
-    queryKey: KEYS.detail(id ?? -1),
-    queryFn: () => savedListsApi.get(id as number).then((r) => r.data),
-    enabled: id != null && id > 0,
+    queryKey: KEYS.detail(id ?? ""),
+    queryFn: () => savedListsApi.get(id as string).then((r) => r.data),
+    enabled: id != null && id.length > 0,
   });
 }
 
@@ -51,7 +51,7 @@ export function useCreateSavedList() {
   });
 }
 
-export function useUpdateSavedList(id: number) {
+export function useUpdateSavedList(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (req: UpdateSavedListRequest) =>
@@ -66,7 +66,7 @@ export function useUpdateSavedList(id: number) {
 export function useDeleteSavedList() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => savedListsApi.remove(id),
+    mutationFn: (id: string) => savedListsApi.remove(id),
     onSuccess: (_, id) => {
       queryClient.removeQueries({ queryKey: KEYS.detail(id) });
       queryClient.invalidateQueries({ queryKey: ["savedLists", "list"] });
@@ -74,7 +74,7 @@ export function useDeleteSavedList() {
   });
 }
 
-export function useAddSavedListItem(listId: number) {
+export function useAddSavedListItem(listId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (req: AddSavedListItemRequest) =>
@@ -86,10 +86,10 @@ export function useAddSavedListItem(listId: number) {
   });
 }
 
-export function useUpdateSavedListItem(listId: number) {
+export function useUpdateSavedListItem(listId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { itemId: number; req: UpdateSavedListItemRequest }) =>
+    mutationFn: (vars: { itemId: string; req: UpdateSavedListItemRequest }) =>
       savedListsApi.updateItem(listId, vars.itemId, vars.req).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(listId) });
@@ -98,10 +98,10 @@ export function useUpdateSavedListItem(listId: number) {
   });
 }
 
-export function useRemoveSavedListItem(listId: number) {
+export function useRemoveSavedListItem(listId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (itemId: number) => savedListsApi.removeItem(listId, itemId),
+    mutationFn: (itemId: string) => savedListsApi.removeItem(listId, itemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(listId) });
       queryClient.invalidateQueries({ queryKey: ["savedLists", "list"] });

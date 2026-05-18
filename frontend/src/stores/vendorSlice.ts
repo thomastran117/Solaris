@@ -1,15 +1,15 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 export interface MarketplaceVendor {
-  id: number;
-  marketplaceId: number;
+  id: string;
+  marketplaceId: string;
   marketplaceName: string;
-  vendorCompanyId: number;
+  vendorCompanyId: string;
   vendorCompanyName: string;
   status: string;
   tier: string;
   onboardingStep: string;
-  commissionPolicyId: number | null;
+  commissionPolicyId: string | null;
   stripeConnectStatus: string | null;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;

@@ -41,7 +41,7 @@ function parseFilename(name: string): { sku: string; displayOrder: number } {
 }
 
 interface Props {
-  companyId: number;
+  companyId: string;
 }
 
 export default function BulkImageDropzone({ companyId }: Props) {

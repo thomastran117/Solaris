@@ -7,8 +7,8 @@ import RatingStars from "./RatingStars";
 import ReviewPhotoUploader from "./ReviewPhotoUploader";
 
 interface Props {
-  companyId: number;
-  productId: number;
+  companyId: string;
+  productId: string;
   existing: Review | null;
   authenticated: boolean;
   onSaved?: (review: Review) => void;

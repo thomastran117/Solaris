@@ -17,7 +17,7 @@ export const savedListsApi = {
       params: type ? { type } : undefined,
     }),
 
-  get: (id: number) => api.get<SavedList>(`/saved-lists/${id}`),
+  get: (id: string) => api.get<SavedList>(`/saved-lists/${id}`),
 
   getPublic: (slug: string) =>
     api.get<PublicSavedList>(`/saved-lists/public/${slug}`),
@@ -25,17 +25,17 @@ export const savedListsApi = {
   create: (req: CreateSavedListRequest) =>
     api.post<SavedList>("/saved-lists", req),
 
-  update: (id: number, req: UpdateSavedListRequest) =>
+  update: (id: string, req: UpdateSavedListRequest) =>
     api.put<SavedList>(`/saved-lists/${id}`, req),
 
-  remove: (id: number) => api.delete<void>(`/saved-lists/${id}`),
+  remove: (id: string) => api.delete<void>(`/saved-lists/${id}`),
 
-  addItem: (id: number, req: AddSavedListItemRequest) =>
+  addItem: (id: string, req: AddSavedListItemRequest) =>
     api.post<SavedListItem>(`/saved-lists/${id}/items`, req),
 
-  updateItem: (id: number, itemId: number, req: UpdateSavedListItemRequest) =>
+  updateItem: (id: string, itemId: string, req: UpdateSavedListItemRequest) =>
     api.patch<SavedListItem>(`/saved-lists/${id}/items/${itemId}`, req),
 
-  removeItem: (id: number, itemId: number) =>
+  removeItem: (id: string, itemId: string) =>
     api.delete<void>(`/saved-lists/${id}/items/${itemId}`),
 };

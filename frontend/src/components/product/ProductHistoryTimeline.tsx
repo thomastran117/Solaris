@@ -24,8 +24,8 @@ function roleBadge(role: CompanyRole | null): { label: string; cls: string } | n
 }
 
 interface Props {
-  companyId: number;
-  productId: number;
+  companyId: string;
+  productId: string;
   expectedVersion?: number | null;
   onReverted?: () => void;
 }

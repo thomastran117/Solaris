@@ -1,8 +1,8 @@
 export interface StockNotification {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   productName: string;
-  variantId: number | null;
+  variantId: string | null;
   variantTitle: string | null;
   status: "PENDING" | "NOTIFIED" | "CANCELLED";
   createdAt: string;

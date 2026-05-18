@@ -30,7 +30,7 @@ export default function LoginPage() {
 
   const fetchAndStoreCompanyId = async () => {
     try {
-      const res = await api.get<{ id: number }>("/companies/mine");
+      const res = await api.get<{ id: string }>("/companies/mine");
       dispatch(setCredentials({ companyId: res.data.id }));
     } catch {
       // No company yet — companyId stays null; DashboardPage handles this.

@@ -32,14 +32,14 @@ function buildVariantLabel(
 
 export default function ProductPage() {
   const { id } = useParams<{ id: string }>();
-  const productId = Number(id);
+  const productId = id;
   const { fadeInUp, fadeIn } = useAnims();
   const queryClient = useQueryClient();
 
   const marketplaceId = useSelector((s: RootState) => s.marketplace.currentMarketplace?.id);
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
 
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -56,7 +56,7 @@ export default function ProductPage() {
   });
 
   const subscribeMutation = useMutation({
-    mutationFn: (variantId?: number) =>
+    mutationFn: (variantId?: string) =>
       notificationsApi.subscribeBackInStock(productId, variantId).then(r => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-notifications"] });
@@ -64,7 +64,7 @@ export default function ProductPage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (notificationId: number) =>
+    mutationFn: (notificationId: string) =>
       notificationsApi.cancelBackInStock(notificationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-notifications"] });

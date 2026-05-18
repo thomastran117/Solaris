@@ -23,7 +23,7 @@ const inputBase =
 export default function AdminCollectionProductsPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const collectionId = id ? Number(id) : null;
+  const collectionId = id ?? null;
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();
@@ -63,7 +63,7 @@ export default function AdminCollectionProductsPage() {
   }
 
   const addMutation = useMutation({
-    mutationFn: (productId: number) =>
+    mutationFn: (productId: string) =>
       adminCollectionsApi.addProduct(companyId!, collectionId!, { productId }),
     onSuccess: () => {
       setSearchQuery("");
@@ -72,7 +72,7 @@ export default function AdminCollectionProductsPage() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: (productId: number) =>
+    mutationFn: (productId: string) =>
       adminCollectionsApi.removeProduct(companyId!, collectionId!, productId),
     onSuccess: invalidate,
   });
@@ -83,7 +83,7 @@ export default function AdminCollectionProductsPage() {
       boostWeight,
       pinnedRank,
     }: {
-      productId: number;
+      productId: string;
       boostWeight: number | null;
       pinnedRank: number | null;
     }) =>

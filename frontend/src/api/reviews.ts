@@ -49,35 +49,35 @@ interface PresignResponse {
 }
 
 export const reviewsApi = {
-  list: (companyId: number, productId: number, filters: ReviewListFilters = {}) =>
+  list: (companyId: string, productId: string, filters: ReviewListFilters = {}) =>
     api.get<PagedResponse<Review>>(
       `/companies/${companyId}/products/${productId}/reviews`,
       { params: filters },
     ),
 
-  summary: (companyId: number, productId: number) =>
+  summary: (companyId: string, productId: string) =>
     api.get<ReviewSummary>(
       `/companies/${companyId}/products/${productId}/reviews/summary`,
     ),
 
-  getMine: (companyId: number, productId: number) =>
+  getMine: (companyId: string, productId: string) =>
     api.get<Review>(`/companies/${companyId}/products/${productId}/reviews/me`),
 
-  create: (companyId: number, productId: number, payload: CreateReviewPayload) =>
+  create: (companyId: string, productId: string, payload: CreateReviewPayload) =>
     api.post<Review>(`/companies/${companyId}/products/${productId}/reviews`, payload),
 
-  update: (companyId: number, productId: number, payload: UpdateReviewPayload) =>
+  update: (companyId: string, productId: string, payload: UpdateReviewPayload) =>
     api.patch<Review>(`/companies/${companyId}/products/${productId}/reviews/me`, payload),
 
-  remove: (companyId: number, productId: number) =>
+  remove: (companyId: string, productId: string) =>
     api.delete(`/companies/${companyId}/products/${productId}/reviews/me`),
 
-  voteHelpful: (companyId: number, productId: number, reviewId: number) =>
+  voteHelpful: (companyId: string, productId: string, reviewId: string) =>
     api.post<HelpfulVote>(
       `/companies/${companyId}/products/${productId}/reviews/${reviewId}/helpful`,
     ),
 
-  removeHelpful: (companyId: number, productId: number, reviewId: number) =>
+  removeHelpful: (companyId: string, productId: string, reviewId: string) =>
     api.delete<HelpfulVote>(
       `/companies/${companyId}/products/${productId}/reviews/${reviewId}/helpful`,
     ),
@@ -85,21 +85,21 @@ export const reviewsApi = {
   presignMediaUpload: (contentType: string) =>
     api.post<PresignResponse>("/upload/presign", { folder: "REVIEW_MEDIA", contentType }),
 
-  attachMedia: (companyId: number, productId: number, reviewId: number, url: string) =>
+  attachMedia: (companyId: string, productId: string, reviewId: string, url: string) =>
     api.post<ReviewMedia>(
       `/companies/${companyId}/products/${productId}/reviews/${reviewId}/media`,
       { url },
     ),
 
-  deleteMedia: (companyId: number, productId: number, reviewId: number, mediaId: number) =>
+  deleteMedia: (companyId: string, productId: string, reviewId: string, mediaId: string) =>
     api.delete(
       `/companies/${companyId}/products/${productId}/reviews/${reviewId}/media/${mediaId}`,
     ),
 
   reportReview: (
-    companyId: number,
-    productId: number,
-    reviewId: number,
+    companyId: string,
+    productId: string,
+    reviewId: string,
     payload: { reason: ReportReason; detail?: string },
   ) =>
     api.post<void>(
@@ -108,8 +108,8 @@ export const reviewsApi = {
     ),
 
   search: (
-    companyId: number,
-    productId: number,
+    companyId: string,
+    productId: string,
     params: {
       q?: string;
       rating?: number[];
@@ -129,7 +129,7 @@ export const reviewAdminApi = {
   listReports: (params: { status?: ReportStatus; page?: number; size?: number } = {}) =>
     api.get<PagedResponse<ReviewReport>>("/admin/reviews/reports", { params }),
 
-  moderate: (reviewId: number, action: ModerationAction) =>
+  moderate: (reviewId: string, action: ModerationAction) =>
     api.post<void>(`/admin/reviews/${reviewId}/moderate`, { action }),
 
   reindex: () => api.post<{ message: string }>("/admin/reviews/reindex"),

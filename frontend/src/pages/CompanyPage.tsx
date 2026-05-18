@@ -34,7 +34,7 @@ const EMPTY_FACETS: SearchFacets = { categories: [], brands: [], priceRanges: []
 
 export default function CompanyPage() {
   const { id } = useParams<{ id: string }>();
-  const companyId = id ? Number(id) : NaN;
+  const companyId = id ?? null;
   const [searchParams, setSearchParams] = useSearchParams();
   const { fadeInUp, stagger } = useAnims();
 
@@ -92,7 +92,7 @@ export default function CompanyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const enabled = Number.isFinite(companyId) && companyId > 0;
+  const enabled = companyId != null && companyId.length > 0;
 
   const companyResult = useQuery({
     queryKey: ["company", "public", companyId],

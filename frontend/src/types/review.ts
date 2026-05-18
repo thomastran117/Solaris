@@ -1,14 +1,14 @@
 export type ReviewStatus = "PUBLISHED" | "HIDDEN" | "PENDING_MODERATION" | "REMOVED";
 
 export interface ReviewMedia {
-  id: number;
+  id: string;
   url: string;
   position: number;
 }
 
 export interface Review {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   reviewerId: string;
   reviewerFirstName: string;
   reviewerLastName: string;
@@ -24,7 +24,7 @@ export interface Review {
 }
 
 export interface ReviewSummary {
-  productId: number;
+  productId: string;
   averageRating: number;
   total: number;
   verifiedCount: number;
@@ -32,14 +32,14 @@ export interface ReviewSummary {
 }
 
 export interface HelpfulVote {
-  reviewId: number;
+  reviewId: string;
   helpfulCount: number;
   userHasVoted: boolean;
 }
 
 export interface ReviewSearchHit {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   reviewerId: string | null;
   reviewerName: string;
   rating: number;
@@ -61,8 +61,8 @@ export type ReportStatus = "OPEN" | "ACTIONED" | "DISMISSED";
 export type ModerationAction = "PUBLISH" | "HIDE" | "REMOVE";
 
 export interface ReviewReport {
-  id: number;
-  reviewId: number;
+  id: string;
+  reviewId: string;
   reporterId: string;
   reason: ReportReason;
   detail: string | null;
@@ -71,7 +71,7 @@ export interface ReviewReport {
   resolvedAt: string | null;
   resolvedBy: string | null;
 
-  productId: number | null;
+  productId: string | null;
   reviewerId: string | null;
   reviewerName: string;
   rating: number;

@@ -21,7 +21,7 @@ function StatusPill({ status }: { status: ImportJobStatus }) {
   );
 }
 
-function ErrorRowsDrawer({ companyId, jobId }: { companyId: number; jobId: number }) {
+function ErrorRowsDrawer({ companyId, jobId }: { companyId: string; jobId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["imports", companyId, jobId, "errors"],
     queryFn: () => importsApi.errors(companyId, jobId, { size: 50 }).then(r => r.data),
@@ -56,7 +56,7 @@ function ErrorRowsDrawer({ companyId, jobId }: { companyId: number; jobId: numbe
   );
 }
 
-function ExpandableRow({ companyId, job }: { companyId: number; job: ImportJob }) {
+function ExpandableRow({ companyId, job }: { companyId: string; job: ImportJob }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -109,7 +109,7 @@ function ExpandableRow({ companyId, job }: { companyId: number; job: ImportJob }
   );
 }
 
-export default function RecentImportsTable({ companyId }: { companyId: number }) {
+export default function RecentImportsTable({ companyId }: { companyId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["imports", companyId, "list"],
     queryFn: () => importsApi.list(companyId, { size: 20 }).then(r => r.data),

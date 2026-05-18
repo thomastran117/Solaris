@@ -1,11 +1,11 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 export interface MarketplaceProfile {
-  id: number;
-  companyId: number;
+  id: string;
+  companyId: string;
   companyName: string;
   slug: string;
-  defaultCommissionPolicyId: number | null;
+  defaultCommissionPolicyId: string | null;
   payoutSchedule: string;
   holdPeriodDays: number;
   defaultCurrency: string;

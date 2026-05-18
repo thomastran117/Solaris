@@ -8,8 +8,8 @@ import type { Review } from "../../types/review";
 
 interface Props {
   review: Review;
-  companyId: number;
-  productId: number;
+  companyId: string;
+  productId: string;
   /** When provided, the helpful button uses this initial state to show whether the current user voted */
   userHasVoted?: boolean;
   /** True when the current viewer authored the review. Hides the report button. */

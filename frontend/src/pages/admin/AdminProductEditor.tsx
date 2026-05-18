@@ -134,7 +134,7 @@ export default function AdminProductEditor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const isEdit = id !== undefined && id !== "new";
-  const productId = isEdit ? Number(id) : null;
+  const productId = isEdit ? id : null;
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();

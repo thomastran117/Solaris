@@ -16,9 +16,9 @@ const MAX_PHOTOS = 5;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 interface Props {
-  companyId: number;
-  productId: number;
-  reviewId: number;
+  companyId: string;
+  productId: string;
+  reviewId: string;
   media: ReviewMedia[];
   onChange: (media: ReviewMedia[]) => void;
 }
@@ -84,7 +84,7 @@ export default function ReviewPhotoUploader({
     }
   }
 
-  async function handleRemove(mediaId: number) {
+  async function handleRemove(mediaId: string) {
     setError(null);
     try {
       await reviewsApi.deleteMedia(companyId, productId, reviewId, mediaId);

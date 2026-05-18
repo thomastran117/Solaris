@@ -5,9 +5,9 @@ import { catalogApi } from "../../api/catalog";
 import { useUserLocation } from "../../hooks/useUserLocation";
 
 interface Props {
-  marketplaceId: number;
-  productId: number;
-  variantId: number | null;
+  marketplaceId: string;
+  productId: string;
+  variantId: string | null;
   /** When the parent already knows the product is unavailable (purchasable=false), skip rendering. */
   unavailable: boolean;
 }

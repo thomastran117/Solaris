@@ -14,8 +14,8 @@ import ReviewCard from "./ReviewCard";
 import ReviewForm from "./ReviewForm";
 
 interface Props {
-  companyId: number;
-  productId: number;
+  companyId: string;
+  productId: string;
 }
 
 const useAnims = () => {
@@ -49,7 +49,7 @@ function hitToReview(hit: ReviewSearchHit): Review {
   return {
     id: hit.id,
     productId: hit.productId,
-    reviewerId: hit.reviewerId ?? 0,
+    reviewerId: hit.reviewerId ?? "",
     reviewerFirstName: hit.reviewerName.split(" ")[0] ?? "",
     reviewerLastName: hit.reviewerName.split(" ").slice(1).join(" ") ?? "",
     rating: hit.rating,

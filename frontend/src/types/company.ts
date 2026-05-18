@@ -3,7 +3,7 @@
  * — no owner id, contact email/phone, tax id, registration number, or employee count.
  */
 export interface PublicCompanyResponse {
-  id: number;
+  id: string;
   name: string;
   city: string | null;
   country: string | null;

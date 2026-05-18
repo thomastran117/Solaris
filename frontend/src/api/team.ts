@@ -15,7 +15,7 @@ export type CompanyCapability =
 export type CompanyMembershipStatus = "PENDING" | "ACTIVE" | "REVOKED";
 
 export interface TeamMembership {
-  id: number;
+  id: string;
   userId: string | null;
   displayName: string | null;
   email: string | null;
@@ -48,19 +48,19 @@ export interface UpdateTeamMemberRolePayload {
 }
 
 export const teamApi = {
-  invite: (companyId: number, payload: InviteTeamMemberPayload) =>
+  invite: (companyId: string, payload: InviteTeamMemberPayload) =>
     api.post<TeamMembership>(`/companies/${companyId}/team/invites`, payload),
 
-  list: (companyId: number) =>
+  list: (companyId: string) =>
     api.get<TeamMembership[]>(`/companies/${companyId}/team`),
 
-  updateRole: (companyId: number, membershipId: number, payload: UpdateTeamMemberRolePayload) =>
+  updateRole: (companyId: string, membershipId: string, payload: UpdateTeamMemberRolePayload) =>
     api.patch<TeamMembership>(`/companies/${companyId}/team/${membershipId}`, payload),
 
-  revoke: (companyId: number, membershipId: number) =>
+  revoke: (companyId: string, membershipId: string) =>
     api.delete(`/companies/${companyId}/team/${membershipId}`),
 
-  describeMyAccess: (companyId: number) =>
+  describeMyAccess: (companyId: string) =>
     api.get<CompanyRoleInfo>(`/companies/${companyId}/me`),
 
   previewInvite: (token: string) =>

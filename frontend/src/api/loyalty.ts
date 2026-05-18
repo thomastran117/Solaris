@@ -1,12 +1,12 @@
 import api from "../api";
 
 export interface LoyaltyAccount {
-  id: number;
+  id: string;
   userId: string;
-  companyId: number;
+  companyId: string;
   pointsBalance: number;
   lifetimePoints: number;
-  currentTierId: number | null;
+  currentTierId: string | null;
   currentTierName: string | null;
   tierUpdatedAt: string | null;
   createdAt: string | null;
@@ -14,10 +14,10 @@ export interface LoyaltyAccount {
 }
 
 export interface LoyaltyTransaction {
-  id: number;
-  accountId: number;
+  id: string;
+  accountId: string;
   userId: string;
-  companyId: number;
+  companyId: string;
   type:
     | "EARN_ORDER"
     | "EARN_BONUS"
@@ -28,7 +28,7 @@ export interface LoyaltyTransaction {
     | "ADJUST";
   pointsDelta: number;
   valueCents: number;
-  sourceOrderId: number | null;
+  sourceOrderId: string | null;
   expiresAt: string | null;
   reason: string | null;
   createdAt: string;
@@ -36,7 +36,7 @@ export interface LoyaltyTransaction {
 
 export interface LoyaltyRedemptionQuote {
   userId: string;
-  companyId: number;
+  companyId: string;
   pointsToRedeem: number;
   discountCents: number;
   currentBalance: number;
@@ -46,8 +46,8 @@ export interface LoyaltyRedemptionQuote {
 }
 
 export interface LoyaltyPolicy {
-  id: number;
-  companyId: number;
+  id: string;
+  companyId: string;
   name: string;
   earnRatePerDollar: number;
   pointValueCents: number;
@@ -75,8 +75,8 @@ export interface CreateLoyaltyPolicyRequest {
 }
 
 export interface LoyaltyTier {
-  id: number;
-  companyId: number;
+  id: string;
+  companyId: string;
   name: string;
   minPoints: number;
   earnMultiplier: number;
@@ -109,41 +109,41 @@ export interface AdjustPointsRequest {
 
 export const loyaltyApi = {
   // Customer self-service
-  getAccount: (companyId: number) =>
+  getAccount: (companyId: string) =>
     api.get<LoyaltyAccount>(`/loyalty/account`, { params: { companyId } }),
 
-  getTransactions: (companyId: number, page = 0, size = 20) =>
+  getTransactions: (companyId: string, page = 0, size = 20) =>
     api.get<LoyaltyTransaction[]>(`/loyalty/transactions`, {
       params: { companyId, page, size },
     }),
 
-  getRedemptionQuote: (companyId: number, points: number) =>
+  getRedemptionQuote: (companyId: string, points: number) =>
     api.get<LoyaltyRedemptionQuote>(`/loyalty/quote`, {
       params: { companyId, points },
     }),
 
   // Policy (public read, owner write)
-  getPolicy: (companyId: number) =>
+  getPolicy: (companyId: string) =>
     api.get<LoyaltyPolicy>(`/companies/${companyId}/loyalty/policy`),
 
-  createOrUpdatePolicy: (companyId: number, data: CreateLoyaltyPolicyRequest) =>
+  createOrUpdatePolicy: (companyId: string, data: CreateLoyaltyPolicyRequest) =>
     api.post<LoyaltyPolicy>(`/companies/${companyId}/loyalty/policy`, data),
 
   // Tiers (public read, owner write)
-  listTiers: (companyId: number) =>
+  listTiers: (companyId: string) =>
     api.get<LoyaltyTier[]>(`/companies/${companyId}/loyalty/tiers`),
 
-  createTier: (companyId: number, data: CreateLoyaltyTierRequest) =>
+  createTier: (companyId: string, data: CreateLoyaltyTierRequest) =>
     api.post<LoyaltyTier>(`/companies/${companyId}/loyalty/tiers`, data),
 
-  updateTier: (companyId: number, tierId: number, data: CreateLoyaltyTierRequest) =>
+  updateTier: (companyId: string, tierId: string, data: CreateLoyaltyTierRequest) =>
     api.put<LoyaltyTier>(`/companies/${companyId}/loyalty/tiers/${tierId}`, data),
 
   // Operator actions
-  issueBonus: (companyId: number, data: IssueBonusRequest) =>
+  issueBonus: (companyId: string, data: IssueBonusRequest) =>
     api.post<LoyaltyTransaction>(`/companies/${companyId}/loyalty/bonus`, data),
 
-  adjustPoints: (companyId: number, accountId: number, data: AdjustPointsRequest) =>
+  adjustPoints: (companyId: string, accountId: string, data: AdjustPointsRequest) =>
     api.post<LoyaltyTransaction>(
       `/companies/${companyId}/loyalty/accounts/${accountId}/adjust`,
       data

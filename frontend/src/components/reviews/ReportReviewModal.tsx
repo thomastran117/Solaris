@@ -14,9 +14,9 @@ const REASONS: { value: ReportReason; label: string; hint: string }[] = [
 
 interface Props {
   open: boolean;
-  companyId: number;
-  productId: number;
-  reviewId: number;
+  companyId: string;
+  productId: string;
+  reviewId: string;
   onClose: () => void;
   onSubmitted?: () => void;
 }

@@ -2,10 +2,10 @@ import api from "../api";
 import type { StockNotification } from "../types/notifications";
 
 export const notificationsApi = {
-  subscribeBackInStock: (productId: number, variantId?: number) =>
+  subscribeBackInStock: (productId: string | undefined, variantId?: string) =>
     api.post<StockNotification>("/stock-notifications", { productId, variantId }),
 
-  cancelBackInStock: (notificationId: number) =>
+  cancelBackInStock: (notificationId: string) =>
     api.delete(`/stock-notifications/${notificationId}`),
 
   listBackInStock: () =>

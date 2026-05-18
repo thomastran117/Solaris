@@ -88,7 +88,7 @@ export default function AdminCollectionEditor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const isEdit = id !== undefined && id !== "new";
-  const collectionId = isEdit ? Number(id) : null;
+  const collectionId = isEdit ? id : null;
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();

@@ -2,8 +2,8 @@ import api from "../api";
 import type { MarketplaceVendor } from "../stores/vendorSlice";
 
 export interface VendorDocument {
-  id: number;
-  marketplaceVendorId: number;
+  id: string;
+  marketplaceVendorId: string;
   documentType: string;
   s3Key: string;
   uploadedAt: string;
@@ -17,7 +17,7 @@ export interface StripeOnboardingLink {
 }
 
 export interface ApplyVendorRequest {
-  vendorCompanyId: number;
+  vendorCompanyId: string;
 }
 
 export interface UpdateVendorProfileRequest {
@@ -46,18 +46,18 @@ export interface VendorActionRequest {
 }
 
 export const vendorApi = {
-  apply: (marketplaceId: number, data: ApplyVendorRequest) =>
+  apply: (marketplaceId: string, data: ApplyVendorRequest) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/apply`, data),
 
-  updateProfile: (marketplaceId: number, vendorId: number, data: UpdateVendorProfileRequest) =>
+  updateProfile: (marketplaceId: string, vendorId: string, data: UpdateVendorProfileRequest) =>
     api.patch<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/onboarding/profile`, data),
 
-  submitTax: (marketplaceId: number, vendorId: number, data: SubmitVendorTaxRequest) =>
+  submitTax: (marketplaceId: string, vendorId: string, data: SubmitVendorTaxRequest) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/onboarding/tax`, data),
 
   getStripeOnboardingLink: (
-    marketplaceId: number,
-    vendorId: number,
+    marketplaceId: string,
+    vendorId: string,
     data: GenerateStripeOnboardingLinkRequest
   ) =>
     api.post<StripeOnboardingLink>(
@@ -66,8 +66,8 @@ export const vendorApi = {
     ),
 
   recordDocument: (
-    marketplaceId: number,
-    vendorId: number,
+    marketplaceId: string,
+    vendorId: string,
     documentType: string,
     s3Key: string
   ) =>
@@ -77,38 +77,38 @@ export const vendorApi = {
       { params: { documentType, s3Key } }
     ),
 
-  listDocuments: (marketplaceId: number, vendorId: number) =>
+  listDocuments: (marketplaceId: string, vendorId: string) =>
     api.get<VendorDocument[]>(
       `/marketplaces/${marketplaceId}/vendors/${vendorId}/onboarding/documents`
     ),
 
-  submitForReview: (marketplaceId: number, vendorId: number) =>
+  submitForReview: (marketplaceId: string, vendorId: string) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/submit`),
 
-  getMyRecord: (marketplaceId: number) =>
+  getMyRecord: (marketplaceId: string) =>
     api.get<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/me`),
 
-  list: (marketplaceId: number, status?: string, page = 0, size = 20) =>
+  list: (marketplaceId: string, status?: string, page = 0, size = 20) =>
     api.get<MarketplaceVendor[]>(`/marketplaces/${marketplaceId}/vendors`, {
       params: { status, page, size },
     }),
 
-  get: (marketplaceId: number, vendorId: number) =>
+  get: (marketplaceId: string, vendorId: string) =>
     api.get<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}`),
 
-  approve: (marketplaceId: number, vendorId: number, data: VendorActionRequest) =>
+  approve: (marketplaceId: string, vendorId: string, data: VendorActionRequest) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/approve`, data),
 
-  reject: (marketplaceId: number, vendorId: number, data: VendorActionRequest) =>
+  reject: (marketplaceId: string, vendorId: string, data: VendorActionRequest) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/reject`, data),
 
-  suspend: (marketplaceId: number, vendorId: number, data: VendorActionRequest) =>
+  suspend: (marketplaceId: string, vendorId: string, data: VendorActionRequest) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/suspend`, data),
 
-  reinstate: (marketplaceId: number, vendorId: number) =>
+  reinstate: (marketplaceId: string, vendorId: string) =>
     api.post<MarketplaceVendor>(`/marketplaces/${marketplaceId}/vendors/${vendorId}/reinstate`),
 
-  requestMoreInfo: (marketplaceId: number, vendorId: number, data: VendorActionRequest) =>
+  requestMoreInfo: (marketplaceId: string, vendorId: string, data: VendorActionRequest) =>
     api.post<MarketplaceVendor>(
       `/marketplaces/${marketplaceId}/vendors/${vendorId}/needs-info`,
       data
