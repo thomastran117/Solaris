@@ -43,7 +43,7 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public PagedResponse<CouponResponse> listCoupons(long companyId, UUID ownerId, int page, int size) {
+    public PagedResponse<CouponResponse> listCoupons(UUID companyId, UUID ownerId, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -52,7 +52,7 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public CouponResponse getCoupon(long companyId, long couponId, UUID ownerId) {
+    public CouponResponse getCoupon(UUID companyId, UUID couponId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         return toResponse(couponRepository.findByIdAndCompanyId(couponId, companyId)
@@ -61,7 +61,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     @Transactional
-    public CouponResponse createCoupon(long companyId, UUID ownerId, CreateCouponRequest request) {
+    public CouponResponse createCoupon(UUID companyId, UUID ownerId, CreateCouponRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         String code = request.getCode().trim().toUpperCase();
@@ -90,7 +90,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     @Transactional
-    public CouponResponse updateCoupon(long companyId, long couponId, UUID ownerId, UpdateCouponRequest request) {
+    public CouponResponse updateCoupon(UUID companyId, UUID couponId, UUID ownerId, UpdateCouponRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Coupon coupon = couponRepository.findByIdAndCompanyId(couponId, companyId)
@@ -143,7 +143,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     @Transactional
-    public void deleteCoupon(long companyId, long couponId, UUID ownerId) {
+    public void deleteCoupon(UUID companyId, UUID couponId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Coupon coupon = couponRepository.findByIdAndCompanyId(couponId, companyId)

@@ -54,7 +54,7 @@ public class InternalNoteServiceImpl implements InternalNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<InternalNoteResponse> listNotes(UUID actorUserId, NoteEntityType entityType, long entityId) {
+    public List<InternalNoteResponse> listNotes(UUID actorUserId, NoteEntityType entityType, UUID entityId) {
         User actor = userRepository.findById(actorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorUserId));
         SecurityUtils.requireStaff(actor);

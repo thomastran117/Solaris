@@ -87,7 +87,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public PagedResponse<ReviewResponse> getReviews(long companyId, long productId, int page, int size, String sort, String direction,
+    public PagedResponse<ReviewResponse> getReviews(UUID companyId, UUID productId, int page, int size, String sort, String direction,
                                                      List<Integer> ratings, Boolean verifiedOnly, Boolean hasMedia) {
         resolveProduct(companyId, productId);
         final int clampedSize = Math.min(size, 50);
@@ -110,14 +110,14 @@ public class ReviewServiceImpl implements ReviewService {
                     Sort.by("asc".equals(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC, sortField));
             var spec = ReviewSpecification.withFilters(productId, normalizedRatings, verified, media);
             var pageOfReviews = reviewRepository.findAll(spec, pageable);
-            Map<Long, List<ReviewMediaResponse>> mediaByReview = fetchMediaForReviewIds(
+            Map<UUID, List<ReviewMediaResponse>> mediaByReview = fetchMediaForReviewIds(
                     pageOfReviews.map(ProductReview::getId).getContent());
             return new PagedResponse<>(pageOfReviews.map(r -> toResponse(r, mediaByReview.getOrDefault(r.getId(), List.of()))));
         }, new TypeReference<PagedResponse<ReviewResponse>>() {});
     }
 
     @Override
-    public ReviewSummaryResponse getReviewSummary(long companyId, long productId) {
+    public ReviewSummaryResponse getReviewSummary(UUID companyId, UUID productId) {
         resolveProduct(companyId, productId);
         String cacheKey = "reviews:summary:" + companyId + ":" + productId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
@@ -147,7 +147,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse getMyReview(long companyId, long productId, UUID userId) {
+    public ReviewResponse getMyReview(UUID companyId, UUID productId, UUID userId) {
         resolveProduct(companyId, productId);
         String cacheKey = "review:me:" + companyId + ":" + productId + ":" + userId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
@@ -158,7 +158,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse createReview(long companyId, long productId, UUID userId, CreateReviewRequest request) {
+    public ReviewResponse createReview(UUID companyId, UUID productId, UUID userId, CreateReviewRequest request) {
         Product product = resolveProduct(companyId, productId);
         User reviewer = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
@@ -199,7 +199,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public ReviewResponse updateReview(long companyId, long productId, UUID userId, UpdateReviewRequest request) {
+    public ReviewResponse updateReview(UUID companyId, UUID productId, UUID userId, UpdateReviewRequest request) {
         resolveProduct(companyId, productId);
         ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
@@ -221,11 +221,11 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public void deleteReview(long companyId, long productId, UUID userId) {
+    public void deleteReview(UUID companyId, UUID productId, UUID userId) {
         resolveProduct(companyId, productId);
         ProductReview review = reviewRepository.findByProductIdAndReviewerId(productId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You have not reviewed this product yet"));
-        long reviewId = review.getId();
+        UUID reviewId = review.getId();
         reviewRepository.delete(review);
         evictAfterCommit(() -> {
             singleFlightCache.evictByPattern("reviews:" + companyId + ":" + productId + ":*");
@@ -245,7 +245,7 @@ public class ReviewServiceImpl implements ReviewService {
         }
     }
 
-    private Product resolveProduct(long companyId, long productId) {
+    private Product resolveProduct(UUID companyId, UUID productId) {
         return productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
     }
@@ -276,9 +276,9 @@ public class ReviewServiceImpl implements ReviewService {
         );
     }
 
-    private Map<Long, List<ReviewMediaResponse>> fetchMediaForReviewIds(Collection<Long> reviewIds) {
+    private Map<UUID, List<ReviewMediaResponse>> fetchMediaForReviewIds(Collection<UUID> reviewIds) {
         if (reviewIds.isEmpty()) return Map.of();
-        Map<Long, List<ReviewMediaResponse>> grouped = new HashMap<>();
+        Map<UUID, List<ReviewMediaResponse>> grouped = new HashMap<>();
         for (ReviewMedia m : mediaRepository.findByReviewIdInOrderByReviewIdAscPositionAsc(reviewIds)) {
             grouped.computeIfAbsent(m.getReviewId(), k -> new ArrayList<>()).add(mediaToResponse(m));
         }

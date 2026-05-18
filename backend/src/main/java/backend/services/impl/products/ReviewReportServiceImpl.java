@@ -65,16 +65,16 @@ public class ReviewReportServiceImpl implements ReviewReportService {
 
     @Override
     @Transactional
-    public void reportReview(long companyId, long productId, long reviewId, UUID reporterId, ReportReviewRequest request) {
+    public void reportReview(UUID companyId, UUID productId, UUID reviewId, UUID reporterId, ReportReviewRequest request) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getProduct() == null
-                || review.getProduct().getId() != productId
+                || !review.getProduct().getId().equals(productId)
                 || review.getProduct().getCompany() == null
-                || review.getProduct().getCompany().getId() != companyId) {
+                || !review.getProduct().getCompany().getId().equals(companyId)) {
             throw new ResourceNotFoundException("Review not found");
         }
-        if (review.getReviewer() != null && review.getReviewer().getId() == reporterId) {
+        if (review.getReviewer() != null && review.getReviewer().getId().equals(reporterId)) {
             throw new BadRequestException("You cannot report your own review");
         }
 
@@ -100,8 +100,8 @@ public class ReviewReportServiceImpl implements ReviewReportService {
             reviewRepository.updateStatusIfDifferent(reviewId, ReviewStatus.PENDING_MODERATION.name());
             review.setStatus(ReviewStatus.PENDING_MODERATION);
 
-            long cid = review.getProduct().getCompany().getId();
-            long pid = review.getProduct().getId();
+            UUID cid = review.getProduct().getCompany().getId();
+            UUID pid = review.getProduct().getId();
             boolean hasMedia = mediaRepository.countByReviewId(reviewId) > 0;
             evictAfterCommit(() -> {
                 singleFlightCache.evictByPattern("reviews:" + cid + ":" + pid + ":*");
@@ -120,11 +120,11 @@ public class ReviewReportServiceImpl implements ReviewReportService {
         ReportStatus filterStatus = status != null ? status : ReportStatus.OPEN;
         Page<ReviewReport> reports = reportRepository.findByStatus(filterStatus, pageable);
 
-        List<Long> reviewIds = reports.map(ReviewReport::getReviewId).getContent();
-        Map<Long, ProductReview> reviewById = new HashMap<>();
+        List<UUID> reviewIds = reports.map(ReviewReport::getReviewId).getContent();
+        Map<UUID, ProductReview> reviewById = new HashMap<>();
         for (ProductReview r : reviewRepository.findAllById(reviewIds)) reviewById.put(r.getId(), r);
 
-        Map<Long, List<ReviewMediaResponse>> mediaByReview = new HashMap<>();
+        Map<UUID, List<ReviewMediaResponse>> mediaByReview = new HashMap<>();
         if (!reviewIds.isEmpty()) {
             for (ReviewMedia m : mediaRepository.findByReviewIdInOrderByReviewIdAscPositionAsc(reviewIds)) {
                 mediaByReview.computeIfAbsent(m.getReviewId(), k -> new java.util.ArrayList<>())
@@ -139,7 +139,7 @@ public class ReviewReportServiceImpl implements ReviewReportService {
 
     @Override
     @Transactional
-    public void moderate(long reviewId, UUID moderatorId, ModerateReviewRequest request) {
+    public void moderate(UUID reviewId, UUID moderatorId, ModerateReviewRequest request) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 
@@ -157,8 +157,8 @@ public class ReviewReportServiceImpl implements ReviewReportService {
                 : ReportStatus.ACTIONED;
         reportRepository.resolveOpenReportsForReview(reviewId, resolution, Instant.now(), moderatorId);
 
-        long cid = review.getProduct().getCompany().getId();
-        long pid = review.getProduct().getId();
+        UUID cid = review.getProduct().getCompany().getId();
+        UUID pid = review.getProduct().getId();
         boolean hasMedia = mediaRepository.countByReviewId(reviewId) > 0;
         evictAfterCommit(() -> {
             singleFlightCache.evictByPattern("reviews:" + cid + ":" + pid + ":*");

@@ -35,6 +35,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class ReviewSearchServiceImpl implements ReviewSearchService {
@@ -49,7 +50,7 @@ public class ReviewSearchServiceImpl implements ReviewSearchService {
     }
 
     @Override
-    public PagedResponse<ReviewSearchHit> search(long companyId, long productId, String q,
+    public PagedResponse<ReviewSearchHit> search(UUID companyId, UUID productId, String q,
                                                   List<Integer> ratings, Boolean verifiedOnly,
                                                   String sort, int page, int size) {
         int clampedSize = Math.min(Math.max(1, size), 50);

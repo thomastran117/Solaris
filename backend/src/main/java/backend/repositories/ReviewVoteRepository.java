@@ -15,12 +15,12 @@ import java.util.UUID;
 @Repository
 public interface ReviewVoteRepository extends JpaRepository<ReviewVote, UUID> {
 
-    boolean existsByReviewIdAndUserId(long reviewId, UUID userId);
+    boolean existsByReviewIdAndUserId(UUID reviewId, UUID userId);
 
     @Modifying
     @Query("DELETE FROM ReviewVote v WHERE v.reviewId = :reviewId AND v.userId = :userId")
-    int deleteByReviewIdAndUserId(@Param("reviewId") long reviewId, @Param("userId") UUID userId);
+    int deleteByReviewIdAndUserId(@Param("reviewId") UUID reviewId, @Param("userId") UUID userId);
 
     @Query("SELECT v.reviewId FROM ReviewVote v WHERE v.userId = :userId AND v.reviewId IN :reviewIds")
-    List<Long> findVotedReviewIds(@Param("userId") UUID userId, @Param("reviewIds") Collection<Long> reviewIds);
+    List<UUID> findVotedReviewIds(@Param("userId") UUID userId, @Param("reviewIds") Collection<UUID> reviewIds);
 }

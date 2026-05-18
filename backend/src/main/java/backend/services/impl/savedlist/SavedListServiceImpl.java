@@ -220,7 +220,7 @@ public class SavedListServiceImpl implements SavedListService {
                         "Item not found with id: " + itemId));
 
         // Capture before delete to avoid lazy-loading a detached entity.
-        Long productId = item.getProduct() != null ? item.getProduct().getId() : null;
+        UUID productId = item.getProduct() != null ? item.getProduct().getId() : null;
         Long marketplaceId = item.getProduct() != null ? item.getProduct().getMarketplaceId() : null;
 
         savedListItemRepository.delete(item);
@@ -233,7 +233,7 @@ public class SavedListServiceImpl implements SavedListService {
 
     // -------------------------------------------------------------------------
 
-    private SavedList findOwned(UUID userId, long listId) {
+    private SavedList findOwned(UUID userId, UUID listId) {
         return savedListRepository.findByIdAndUserId(listId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Saved list not found with id: " + listId));

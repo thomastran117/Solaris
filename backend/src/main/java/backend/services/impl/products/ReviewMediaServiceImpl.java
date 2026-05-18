@@ -49,7 +49,7 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
 
     @Override
     @Transactional
-    public ReviewMediaResponse attachMedia(long companyId, long productId, long reviewId, UUID userId, AttachReviewMediaRequest request) {
+    public ReviewMediaResponse attachMedia(UUID companyId, UUID productId, UUID reviewId, UUID userId, AttachReviewMediaRequest request) {
         ProductReview review = loadOwnedReview(companyId, productId, reviewId, userId);
 
         String url = request.getUrl();
@@ -68,8 +68,8 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
         media.setPosition((int) existing);
         ReviewMedia saved = mediaRepository.save(media);
 
-        long pid = review.getProduct().getId();
-        long cid = review.getProduct().getCompany().getId();
+        UUID pid = review.getProduct().getId();
+        UUID cid = review.getProduct().getCompany().getId();
         evictAfterCommit(() -> {
             singleFlightCache.evictByPattern("reviews:" + cid + ":" + pid + ":*");
             singleFlightCache.evict("review:me:" + cid + ":" + pid + ":" + userId);
@@ -81,15 +81,15 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
 
     @Override
     @Transactional
-    public void deleteMedia(long companyId, long productId, long reviewId, long mediaId, UUID userId) {
+    public void deleteMedia(UUID companyId, UUID productId, UUID reviewId, UUID mediaId, UUID userId) {
         ProductReview review = loadOwnedReview(companyId, productId, reviewId, userId);
         ReviewMedia media = mediaRepository.findByIdAndReviewId(mediaId, reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found"));
         long countBefore = mediaRepository.countByReviewId(reviewId);
         mediaRepository.delete(media);
 
-        long pid = review.getProduct().getId();
-        long cid = review.getProduct().getCompany().getId();
+        UUID pid = review.getProduct().getId();
+        UUID cid = review.getProduct().getCompany().getId();
         boolean stillHasMedia = countBefore > 1;
         evictAfterCommit(() -> {
             singleFlightCache.evictByPattern("reviews:" + cid + ":" + pid + ":*");
@@ -99,22 +99,22 @@ public class ReviewMediaServiceImpl implements ReviewMediaService {
     }
 
     @Override
-    public List<ReviewMediaResponse> listMedia(long reviewId) {
+    public List<ReviewMediaResponse> listMedia(UUID reviewId) {
         return mediaRepository.findByReviewIdOrderByPositionAsc(reviewId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
-    private ProductReview loadOwnedReview(long companyId, long productId, long reviewId, UUID userId) {
+    private ProductReview loadOwnedReview(UUID companyId, UUID productId, UUID reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getProduct() == null
-                || review.getProduct().getId() != productId
+                || !review.getProduct().getId().equals(productId)
                 || review.getProduct().getCompany() == null
-                || review.getProduct().getCompany().getId() != companyId) {
+                || !review.getProduct().getCompany().getId().equals(companyId)) {
             throw new ResourceNotFoundException("Review not found");
         }
-        if (review.getReviewer() == null || review.getReviewer().getId() != userId) {
+        if (review.getReviewer() == null || !review.getReviewer().getId().equals(userId)) {
             throw new ForbiddenException("You can only modify your own review");
         }
         return review;

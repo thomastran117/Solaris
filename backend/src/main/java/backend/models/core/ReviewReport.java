@@ -35,8 +35,8 @@ public class ReviewReport {
     @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "review_id", nullable = false)
-    private Long reviewId;
+    @Column(name = "review_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID reviewId;
 
     @Column(name = "reporter_id", nullable = false, columnDefinition = "BINARY(16)")
     private UUID reporterId;

@@ -13,5 +13,5 @@ import java.util.UUID;
 public interface InternalNoteRepository extends JpaRepository<InternalNote, UUID> {
 
     List<InternalNote> findAllByEntityTypeAndEntityIdOrderByCreatedAtAsc(
-            NoteEntityType entityType, long entityId);
+            NoteEntityType entityType, UUID entityId);
 }

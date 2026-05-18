@@ -73,7 +73,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     }
 
     @Override
-    public PagedResponse<PromotionRuleResponse> listRules(long companyId, UUID ownerId, int page, int size) {
+    public PagedResponse<PromotionRuleResponse> listRules(UUID companyId, UUID ownerId, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -82,7 +82,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     }
 
     @Override
-    public PromotionRuleResponse getRule(long companyId, long ruleId, UUID ownerId) {
+    public PromotionRuleResponse getRule(UUID companyId, UUID ruleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -92,7 +92,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     @Transactional
-    public PromotionRuleResponse createRule(long companyId, UUID ownerId, CreatePromotionRuleRequest request) {
+    public PromotionRuleResponse createRule(UUID companyId, UUID ownerId, CreatePromotionRuleRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRuleType type = parseType(request.getRuleType());
@@ -123,7 +123,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
     @Override
     @Transactional
     public PromotionRuleResponse updateRule(
-            long companyId, long ruleId, UUID ownerId, UpdatePromotionRuleRequest request) {
+            UUID companyId, UUID ruleId, UUID ownerId, UpdatePromotionRuleRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -182,7 +182,7 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
 
     @Override
     @Transactional
-    public void deleteRule(long companyId, long ruleId, UUID ownerId) {
+    public void deleteRule(UUID companyId, UUID ruleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
 
         PromotionRule rule = ruleRepository.findByIdAndCompanyId(ruleId, companyId)
@@ -211,15 +211,15 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
         }
     }
 
-    private Company resolveFunder(Long funderId) {
+    private Company resolveFunder(UUID funderId) {
         if (funderId == null) return null;
         return companyRepository.findById(funderId)
                 .orElseThrow(() -> new BadRequestException("fundedByCompanyId does not reference an existing company"));
     }
 
-    private Set<Product> resolveProducts(List<Long> ids, long companyId) {
+    private Set<Product> resolveProducts(List<UUID> ids, UUID companyId) {
         if (ids == null || ids.isEmpty()) return new HashSet<>();
-        List<Long> deduped = new ArrayList<>(new HashSet<>(ids));
+        List<UUID> deduped = new ArrayList<>(new HashSet<>(ids));
         List<Product> found = productRepository.findAllByIdInAndCompanyId(deduped, companyId);
         if (found.size() != deduped.size()) {
             throw new BadRequestException("One or more product IDs are invalid or do not belong to this company");
@@ -227,9 +227,9 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
         return new HashSet<>(found);
     }
 
-    private Set<ProductBundle> resolveBundles(List<Long> ids, long companyId) {
+    private Set<ProductBundle> resolveBundles(List<UUID> ids, UUID companyId) {
         if (ids == null || ids.isEmpty()) return new HashSet<>();
-        List<Long> deduped = new ArrayList<>(new HashSet<>(ids));
+        List<UUID> deduped = new ArrayList<>(new HashSet<>(ids));
         List<ProductBundle> found = bundleRepository.findAllByIdInAndCompanyId(deduped, companyId);
         if (found.size() != deduped.size()) {
             throw new BadRequestException("One or more bundle IDs are invalid or do not belong to this company");
@@ -260,10 +260,10 @@ public class PromotionRuleServiceImpl implements PromotionRuleService {
             throw new IllegalStateException("Corrupt config JSON for rule " + r.getId(), e);
         }
 
-        List<Long> productIds = r.getTargetProducts().stream().map(Product::getId).sorted().toList();
-        List<Long> bundleIds  = r.getTargetBundles().stream().map(ProductBundle::getId).sorted().toList();
+        List<UUID> productIds = r.getTargetProducts().stream().map(Product::getId).sorted().toList();
+        List<UUID> bundleIds  = r.getTargetBundles().stream().map(ProductBundle::getId).sorted().toList();
         List<UUID> segmentIds = r.getTargetSegments().stream().map(CustomerSegment::getId).sorted().toList();
-        Long fundedById = r.getFundedByCompany() != null ? r.getFundedByCompany().getId() : null;
+        UUID fundedById = r.getFundedByCompany() != null ? r.getFundedByCompany().getId() : null;
 
         return new PromotionRuleResponse(
                 r.getId(),

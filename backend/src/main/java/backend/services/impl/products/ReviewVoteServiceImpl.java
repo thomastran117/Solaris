@@ -43,7 +43,7 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
     @Override
     @Transactional
-    public HelpfulVoteResponse voteHelpful(long reviewId, UUID userId) {
+    public HelpfulVoteResponse voteHelpful(UUID reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
         if (review.getStatus() != ReviewStatus.PUBLISHED) {
@@ -65,8 +65,8 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
         reviewRepository.incrementHelpfulCount(reviewId);
 
-        long companyId = review.getProduct().getCompany().getId();
-        long productId = review.getProduct().getId();
+        UUID companyId = review.getProduct().getCompany().getId();
+        UUID productId = review.getProduct().getId();
         review.setHelpfulCount(review.getHelpfulCount() + 1);
         boolean hasMedia = mediaRepository.countByReviewId(reviewId) > 0;
         evictAfterCommit(() -> {
@@ -79,7 +79,7 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
     @Override
     @Transactional
-    public HelpfulVoteResponse removeHelpful(long reviewId, UUID userId) {
+    public HelpfulVoteResponse removeHelpful(UUID reviewId, UUID userId) {
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 
@@ -90,8 +90,8 @@ public class ReviewVoteServiceImpl implements ReviewVoteService {
 
         reviewRepository.decrementHelpfulCount(reviewId);
 
-        long companyId = review.getProduct().getCompany().getId();
-        long productId = review.getProduct().getId();
+        UUID companyId = review.getProduct().getCompany().getId();
+        UUID productId = review.getProduct().getId();
         int newCount = Math.max(0, review.getHelpfulCount() - 1);
         review.setHelpfulCount(newCount);
         boolean hasMedia = mediaRepository.countByReviewId(reviewId) > 0;

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import backend.models.enums.NoteEntityType;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -30,8 +31,8 @@ public class InternalNote {
     @Column(nullable = false, length = 15)
     private NoteEntityType entityType;
 
-    @Column(nullable = false)
-    private Long entityId;
+    @Column(nullable = false, columnDefinition = "BINARY(16)")
+    private UUID entityId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "author_id", nullable = false)
