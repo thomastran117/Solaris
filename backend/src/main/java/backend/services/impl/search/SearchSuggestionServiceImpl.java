@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class SearchSuggestionServiceImpl implements SearchSuggestionService {
@@ -45,12 +46,13 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }
         int clampedLimit = Math.min(limit, 10);
-        String cacheKey = String.format("suggestions:%d:%s:%d", marketplaceId, q.toLowerCase(), clampedLimit);
+        String cacheKey = String.format("suggestions:%s:%s:%d", marketplaceId, q.toLowerCase(), clampedLimit);
 
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
             try {
+                final String marketplaceIdStr = marketplaceId.toString();
                 BoolQuery.Builder bq = new BoolQuery.Builder()
-                        .filter(TermQuery.of(t -> t.field("marketplaceId").value(marketplaceId))._toQuery())
+                        .filter(TermQuery.of(t -> t.field("marketplaceId").value(marketplaceIdStr))._toQuery())
                         .filter(TermQuery.of(t -> t.field("marketplaceListed").value(true))._toQuery())
                         .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery())
                         .must(co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery.of(m -> m
@@ -113,12 +115,13 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }
         int clampedLimit = Math.min(limit, 10);
-        String cacheKey = String.format("suggestions:company:%d:%s:%d", companyId, q.toLowerCase(), clampedLimit);
+        String cacheKey = String.format("suggestions:company:%s:%s:%d", companyId, q.toLowerCase(), clampedLimit);
 
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
             try {
+                final String companyIdStr = companyId.toString();
                 BoolQuery.Builder bq = new BoolQuery.Builder()
-                        .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery())
+                        .filter(TermQuery.of(t -> t.field("companyId").value(companyIdStr))._toQuery())
                         .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery())
                         .must(co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery.of(m -> m
                                 .field("nameCompletion")

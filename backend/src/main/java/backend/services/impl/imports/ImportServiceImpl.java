@@ -518,7 +518,7 @@ public class ImportServiceImpl implements ImportService {
                         job.getCompanyId(), job.getUploadedBy(), batch);
                 // Attach images for each created product (positions 1..5)
                 for (int idx = 0; idx < chunk.size() && idx < responses.size(); idx++) {
-                    long productId = responses.get(idx).getId();
+                    UUID productId = responses.get(idx).getId();
                     attachRowImages(job, chunk.get(idx), productId);
                     chunk.get(idx).processedOk = true;
                 }

@@ -12,7 +12,7 @@ public record UserActivityEvent(
     UUID userId,
     String sessionId,
     UUID productId,
-    Long marketplaceId,
+    UUID marketplaceId,
     ActivityType activityType,
     Instant occurredAt
 ) {}

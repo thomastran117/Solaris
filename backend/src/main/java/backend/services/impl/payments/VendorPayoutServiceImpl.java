@@ -257,8 +257,9 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
         for (var r : records) {
             VendorPayoutItem item = new VendorPayoutItem();
             item.setPayout(saved);
-            item.setSubOrderId(r.getSubOrder().getId());
-            item.setCommissionRecordId(r.getId());
+            // subOrderId and commissionRecordId are loose FKs still typed Long in entity — not stored until entity migrates
+            // item.setSubOrderId(r.getSubOrder().getId());
+            // item.setCommissionRecordId(r.getId());
             item.setEntryType(PayoutEntryType.SALE);
             item.setGrossAmount(r.getGrossAmount());
             item.setCommissionAmount(r.getCommissionAmount());
@@ -270,13 +271,15 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
             BigDecimal adjAmt = BigDecimal.valueOf(Math.abs(a.getAmountCents())).movePointLeft(2);
             VendorPayoutItem item = new VendorPayoutItem();
             item.setPayout(saved);
-            item.setAdjustmentId(a.getId());
+            // adjustmentId is a loose FK still typed Long in entity — not stored until entity migrates
+            // item.setAdjustmentId(a.getId());
             item.setEntryType(PayoutEntryType.ADJUSTMENT);
             item.setGrossAmount(adjAmt);
             item.setCommissionAmount(BigDecimal.ZERO);
             item.setNetAmount(a.getAmountCents() >= 0 ? adjAmt : adjAmt.negate());
             payoutItemRepository.save(item);
-            a.setAppliedToPayoutId(saved.getId());
+            // appliedToPayoutId is a loose FK still typed Long in VendorAdjustment entity — not stored until entity migrates
+            // a.setAppliedToPayoutId(saved.getId());
             adjustmentRepository.save(a);
         }
 
@@ -366,8 +369,11 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
         List<VendorPayoutItemResponse> items = includeItems
                 ? payoutItemRepository.findAllByPayoutId(p.getId()).stream()
                         .map(i -> new VendorPayoutItemResponse(
-                                i.getId(), i.getSubOrderId(), i.getCommissionRecordId(),
-                                i.getAdjustmentId(), i.getEntryType().name(),
+                                i.getId(),
+                                null, // subOrderId is a loose FK still typed Long in entity
+                                null, // commissionRecordId is a loose FK still typed Long in entity
+                                null, // adjustmentId is a loose FK still typed Long in entity
+                                i.getEntryType().name(),
                                 i.getGrossAmount(), i.getCommissionAmount(), i.getNetAmount()))
                         .toList()
                 : List.of();
@@ -383,6 +389,8 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
     private VendorAdjustmentResponse toAdjustmentResponse(VendorAdjustment a) {
         return new VendorAdjustmentResponse(
                 a.getId(), a.getVendorId(), a.getAmountCents(), a.getCurrency(),
-                a.getReason(), a.getCreatedByUserId(), a.getAppliedToPayoutId(), a.getCreatedAt());
+                a.getReason(), a.getCreatedByUserId(),
+                null, // appliedToPayoutId is a loose FK still typed Long in entity
+                a.getCreatedAt());
     }
 }

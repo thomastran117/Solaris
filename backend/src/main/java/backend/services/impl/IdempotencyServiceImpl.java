@@ -42,7 +42,7 @@ public class IdempotencyServiceImpl implements IdempotencyService {
     @Override
     public void store(String scope, UUID userId, String key, UUID resultId) {
         if (key == null || key.isBlank()) return;
-        cache.set(redisKey(scope, userId, key), Long.toString(resultId), RESULT_TTL_SECONDS);
+        cache.set(redisKey(scope, userId, key), resultId.toString(), RESULT_TTL_SECONDS);
     }
 
     @Override

@@ -44,8 +44,8 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public void sendLowStockAlertEmail(String toEmail, String firstName,
-                                       long productId, String productName,
-                                       Long variantId, String variantSku,
+                                       java.util.UUID productId, String productName,
+                                       java.util.UUID variantId, String variantSku,
                                        int currentStock, Integer threshold,
                                        boolean outOfStock) {
         publish(new EmailEvent.LowStockAlertEmail(toEmail, firstName, productId, productName,
@@ -75,8 +75,8 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public void sendBackInStockEmail(String toEmail, String firstName,
-                                     long productId, String productName,
-                                     Long variantId, String variantTitle,
+                                     java.util.UUID productId, String productName,
+                                     java.util.UUID variantId, String variantTitle,
                                      String productUrl) {
         publish(new EmailEvent.BackInStockEmail(toEmail, firstName, productId, productName,
                 variantId, variantTitle, productUrl));

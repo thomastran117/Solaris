@@ -17,20 +17,20 @@ public class RiskStepUpRequiredException extends AppHttpException {
     private static final String DEFAULT_DETAIL =
             "Please retrieve the verification code emailed to you and resubmit with riskVerificationToken.";
 
-    private final Long orderId;
+    private final java.util.UUID orderId;
     private final String verificationChannel;
 
-    public RiskStepUpRequiredException(Long orderId) {
+    public RiskStepUpRequiredException(java.util.UUID orderId) {
         this(orderId, "EMAIL");
     }
 
-    public RiskStepUpRequiredException(Long orderId, String verificationChannel) {
+    public RiskStepUpRequiredException(java.util.UUID orderId, String verificationChannel) {
         super(DEFAULT_STATUS, DEFAULT_MESSAGE, null, DEFAULT_DETAIL);
         this.orderId = orderId;
         this.verificationChannel = verificationChannel;
     }
 
-    public Long getOrderId() {
+    public java.util.UUID getOrderId() {
         return orderId;
     }
 

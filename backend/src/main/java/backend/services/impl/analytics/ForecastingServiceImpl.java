@@ -106,7 +106,7 @@ public class ForecastingServiceImpl implements ForecastingService {
         Instant since = Instant.now().minus(lookbackDays, ChronoUnit.DAYS);
         List<DailyDemandProjection> rows = productRepository.findDailyDemandSince(companyId, since);
 
-        Map<Long, List<DailyDemandProjection>> byProduct = groupByProduct(rows);
+        Map<UUID, List<DailyDemandProjection>> byProduct = groupByProduct(rows);
         List<DailyDemandProjection> productRows = byProduct.getOrDefault(productId, List.of());
 
         LocalDate seriesStart = since.atZone(ZoneOffset.UTC).toLocalDate();
@@ -116,7 +116,7 @@ public class ForecastingServiceImpl implements ForecastingService {
     @Override
     @Transactional(readOnly = true)
     public List<ReorderSuggestionResponse> getReorderSuggestions(
-            long companyId, UUID ownerId, int lookbackDays, int limit) {
+            UUID companyId, UUID ownerId, int lookbackDays, int limit) {
         verifyOwnership(companyId, ownerId);
 
         String cacheKey = CACHE_REORDER_PREFIX + companyId + ":" + lookbackDays;
@@ -159,8 +159,8 @@ public class ForecastingServiceImpl implements ForecastingService {
 
         List<DailyDemandProjection> recentRows = productRepository.findDailyDemandBetween(companyId, last28Start, now);
 
-        Map<Long, List<DailyDemandProjection>> recentByProduct = groupByProduct(recentRows);
-        Map<Long, List<DailyDemandProjection>> yoyByProduct    = groupByProduct(yoyRows);
+        Map<UUID, List<DailyDemandProjection>> recentByProduct = groupByProduct(recentRows);
+        Map<UUID, List<DailyDemandProjection>> yoyByProduct    = groupByProduct(yoyRows);
 
         List<Product> products = productRepository.findAllByCompanyId(companyId);
 
@@ -195,12 +195,12 @@ public class ForecastingServiceImpl implements ForecastingService {
     // -------------------------------------------------------------------------
 
     private ForecastSummaryResponse computeAndCacheCompanyForecast(
-            long companyId, int lookbackDays, int limit, String cacheKey) {
+            UUID companyId, int lookbackDays, int limit, String cacheKey) {
         Instant now   = Instant.now();
         Instant since = now.minus(lookbackDays, ChronoUnit.DAYS);
 
         List<DailyDemandProjection> rows = productRepository.findDailyDemandSince(companyId, since);
-        Map<Long, List<DailyDemandProjection>> byProduct = groupByProduct(rows);
+        Map<UUID, List<DailyDemandProjection>> byProduct = groupByProduct(rows);
 
         List<Product> products = productRepository.findAllByCompanyId(companyId);
         LocalDate seriesStart  = since.atZone(ZoneOffset.UTC).toLocalDate();
@@ -299,7 +299,7 @@ public class ForecastingServiceImpl implements ForecastingService {
     }
 
     private Map<UUID, List<DailyDemandProjection>> groupByProduct(List<DailyDemandProjection> rows) {
-        Map<Long, List<DailyDemandProjection>> map = new HashMap<>();
+        Map<UUID, List<DailyDemandProjection>> map = new HashMap<>();
         for (DailyDemandProjection row : rows) {
             map.computeIfAbsent(row.getProductId(), k -> new ArrayList<>()).add(row);
         }

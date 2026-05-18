@@ -58,9 +58,11 @@ public class ReviewSearchServiceImpl implements ReviewSearchService {
         String effectiveSort = (sort != null && SORTABLE.contains(sort)) ? sort : "relevance";
         String trimmedQ = q == null ? "" : q.trim();
 
+        final String productIdStr = productId.toString();
+        final String companyIdStr = companyId.toString();
         BoolQuery.Builder bq = new BoolQuery.Builder()
-                .filter(TermQuery.of(t -> t.field("productId").value(productId))._toQuery())
-                .filter(TermQuery.of(t -> t.field("companyId").value(companyId))._toQuery())
+                .filter(TermQuery.of(t -> t.field("productId").value(productIdStr))._toQuery())
+                .filter(TermQuery.of(t -> t.field("companyId").value(companyIdStr))._toQuery())
                 .filter(TermQuery.of(t -> t.field("status").value(ReviewStatus.PUBLISHED.name()))._toQuery());
 
         if (!trimmedQ.isEmpty()) {
@@ -112,7 +114,7 @@ public class ReviewSearchServiceImpl implements ReviewSearchService {
             Map<String, List<String>> highlightMap = h.getHighlightFields();
             List<String> titleHi = highlightMap.getOrDefault("title", Collections.emptyList());
             List<String> bodyHi = highlightMap.getOrDefault("body", Collections.emptyList());
-            float score = h.getScore() == null ? Float.NaN : h.getScore();
+            float score = Float.isNaN(h.getScore()) ? Float.NaN : h.getScore();
             content.add(new ReviewSearchHit(
                     d.getId(),
                     d.getProductId(),

@@ -243,8 +243,8 @@ public class EmailSender {
     }
 
     private void sendBackInStockEmail(String toEmail, String firstName,
-                                      long productId, String productName,
-                                      Long variantId, String variantTitle,
+                                      java.util.UUID productId, String productName,
+                                      java.util.UUID variantId, String variantTitle,
                                       String productUrl) {
         String greeting = firstName != null ? "Hi " + firstName + "," : "Hi,";
         String itemLine = variantTitle != null
@@ -322,8 +322,8 @@ public class EmailSender {
     }
 
     private void sendLowStockAlertEmail(String toEmail, String firstName,
-                                        long productId, String productName,
-                                        Long variantId, String variantSku,
+                                        java.util.UUID productId, String productName,
+                                        java.util.UUID variantId, String variantSku,
                                         int currentStock, Integer threshold,
                                         boolean outOfStock) {
         String htmlBody = buildLowStockAlertHtml(firstName, productId, productName,
@@ -450,8 +450,8 @@ public class EmailSender {
     }
 
     private String buildLowStockAlertHtml(String firstName,
-                                          long productId, String productName,
-                                          Long variantId, String variantSku,
+                                          java.util.UUID productId, String productName,
+                                          java.util.UUID variantId, String variantSku,
                                           int currentStock, Integer threshold,
                                           boolean outOfStock) {
         String greeting = (firstName != null && !firstName.isBlank()) ? firstName : "there";

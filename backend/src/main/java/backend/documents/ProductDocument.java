@@ -28,7 +28,8 @@ public class ProductDocument {
     private UUID companyId;
 
     /** Non-null when the product is listed on a marketplace. */
-    private Long marketplaceId;
+    @Field(type = FieldType.Keyword)
+    private UUID marketplaceId;
 
     /** The owning vendor's company ID — populated when marketplaceId is set. */
     @Field(type = FieldType.Keyword)

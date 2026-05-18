@@ -37,7 +37,7 @@ public interface CollectionRepository extends JpaRepository<Collection, java.uti
             + "WHERE co.id IN (SELECT p.company.id FROM Product p WHERE p.marketplaceId = :marketplaceId AND p.marketplaceListed = true) "
             + "AND c.featured = true AND c.status = backend.models.enums.CollectionStatus.ACTIVE "
             + "ORDER BY CASE WHEN c.featuredRank IS NULL THEN 1 ELSE 0 END, c.featuredRank ASC, c.id ASC")
-    List<Collection> findFeaturedForMarketplace(@Param("marketplaceId") long marketplaceId);
+    List<Collection> findFeaturedForMarketplace(@Param("marketplaceId") java.util.UUID marketplaceId);
 
     /**
      * Featured collections for one vendor inside one marketplace — drives the vendor

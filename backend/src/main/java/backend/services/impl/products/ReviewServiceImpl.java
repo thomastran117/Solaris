@@ -182,7 +182,7 @@ public class ReviewServiceImpl implements ReviewService {
         ProductReview saved = reviewRepository.save(review);
         ReviewResponse response = toResponse(saved);
 
-        Long marketplaceId = product.getMarketplaceId();
+        UUID marketplaceId = product.getMarketplaceId();
         if (marketplaceId != null && request.getRating() != 3) {
             ActivityType type = request.getRating() >= 4 ? ActivityType.REVIEW_POSITIVE : ActivityType.REVIEW_NEGATIVE;
             activityEventPublisher.publish(new UserActivityEvent(

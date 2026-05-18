@@ -9,7 +9,7 @@ import java.util.UUID;
  */
 public record ProductChangedEvent(
     UUID productId,
-    Long marketplaceId,
+    UUID marketplaceId,
     ChangeType changeType,
     Instant occurredAt
 ) {}

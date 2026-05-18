@@ -14,6 +14,7 @@ import backend.repositories.RestockRequestRepository;
 import backend.services.intf.support.EmailService;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Evaluates low-stock and out-of-stock conditions after any stock decrement.
@@ -62,9 +63,9 @@ public class StockAlertService {
      * @param threshold   configured fixed low-stock threshold (null = no quantity threshold)
      */
     public void checkAndAlert(
-            long productId,
+            UUID productId,
             String productName,
-            Long variantId,
+            UUID variantId,
             String variantSku,
             int newStock,
             Integer threshold) {
@@ -177,11 +178,11 @@ public class StockAlertService {
      * Email notifications are not sent for location-level alerts.
      */
     public void checkAndAlertLocation(
-            long locationStockId,
+            UUID locationStockId,
             String locationName,
-            long productId,
+            UUID productId,
             String productName,
-            Long variantId,
+            UUID variantId,
             int newStock,
             Integer threshold) {
 

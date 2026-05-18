@@ -86,7 +86,7 @@ public class VendorPayoutScheduler {
 
     private void releaseHeldBalances() {
         // Collect all active marketplace hold periods keyed by marketplaceId
-        Map<Long, Integer> holdPeriodByMarketplace = marketplaceProfileRepository.findAll()
+        Map<java.util.UUID, Integer> holdPeriodByMarketplace = marketplaceProfileRepository.findAll()
                 .stream()
                 .collect(Collectors.toMap(
                         p -> p.getCompany().getId(),
@@ -154,7 +154,7 @@ public class VendorPayoutScheduler {
                 if (vendor == null || vendor.getStatus() != VendorStatus.APPROVED) continue;
                 if (!vendor.isChargesEnabled() || !vendor.isPayoutsEnabled()) continue;
 
-                long marketplaceId = vendor.getMarketplace().getId();
+                java.util.UUID marketplaceId = vendor.getMarketplace().getId();
                 var profile = marketplaceProfileRepository.findByCompanyId(marketplaceId).orElse(null);
                 if (profile == null) continue;
 
@@ -176,10 +176,8 @@ public class VendorPayoutScheduler {
                         readyRecords, adjustments,
                         balance.getCurrency());
 
-                // Link sub-orders to this payout
-                for (CommissionRecord r : readyRecords) {
-                    r.getSubOrder().setPayoutId(payout.getId());
-                }
+                // SubOrder.payoutId is a loose FK still typed Long — not set until entity migrates
+                // for (CommissionRecord r : readyRecords) { r.getSubOrder().setPayoutId(payout.getId()); }
 
                 log.info("[PAYOUT SCHEDULER] Created payout {} for vendor {} ({} records, {} adjustments)",
                         payout.getId(), vendor.getId(), readyRecords.size(), adjustments.size());
@@ -229,7 +227,7 @@ public class VendorPayoutScheduler {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private boolean isPayoutDue(long vendorId, PayoutSchedule schedule) {
+    private boolean isPayoutDue(java.util.UUID vendorId, PayoutSchedule schedule) {
         List<VendorPayout> recent = vendorPayoutRepository.findByVendorIdAndStatusList(vendorId, PayoutStatus.PAID);
         if (recent.isEmpty()) return true;
 

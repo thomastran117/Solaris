@@ -103,7 +103,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CollectionResponse> listCollections(
-            long companyId, CollectionType type, CollectionStatus status, Boolean featured,
+            UUID companyId, CollectionType type, CollectionStatus status, Boolean featured,
             int page, int size) {
         assertCompanyExists(companyId);
         Pageable pageable = PageRequest.of(page, Math.min(size, 50),
@@ -238,7 +238,7 @@ public class CollectionServiceImpl implements CollectionService {
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
 
-        List<Long> memberProductIds = collectionProductRepository.findAllByCollectionId(collectionId).stream()
+        List<UUID> memberProductIds = collectionProductRepository.findAllByCollectionId(collectionId).stream()
                 .map(cp -> cp.getProduct().getId())
                 .toList();
 
@@ -260,7 +260,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CollectionProductResponse> listCollectionProducts(
-            long companyId, long collectionId, int page, int size) {
+            UUID companyId, UUID collectionId, int page, int size) {
         assertCompanyExists(companyId);
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
@@ -282,7 +282,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionProductResponse addCollectionProduct(
-            long companyId, long collectionId, UUID ownerId, AddCollectionProductRequest request) {
+            UUID companyId, UUID collectionId, UUID ownerId, AddCollectionProductRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
@@ -315,7 +315,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional
     public CollectionProductResponse updateCollectionProduct(
-            long companyId, long collectionId, long productId, UUID ownerId,
+            UUID companyId, UUID collectionId, UUID productId, UUID ownerId,
             UpdateCollectionProductRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
@@ -418,7 +418,7 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CollectionProductResponse> listMarketplaceCollectionProducts(
-            long marketplaceId, String slug, int page, int size) {
+            UUID marketplaceId, String slug, int page, int size) {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
@@ -432,8 +432,8 @@ public class CollectionServiceImpl implements CollectionService {
         List<CollectionProduct> visible = rows.getContent().stream()
                 .filter(cp -> cp.getProduct().getStatus() == ProductStatus.ACTIVE)
                 .filter(cp -> {
-                    Long mId = cp.getProduct().getMarketplaceId();
-                    return mId != null && mId == marketplaceId && cp.getProduct().isMarketplaceListed();
+                    UUID mId = cp.getProduct().getMarketplaceId();
+                    return mId != null && mId.equals(marketplaceId) && cp.getProduct().isMarketplaceListed();
                 })
                 .toList();
 
@@ -462,7 +462,7 @@ public class CollectionServiceImpl implements CollectionService {
             return;
         }
         DynamicCollectionRules rules = DynamicCollectionRules.parse(collection.getRulesJson(), objectMapper);
-        long companyId = collection.getCompany().getId();
+        UUID companyId = collection.getCompany().getId();
 
         // Use ProductSpecification.withFilters for the company-scope + status filter and apply
         // the rule's any-of lists in memory. Volumes per company are small enough that loading
@@ -474,36 +474,36 @@ public class CollectionServiceImpl implements CollectionService {
                         companyId, null, null, null, null, null, null,
                         ProductStatus.ACTIVE, null, null, null));
 
-        Set<Long> matched = candidates.stream()
+        Set<UUID> matched = candidates.stream()
                 .filter(p -> matchesRule(p, rules))
                 .map(Product::getId)
                 .collect(Collectors.toSet());
 
-        Set<Long> existingAuto = collectionProductRepository
+        Set<UUID> existingAuto = collectionProductRepository
                 .findAllByCollectionIdAndSource(collection.getId(), CollectionMembershipSource.AUTO)
                 .stream()
                 .map(cp -> cp.getProduct().getId())
                 .collect(Collectors.toSet());
 
-        Set<Long> toAdd = new HashSet<>(matched);
+        Set<UUID> toAdd = new HashSet<>(matched);
         toAdd.removeAll(existingAuto);
 
-        Set<Long> toRemove = new HashSet<>(existingAuto);
+        Set<UUID> toRemove = new HashSet<>(existingAuto);
         toRemove.removeAll(matched);
 
         // Diff applied row-by-row; volumes per collection per pass are small. A bulk delete-and-
         // recreate would churn the table and break downstream cache eviction.
         if (!toRemove.isEmpty()) {
-            for (Long productId : toRemove) {
+            for (UUID productId : toRemove) {
                 collectionProductRepository.findByCollectionIdAndProductId(collection.getId(), productId)
                         .filter(cp -> cp.getSource() == CollectionMembershipSource.AUTO)
                         .ifPresent(collectionProductRepository::delete);
             }
         }
         if (!toAdd.isEmpty()) {
-            Map<Long, Product> productMap = candidates.stream()
+            Map<UUID, Product> productMap = candidates.stream()
                     .collect(Collectors.toMap(Product::getId, p -> p));
-            for (Long productId : toAdd) {
+            for (UUID productId : toAdd) {
                 Product p = productMap.get(productId);
                 if (p == null) continue;
                 if (collectionProductRepository.existsByCollectionIdAndProductId(collection.getId(), productId)) {
@@ -521,7 +521,7 @@ public class CollectionServiceImpl implements CollectionService {
         collection.setLastMaterialisedAt(Instant.now());
 
         // Reindex the symmetric diff so the collectionIds array on each ProductDocument matches.
-        Set<Long> affected = new HashSet<>(toAdd);
+        Set<UUID> affected = new HashSet<>(toAdd);
         affected.addAll(toRemove);
         publishReindex(companyId, new ArrayList<>(affected));
 
@@ -562,14 +562,14 @@ public class CollectionServiceImpl implements CollectionService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private Collection findActiveBySlugForMarketplace(long marketplaceId, String slug) {
+    private Collection findActiveBySlugForMarketplace(UUID marketplaceId, String slug) {
         // The slug is unique per company. A collection only appears on a marketplace when one of
         // the owning company's products is listed there. Resolve by scanning vendor companies.
-        List<Long> vendorCompanyIds = productRepository.findMarketplaceListed(marketplaceId).stream()
+        List<UUID> vendorCompanyIds = productRepository.findMarketplaceListed(marketplaceId).stream()
                 .map(p -> p.getCompany().getId())
                 .distinct()
                 .toList();
-        for (Long companyId : vendorCompanyIds) {
+        for (UUID companyId : vendorCompanyIds) {
             Collection c = collectionRepository.findBySlugAndCompanyId(slug, companyId).orElse(null);
             if (c != null && c.getStatus() == CollectionStatus.ACTIVE) {
                 return c;
@@ -578,7 +578,7 @@ public class CollectionServiceImpl implements CollectionService {
         throw new ResourceNotFoundException("Collection not found");
     }
 
-    private void publishReindex(long companyId, java.util.Collection<Long> productIds) {
+    private void publishReindex(UUID companyId, java.util.Collection<UUID> productIds) {
         if (productIds == null || productIds.isEmpty()) return;
         List<Product> products = productRepository.findAllByIdInAndCompanyId(productIds, companyId);
         for (Product p : products) {
@@ -596,7 +596,7 @@ public class CollectionServiceImpl implements CollectionService {
         }
     }
 
-    private void evictCollectionCaches(long companyId, long collectionId, String slug) {
+    private void evictCollectionCaches(UUID companyId, UUID collectionId, String slug) {
         try {
             singleFlightCache.evict("collection:" + companyId + ":" + collectionId);
             singleFlightCache.evictByPattern("collections:list:" + companyId + ":*");
@@ -609,7 +609,7 @@ public class CollectionServiceImpl implements CollectionService {
         }
     }
 
-    private void assertCompanyExists(long companyId) {
+    private void assertCompanyExists(UUID companyId) {
         if (!companyRepository.existsById(companyId)) {
             throw new ResourceNotFoundException("Company not found with id: " + companyId);
         }

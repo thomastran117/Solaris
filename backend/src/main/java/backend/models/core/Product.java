@@ -49,8 +49,8 @@ public class Product {
      * Non-null when this product is listed on a marketplace. Null for standalone (non-marketplace) products.
      * The FK points to the marketplace Company (the operator), not the vendor Company.
      */
-    @Column(name = "marketplace_id", nullable = true)
-    private Long marketplaceId;
+    @Column(name = "marketplace_id", nullable = true, columnDefinition = "BINARY(16)")
+    private UUID marketplaceId;
 
     /** When true, the vendor has enabled this product for marketplace display. Ignored when marketplaceId is null. */
     @Column(nullable = false)

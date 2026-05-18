@@ -11,6 +11,7 @@ import backend.services.intf.analytics.CompanyAnalyticsService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Dedicated worker that precomputes common product analytics queries into Redis
@@ -39,7 +40,7 @@ public class ProductAnalyticsWorker {
     @Scheduled(fixedDelayString = "${app.analytics.product.refresh-interval-ms:1800000}")
     public void refreshProductAnalytics() {
         Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
-        List<Long> activeCompanyIds =
+        List<UUID> activeCompanyIds =
                 productRepository.findDistinctCompanyIdsWithPaidOrdersSince(since);
 
         if (activeCompanyIds.isEmpty()) {
@@ -50,7 +51,7 @@ public class ProductAnalyticsWorker {
                 activeCompanyIds.size());
 
         int success = 0;
-        for (Long companyId : activeCompanyIds) {
+        for (UUID companyId : activeCompanyIds) {
             try {
                 companyAnalyticsService.precomputeAll(companyId);
                 success++;

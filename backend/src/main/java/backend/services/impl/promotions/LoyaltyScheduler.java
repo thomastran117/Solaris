@@ -68,11 +68,11 @@ public class LoyaltyScheduler {
     @Scheduled(cron = "${app.loyalty.expiry.cron:0 0 3 * * *}")
     public void expirePoints() {
         log.info("[LOYALTY SCHEDULER] Starting points expiry run");
-        List<Long> accountIds = loyaltyService.findAccountIdsWithExpiredPoints();
+        List<UUID> accountIds = loyaltyService.findAccountIdsWithExpiredPoints();
 
         log.info("[LOYALTY SCHEDULER] {} accounts have expired points to process", accountIds.size());
 
-        for (Long accountId : accountIds) {
+        for (UUID accountId : accountIds) {
             try {
                 LoyaltyAccount account = accountRepository.findById(accountId).orElse(null);
                 if (account == null || account.getPointsBalance() <= 0) continue;
@@ -94,7 +94,7 @@ public class LoyaltyScheduler {
         int day = today.getDayOfMonth();
 
         // Find users in this company's loyalty program whose birthday is today
-        List<Long> birthdayUserIds = userRepository.findUserIdsWithBirthday(month, day);
+        List<UUID> birthdayUserIds = userRepository.findUserIdsWithBirthday(month, day);
         if (birthdayUserIds.isEmpty()) return;
 
         log.info("[LOYALTY SCHEDULER] Policy {} (company {}) — {} users have birthdays today",

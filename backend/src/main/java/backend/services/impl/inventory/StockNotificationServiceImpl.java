@@ -63,14 +63,14 @@ public class StockNotificationServiceImpl implements StockNotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
         ProductVariant variant = null;
-        long variantRef = 0L;
+        UUID variantRef = null;
         if (request.getVariantId() != null) {
             variant = variantRepository.findByIdAndProductId(request.getVariantId(), product.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + request.getVariantId()));
             variantRef = variant.getId();
         }
 
-        long finalVariantRef = variantRef;
+        UUID finalVariantRef = variantRef;
         ProductVariant finalVariant = variant;
 
         StockNotification notification = notificationRepository
@@ -118,7 +118,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
     @Override
     @Transactional
-    public void notifySubscribers(UUID productId, long variantRef) {
+    public void notifySubscribers(UUID productId, UUID variantRef) {
         List<StockNotification> pending = notificationRepository
                 .findAllByProductIdAndVariantRefAndStatus(productId, variantRef, NotificationStatus.PENDING);
 
@@ -129,7 +129,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
                 String toEmail = notification.getUser().getEmail();
                 String firstName = notification.getUser().getFirstName();
                 String productName = notification.getProduct().getName();
-                Long variantId = notification.getVariant() != null ? notification.getVariant().getId() : null;
+                UUID variantId = notification.getVariant() != null ? notification.getVariant().getId() : null;
                 String variantTitle = notification.getVariant() != null
                         ? buildVariantTitle(notification.getVariant())
                         : null;
@@ -152,10 +152,10 @@ public class StockNotificationServiceImpl implements StockNotificationService {
     @Transactional
     public void onStockRestored(StockRestoredEvent event) {
         try {
-            notifySubscribers(event.productId(), event.variantRef());
+            notifySubscribers(event.productId(), event.variantId());
         } catch (Exception e) {
             log.error("Error processing back-in-stock notifications for product={} variantRef={}: {}",
-                    event.productId(), event.variantRef(), e.getMessage());
+                    event.productId(), event.variantId(), e.getMessage());
         }
     }
 

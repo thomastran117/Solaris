@@ -103,7 +103,7 @@ public class ProductSchedulingWorker {
      * Mirrors the cache eviction pattern used by {@code ProductServiceImpl#updateProduct}.
      * Redis failures must never propagate per the project Redis convention — degrade silently.
      */
-    private void evictCachesSafely(UUID companyId, UUID productId, Long marketplaceId) {
+    private void evictCachesSafely(UUID companyId, UUID productId, UUID marketplaceId) {
         try {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
             singleFlightCache.evictByPattern("products:search:" + companyId + ":*");

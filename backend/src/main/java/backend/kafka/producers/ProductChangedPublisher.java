@@ -36,7 +36,7 @@ public class ProductChangedPublisher {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onProductIndex(ProductIndexEvent event) {
         if (!trackingEnabled) return;
-        Long marketplaceId = event.product().getMarketplaceId();
+        UUID marketplaceId = event.product().getMarketplaceId();
         if (marketplaceId == null) return;
         send(event.product().getId(), marketplaceId, ChangeType.UPDATED);
     }
@@ -48,7 +48,7 @@ public class ProductChangedPublisher {
         send(event.productId(), event.marketplaceId(), ChangeType.DELETED);
     }
 
-    private void send(UUID productId, Long marketplaceId, ChangeType changeType) {
+    private void send(UUID productId, UUID marketplaceId, ChangeType changeType) {
         try {
             var payload = new ProductChangedEvent(productId, marketplaceId, changeType, Instant.now());
             kafkaTemplate.send(topic, String.valueOf(productId), payload).whenComplete((res, ex) -> {

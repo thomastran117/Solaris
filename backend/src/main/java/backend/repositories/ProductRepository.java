@@ -33,15 +33,15 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     // -------------------------------------------------------------------------
 
     @Query("SELECT p FROM Product p JOIN FETCH p.company WHERE p.marketplaceId = :marketplaceId AND p.marketplaceListed = true AND p.status = 'ACTIVE'")
-    List<Product> findMarketplaceListed(@Param("marketplaceId") Long marketplaceId);
+    List<Product> findMarketplaceListed(@Param("marketplaceId") java.util.UUID marketplaceId);
 
     @Query(value = "SELECT p FROM Product p JOIN FETCH p.company WHERE p.marketplaceId = :marketplaceId AND p.marketplaceListed = true AND p.status = 'ACTIVE'",
            countQuery = "SELECT COUNT(p) FROM Product p WHERE p.marketplaceId = :marketplaceId AND p.marketplaceListed = true AND p.status = 'ACTIVE'")
-    Page<Product> findMarketplaceListedPaged(@Param("marketplaceId") Long marketplaceId, Pageable pageable);
+    Page<Product> findMarketplaceListedPaged(@Param("marketplaceId") java.util.UUID marketplaceId, Pageable pageable);
 
-    Optional<Product> findByIdAndMarketplaceId(java.util.UUID id, long marketplaceId);
+    Optional<Product> findByIdAndMarketplaceId(java.util.UUID id, java.util.UUID marketplaceId);
 
-    List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, long marketplaceId);
+    List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, java.util.UUID marketplaceId);
 
     // -------------------------------------------------------------------------
     // JOIN FETCH queries used by indexing workers to avoid LazyInitializationException

@@ -162,25 +162,25 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
     // Builders (no caching here — caller decides)
     // -------------------------------------------------------------------------
 
-    private DurationMetricResponse buildFulfillment(long companyId, Window w) {
+    private DurationMetricResponse buildFulfillment(UUID companyId, Window w) {
         DurationStatsProjection stats = metricsRepository.fulfillmentStats(companyId, w.from, w.to);
         List<DailyDurationProjection> daily = metricsRepository.fulfillmentDaily(companyId, w.from, w.to);
         return toDurationResponse(stats, daily);
     }
 
-    private DurationMetricResponse buildRefund(long companyId, Window w) {
+    private DurationMetricResponse buildRefund(UUID companyId, Window w) {
         DurationStatsProjection stats = metricsRepository.refundStats(companyId, w.from, w.to);
         List<DailyDurationProjection> daily = metricsRepository.refundDaily(companyId, w.from, w.to);
         return toDurationResponse(stats, daily);
     }
 
-    private DurationMetricResponse buildPickDelay(long companyId, Window w) {
+    private DurationMetricResponse buildPickDelay(UUID companyId, Window w) {
         DurationStatsProjection stats = metricsRepository.pickDelayStats(companyId, w.from, w.to);
         List<DailyDurationProjection> daily = metricsRepository.pickDelayDaily(companyId, w.from, w.to);
         return toDurationResponse(stats, daily);
     }
 
-    private StockoutMetricResponse buildStockout(long companyId, Window w) {
+    private StockoutMetricResponse buildStockout(UUID companyId, Window w) {
         long tracked     = productRepository.countTrackedProducts(companyId);
         long outOfStock  = productRepository.countOutOfStock(companyId);
         long totalOrders = orderRepository.countOrdersInWindow(companyId, w.from, w.to);
@@ -192,7 +192,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         return new StockoutMetricResponse(tracked, outOfStock, oosRate, totalOrders, backordered, boRate);
     }
 
-    private SupplierLatenessMetricResponse buildSupplierLateness(long companyId, Window w) {
+    private SupplierLatenessMetricResponse buildSupplierLateness(UUID companyId, Window w) {
         SupplierLatenessProjection stats = metricsRepository.supplierLatenessStats(companyId, w.from, w.to);
         List<DailyCountProjection> daily = metricsRepository.supplierLatenessDaily(companyId, w.from, w.to);
 
@@ -204,7 +204,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         return new SupplierLatenessMetricResponse(total, late, rate, avgLateDays, toDailyPoints(daily));
     }
 
-    private CancellationMetricResponse buildCancellation(long companyId, Window w) {
+    private CancellationMetricResponse buildCancellation(UUID companyId, Window w) {
         List<CancellationReasonCountProjection> rows = metricsRepository.cancellationsByReason(companyId, w.from, w.to);
         List<CancellationMetricResponse.ReasonCount> byReason = new ArrayList<>();
         long total = 0;
@@ -221,8 +221,8 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
     // Helpers
     // -------------------------------------------------------------------------
 
-    private DurationMetricResponse cachedDuration(long companyId, String name, int lookbackDays,
-                                                  java.util.function.BiFunction<Long, Window, DurationMetricResponse> builder) {
+    private DurationMetricResponse cachedDuration(UUID companyId, String name, int lookbackDays,
+                                                  java.util.function.BiFunction<UUID, Window, DurationMetricResponse> builder) {
         int days = clampLookback(lookbackDays);
         Window w = window(days);
         String key = cacheKey(companyId, name, days);
@@ -267,7 +267,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         return new Window(now.minus(days, ChronoUnit.DAYS), now);
     }
 
-    private String cacheKey(long companyId, String metric, int days) {
+    private String cacheKey(UUID companyId, String metric, int days) {
         return CACHE_PREFIX + companyId + ":" + metric + ":" + days;
     }
 
@@ -290,7 +290,7 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         }
     }
 
-    private void verifyOwnership(long companyId, UUID ownerId) {
+    private void verifyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import backend.models.enums.AdjustmentReason;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -59,7 +60,7 @@ public class InventoryAdjustment {
     private String note;
 
     @Column(name = "order_id", nullable = true)
-    private Long orderId;
+    private UUID orderId;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

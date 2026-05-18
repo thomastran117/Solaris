@@ -14,11 +14,11 @@ import java.util.UUID;
 public class AdjustmentSpecification {
 
     public static Specification<InventoryAdjustment> withFilters(
-            long companyId,
+            UUID companyId,
             AdjustmentReason reason,
             Instant from,
             Instant to,
-            Long productId,
+            UUID productId,
             UUID userId) {
 
         return (root, query, cb) -> {

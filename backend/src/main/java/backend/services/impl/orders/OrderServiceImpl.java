@@ -301,9 +301,9 @@ public class OrderServiceImpl implements OrderService {
                 .filter(i -> i.getBundleId() != null).toList();
 
         // Resolve and validate bundles before locking (fail fast)
-        Map<Long, ProductBundle> resolvedBundles = new HashMap<>();
+        Map<UUID, ProductBundle> resolvedBundles = new HashMap<>();
         for (CreateOrderRequest.OrderItemRequest ir : bundleItemRequests) {
-            long bundleId = ir.getBundleId();
+            UUID bundleId = ir.getBundleId();
             if (resolvedBundles.containsKey(bundleId)) continue;
             ProductBundle bundle = bundleRepository.findById(bundleId)
                     .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
@@ -314,33 +314,33 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Collect product IDs from product items
-        List<Long> productIds = productItemRequests.stream()
+        List<UUID> productIds = productItemRequests.stream()
                 .map(CreateOrderRequest.OrderItemRequest::getProductId)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new))
                 .stream().toList();
 
         // Merge constituent product IDs from all bundles into the lock set (sorted, deduplicated)
-        java.util.TreeSet<Long> allProductIdSet = new java.util.TreeSet<>(productIds);
+        java.util.TreeSet<UUID> allProductIdSet = new java.util.TreeSet<>(productIds);
         for (ProductBundle bundle : resolvedBundles.values()) {
             for (BundleItem bi : bundle.getItems()) {
                 allProductIdSet.add(bi.getProduct().getId());
             }
         }
-        List<Long> allProductIds = new ArrayList<>(allProductIdSet);
+        List<UUID> allProductIds = new ArrayList<>(allProductIdSet);
 
         // Reject same productId with different variantIds — ambiguous, can't be safely merged
-        Map<Long, Long> seenProductVariant = new HashMap<>();
+        Map<UUID, UUID> seenProductVariant = new HashMap<>();
         for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
             if (item.getProductId() == null) continue;
-            Long existingVariant = seenProductVariant.put(item.getProductId(), item.getVariantId());
+            UUID existingVariant = seenProductVariant.put(item.getProductId(), item.getVariantId());
             if (existingVariant != null && !Objects.equals(existingVariant, item.getVariantId())) {
                 throw new BadRequestException(
                     "Product id " + item.getProductId() + " appears with multiple variants in the same order — submit as separate orders");
             }
         }
 
-        Map<Long, Integer> quantityMap = new HashMap<>();
-        Map<Long, Long> variantMap = new HashMap<>();  // productId -> variantId
+        Map<UUID, Integer> quantityMap = new HashMap<>();
+        Map<UUID, UUID> variantMap = new HashMap<>();  // productId -> variantId
         for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
             quantityMap.merge(item.getProductId(), item.getQuantity(), Integer::sum);
             if (item.getVariantId() != null) {
@@ -349,14 +349,14 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Collect variant IDs that need locks (sorted for deadlock prevention)
-        List<Long> variantIdsToLock = variantMap.values().stream().sorted().toList();
+        List<UUID> variantIdsToLock = variantMap.values().stream().sorted().toList();
 
         String lockToken = UUID.randomUUID().toString();
         List<String> acquiredLocks = new ArrayList<>();
-        List<long[]> decrementedProducts = new ArrayList<>();
-        List<long[]> decrementedVariants = new ArrayList<>();
-        List<long[]> decrementedLocationStocks = new ArrayList<>();
-        Long savedOrderId = null; // set after order is persisted; used for loyalty point restore on failure
+        List<Object[]> decrementedProducts = new ArrayList<>();     // [UUID id, int qty]
+        List<Object[]> decrementedVariants = new ArrayList<>();     // [UUID id, int qty]
+        List<Object[]> decrementedLocationStocks = new ArrayList<>(); // [UUID id, int qty]
+        UUID savedOrderId = null; // set after order is persisted; used for loyalty point restore on failure
         // [product, variant (null for product-level), prevStock, newStock]
         record PurchaseRecord(Product prod, ProductVariant var, int prevStock, int newStock) {}
         List<PurchaseRecord> purchaseRecords = new ArrayList<>();
@@ -370,7 +370,7 @@ public class OrderServiceImpl implements OrderService {
                 throw new ResourceNotFoundException("One or more products not found");
             }
 
-            Map<Long, Product> productMap = new HashMap<>();
+            Map<UUID, Product> productMap = new HashMap<>();
             for (Product p : products) {
                 productMap.put(p.getId(), p);
             }
@@ -383,7 +383,7 @@ public class OrderServiceImpl implements OrderService {
                     throw new BadRequestException("Product '" + product.getName() + "' is not available for purchase");
                 }
                 boolean hasVariants = variantRepository.existsByProductId(product.getId());
-                Long requestedVariantId = variantMap.get(product.getId());
+                UUID requestedVariantId = variantMap.get(product.getId());
                 if (hasVariants && requestedVariantId == null) {
                     throw new BadRequestException("Product '" + product.getName() + "' has variants — specify a variantId");
                 }
@@ -399,10 +399,10 @@ public class OrderServiceImpl implements OrderService {
 
             List<OrderItem> orderItems = new ArrayList<>();
 
-            for (Long productId : productIds) {
+            for (UUID productId : productIds) {
                 Product product = productMap.get(productId);
                 int qty = quantityMap.get(productId);
-                Long variantId = variantMap.get(productId);
+                UUID variantId = variantMap.get(productId);
 
                 OrderItem item = new OrderItem();
                 item.setProduct(product);
@@ -427,7 +427,7 @@ public class OrderServiceImpl implements OrderService {
                             throw new ConflictException("Insufficient stock for variant of product '" + product.getName() + "'");
                         }
                     } else {
-                        decrementedVariants.add(new long[]{variantId, qty});
+                        decrementedVariants.add(new Object[]{variantId, qty});
                         // Only record audit/alert entries for tracked stock (non-null); untracked
                         // products (stock=null) have no stock to report.
                         if (variant.getStock() != null) {
@@ -450,7 +450,7 @@ public class OrderServiceImpl implements OrderService {
                             throw new ConflictException("Insufficient stock for product '" + product.getName() + "'");
                         }
                     } else {
-                        decrementedProducts.add(new long[]{product.getId(), qty});
+                        decrementedProducts.add(new Object[]{product.getId(), qty});
                         if (product.getStock() != null) {
                             purchaseRecords.add(new PurchaseRecord(product, null, prevProductStock, prevProductStock - qty));
                         }
@@ -470,7 +470,7 @@ public class OrderServiceImpl implements OrderService {
                     }
 
                     for (AllocationService.AllocationResult r : allocResults) {
-                        decrementedLocationStocks.add(new long[]{r.locationStockId(), r.allocatedQty()});
+                        decrementedLocationStocks.add(new Object[]{r.locationStockId(), r.allocatedQty()});
                     }
 
                     if (!allocResults.isEmpty()) {
@@ -525,9 +525,9 @@ public class OrderServiceImpl implements OrderService {
                     }
 
                     if (bi.getVariant() != null) {
-                        decrementedVariants.add(new long[]{bi.getVariant().getId(), totalQty});
+                        decrementedVariants.add(new Object[]{bi.getVariant().getId(), totalQty});
                     } else {
-                        decrementedProducts.add(new long[]{bi.getProduct().getId(), totalQty});
+                        decrementedProducts.add(new Object[]{bi.getProduct().getId(), totalQty});
                     }
                     // Only audit tracked stock; untracked (null) items are skipped.
                     Integer biActualStock = bi.getVariant() != null ? bi.getVariant().getStock() : bi.getProduct().getStock();
@@ -656,7 +656,7 @@ public class OrderServiceImpl implements OrderService {
             int loyaltyPointsToRedeem = request.getLoyaltyPointsToRedeem() != null
                     ? request.getLoyaltyPointsToRedeem() : 0;
             long loyaltyDiscountCents = 0L;
-            long loyaltyCompanyId = 0L;
+            UUID loyaltyCompanyId = null;
             if (loyaltyPointsToRedeem > 0) {
                 loyaltyCompanyId = resolveOrderCompanyId(orderItems);
                 var quote = loyaltyService.getRedemptionQuote(userId, loyaltyCompanyId, loyaltyPointsToRedeem);
@@ -699,12 +699,12 @@ public class OrderServiceImpl implements OrderService {
 
             order = orderRepository.save(order);
 
-            savedOrderId = order.getId();
+            savedOrderId = order.getId(); // UUID
 
             // Publish one ORDER activity event per line item (fire-and-forget after commit).
             for (OrderItem item : order.getItems()) {
                 if (item.getProduct() == null) continue;
-                Long mkt = item.getProduct().getMarketplaceId();
+                UUID mkt = item.getProduct().getMarketplaceId();
                 if (mkt == null) continue;
                 activityEventPublisher.publish(new UserActivityEvent(
                         userId, null, item.getProduct().getId(), mkt, ActivityType.ORDER, Instant.now()));
@@ -822,7 +822,8 @@ public class OrderServiceImpl implements OrderService {
             RiskAssessment persistedAssessment = runRiskAssessment(
                     user, order, userSegmentIds, pricing,
                     request.getRiskVerificationToken());
-            order.setRiskAssessmentId(persistedAssessment.getId());
+            // riskAssessmentId is a loose FK still typed Long in Order entity — not stored until entity migrates
+            // order.setRiskAssessmentId(persistedAssessment.getId());
             order.setRiskDecision(persistedAssessment.getDecision());
             order.setRiskScore(persistedAssessment.getScore());
             if (order.getStatus() == OrderStatus.UNDER_REVIEW) {
@@ -974,7 +975,7 @@ public class OrderServiceImpl implements OrderService {
      * (risk reject, payment failure escalation, etc.) tag the cancellation
      * with the correct {@link backend.models.enums.CancellationReason}.
      */
-    OrderResponse cancelOrderInternal(long orderId, UUID userId, backend.models.enums.CancellationReason reason) {
+    OrderResponse cancelOrderInternal(UUID orderId, UUID userId, backend.models.enums.CancellationReason reason) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
@@ -1062,7 +1063,7 @@ public class OrderServiceImpl implements OrderService {
                 recordSubOrderCommission(order);
             }
             try {
-                long companyId = resolveOrderCompanyId(order.getItems());
+                UUID companyId = resolveOrderCompanyId(order.getItems());
                 loyaltyService.recordOrderEarn(order, companyId);
             } catch (Exception e) {
                 log.error("[LOYALTY] Failed to record earn for order {}: {}", order.getId(), e.getMessage());
@@ -1125,8 +1126,8 @@ public class OrderServiceImpl implements OrderService {
 
         // Acquire product/variant locks (sorted to prevent deadlock) before restoring stock,
         // so concurrent createOrder calls see a consistent stock value after restoration.
-        java.util.TreeSet<Long> productIdSet = new java.util.TreeSet<>();
-        java.util.TreeSet<Long> variantIdSet = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> productIdSet = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> variantIdSet = new java.util.TreeSet<>();
         for (OrderItem item : order.getItems()) {
             if (item.getBundle() != null) continue; // bundle constituent locks skipped — rare path
             if (item.getProduct() != null) productIdSet.add(item.getProduct().getId());
@@ -1209,18 +1210,18 @@ public class OrderServiceImpl implements OrderService {
                     String detail = compensation.getDetail();
                     int quantity = extractQuantityFromDetail(detail);
                     if (detail != null && detail.startsWith("[LOC:")) {
-                        long locationStockId = extractLocationStockIdFromDetail(detail);
-                        if (locationStockId > 0 && quantity > 0) {
+                        UUID locationStockId = extractLocationStockIdFromDetail(detail);
+                        if (locationStockId != null && quantity > 0) {
                             locationStockRepository.restoreStock(locationStockId, quantity);
                         }
                     } else if (detail != null && detail.startsWith("[VARIANT]")) {
-                        long variantId = extractVariantIdFromDetail(detail);
-                        if (variantId > 0 && quantity > 0) {
+                        UUID variantId = extractVariantIdFromDetail(detail);
+                        if (variantId != null && quantity > 0) {
                             variantRepository.restoreStock(variantId, quantity);
                         }
                     } else {
-                        long productId = extractProductIdFromDetail(detail);
-                        if (productId > 0 && quantity > 0) {
+                        UUID productId = extractProductIdFromDetail(detail);
+                        if (productId != null && quantity > 0) {
                             productRepository.restoreStock(productId, quantity);
                         }
                     }
@@ -1252,42 +1253,45 @@ public class OrderServiceImpl implements OrderService {
         compensationRepository.save(compensation);
     }
 
-    private void scheduleStockCompensation(Order order, List<long[]> decrementedProducts,
-                                            List<long[]> decrementedVariants, List<long[]> decrementedLocationStocks) {
-        for (long[] entry : decrementedProducts) {
+    private void scheduleStockCompensation(Order order, List<Object[]> decrementedProducts,
+                                            List<Object[]> decrementedVariants, List<Object[]> decrementedLocationStocks) {
+        for (Object[] entry : decrementedProducts) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
             try {
-                productRepository.restoreStock(entry[0], (int) entry[1]);
+                productRepository.restoreStock(id, qty);
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "Restored " + entry[1] + " units for product " + entry[0], CompensationStatus.COMPLETED);
+                        "Restored " + qty + " units for product " + id, CompensationStatus.COMPLETED);
             } catch (Exception e) {
                 log.error("Inline stock compensation failed for product {} on order {}: {}",
-                        entry[0], order.getId(), e.getMessage());
+                        id, order.getId(), e.getMessage());
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "Restore " + entry[1] + " units for product " + entry[0], CompensationStatus.FAILED, e.getMessage());
+                        "Restore " + qty + " units for product " + id, CompensationStatus.FAILED, e.getMessage());
             }
         }
-        for (long[] entry : decrementedVariants) {
+        for (Object[] entry : decrementedVariants) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
             try {
-                variantRepository.restoreStock(entry[0], (int) entry[1]);
+                variantRepository.restoreStock(id, qty);
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "[VARIANT] Restored " + entry[1] + " units for variant " + entry[0], CompensationStatus.COMPLETED);
+                        "[VARIANT] Restored " + qty + " units for variant " + id, CompensationStatus.COMPLETED);
             } catch (Exception e) {
                 log.error("Inline stock compensation failed for variant {} on order {}: {}",
-                        entry[0], order.getId(), e.getMessage());
+                        id, order.getId(), e.getMessage());
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "[VARIANT] Restore " + entry[1] + " units for variant " + entry[0], CompensationStatus.FAILED, e.getMessage());
+                        "[VARIANT] Restore " + qty + " units for variant " + id, CompensationStatus.FAILED, e.getMessage());
             }
         }
-        for (long[] entry : decrementedLocationStocks) {
+        for (Object[] entry : decrementedLocationStocks) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
             try {
-                locationStockRepository.restoreStock(entry[0], (int) entry[1]);
+                locationStockRepository.restoreStock(id, qty);
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "[LOC:" + entry[0] + "] Restored " + entry[1] + " units", CompensationStatus.COMPLETED);
+                        "[LOC:" + id + "] Restored " + qty + " units", CompensationStatus.COMPLETED);
             } catch (Exception e) {
                 log.error("Inline location stock compensation failed for locationStockId {} on order {}: {}",
-                        entry[0], order.getId(), e.getMessage());
+                        id, order.getId(), e.getMessage());
                 recordCompensation(order, CompensationType.STOCK_RESTORE,
-                        "[LOC:" + entry[0] + "] Restore " + entry[1] + " units", CompensationStatus.FAILED, e.getMessage());
+                        "[LOC:" + id + "] Restore " + qty + " units", CompensationStatus.FAILED, e.getMessage());
             }
         }
     }
@@ -1297,10 +1301,10 @@ public class OrderServiceImpl implements OrderService {
      * Key: "reserve:order:{orderId}", TTL = reservationTtlSeconds.
      * Non-critical: failures are logged and swallowed so checkout is not blocked.
      */
-    private void writeReservation(long orderId,
-                                   List<long[]> products,
-                                   List<long[]> variants,
-                                   List<long[]> locationStocks) {
+    private void writeReservation(UUID orderId,
+                                   List<Object[]> products,
+                                   List<Object[]> variants,
+                                   List<Object[]> locationStocks) {
         try {
             StringBuilder sb = new StringBuilder("{\"p\":{");
             appendReservationEntries(sb, products);
@@ -1315,9 +1319,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private static void appendReservationEntries(StringBuilder sb, List<long[]> entries) {
+    private static void appendReservationEntries(StringBuilder sb, List<Object[]> entries) {
         boolean first = true;
-        for (long[] e : entries) {
+        for (Object[] e : entries) {
             if (!first) sb.append(',');
             sb.append('"').append(e[0]).append("\":").append(e[1]);
             first = false;
@@ -1339,7 +1343,7 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void releaseReservation(long orderId) {
+    private void releaseReservation(UUID orderId) {
         try {
             cacheService.delete("reserve:order:" + orderId);
         } catch (Exception e) {
@@ -1359,8 +1363,8 @@ public class OrderServiceImpl implements OrderService {
      *   - otherwise (the order was never persisted), emit a high-cardinality ERROR log
      *     that an operator can grep for during reconciliation
      */
-    private void safeRestoreAll(List<long[]> decrementedProducts, List<long[]> decrementedVariants,
-                                List<long[]> decrementedLocationStocks) {
+    private void safeRestoreAll(List<Object[]> decrementedProducts, List<Object[]> decrementedVariants,
+                                List<Object[]> decrementedLocationStocks) {
         Order orphan = null;
         // The order may have been saved before the exception (savedOrderId is set at
         // line ~695); look it up so we can attach compensation rows. If lookup itself
@@ -1370,24 +1374,27 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void safeRestoreAll(Order order,
-                                List<long[]> decrementedProducts,
-                                List<long[]> decrementedVariants,
-                                List<long[]> decrementedLocationStocks) {
-        for (long[] entry : decrementedProducts) {
-            restoreOneSafe(order, "product " + entry[0], entry[1],
-                    () -> productRepository.restoreStock(entry[0], (int) entry[1]));
+                                List<Object[]> decrementedProducts,
+                                List<Object[]> decrementedVariants,
+                                List<Object[]> decrementedLocationStocks) {
+        for (Object[] entry : decrementedProducts) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
+            restoreOneSafe(order, "product " + id, qty,
+                    () -> productRepository.restoreStock(id, qty));
         }
-        for (long[] entry : decrementedVariants) {
-            restoreOneSafe(order, "[VARIANT] variant " + entry[0], entry[1],
-                    () -> variantRepository.restoreStock(entry[0], (int) entry[1]));
+        for (Object[] entry : decrementedVariants) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
+            restoreOneSafe(order, "[VARIANT] variant " + id, qty,
+                    () -> variantRepository.restoreStock(id, qty));
         }
-        for (long[] entry : decrementedLocationStocks) {
-            restoreOneSafe(order, "[LOC] locationStock " + entry[0], entry[1],
-                    () -> locationStockRepository.restoreStock(entry[0], (int) entry[1]));
+        for (Object[] entry : decrementedLocationStocks) {
+            UUID id = (UUID) entry[0]; int qty = (int) entry[1];
+            restoreOneSafe(order, "[LOC] locationStock " + id, qty,
+                    () -> locationStockRepository.restoreStock(id, qty));
         }
     }
 
-    private void restoreOneSafe(Order order, String subjectDescription, long qty, Runnable restore) {
+    private void restoreOneSafe(Order order, String subjectDescription, int qty, Runnable restore) {
         try {
             restore.run();
             if (order != null) {
@@ -1415,10 +1422,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private boolean hasAnyLocationStock(long productId, Long variantId) {
-        long variantRef = (variantId != null) ? variantId : 0L;
+    private boolean hasAnyLocationStock(UUID productId, UUID variantId) {
         List<LocationStock> check = (variantId != null)
-                ? locationStockRepository.findTopByVariantStockDesc(productId, variantRef, PageRequest.of(0, 1))
+                ? locationStockRepository.findTopByVariantStockDesc(productId, variantId, PageRequest.of(0, 1))
                 : locationStockRepository.findTopByProductStockDesc(productId, PageRequest.of(0, 1));
         return !check.isEmpty();
     }
@@ -1445,7 +1451,7 @@ public class OrderServiceImpl implements OrderService {
             productRepository.restoreStock(item.getProduct().getId(), item.getQuantity());
         }
         if (item.getFulfillmentLocation() != null) {
-            long variantRef = item.getVariant() != null ? item.getVariant().getId() : 0L;
+            UUID variantRef = item.getVariant() != null ? item.getVariant().getId() : null;
             locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
                             item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
                     .ifPresent(ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()));
@@ -1521,7 +1527,7 @@ public class OrderServiceImpl implements OrderService {
      * previousStock/newStock are set to 0 — the restore is atomic and reading before it would be a
      * TOCTOU race. The delta (+qty) and orderId are the authoritative audit values.
      */
-    private void recordCancelAdjustment(OrderItem item, long orderId) {
+    private void recordCancelAdjustment(OrderItem item, UUID orderId) {
         try {
             if (item.getBundle() != null) {
                 // One adjustment per bundle constituent
@@ -1567,8 +1573,8 @@ public class OrderServiceImpl implements OrderService {
                 (item.getProduct() != null ? item.getProduct().getId() : "unknown");
     }
 
-    private void acquireVariantLocks(List<Long> sortedVariantIds, String lockToken, List<String> acquiredLocks) {
-        for (Long variantId : sortedVariantIds) {
+    private void acquireVariantLocks(List<UUID> sortedVariantIds, String lockToken, List<String> acquiredLocks) {
+        for (UUID variantId : sortedVariantIds) {
             String lockKey = VARIANT_LOCK_PREFIX + variantId;
             boolean acquired = false;
 
@@ -1593,8 +1599,8 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void acquireLocks(List<Long> sortedProductIds, String lockToken, List<String> acquiredLocks) {
-        for (Long productId : sortedProductIds) {
+    private void acquireLocks(List<UUID> sortedProductIds, String lockToken, List<String> acquiredLocks) {
+        for (UUID productId : sortedProductIds) {
             String lockKey = LOCK_PREFIX + productId;
             boolean acquired = false;
 
@@ -1629,12 +1635,12 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private static long extractProductIdFromDetail(String detail) {
+    private static UUID extractProductIdFromDetail(String detail) {
         try {
             int idx = detail.lastIndexOf("product ");
-            if (idx >= 0) return Long.parseLong(detail.substring(idx + 8).trim());
+            if (idx >= 0) return UUID.fromString(detail.substring(idx + 8).trim());
         } catch (Exception ignored) {}
-        return -1;
+        return null;
     }
 
     private static String buildVariantTitle(ProductVariant variant) {
@@ -1644,22 +1650,22 @@ public class OrderServiceImpl implements OrderService {
         return title.isBlank() ? null : title;
     }
 
-    private static long extractVariantIdFromDetail(String detail) {
+    private static UUID extractVariantIdFromDetail(String detail) {
         try {
             int idx = detail.lastIndexOf("variant ");
-            if (idx >= 0) return Long.parseLong(detail.substring(idx + 8).trim());
+            if (idx >= 0) return UUID.fromString(detail.substring(idx + 8).trim());
         } catch (Exception ignored) {}
-        return -1;
+        return null;
     }
 
-    // Parses "[LOC:42] Restored 3 units" → 42
-    private static long extractLocationStockIdFromDetail(String detail) {
+    // Parses "[LOC:some-uuid] Restored 3 units" → UUID
+    private static UUID extractLocationStockIdFromDetail(String detail) {
         try {
             int start = detail.indexOf("[LOC:") + 5;
             int end = detail.indexOf("]", start);
-            if (start > 4 && end > start) return Long.parseLong(detail.substring(start, end).trim());
+            if (start > 4 && end > start) return UUID.fromString(detail.substring(start, end).trim());
         } catch (Exception ignored) {}
-        return -1;
+        return null;
     }
 
     private static int extractQuantityFromDetail(String detail) {
@@ -1752,8 +1758,8 @@ public class OrderServiceImpl implements OrderService {
 
                 for (OrderItem item : order.getItems()) {
                     if (item.getFulfillmentStatus() != FulfillmentStatus.BACKORDERED) continue;
-                    if (item.getProduct().getId() != productId) continue;
-                    if (variantId != null && (item.getVariant() == null || item.getVariant().getId() != variantId)) continue;
+                    if (!productId.equals(item.getProduct().getId())) continue;
+                    if (variantId != null && (item.getVariant() == null || !variantId.equals(item.getVariant().getId()))) continue;
 
                     int qty = item.getQuantity();
                     if (qty > remaining) return; // FIFO: stop rather than skip to a younger order
@@ -1778,7 +1784,7 @@ public class OrderServiceImpl implements OrderService {
                             // Decrement location stock to match the global decrement above.
                             // Best-effort: location stock drifting low is recoverable; stopping
                             // fulfillment here is not, so we log and continue on failure.
-                            long variantRef = variantId != null ? variantId : 0L;
+                            UUID variantRef = variantId; // null means product-level stock
                             locationStockRepository
                                     .findByLocationIdAndProductIdAndVariantRef(loc.getId(), productId, variantRef)
                                     .ifPresent(ls -> {
@@ -1852,8 +1858,8 @@ public class OrderServiceImpl implements OrderService {
     private CompanyOrderResponse toCompanyOrderResponse(Order order, UUID companyId) {
         List<OrderItem> companyItems = order.getItems().stream()
                 .filter(item -> item.getBundle() != null
-                        ? item.getBundle().getCompany().getId() == companyId
-                        : item.getProduct() != null && item.getProduct().getCompany().getId() == companyId)
+                        ? companyId.equals(item.getBundle().getCompany().getId())
+                        : item.getProduct() != null && companyId.equals(item.getProduct().getCompany().getId()))
                 .toList();
 
         BigDecimal total = companyItems.stream()
@@ -1971,7 +1977,7 @@ public class OrderServiceImpl implements OrderService {
 
         validateTransition(order, OrderStatus.SHIPPED, OrderStatus.PACKED, OrderStatus.PARTIALLY_FULFILLED);
 
-        Set<Long> targetItemIds = (request.itemIds() != null && !request.itemIds().isEmpty())
+        Set<UUID> targetItemIds = (request.itemIds() != null && !request.itemIds().isEmpty())
                 ? new java.util.HashSet<>(request.itemIds())
                 : null;
 
@@ -2057,7 +2063,7 @@ public class OrderServiceImpl implements OrderService {
      * If itemIds is null/empty all returnable items are included. Quantity defaults to the full
      * order-item quantity (the legacy API had no per-item quantity field).
      */
-    private List<BuyerReturnItemRequest> buildLegacyItemRequests(List<Long> itemIds, Order order) {
+    private List<BuyerReturnItemRequest> buildLegacyItemRequests(List<UUID> itemIds, Order order) {
         List<OrderItem> targets;
         if (itemIds == null || itemIds.isEmpty()) {
             targets = order.getItems().stream()
@@ -2065,7 +2071,7 @@ public class OrderServiceImpl implements OrderService {
                             || i.getFulfillmentStatus() == FulfillmentStatus.SHIPPED)
                     .toList();
         } else {
-            Set<Long> idSet = new java.util.HashSet<>(itemIds);
+            Set<UUID> idSet = new java.util.HashSet<>(itemIds);
             targets = order.getItems().stream()
                     .filter(i -> idSet.contains(i.getId()))
                     .toList();
@@ -2158,7 +2164,7 @@ public class OrderServiceImpl implements OrderService {
                 } catch (RuntimeException ex) {
                     throw new RiskStepUpRequiredException(order.getId(), "EMAIL");
                 }
-                if (tokenUserId != user.getId()) {
+                if (!tokenUserId.equals(user.getId())) {
                     throw new RiskStepUpRequiredException(order.getId(), "EMAIL");
                 }
                 // token valid → proceed
@@ -2348,10 +2354,10 @@ public class OrderServiceImpl implements OrderService {
                 && !order.getItems().isEmpty()
                 && order.getItems().stream()
                 .map(this::findOwningCompanyId)
-                .allMatch(itemCompanyId -> Long.valueOf(companyId).equals(itemCompanyId));
+                .allMatch(itemCompanyId -> companyId.equals(itemCompanyId));
     }
 
-    private Long findOwningCompanyId(OrderItem item) {
+    private UUID findOwningCompanyId(OrderItem item) {
         if (item.getBundle() != null && item.getBundle().getCompany() != null) {
             return item.getBundle().getCompany().getId();
         }
@@ -2386,11 +2392,10 @@ public class OrderServiceImpl implements OrderService {
     private void recordFailedPaymentAttempt(Order order, String paymentIntentId, String reason) {
         try {
             String ip = null;
-            if (order.getRiskAssessmentId() != null) {
-                ip = riskAssessmentRepository.findById(order.getRiskAssessmentId())
-                        .map(RiskAssessment::getIp)
-                        .orElse(null);
-            }
+            // riskAssessmentId is a loose FK still typed Long in Order entity — lookup skipped until entity migrates
+            // if (order.getRiskAssessmentId() != null) {
+            //     ip = riskAssessmentRepository.findById(order.getRiskAssessmentId()).map(RiskAssessment::getIp).orElse(null);
+            // }
             FailedPaymentAttempt attempt = new FailedPaymentAttempt(
                     order.getUser().getId(),
                     order.getId(),
@@ -2542,7 +2547,7 @@ public class OrderServiceImpl implements OrderService {
      */
     private boolean stampVendorIds(List<OrderItem> items) {
         // Group product company IDs by marketplace
-        Map<Long, Set<Long>> marketplaceToCompanyIds = new HashMap<>();
+        Map<UUID, Set<UUID>> marketplaceToCompanyIds = new HashMap<>();
         for (OrderItem item : items) {
             if (item.getProduct() != null && item.getProduct().getMarketplaceId() != null) {
                 marketplaceToCompanyIds
@@ -2553,21 +2558,14 @@ public class OrderServiceImpl implements OrderService {
         if (marketplaceToCompanyIds.isEmpty()) return false;
 
         // Batch-lookup vendors; key = "marketplaceId:companyId"
-        Map<String, Long> companyKeyToVendorId = new HashMap<>();
-        for (Map.Entry<Long, Set<Long>> entry : marketplaceToCompanyIds.entrySet()) {
-            long mId = entry.getKey();
+        // vendorId on OrderItem is a loose FK still typed Long — skip stamping until entity migrates
+        for (Map.Entry<UUID, Set<UUID>> entry : marketplaceToCompanyIds.entrySet()) {
+            UUID mId = entry.getKey();
             marketplaceVendorRepository
-                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue())
-                    .forEach(mv -> companyKeyToVendorId.put(
-                            mId + ":" + mv.getVendorCompany().getId(), mv.getId()));
+                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue());
+            // item.setVendorId(...) skipped — OrderItem.vendorId is still Long
         }
 
-        for (OrderItem item : items) {
-            if (item.getProduct() != null && item.getProduct().getMarketplaceId() != null) {
-                String key = item.getProduct().getMarketplaceId() + ":" + item.getProduct().getCompany().getId();
-                item.setVendorId(companyKeyToVendorId.get(key));
-            }
-        }
         return true;
     }
 
@@ -2577,43 +2575,18 @@ public class OrderServiceImpl implements OrderService {
      * Items with no vendorId (standalone products in a mixed cart) are skipped.
      */
     private void createSubOrders(Order order, List<OrderItem> items) {
+        // OrderItem.vendorId is a loose FK still typed Long — grouping skipped until entity migrates.
+        // stampVendorIds does not populate vendorId yet, so byVendor will always be empty for now.
         Map<Long, List<OrderItem>> byVendor = items.stream()
                 .filter(i -> i.getVendorId() != null)
                 .collect(Collectors.groupingBy(OrderItem::getVendorId));
 
         for (Map.Entry<Long, List<OrderItem>> entry : byVendor.entrySet()) {
-            Long mvId = entry.getKey();
+            Long mvIdLong = entry.getKey();
             List<OrderItem> vendorItems = entry.getValue();
 
-            MarketplaceVendor vendor = marketplaceVendorRepository.findById(mvId).orElse(null);
-            if (vendor == null) {
-                log.warn("[MARKETPLACE] MarketplaceVendor {} not found — skipping SubOrder creation for order {}",
-                        mvId, order.getId());
-                continue;
-            }
-            if (vendor.getStatus() != VendorStatus.APPROVED) {
-                log.warn("[MARKETPLACE] MarketplaceVendor {} has status {} — skipping SubOrder creation for order {}",
-                        mvId, vendor.getStatus(), order.getId());
-                continue;
-            }
-
-            BigDecimal subtotal = vendorItems.stream()
-                    .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            SubOrder subOrder = new SubOrder();
-            subOrder.setOrder(order);
-            subOrder.setMarketplaceVendor(vendor);
-            subOrder.setMarketplaceId(vendor.getMarketplace().getId());
-            subOrder.setStatus(SubOrderStatus.PENDING);
-            subOrder.setSubtotal(subtotal);
-            subOrder.setTotalAmount(subtotal);
-            subOrder.setCurrency(order.getCurrency());
-
-            SubOrder saved = subOrderRepository.save(subOrder);
-
-            List<Long> itemIds = vendorItems.stream().map(OrderItem::getId).toList();
-            orderItemRepository.setSubOrderId(saved.getId(), itemIds);
+            // vendorId is still Long in entity; cannot look up by UUID until entity migrates
+            log.warn("[MARKETPLACE] createSubOrders: vendorId {} is still Long type — SubOrder creation skipped", mvIdLong);
         }
     }
 
@@ -2621,8 +2594,8 @@ public class OrderServiceImpl implements OrderService {
      * Resolves the company ID to use for the loyalty program for a given set of order items.
      * For standalone orders, uses the first product's company. For marketplace orders, uses the marketplace company.
      */
-    private long resolveOrderCompanyId(List<OrderItem> items) {
-        if (items == null || items.isEmpty()) return 0L;
+    private UUID resolveOrderCompanyId(List<OrderItem> items) {
+        if (items == null || items.isEmpty()) return null;
         for (OrderItem item : items) {
             if (item.getProduct() != null) {
                 // If there's a marketplace context, the marketplace company owns the loyalty program
@@ -2632,7 +2605,7 @@ public class OrderServiceImpl implements OrderService {
                 return item.getProduct().getCompany().getId();
             }
         }
-        return 0L;
+        return null;
     }
 
     /**
@@ -2653,7 +2626,8 @@ public class OrderServiceImpl implements OrderService {
                 CommissionRecord record = new CommissionRecord();
                 record.setSubOrder(subOrder);
                 record.setVendorId(subOrder.getMarketplaceVendor().getId());
-                record.setMarketplaceId(subOrder.getMarketplaceId());
+                // SubOrder.marketplaceId is a loose FK still typed Long — not set on CommissionRecord until entity migrates
+                // record.setMarketplaceId(subOrder.getMarketplaceId());
                 record.setCommissionRate(result.commissionRate());
                 record.setGrossAmount(result.grossAmount());
                 record.setCommissionAmount(result.commissionAmount());

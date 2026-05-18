@@ -9,6 +9,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "location_stocks",
@@ -46,18 +47,12 @@ public class LocationStock {
      * The actual FK column (variant_ref) is managed by the {@link #variantRef} field.
      */
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(name = "variant_ref", nullable = false,
-                insertable = false, updatable = false)
+    @JoinColumn(name = "variant_ref", insertable = false, updatable = false)
     private ProductVariant variant;
 
-    /**
-     * Sentinel-safe FK column.
-     * 0L = product-level (no variant); variantId = variant-level.
-     * Drives the unique constraint — always non-null, enabling a standard composite index
-     * without MySQL's NULL-uniqueness pitfall.
-     */
-    @Column(name = "variant_ref", nullable = false)
-    private long variantRef = 0L;
+    /** Variant discriminator for variant-level inventory. Null means product-level stock. */
+    @Column(name = "variant_ref", columnDefinition = "BINARY(16)")
+    private UUID variantRef;
 
     @Column(nullable = false)
     private int stock = 0;
@@ -74,6 +69,6 @@ public class LocationStock {
     private Instant updatedAt;
 
     public boolean isProductLevel() {
-        return variantRef == 0L;
+        return variantRef == null;
     }
 }

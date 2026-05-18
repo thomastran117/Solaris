@@ -11,6 +11,7 @@ import backend.models.enums.ReviewStatus;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 public class ReviewSpecification {
 
@@ -22,7 +23,7 @@ public class ReviewSpecification {
      * with at least one photo via a correlated subquery against {@link ReviewMedia}.
      */
     public static Specification<ProductReview> withFilters(
-            long productId,
+            UUID productId,
             Collection<Integer> ratings,
             Boolean verifiedOnly,
             Boolean hasMedia) {

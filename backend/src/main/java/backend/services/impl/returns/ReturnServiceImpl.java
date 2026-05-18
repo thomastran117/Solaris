@@ -209,7 +209,7 @@ public class ReturnServiceImpl implements ReturnService {
         for (ReturnItem ri : saved.getItems()) {
             OrderItem oi = ri.getOrderItem();
             if (oi == null || oi.getProduct() == null) continue;
-            Long mkt = oi.getProduct().getMarketplaceId();
+            UUID mkt = oi.getProduct().getMarketplaceId();
             if (mkt == null) continue;
             activityEventPublisher.publish(new UserActivityEvent(
                     buyerUserId, null, oi.getProduct().getId(), mkt, ActivityType.RETURN, Instant.now()));
@@ -514,7 +514,7 @@ public class ReturnServiceImpl implements ReturnService {
         orderRepository.save(order);
         ReturnResponse response = toReturnResponse(returnRepository.save(ret));
         auditLogger.log(AuthAuditLogger.Event.REFUND_ISSUED,
-                Long.toString(actorUserId),
+                actorUserId.toString(),
                 "orderId=" + orderId + " amountCents=" + amountCents + " returnId=" + response.id());
         return response;
     }
@@ -595,9 +595,9 @@ public class ReturnServiceImpl implements ReturnService {
             Return ret,
             List<BuyerReturnItemRequest> itemRequests,
             Order order,
-            Long expectedCompanyId) {
+            UUID expectedCompanyId) {
         List<ReturnItem> returnItems = new ArrayList<>();
-        Long scopedCompanyId = expectedCompanyId;
+        UUID scopedCompanyId = expectedCompanyId;
         for (BuyerReturnItemRequest ir : itemRequests) {
             OrderItem orderItem = order.getItems().stream()
                     .filter(i -> i.getId().equals(ir.orderItemId()))
@@ -605,7 +605,7 @@ public class ReturnServiceImpl implements ReturnService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Order item " + ir.orderItemId() + " not found in order " + order.getId()));
 
-            long itemCompanyId = resolveOwningCompanyId(orderItem);
+            UUID itemCompanyId = resolveOwningCompanyId(orderItem);
             if (scopedCompanyId == null) {
                 scopedCompanyId = itemCompanyId;
             } else if (!scopedCompanyId.equals(itemCompanyId)) {
@@ -639,7 +639,7 @@ public class ReturnServiceImpl implements ReturnService {
         return returnItems;
     }
 
-    private Return requireCompanyScopedReturn(Optional<Return> maybeReturn, long returnId, long companyId) {
+    private Return requireCompanyScopedReturn(Optional<Return> maybeReturn, UUID returnId, UUID companyId) {
         Return ret = maybeReturn.orElseThrow(() -> new ResourceNotFoundException("Return not found with id: " + returnId));
         if (!returnBelongsExclusivelyToCompany(ret, companyId)) {
             throw new ResourceNotFoundException("Return not found with id: " + returnId);
@@ -647,16 +647,16 @@ public class ReturnServiceImpl implements ReturnService {
         return ret;
     }
 
-    private boolean returnBelongsExclusivelyToCompany(Return ret, long companyId) {
+    private boolean returnBelongsExclusivelyToCompany(Return ret, UUID companyId) {
         return ret.getItems() != null
                 && !ret.getItems().isEmpty()
                 && ret.getItems().stream()
                 .map(ReturnItem::getOrderItem)
-                .allMatch(item -> Long.valueOf(companyId).equals(findOwningCompanyId(item)));
+                .allMatch(item -> companyId.equals(findOwningCompanyId(item)));
     }
 
-    private long resolveOwningCompanyId(OrderItem orderItem) {
-        Long companyId = findOwningCompanyId(orderItem);
+    private UUID resolveOwningCompanyId(OrderItem orderItem) {
+        UUID companyId = findOwningCompanyId(orderItem);
         if (companyId == null) {
             throw new BadRequestException(
                     "Order item " + orderItem.getId() + " has no company owner and cannot be returned");
@@ -664,7 +664,7 @@ public class ReturnServiceImpl implements ReturnService {
         return companyId;
     }
 
-    private Long findOwningCompanyId(OrderItem orderItem) {
+    private UUID findOwningCompanyId(OrderItem orderItem) {
         if (orderItem.getBundle() != null && orderItem.getBundle().getCompany() != null) {
             return orderItem.getBundle().getCompany().getId();
         }
@@ -812,7 +812,7 @@ public class ReturnServiceImpl implements ReturnService {
         // above so the two levels stay consistent rather than committing a partial state.
         try {
             if (item.getFulfillmentLocation() != null && item.getProduct() != null) {
-                long variantRef = item.getVariant() != null ? item.getVariant().getId() : 0L;
+                UUID variantRef = item.getVariant() != null ? item.getVariant().getId() : null;
                 locationStockRepository
                         .findByLocationIdAndProductIdAndVariantRef(
                                 item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
@@ -833,7 +833,7 @@ public class ReturnServiceImpl implements ReturnService {
     /**
      * Creates an InventoryAdjustment audit record for a returned item.
      */
-    private void recordReturnAdjustment(OrderItem item, long orderId, int qty) {
+    private void recordReturnAdjustment(OrderItem item, UUID orderId, int qty) {
         try {
             InventoryAdjustment adj = new InventoryAdjustment();
             adj.setProduct(item.getProduct());
@@ -897,7 +897,7 @@ public class ReturnServiceImpl implements ReturnService {
      * Otherwise the primary location is used, falling back to the first available.
      * Throws ConflictException if the company has no return locations at all.
      */
-    private CompanyReturnLocation resolveReturnLocation(Company company, Long locationId) {
+    private CompanyReturnLocation resolveReturnLocation(Company company, UUID locationId) {
         if (locationId != null) {
             return returnLocationRepository.findByIdAndCompanyId(locationId, company.getId())
                     .orElseThrow(() -> new ResourceNotFoundException(

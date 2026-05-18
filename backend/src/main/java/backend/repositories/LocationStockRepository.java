@@ -20,7 +20,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
     List<LocationStock> findAllByProductId(java.util.UUID productId);
 
     Optional<LocationStock> findByLocationIdAndProductIdAndVariantRef(
-            java.util.UUID locationId, java.util.UUID productId, long variantRef);
+            java.util.UUID locationId, java.util.UUID productId, java.util.UUID variantRef);
 
     @Query("SELECT ls FROM LocationStock ls WHERE ls.product.id = :productId " +
            "AND ls.location.company.id = :companyId ORDER BY ls.location.displayOrder ASC, ls.location.name ASC")
@@ -32,7 +32,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
      * JOIN FETCH avoids a lazy-load inside the order transaction.
      */
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
+           "WHERE ls.product.id = :productId AND ls.variantRef IS NULL " +
            "AND loc.active = true AND ls.stock > 0 ORDER BY ls.stock DESC")
     List<LocationStock> findTopByProductStockDesc(@Param("productId") java.util.UUID productId, Pageable pageable);
 
@@ -45,7 +45,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
            "AND loc.active = true AND ls.stock > 0 ORDER BY ls.stock DESC")
     List<LocationStock> findTopByVariantStockDesc(
             @Param("productId") java.util.UUID productId,
-            @Param("variantRef") long variantRef,
+            @Param("variantRef") java.util.UUID variantRef,
             Pageable pageable);
 
     /**
@@ -54,7 +54,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
      * by distance. JOIN FETCH avoids lazy-loads when mapping to the response.
      */
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
+           "WHERE ls.product.id = :productId AND ls.variantRef IS NULL " +
            "AND loc.active = true AND ls.stock > 0 " +
            "ORDER BY loc.displayOrder ASC, loc.name ASC")
     List<LocationStock> findStockedByProduct(@Param("productId") java.util.UUID productId);
@@ -69,11 +69,11 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
            "ORDER BY loc.displayOrder ASC, loc.name ASC")
     List<LocationStock> findStockedByVariant(
             @Param("productId") java.util.UUID productId,
-            @Param("variantRef") long variantRef);
+            @Param("variantRef") java.util.UUID variantRef);
 
     /** Picks active locations for a product ordered by Haversine distance to buyer (product-level stock). */
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
+           "WHERE ls.product.id = :productId AND ls.variantRef IS NULL " +
            "AND loc.active = true AND ls.stock > 0 " +
            "AND loc.latitude IS NOT NULL AND loc.longitude IS NOT NULL " +
            "ORDER BY FUNCTION('ASIN', FUNCTION('SQRT', " +
@@ -99,14 +99,14 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
            ")) ASC")
     List<LocationStock> findByVariantOrderedByDistance(
             @Param("productId") java.util.UUID productId,
-            @Param("variantRef") long variantRef,
+            @Param("variantRef") java.util.UUID variantRef,
             @Param("buyerLat") double buyerLat,
             @Param("buyerLng") double buyerLng,
             Pageable pageable);
 
     /** Picks active locations for a product ordered by fulfillmentCost ASC (product-level stock). */
     @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef = 0 " +
+           "WHERE ls.product.id = :productId AND ls.variantRef IS NULL " +
            "AND loc.active = true AND ls.stock > 0 " +
            "AND loc.fulfillmentCost IS NOT NULL " +
            "ORDER BY loc.fulfillmentCost ASC, ls.stock DESC")
@@ -122,7 +122,7 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
            "ORDER BY loc.fulfillmentCost ASC, ls.stock DESC")
     List<LocationStock> findByVariantOrderedByCost(
             @Param("productId") java.util.UUID productId,
-            @Param("variantRef") long variantRef,
+            @Param("variantRef") java.util.UUID variantRef,
             Pageable pageable);
 
     /** Guards deletion: true only when at least one record still has stock above zero. */

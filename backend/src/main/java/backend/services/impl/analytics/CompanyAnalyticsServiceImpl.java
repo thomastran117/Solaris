@@ -135,7 +135,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
     // Compute methods
     // -------------------------------------------------------------------------
 
-    private CompanyRevenueSummaryResponse computeAndCacheRevenue(long companyId, int lookbackDays) {
+    private CompanyRevenueSummaryResponse computeAndCacheRevenue(UUID companyId, int lookbackDays) {
         Instant to   = Instant.now();
         Instant from = to.minus(lookbackDays, ChronoUnit.DAYS);
 
@@ -166,7 +166,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         return response;
     }
 
-    private CategorySalesResponse computeAndCacheCategories(long companyId, int lookbackDays) {
+    private CategorySalesResponse computeAndCacheCategories(UUID companyId, int lookbackDays) {
         Instant to   = Instant.now();
         Instant from = to.minus(lookbackDays, ChronoUnit.DAYS);
 
@@ -194,7 +194,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         return response;
     }
 
-    private SlowMoversResponse computeAndCacheSlowMovers(long companyId, int days) {
+    private SlowMoversResponse computeAndCacheSlowMovers(UUID companyId, int days) {
         Instant since = Instant.now().minus(days, ChronoUnit.DAYS);
         List<SlowMoverProjection> rows =
                 analyticsRepository.getSlowMovers(companyId, since, days, SLOW_MOVER_VELOCITY, SLOW_MOVER_LIMIT);
@@ -215,7 +215,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         return response;
     }
 
-    private ProductPerformanceResponse computeAndCachePerformance(long companyId, int lookbackDays) {
+    private ProductPerformanceResponse computeAndCachePerformance(UUID companyId, int lookbackDays) {
         Instant now       = Instant.now();
         Instant from      = now.minus(lookbackDays, ChronoUnit.DAYS);
         Instant priorFrom = from.minus(lookbackDays, ChronoUnit.DAYS);
@@ -223,7 +223,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         List<ProductSalesProjection> current = productRepository.findTopByRevenue(companyId, PERF_TOP_N, from, now);
         List<ProductSalesProjection> prior   = productRepository.findTopByRevenue(companyId, PERF_TOP_N, priorFrom, from);
 
-        Map<Long, ProductSalesProjection> priorMap = new HashMap<>();
+        Map<UUID, ProductSalesProjection> priorMap = new HashMap<>();
         for (ProductSalesProjection p : prior) {
             priorMap.put(p.getProductId(), p);
         }
@@ -239,7 +239,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         byUnits.sort(Comparator.comparingLong(
                 p -> p.getTotalUnitsSold() != null ? -p.getTotalUnitsSold() : 0L));
 
-        Map<Long, Integer> unitsRankMap = new HashMap<>();
+        Map<UUID, Integer> unitsRankMap = new HashMap<>();
         for (int i = 0; i < byUnits.size(); i++) {
             unitsRankMap.put(byUnits.get(i).getProductId(), i + 1);
         }
@@ -283,7 +283,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private void verifyOwner(long companyId, UUID ownerId) {
+    private void verifyOwner(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_ANALYTICS);
     }
 

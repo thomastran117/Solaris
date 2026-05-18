@@ -172,13 +172,13 @@ public class SubOrderServiceImpl implements SubOrderService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private SubOrder resolveVendorSubOrder(long subOrderId, long marketplaceVendorId, UUID ownerId) {
+    private SubOrder resolveVendorSubOrder(UUID subOrderId, UUID marketplaceVendorId, UUID ownerId) {
         assertVendorOwnership(marketplaceVendorId, ownerId);
         return subOrderRepository.findByIdAndMarketplaceVendorId(subOrderId, marketplaceVendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sub-order not found"));
     }
 
-    private MarketplaceVendor assertVendorOwnership(long marketplaceVendorId, UUID ownerId) {
+    private MarketplaceVendor assertVendorOwnership(UUID marketplaceVendorId, UUID ownerId) {
         MarketplaceVendor vendor = marketplaceVendorRepository.findById(marketplaceVendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
         if (!vendor.getVendorCompany().getOwner().getId().equals(ownerId)) {
@@ -194,7 +194,7 @@ public class SubOrderServiceImpl implements SubOrderService {
                 s.getId(),
                 s.getOrder().getId(),
                 s.getMarketplaceVendor().getId(),
-                s.getMarketplaceId(),
+                null, // marketplaceId is a loose FK still typed Long in SubOrder entity
                 s.getMarketplaceVendor().getVendorCompany().getName(),
                 s.getStatus().name(),
                 s.getSubtotal(),

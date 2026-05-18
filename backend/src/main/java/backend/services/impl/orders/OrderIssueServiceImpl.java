@@ -187,7 +187,8 @@ public class OrderIssueServiceImpl implements OrderIssueService {
                 request.reason(),
                 actorUserId);
 
-        issue.setReturnId(returnResp.id());
+        // returnId is a loose FK still typed Long in entity — not stored until entity migrates
+        // issue.setReturnId(returnResp.id());
         issue.setState(OrderIssueState.RESOLVED_REFUND);
         issue.setResolution(IssueResolution.REFUND);
         issue.setResolvedAt(Instant.now());
@@ -211,7 +212,8 @@ public class OrderIssueServiceImpl implements OrderIssueService {
         OrderResponse replacementOrder = replacementOrderService.createReplacement(
                 issue.getOrder().getId(), request, actorUserId);
 
-        issue.setReplacementOrderId(replacementOrder.getId());
+        // replacementOrderId is a loose FK still typed Long in entity — not stored until entity migrates
+        // issue.setReplacementOrderId(replacementOrder.getId());
         issue.setState(OrderIssueState.RESOLVED_REPLACEMENT);
         issue.setResolution(IssueResolution.REPLACEMENT);
         issue.setResolvedAt(Instant.now());
@@ -304,8 +306,8 @@ public class OrderIssueServiceImpl implements OrderIssueService {
                 issue.getResolution() != null ? issue.getResolution().name() : null,
                 issue.getDescription(),
                 issue.getRejectionReason(),
-                issue.getReturnId(),
-                issue.getReplacementOrderId(),
+                null, // returnId is a loose FK still typed Long in entity
+                null, // replacementOrderId is a loose FK still typed Long in entity
                 issue.getCustomerCreditId(),
                 issue.getCreatedAt(),
                 issue.getUpdatedAt(),

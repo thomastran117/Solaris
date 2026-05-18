@@ -26,6 +26,7 @@ import backend.utilities.GeoDistance;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
@@ -72,14 +73,14 @@ public class AvailabilityEstimateServiceImpl implements AvailabilityEstimateServ
     }
 
     @Override
-    public AvailabilityEstimateResponse estimateForMarketplace(long marketplaceId, long productId,
-                                                               Long variantId, Double buyerLat,
+    public AvailabilityEstimateResponse estimateForMarketplace(UUID marketplaceId, UUID productId,
+                                                               UUID variantId, Double buyerLat,
                                                                Double buyerLng) {
         Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
 
-        long variantRef = variantId != null ? variantId : 0L;
-        long companyId = product.getCompany().getId();
+        UUID variantRef = variantId;
+        UUID companyId = product.getCompany().getId();
 
         String cacheKey = buildCacheKey(companyId, productId, variantRef, buyerLat, buyerLng);
         AvailabilityEstimateResponse cached = readCache(cacheKey);
@@ -91,18 +92,18 @@ public class AvailabilityEstimateServiceImpl implements AvailabilityEstimateServ
         return response;
     }
 
-    private List<LocationStock> loadStockedLocations(long productId, long variantRef,
+    private List<LocationStock> loadStockedLocations(UUID productId, UUID variantRef,
                                                      Double buyerLat, Double buyerLng) {
         Pageable page = PageRequest.of(0, MAX_LOCATIONS);
 
         if (buyerLat != null && buyerLng != null) {
-            List<LocationStock> byDistance = (variantRef == 0L)
+            List<LocationStock> byDistance = (variantRef == null)
                     ? locationStockRepository.findByProductOrderedByDistance(productId, buyerLat, buyerLng, page)
                     : locationStockRepository.findByVariantOrderedByDistance(productId, variantRef, buyerLat, buyerLng, page);
             if (!byDistance.isEmpty()) return byDistance;
         }
 
-        return (variantRef == 0L)
+        return (variantRef == null)
                 ? locationStockRepository.findStockedByProduct(productId)
                 : locationStockRepository.findStockedByVariant(productId, variantRef);
     }
@@ -185,7 +186,7 @@ public class AvailabilityEstimateServiceImpl implements AvailabilityEstimateServ
      * Coordinate bucket: 0.5° (~55 km at the equator). Coarser than fine-grained ranking but
      * keeps the cache hit rate high for nearby buyers.
      */
-    private String buildCacheKey(long companyId, long productId, long variantRef, Double lat, Double lng) {
+    private String buildCacheKey(UUID companyId, UUID productId, UUID variantRef, Double lat, Double lng) {
         String latBucket = (lat != null) ? String.valueOf((long) Math.floor(lat * 2)) : "x";
         String lngBucket = (lng != null) ? String.valueOf((long) Math.floor(lng * 2)) : "x";
         return CACHE_PREFIX + companyId + ":" + productId + ":" + variantRef + ":" + latBucket + ":" + lngBucket;

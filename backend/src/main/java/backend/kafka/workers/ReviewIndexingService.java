@@ -243,7 +243,7 @@ public class ReviewIndexingService implements ApplicationRunner {
 
     private ReviewDocument toDocument(ProductReview r, boolean hasMedia) {
         UUID companyId = null;
-        Long marketplaceId = null;
+        UUID marketplaceId = null;
         try {
             if (r.getProduct() != null) {
                 if (r.getProduct().getCompany() != null) companyId = r.getProduct().getCompany().getId();

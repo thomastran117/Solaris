@@ -50,7 +50,7 @@ public class ProductChangeLoggerImpl implements ProductChangeLogger {
     }
 
     @Override
-    public void logUpdate(Product before, Product after, ChangeSource source, Long revertedFromLogId) {
+    public void logUpdate(Product before, Product after, ChangeSource source, UUID revertedFromLogId) {
         List<ProductChangeLog> rows = new ArrayList<>();
         User actor = currentActor();
         for (ProductField f : ProductField.values()) {
@@ -84,7 +84,7 @@ public class ProductChangeLoggerImpl implements ProductChangeLogger {
     }
 
     @Override
-    public void logVariantUpdate(ProductVariant before, ProductVariant after, ChangeSource source, Long revertedFromLogId) {
+    public void logVariantUpdate(ProductVariant before, ProductVariant after, ChangeSource source, UUID revertedFromLogId) {
         List<ProductChangeLog> rows = new ArrayList<>();
         User actor = currentActor();
         for (VariantField f : VariantField.values()) {
@@ -176,7 +176,7 @@ public class ProductChangeLoggerImpl implements ProductChangeLogger {
                                  ProductChangeType type,
                                  ChangeSource source,
                                  User actor,
-                                 Long revertedFromLogId) {
+                                 UUID revertedFromLogId) {
         ProductChangeLog log = new ProductChangeLog();
         log.setProduct(product);
         log.setVariant(variant);

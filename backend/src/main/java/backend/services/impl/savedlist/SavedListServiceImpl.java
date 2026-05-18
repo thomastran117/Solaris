@@ -183,7 +183,7 @@ public class SavedListServiceImpl implements SavedListService {
 
         SavedListItemResponse response = toItemResponse(savedListItemRepository.save(item));
 
-        Long marketplaceId = product.getMarketplaceId();
+        UUID marketplaceId = product.getMarketplaceId();
         if (marketplaceId != null) {
             activityEventPublisher.publish(new UserActivityEvent(
                     userId, null, product.getId(), marketplaceId, ActivityType.SAVED_LIST_ADD, Instant.now()));
@@ -221,7 +221,7 @@ public class SavedListServiceImpl implements SavedListService {
 
         // Capture before delete to avoid lazy-loading a detached entity.
         UUID productId = item.getProduct() != null ? item.getProduct().getId() : null;
-        Long marketplaceId = item.getProduct() != null ? item.getProduct().getMarketplaceId() : null;
+        UUID marketplaceId = item.getProduct() != null ? item.getProduct().getMarketplaceId() : null;
 
         savedListItemRepository.delete(item);
 

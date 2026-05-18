@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(
@@ -39,16 +40,12 @@ public class StockNotification {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    /**
-     * Sentinel-safe FK: 0 = product-level, variantId = variant-level.
-     * Mirrors the pattern used in LocationStock to enable a NOT NULL composite unique key.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variant_ref", nullable = false, insertable = false, updatable = false)
+    @JoinColumn(name = "variant_ref", insertable = false, updatable = false)
     private ProductVariant variant;
 
-    @Column(name = "variant_ref", nullable = false)
-    private long variantRef = 0L;
+    @Column(name = "variant_ref", columnDefinition = "BINARY(16)")
+    private UUID variantRef;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -66,7 +66,8 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
         replacement.setTotalAmount(BigDecimal.ZERO);
         replacement.setCurrency(original.getCurrency());
         replacement.setStatus(OrderStatus.PAID);
-        replacement.setReplacementOfOrderId(originalOrderId);
+        // replacementOfOrderId is a loose FK still typed Long in Order entity — not stored until entity migrates
+        // replacement.setReplacementOfOrderId(originalOrderId);
         replacement.setFulfillmentNote("Replacement for order #" + originalOrderId + ", authorised by staff #" + actorUserId);
 
         List<OrderItem> items = new ArrayList<>();

@@ -11,6 +11,7 @@ import backend.services.intf.inventory.DemandService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Pre-warms the Redis hot-product caches for all companies that have had
@@ -35,9 +36,9 @@ public class DemandTrackingScheduler {
     @Scheduled(fixedDelayString = "${app.demand.refresh-interval-ms:300000}")
     public void refreshHotProductCaches() {
         Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
-        List<Long> activeCompanies = productRepository.findDistinctCompanyIdsWithPaidOrdersSince(since);
+        List<UUID> activeCompanies = productRepository.findDistinctCompanyIdsWithPaidOrdersSince(since);
 
-        for (long companyId : activeCompanies) {
+        for (UUID companyId : activeCompanies) {
             try {
                 demandService.refreshCache(companyId, "1h");
             } catch (Exception e) {

@@ -223,7 +223,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         for (SubscriptionItem si : saved.getItems()) {
             if (si.getProduct() == null) continue;
-            Long mkt = si.getProduct().getMarketplaceId();
+            UUID mkt = si.getProduct().getMarketplaceId();
             if (mkt == null) continue;
             activityEventPublisher.publish(new UserActivityEvent(
                     userId, null, si.getProduct().getId(), mkt, ActivityType.SUBSCRIPTION_CREATE, Instant.now()));
@@ -604,7 +604,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         }
     }
 
-    private long resolveSubscriptionCompanyId(Subscription sub) {
+    private UUID resolveSubscriptionCompanyId(Subscription sub) {
         if (sub.getItems() != null && !sub.getItems().isEmpty()) {
             Product product = sub.getItems().get(0).getProduct();
             if (product != null && product.getCompany() != null) {

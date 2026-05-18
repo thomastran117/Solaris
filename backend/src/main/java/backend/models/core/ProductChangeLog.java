@@ -70,8 +70,8 @@ public class ProductChangeLog {
     @JoinColumn(name = "changed_by", nullable = true)
     private User changedBy;
 
-    @Column(name = "reverted_from_log_id", nullable = true)
-    private Long revertedFromLogId;
+    @Column(name = "reverted_from_log_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID revertedFromLogId;
 
     @CreatedDate
     @Column(name = "changed_at", nullable = false, updatable = false)

@@ -61,7 +61,7 @@ public class DemandServiceImpl implements DemandService {
     }
 
     @Override
-    public HotProductsResponse getHotProducts(long companyId, UUID ownerId, String window, int limit) {
+    public HotProductsResponse getHotProducts(UUID companyId, UUID ownerId, String window, int limit) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
 
         if (!VALID_WINDOWS.contains(window)) {
@@ -87,7 +87,7 @@ public class DemandServiceImpl implements DemandService {
 
     @Override
     @Transactional(readOnly = true)
-    public void refreshCache(long companyId, String window) {
+    public void refreshCache(UUID companyId, String window) {
         String cacheKey = CACHE_KEY_PREFIX + window + ":" + companyId;
         computeAndCache(companyId, window, CACHE_SIZE, cacheKey);
     }
@@ -97,7 +97,7 @@ public class DemandServiceImpl implements DemandService {
     // -------------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    private HotProductsResponse computeAndCache(long companyId, String window, int limit, String cacheKey) {
+    private HotProductsResponse computeAndCache(UUID companyId, String window, int limit, String cacheKey) {
         Instant now         = Instant.now();
         boolean is1h        = "1h".equals(window);
         Instant windowStart = now.minus(is1h ? 1 : 24, ChronoUnit.HOURS);
@@ -108,7 +108,7 @@ public class DemandServiceImpl implements DemandService {
 
         // For the 1h window, also fetch the 24h data so we can compute acceleration ratio.
         // Products not in the 24h result get a baseline of 0 (brand new sellers).
-        Map<Long, Long> baseline24h = Collections.emptyMap();
+        Map<UUID, Long> baseline24h = Collections.emptyMap();
         if (is1h) {
             baseline24h = productRepository
                     .findTopByDemandSince(companyId, now.minus(24, ChronoUnit.HOURS), CACHE_SIZE)
@@ -118,7 +118,7 @@ public class DemandServiceImpl implements DemandService {
                             p -> p.getTotalUnitsSold() != null ? p.getTotalUnitsSold() : 0L));
         }
 
-        Map<Long, Long> base = baseline24h;
+        Map<UUID, Long> base = baseline24h;
         List<DemandEntry> entries = new ArrayList<>(raw.size());
         int rank = 1;
 

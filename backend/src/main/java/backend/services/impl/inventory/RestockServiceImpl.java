@@ -94,7 +94,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     public PagedResponse<RestockRequestResponse> listRestockRequests(
-            long companyId, UUID ownerId, RestockStatus status, Long productId, int page, int size) {
+            UUID companyId, UUID ownerId, RestockStatus status, UUID productId, int page, int size) {
         assertCompanyOwnership(companyId, ownerId);
 
         if (size > 50) size = 50;
@@ -120,7 +120,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public RestockRequestResponse createRestockRequest(long companyId, UUID ownerId, CreateRestockRequest request) {
+    public RestockRequestResponse createRestockRequest(UUID companyId, UUID ownerId, CreateRestockRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         Product product = productRepository.findByIdAndCompanyId(request.getProductId(), companyId)
@@ -153,7 +153,7 @@ public class RestockServiceImpl implements RestockService {
     }
 
     @Override
-    public RestockRequestResponse getRestockRequest(long companyId, long restockId, UUID ownerId) {
+    public RestockRequestResponse getRestockRequest(UUID companyId, UUID restockId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Restock request not found with id: " + restockId));
@@ -162,7 +162,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public RestockRequestResponse updateRestockRequest(long companyId, long restockId, UUID ownerId, UpdateRestockRequest request) {
+    public RestockRequestResponse updateRestockRequest(UUID companyId, UUID restockId, UUID ownerId, UpdateRestockRequest request) {
         assertCompanyOwnership(companyId, ownerId);
 
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
@@ -180,7 +180,7 @@ public class RestockServiceImpl implements RestockService {
 
     @Override
     @Transactional
-    public void deleteRestockRequest(long companyId, long restockId, UUID ownerId) {
+    public void deleteRestockRequest(UUID companyId, UUID restockId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
 
         RestockRequest rr = restockRepository.findByIdAndCompanyId(restockId, companyId)
@@ -230,16 +230,16 @@ public class RestockServiceImpl implements RestockService {
     }
 
     private void handleReceivedTransition(RestockRequest rr, int receivedQty, UUID ownerId) {
-        long productId = rr.getProduct().getId();
-        Long variantId = rr.getVariant() != null ? rr.getVariant().getId() : null;
-        Long locationId = rr.getLocation() != null ? rr.getLocation().getId() : null;
+        UUID productId = rr.getProduct().getId();
+        UUID variantId = rr.getVariant() != null ? rr.getVariant().getId() : null;
+        UUID locationId = rr.getLocation() != null ? rr.getLocation().getId() : null;
 
         // Acquire locks in sorted order to prevent deadlocks
         String stockLockKey = (variantId != null)
                 ? VARIANT_LOCK_PREFIX + variantId
                 : PRODUCT_LOCK_PREFIX + productId;
 
-        long variantRefForLoc = variantId != null ? variantId : 0L;
+        UUID variantRefForLoc = variantId;
         String locLockKey = locationId != null
                 ? LOC_STOCK_LOCK_PREFIX + locationId + ":" + variantRefForLoc
                 : null;
@@ -320,11 +320,9 @@ public class RestockServiceImpl implements RestockService {
             rr.setReceivedAt(java.time.Instant.now());
 
             if (previousStock == 0) {
-                long variantRefValue = variantId != null ? variantId : 0L;
                 eventPublisher.publishEvent(new StockRestoredEvent(
                         rr.getProduct().getId(),
-                        rr.getVariant() != null ? rr.getVariant().getId() : null,
-                        variantRefValue));
+                        rr.getVariant() != null ? rr.getVariant().getId() : null));
             }
 
             // Trigger backorder fulfillment FIFO
@@ -376,7 +374,7 @@ public class RestockServiceImpl implements RestockService {
 
     // --- Helpers ---
 
-    private void assertCompanyOwnership(long companyId, UUID ownerId) {
+    private void assertCompanyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 

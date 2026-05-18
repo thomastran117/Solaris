@@ -28,8 +28,8 @@ public class ReviewDocument {
     @Field(type = FieldType.Keyword)
     private UUID companyId;
 
-    @Field(type = FieldType.Long)
-    private Long marketplaceId;
+    @Field(type = FieldType.Keyword)
+    private UUID marketplaceId;
 
     @Field(type = FieldType.Keyword)
     private UUID reviewerId;

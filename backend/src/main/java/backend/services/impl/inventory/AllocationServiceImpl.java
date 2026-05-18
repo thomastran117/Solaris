@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class AllocationServiceImpl implements AllocationService {
@@ -24,7 +25,7 @@ public class AllocationServiceImpl implements AllocationService {
 
     @Override
     public List<AllocationResult> allocate(
-            long productId, Long variantId, int qty,
+            UUID productId, UUID variantId, int qty,
             AllocationStrategy strategy, Double buyerLat, Double buyerLng) {
         List<LocationStock> candidates = fetchCandidates(productId, variantId, strategy, buyerLat, buyerLng);
         if (candidates.isEmpty()) {
@@ -34,10 +35,10 @@ public class AllocationServiceImpl implements AllocationService {
     }
 
     private List<LocationStock> fetchCandidates(
-            long productId, Long variantId,
+            UUID productId, UUID variantId,
             AllocationStrategy strategy, Double buyerLat, Double buyerLng) {
 
-        long variantRef = (variantId != null) ? variantId : 0L;
+        UUID variantRef = variantId;
         var page = PageRequest.of(0, MAX_CANDIDATES);
 
         return switch (strategy) {
@@ -71,7 +72,7 @@ public class AllocationServiceImpl implements AllocationService {
     }
 
     private List<LocationStock> fetchHighestStock(
-            long productId, Long variantId, long variantRef,
+            UUID productId, UUID variantId, UUID variantRef,
             org.springframework.data.domain.Pageable page) {
         return (variantId != null)
                 ? locationStockRepository.findTopByVariantStockDesc(productId, variantRef, page)

@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 public class VendorSLAEvaluationScheduler {
@@ -80,7 +81,7 @@ public class VendorSLAEvaluationScheduler {
     private static final int SLA_PAGE_SIZE = 500;
 
     private void evaluatePolicy(VendorSLAPolicy policy) {
-        long marketplaceId = policy.getMarketplaceId();
+        UUID marketplaceId = policy.getMarketplaceId();
 
         // R2-M10: the previous {@code PageRequest.of(0, Integer.MAX_VALUE)} attempted to
         // load every approved vendor into memory at once — fine for a small marketplace,
@@ -110,8 +111,8 @@ public class VendorSLAEvaluationScheduler {
     }
 
     private void evaluateVendor(MarketplaceVendor vendor, VendorSLAPolicy policy) {
-        long vendorId = vendor.getId();
-        long marketplaceId = policy.getMarketplaceId();
+        UUID vendorId = vendor.getId();
+        UUID marketplaceId = policy.getMarketplaceId();
         int windowDays = policy.getEvaluationWindowDays();
         LocalDate today = LocalDate.now();
 

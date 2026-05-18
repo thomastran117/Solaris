@@ -53,7 +53,7 @@ public class ActivityEventPublisherImpl implements ActivityEventPublisher {
     @Override
     public void publish(UserActivityEvent event) {
         if (!trackingEnabled) return;
-        if (event.marketplaceId() == null || event.marketplaceId() <= 0) {
+        if (event.marketplaceId() == null) {
             log.debug("Skipping activity event — no marketplaceId: productId={} type={}", event.productId(), event.activityType());
             return;
         }

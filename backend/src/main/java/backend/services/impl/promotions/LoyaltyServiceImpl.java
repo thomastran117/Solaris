@@ -80,7 +80,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional(readOnly = true)
-    public LoyaltyAccountResponse getAccount(UUID userId, long companyId) {
+    public LoyaltyAccountResponse getAccount(UUID userId, UUID companyId) {
         LoyaltyAccount account = accountRepository.findByUserIdAndCompanyId(userId, companyId)
                 .orElseGet(() -> emptyAccount(userId, companyId));
         return toAccountResponse(account);
@@ -88,7 +88,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<LoyaltyTransactionResponse> getTransactions(UUID userId, long companyId, int page, int size) {
+    public PagedResponse<LoyaltyTransactionResponse> getTransactions(UUID userId, UUID companyId, int page, int size) {
         int cap = Math.min(size, 50);
         LoyaltyAccount account = accountRepository.findByUserIdAndCompanyId(userId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("No loyalty account found"));
@@ -99,7 +99,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional(readOnly = true)
-    public LoyaltyRedemptionQuoteResponse getRedemptionQuote(UUID userId, long companyId, int pointsToRedeem) {
+    public LoyaltyRedemptionQuoteResponse getRedemptionQuote(UUID userId, UUID companyId, int pointsToRedeem) {
         LoyaltyAccount account = accountRepository.findByUserIdAndCompanyId(userId, companyId)
                 .orElse(null);
         long balance = account != null ? account.getPointsBalance() : 0L;
@@ -127,7 +127,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public long applyRedemption(UUID userId, long companyId, long orderId, int pointsToRedeem) {
+    public long applyRedemption(UUID userId, UUID companyId, UUID orderId, int pointsToRedeem) {
         if (pointsToRedeem <= 0) return 0L;
 
         LoyaltyPolicy policy = policyRepository.findFirstByCompanyIdAndActiveTrue(companyId)
@@ -164,7 +164,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public void recordOrderEarn(Order order, long companyId) {
+    public void recordOrderEarn(Order order, UUID companyId) {
         LoyaltyPolicy policy = policyRepository.findFirstByCompanyIdAndActiveTrue(companyId).orElse(null);
         if (policy == null) return;
 
@@ -235,7 +235,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public void clawbackEarnedPoints(long orderId, long refundedAmountCents, long orderTotalCents) {
+    public void clawbackEarnedPoints(UUID orderId, long refundedAmountCents, long orderTotalCents) {
         if (refundedAmountCents <= 0 || orderTotalCents <= 0) return;
 
         LoyaltyTransaction earnTx = transactionRepository
@@ -291,7 +291,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public void restoreRedeemedPoints(long orderId) {
+    public void restoreRedeemedPoints(UUID orderId) {
         if (transactionRepository.existsBySourceOrderIdAndType(orderId, LoyaltyTransactionType.RESTORE_ORDER)) {
             log.debug("[LOYALTY] Restore already recorded for order {} — skipping", orderId);
             return;
@@ -322,7 +322,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public LoyaltyTransactionResponse issueBonus(long companyId, UUID ownerId, IssueBonusRequest request) {
+    public LoyaltyTransactionResponse issueBonus(UUID companyId, UUID ownerId, IssueBonusRequest request) {
         assertOwner(companyId, ownerId);
 
         LoyaltyAccount account = getOrCreateAccount(request.getUserId(), companyId);
@@ -347,7 +347,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public LoyaltyTransactionResponse adjustPoints(UUID accountId, long companyId, UUID ownerId, AdjustPointsRequest request) {
+    public LoyaltyTransactionResponse adjustPoints(UUID accountId, UUID companyId, UUID ownerId, AdjustPointsRequest request) {
         assertOwner(companyId, ownerId);
 
         LoyaltyAccount account = accountRepository.findByIdAndCompanyId(accountId, companyId)
@@ -380,7 +380,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public LoyaltyPolicyResponse createOrUpdatePolicy(long companyId, UUID ownerId, CreateLoyaltyPolicyRequest request) {
+    public LoyaltyPolicyResponse createOrUpdatePolicy(UUID companyId, UUID ownerId, CreateLoyaltyPolicyRequest request) {
         assertOwner(companyId, ownerId);
 
         LoyaltyEarnMode mode;
@@ -413,7 +413,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional(readOnly = true)
-    public LoyaltyPolicyResponse getPolicy(long companyId) {
+    public LoyaltyPolicyResponse getPolicy(UUID companyId) {
         return policyRepository.findFirstByCompanyIdAndActiveTrue(companyId)
                 .map(this::toPolicyResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("No active loyalty policy for this company"));
@@ -421,7 +421,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public LoyaltyTierResponse createTier(long companyId, UUID ownerId, CreateLoyaltyTierRequest request) {
+    public LoyaltyTierResponse createTier(UUID companyId, UUID ownerId, CreateLoyaltyTierRequest request) {
         assertOwner(companyId, ownerId);
         LoyaltyTier tier = new LoyaltyTier();
         tier.setCompanyId(companyId);
@@ -436,7 +436,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional
-    public LoyaltyTierResponse updateTier(UUID tierId, long companyId, UUID ownerId, CreateLoyaltyTierRequest request) {
+    public LoyaltyTierResponse updateTier(UUID tierId, UUID companyId, UUID ownerId, CreateLoyaltyTierRequest request) {
         assertOwner(companyId, ownerId);
         LoyaltyTier tier = tierRepository.findById(tierId)
                 .orElseThrow(() -> new ResourceNotFoundException("Loyalty tier not found"));
@@ -454,7 +454,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<LoyaltyTierResponse> listTiers(long companyId) {
+    public List<LoyaltyTierResponse> listTiers(UUID companyId) {
         return tierRepository.findByCompanyIdOrderByMinPointsAsc(companyId).stream()
                 .map(this::toTierResponse)
                 .toList();
@@ -547,7 +547,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private LoyaltyAccount getOrCreateAccount(UUID userId, long companyId) {
+    private LoyaltyAccount getOrCreateAccount(UUID userId, UUID companyId) {
         return accountRepository.findByUserIdAndCompanyId(userId, companyId).orElseGet(() -> {
             LoyaltyAccount a = new LoyaltyAccount();
             a.setUserId(userId);
@@ -556,14 +556,14 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         });
     }
 
-    private LoyaltyAccount emptyAccount(UUID userId, long companyId) {
+    private LoyaltyAccount emptyAccount(UUID userId, UUID companyId) {
         LoyaltyAccount a = new LoyaltyAccount();
         a.setUserId(userId);
         a.setCompanyId(companyId);
         return a;
     }
 
-    private void evaluateTierPromotion(LoyaltyAccount account, long companyId) {
+    private void evaluateTierPromotion(LoyaltyAccount account, UUID companyId) {
         List<LoyaltyTier> tiers = tierRepository.findByCompanyIdOrderByMinPointsDesc(companyId);
         UUID newTierId = null;
         for (LoyaltyTier tier : tiers) {
@@ -587,13 +587,13 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                 .orElse(BigDecimal.ONE);
     }
 
-    private int getPointValueCents(long companyId) {
+    private int getPointValueCents(UUID companyId) {
         return policyRepository.findFirstByCompanyIdAndActiveTrue(companyId)
                 .map(LoyaltyPolicy::getPointValueCents)
                 .orElse(1);
     }
 
-    private void assertOwner(long companyId, UUID userId) {
+    private void assertOwner(UUID companyId, UUID userId) {
         companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_PROMOTIONS);
     }
 

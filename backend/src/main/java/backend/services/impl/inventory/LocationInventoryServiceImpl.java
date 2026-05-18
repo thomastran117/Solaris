@@ -80,7 +80,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     // --- Location CRUD ---
 
     @Override
-    public List<LocationResponse> getLocations(long companyId, UUID ownerId) {
+    public List<LocationResponse> getLocations(UUID companyId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         return locationRepository.findAllByCompanyIdOrderByDisplayOrderAscNameAsc(companyId)
                 .stream()
@@ -89,7 +89,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     }
 
     @Override
-    public LocationResponse getLocation(long companyId, long locationId, UUID ownerId) {
+    public LocationResponse getLocation(UUID companyId, UUID locationId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -98,7 +98,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationResponse createLocation(long companyId, UUID ownerId, CreateLocationRequest request) {
+    public LocationResponse createLocation(UUID companyId, UUID ownerId, CreateLocationRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         if (locationRepository.existsByCodeAndCompanyId(request.getCode(), companyId)) {
@@ -128,7 +128,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationResponse updateLocation(long companyId, long locationId, UUID ownerId, UpdateLocationRequest request) {
+    public LocationResponse updateLocation(UUID companyId, UUID locationId, UUID ownerId, UpdateLocationRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -167,7 +167,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public void deleteLocation(long companyId, long locationId, UUID ownerId) {
+    public void deleteLocation(UUID companyId, UUID locationId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -183,7 +183,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     // --- Stock queries ---
 
     @Override
-    public List<LocationStockResponse> getLocationStock(long companyId, long locationId, UUID ownerId) {
+    public List<LocationStockResponse> getLocationStock(UUID companyId, UUID locationId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         locationRepository.findByIdAndCompanyId(locationId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
@@ -195,7 +195,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     }
 
     @Override
-    public List<LocationStockResponse> getProductLocationStocks(long companyId, long productId, UUID ownerId) {
+    public List<LocationStockResponse> getProductLocationStocks(UUID companyId, UUID productId, UUID ownerId) {
         assertCompanyOwnership(companyId, ownerId);
         productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -210,9 +210,9 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationStockResponse setLocationStock(long companyId, long locationId, long productId,
+    public LocationStockResponse setLocationStock(UUID companyId, UUID locationId, UUID productId,
                                                    UUID ownerId, SetLocationStockRequest request,
-                                                   Long variantId) {
+                                                   UUID variantId) {
         assertCompanyOwnership(companyId, ownerId);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -221,7 +221,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
-        long variantRef = 0L;
+        UUID variantRef = null;
         ProductVariant variant = null;
         if (variantId != null) {
             variant = variantRepository.findByIdAndProductId(variantId, productId)
@@ -251,7 +251,6 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 throw new ConflictException("Location stock is currently being updated, please try again shortly");
             }
 
-            final long finalVariantRef = variantRef;
             LocationStock locationStock = locationStockRepository
                     .findByLocationIdAndProductIdAndVariantRef(locationId, productId, variantRef)
                     .orElse(null);
@@ -265,7 +264,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 locationStock.setLocation(location);
                 locationStock.setProduct(product);
                 locationStock.setVariant(variant);
-                locationStock.setVariantRef(finalVariantRef);
+                locationStock.setVariantRef(variantRef);
                 locationStock.setStock(newStock);
                 locationStock.setLowStockThreshold(request.getLowStockThreshold());
                 locationStock = locationStockRepository.save(locationStock);
@@ -310,9 +309,9 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     @Override
     @Transactional
-    public LocationStockResponse adjustLocationStock(long companyId, long locationId, long productId,
+    public LocationStockResponse adjustLocationStock(UUID companyId, UUID locationId, UUID productId,
                                                       UUID ownerId, AdjustStockRequest request,
-                                                      Long variantId) {
+                                                      UUID variantId) {
         assertCompanyOwnership(companyId, ownerId);
 
         InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
@@ -321,7 +320,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         Product product = productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
-        long variantRef = 0L;
+        UUID variantRef = null;
         ProductVariant variant = null;
         if (variantId != null) {
             variant = variantRepository.findByIdAndProductId(variantId, productId)
@@ -399,7 +398,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     // --- Helpers ---
 
-    private void assertCompanyOwnership(long companyId, UUID ownerId) {
+    private void assertCompanyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
     }
 
@@ -438,7 +437,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
             stockStatus = "IN_STOCK";
         }
 
-        Long variantId = ls.isProductLevel() ? null : ls.getVariantRef();
+        UUID variantId = ls.isProductLevel() ? null : ls.getVariant().getId();
 
         return new LocationStockResponse(
                 ls.getId(),

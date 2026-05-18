@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Seeds the pricing engine for dev:
@@ -620,7 +621,7 @@ public class PricingEngineSeeder {
     // Entity builders
     // =========================================================================
 
-    private void loyalty(long companyId, String name,
+    private void loyalty(UUID companyId, String name,
                          BigDecimal earnRate, int pointValueCents, int minRedemption,
                          Integer expiryDays, int birthdayBonus, int birthdayCreditCents,
                          BigDecimal cashbackRate, LoyaltyEarnMode mode,

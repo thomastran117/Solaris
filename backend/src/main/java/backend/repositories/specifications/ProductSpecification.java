@@ -13,6 +13,7 @@ import backend.models.enums.ProductStatus;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ProductSpecification {
 
@@ -34,7 +35,7 @@ public class ProductSpecification {
      *                          when false, restricts to products with no active discount (JPA path: skip false)
      */
     public static Specification<Product> withFilters(
-            long companyId,
+            UUID companyId,
             String q,
             String category,
             String brand,

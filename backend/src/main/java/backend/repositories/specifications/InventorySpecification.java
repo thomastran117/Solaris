@@ -9,6 +9,7 @@ import backend.models.enums.ProductStatus;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class InventorySpecification {
 
@@ -19,7 +20,7 @@ public class InventorySpecification {
      * Delegates to the cursor-aware overload with null cursor values (first page).
      */
     public static Specification<Product> withFilters(
-            long companyId,
+            UUID companyId,
             String stockStatus,
             String q,
             String category,
@@ -37,7 +38,7 @@ public class InventorySpecification {
      * {@code (updatedAt < cursorUpdatedAt) OR (updatedAt = cursorUpdatedAt AND id < cursorId)}.
      */
     public static Specification<Product> withFilters(
-            long companyId,
+            UUID companyId,
             String stockStatus,
             String q,
             String category,
@@ -46,7 +47,7 @@ public class InventorySpecification {
             Integer minStock,
             Integer maxStock,
             Instant cursorUpdatedAt,
-            Long cursorId) {
+            UUID cursorId) {
 
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();

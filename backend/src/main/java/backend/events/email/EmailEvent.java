@@ -53,9 +53,9 @@ public sealed interface EmailEvent
     record LowStockAlertEmail(
         String toEmail,
         String firstName,
-        long productId,
+        java.util.UUID productId,
         String productName,
-        Long variantId,
+        java.util.UUID variantId,
         String variantSku,
         int currentStock,
         Integer threshold,
@@ -91,9 +91,9 @@ public sealed interface EmailEvent
     record BackInStockEmail(
         String toEmail,
         String firstName,
-        long productId,
+        java.util.UUID productId,
         String productName,
-        Long variantId,
+        java.util.UUID variantId,
         String variantTitle,
         String productUrl
     ) implements EmailEvent {}

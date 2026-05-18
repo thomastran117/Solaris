@@ -14,5 +14,5 @@ public interface StockNotificationService {
 
     List<StockNotificationResponse> listByUser(UUID userId);
 
-    void notifySubscribers(UUID productId, long variantRef);
+    void notifySubscribers(UUID productId, UUID variantId);
 }
