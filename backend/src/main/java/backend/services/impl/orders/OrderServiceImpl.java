@@ -501,13 +501,21 @@ public class OrderServiceImpl implements OrderService {
                 bundleItem.setUnitPrice(bundle.getPrice());
                 bundleItem.setProductName(bundle.getName());
 
+                // Per-bundle decrement tracking: allows restoring only this bundle's
+                // constituents if we pivot to a preorder without rolling back the whole order.
+                List<Object[]> bundleDecrProd = new ArrayList<>();
+                List<Object[]> bundleDecrVar  = new ArrayList<>();
+                boolean bundlePreordered = false;
+
                 for (BundleItem bi : bundle.getItems()) {
                     if (bi.getProduct().getStatus() != ProductStatus.ACTIVE || !bi.getProduct().isPurchasable()) {
+                        safeRestoreAll(bundleDecrProd, bundleDecrVar, Collections.emptyList());
                         safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                         throw new BadRequestException("Bundle '" + bundle.getName() +
                             "' contains unavailable product '" + bi.getProduct().getName() + "'");
                     }
                     if (bi.getVariant() != null && !bi.getVariant().isPurchasable()) {
+                        safeRestoreAll(bundleDecrProd, bundleDecrVar, Collections.emptyList());
                         safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                         throw new BadRequestException("Bundle '" + bundle.getName() +
                             "' contains an unavailable variant of '" + bi.getProduct().getName() + "'");
@@ -524,21 +532,38 @@ public class OrderServiceImpl implements OrderService {
                     }
 
                     if (updated == 0) {
+                        if (bundle.isPreorderEnabled() && bundle.getCompany().isPreordersEnabled()) {
+                            // Restore only this bundle's already-decremented constituents;
+                            // the rest of the order remains intact.
+                            safeRestoreAll(bundleDecrProd, bundleDecrVar, Collections.emptyList());
+                            bundlePreordered = true;
+                            break;
+                        }
+                        safeRestoreAll(bundleDecrProd, bundleDecrVar, Collections.emptyList());
                         safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                         throw new ConflictException("Insufficient stock for bundle '" + bundle.getName() +
                                 "' (product: '" + bi.getProduct().getName() + "')");
                     }
 
                     if (bi.getVariant() != null) {
-                        decrementedVariants.add(new Object[]{bi.getVariant().getId(), totalQty});
+                        bundleDecrVar.add(new Object[]{bi.getVariant().getId(), totalQty});
                     } else {
-                        decrementedProducts.add(new Object[]{bi.getProduct().getId(), totalQty});
+                        bundleDecrProd.add(new Object[]{bi.getProduct().getId(), totalQty});
                     }
                     // Only audit tracked stock; untracked (null) items are skipped.
                     Integer biActualStock = bi.getVariant() != null ? bi.getVariant().getStock() : bi.getProduct().getStock();
                     if (biActualStock != null) {
                         purchaseRecords.add(new PurchaseRecord(bi.getProduct(), bi.getVariant(), biActualStock, biActualStock - totalQty));
                     }
+                }
+
+                if (bundlePreordered) {
+                    bundleItem.setFulfillmentStatus(FulfillmentStatus.PREORDERED);
+                } else {
+                    // All constituents decremented successfully — promote to global tracking
+                    // so restoreItemStock / safeRestoreAll cover them on order failure.
+                    decrementedProducts.addAll(bundleDecrProd);
+                    decrementedVariants.addAll(bundleDecrVar);
                 }
 
                 orderItems.add(bundleItem);

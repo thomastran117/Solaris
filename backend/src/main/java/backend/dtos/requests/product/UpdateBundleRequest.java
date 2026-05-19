@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 @Getter
@@ -36,6 +37,10 @@ public class UpdateBundleRequest {
     private ProductStatus status;
 
     private Boolean listed;
+
+    private Boolean preorderEnabled;
+
+    private Instant preorderExpectedDate;
 
     /** If provided, replaces the entire items list. Max 10 items. */
     @Size(max = 10)

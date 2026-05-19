@@ -94,6 +94,8 @@ public class BundleServiceImpl implements BundleService {
         bundle.setThumbnailUrl(request.getThumbnailUrl());
         bundle.setCurrency(request.getCurrency() != null ? request.getCurrency() : "USD");
         bundle.setListed(request.isListed());
+        bundle.setPreorderEnabled(request.isPreorderEnabled());
+        if (request.getPreorderExpectedDate() != null) bundle.setPreorderExpectedDate(request.getPreorderExpectedDate());
 
         List<BundleItem> items = buildItems(bundle, itemRequests, companyId);
         bundle.setItems(items);
@@ -137,6 +139,8 @@ public class BundleServiceImpl implements BundleService {
         if (request.getCompareAtPrice() != null) bundle.setCompareAtPrice(request.getCompareAtPrice());
         if (request.getStatus() != null) bundle.setStatus(request.getStatus());
         if (request.getListed() != null) bundle.setListed(request.getListed());
+        if (request.getPreorderEnabled() != null) bundle.setPreorderEnabled(request.getPreorderEnabled());
+        if (request.getPreorderExpectedDate() != null) bundle.setPreorderExpectedDate(request.getPreorderExpectedDate());
 
         if (request.getItems() != null) {
             if (request.getItems().isEmpty()) {
@@ -318,6 +322,8 @@ public class BundleServiceImpl implements BundleService {
                 b.getCurrency(),
                 b.getStatus().name(),
                 b.isListed(),
+                b.isPreorderEnabled(),
+                b.getPreorderExpectedDate(),
                 items,
                 b.getCreatedAt(),
                 b.getUpdatedAt());

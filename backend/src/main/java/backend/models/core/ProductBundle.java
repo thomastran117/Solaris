@@ -61,6 +61,12 @@ public class ProductBundle {
     @Column(nullable = false)
     private boolean listed = true;
 
+    @Column(nullable = false)
+    private boolean preorderEnabled = false;
+
+    @Column(nullable = true)
+    private Instant preorderExpectedDate;
+
     @OneToMany(mappedBy = "bundle", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
     @BatchSize(size = 50)

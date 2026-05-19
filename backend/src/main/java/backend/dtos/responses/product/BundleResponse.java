@@ -21,6 +21,8 @@ public class BundleResponse {
     private String currency;
     private String status;
     private boolean listed;
+    private boolean preorderEnabled;
+    private Instant preorderExpectedDate;
     private List<BundleItemResponse> items;
     private Instant createdAt;
     private Instant updatedAt;

@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 @Getter
@@ -39,6 +40,10 @@ public class CreateBundleRequest {
     private String currency;
 
     private boolean listed = true;
+
+    private boolean preorderEnabled = false;
+
+    private Instant preorderExpectedDate;
 
     @NotNull
     @Size(min = 1, max = 10)
