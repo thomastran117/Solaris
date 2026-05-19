@@ -76,6 +76,9 @@ public class Company {
     @Column(nullable = true)
     private Integer employeeCount;
 
+    @Column(nullable = false)
+    private boolean preordersEnabled = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CompanyStatus status = CompanyStatus.ACTIVE;

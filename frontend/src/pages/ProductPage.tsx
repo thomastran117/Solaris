@@ -76,6 +76,9 @@ export default function ProductPage() {
   const isOutOfStock = effectiveStock === 0;
   const isPurchasable = selectedVariant?.purchasable ?? product?.purchasable ?? true;
   const unavailable = isOutOfStock || !isPurchasable;
+  const effectivePreorderEnabled = selectedVariant?.preorderEnabled ?? product?.preorderEnabled ?? false;
+  const isPreorderEligible = isOutOfStock && effectivePreorderEnabled;
+  const preorderExpectedDate = selectedVariant?.preorderExpectedDate ?? product?.preorderExpectedDate ?? null;
 
   const activeNotification: StockNotification | undefined = myNotifications?.find(n => {
     if (n.productId !== productId) return false;
@@ -271,11 +274,17 @@ export default function ProductPage() {
             )}
 
             {/* Stock badge */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {unavailable ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400">
-                  Out of stock
-                </span>
+                isPreorderEligible ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/15 border border-sky-400/30 text-sky-200">
+                    Preorder
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400">
+                    Out of stock
+                  </span>
+                )
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/15 border border-green-500/30 text-green-400">
                   <CheckCircle className="w-3.5 h-3.5" />
@@ -283,6 +292,11 @@ export default function ProductPage() {
                   {effectiveStock !== null && effectiveStock <= 5 && effectiveStock > 0 && (
                     <span className="text-yellow-400 ml-0.5">— only {effectiveStock} left</span>
                   )}
+                </span>
+              )}
+              {isPreorderEligible && preorderExpectedDate && (
+                <span className="text-xs text-white/60">
+                  Expected {new Date(preorderExpectedDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                 </span>
               )}
             </div>
@@ -313,6 +327,26 @@ export default function ProductPage() {
                   >
                     <ShoppingCart className="w-4 h-4" />
                     Add to Cart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (accessToken ? setSaveOpen(true) : navigate("/login"))}
+                    aria-label="Save to list"
+                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
+                  >
+                    <Bookmark className="w-4 h-4" />
+                    Save
+                  </button>
+                </div>
+              ) : isPreorderEligible ? (
+                /* Preorder-eligible → Preorder button + Save */
+                <div className="flex gap-2">
+                  <button
+                    disabled
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-sky-400/40 bg-sky-400/10 text-sky-200 font-semibold text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Package className="w-4 h-4" />
+                    Preorder
                   </button>
                   <button
                     type="button"

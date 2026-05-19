@@ -150,6 +150,7 @@ public class SubOrderServiceImpl implements SubOrderService {
         orderItemRepository.findAllBySubOrderId(subOrderId).forEach(item -> {
             if (item.getFulfillmentStatus() == FulfillmentStatus.PENDING
                     || item.getFulfillmentStatus() == FulfillmentStatus.BACKORDERED
+                    || item.getFulfillmentStatus() == FulfillmentStatus.PREORDERED
                     || item.getFulfillmentStatus() == FulfillmentStatus.PACKED) {
                 item.setFulfillmentStatus(FulfillmentStatus.CANCELLED);
                 orderItemRepository.save(item);

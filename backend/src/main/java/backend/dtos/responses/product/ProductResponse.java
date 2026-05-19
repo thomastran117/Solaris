@@ -37,6 +37,8 @@ public class ProductResponse {
     private boolean featured;
     private boolean purchasable;
     private boolean listed;
+    private boolean preorderEnabled;
+    private Instant preorderExpectedDate;
     private Integer boostWeight;
     private Instant pinnedUntil;
     private Integer pinnedRank;

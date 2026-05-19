@@ -392,6 +392,8 @@ public class ProductServiceImpl implements ProductService {
         if (request.getFeatured() != null) product.setFeatured(request.getFeatured());
         if (request.getPurchasable() != null) product.setPurchasable(request.getPurchasable());
         if (request.getListed() != null) product.setListed(request.getListed());
+        if (request.getPreorderEnabled() != null) product.setPreorderEnabled(request.getPreorderEnabled());
+        if (request.getPreorderExpectedDate() != null) product.setPreorderExpectedDate(request.getPreorderExpectedDate());
 
         // Merchandising — pinning a product with an expired window is rejected outright so the
         // admin sees a clear validation error rather than a silent reset on next reindex.
@@ -822,6 +824,8 @@ public class ProductServiceImpl implements ProductService {
         if (request.getStock() != null) variant.setStock(request.getStock());
         if (request.getLowStockThreshold() != null) variant.setLowStockThreshold(request.getLowStockThreshold());
         if (request.getPurchasable() != null) variant.setPurchasable(request.getPurchasable());
+        if (request.getPreorderEnabled() != null) variant.setPreorderEnabled(request.getPreorderEnabled());
+        if (request.getPreorderExpectedDate() != null) variant.setPreorderExpectedDate(request.getPreorderExpectedDate());
         if (request.getOption1() != null) variant.setOption1(request.getOption1());
         if (request.getOption2() != null) variant.setOption2(request.getOption2());
         if (request.getOption3() != null) variant.setOption3(request.getOption3());
@@ -1325,6 +1329,8 @@ public class ProductServiceImpl implements ProductService {
                 v.getStock(),
                 v.getLowStockThreshold(),
                 v.isPurchasable(),
+                v.isPreorderEnabled(),
+                v.getPreorderExpectedDate(),
                 v.getOption1(),
                 v.getOption2(),
                 v.getOption3(),
@@ -1547,6 +1553,8 @@ public class ProductServiceImpl implements ProductService {
                 product.isFeatured(),
                 product.isPurchasable(),
                 product.isListed(),
+                product.isPreorderEnabled(),
+                product.getPreorderExpectedDate(),
                 product.getBoostWeight(),
                 product.getPinnedUntil(),
                 product.getPinnedRank(),
@@ -1794,6 +1802,8 @@ public class ProductServiceImpl implements ProductService {
             case "purchasable" -> p.setPurchasable(Boolean.parseBoolean(value));
             case "listed" -> p.setListed(Boolean.parseBoolean(value));
             case "backorderEnabled" -> p.setBackorderEnabled(Boolean.parseBoolean(value));
+            case "preorderEnabled" -> p.setPreorderEnabled(Boolean.parseBoolean(value));
+            case "preorderExpectedDate" -> p.setPreorderExpectedDate(value == null ? null : Instant.parse(value));
             case "subscribable" -> p.setSubscribable(Boolean.parseBoolean(value));
             case "subscriptionIntervals" -> p.setSubscriptionIntervals(value);
             case "subscriptionDiscountPercent" -> p.setSubscriptionDiscountPercent(value == null ? null : new BigDecimal(value));
@@ -1822,6 +1832,8 @@ public class ProductServiceImpl implements ProductService {
             case "autoRestockQty" -> v.setAutoRestockQty(value == null ? null : Integer.parseInt(value));
             case "purchasable" -> v.setPurchasable(Boolean.parseBoolean(value));
             case "backorderEnabled" -> v.setBackorderEnabled(Boolean.parseBoolean(value));
+            case "preorderEnabled" -> v.setPreorderEnabled(Boolean.parseBoolean(value));
+            case "preorderExpectedDate" -> v.setPreorderExpectedDate(value == null ? null : Instant.parse(value));
             case "option1" -> v.setOption1(value);
             case "option2" -> v.setOption2(value);
             case "option3" -> v.setOption3(value);

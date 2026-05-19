@@ -12,6 +12,8 @@ public record ProductVariantResponse(
         Integer stock,
         Integer lowStockThreshold,
         boolean purchasable,
+        boolean preorderEnabled,
+        Instant preorderExpectedDate,
         String option1,
         String option2,
         String option3,

@@ -159,6 +159,12 @@ public class Product {
     private boolean backorderEnabled = false;
 
     @Column(nullable = false)
+    private boolean preorderEnabled = false;
+
+    @Column(nullable = true)
+    private Instant preorderExpectedDate;
+
+    @Column(nullable = false)
     private boolean listed = true;
 
     // -------------------------------------------------------------------------

@@ -27,6 +27,7 @@ public class CompanyResponse {
     private Integer foundedYear;
     private Integer employeeCount;
     private String status;
+    private boolean preordersEnabled;
     private Instant createdAt;
     private Instant updatedAt;
 }

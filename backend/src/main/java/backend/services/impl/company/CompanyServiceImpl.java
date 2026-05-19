@@ -207,6 +207,7 @@ public class CompanyServiceImpl implements CompanyService {
         if (request.getTaxId() != null) company.setTaxId(request.getTaxId());
         if (request.getFoundedYear() != null) company.setFoundedYear(request.getFoundedYear());
         if (request.getEmployeeCount() != null) company.setEmployeeCount(request.getEmployeeCount());
+        if (request.getPreordersEnabled() != null) company.setPreordersEnabled(request.getPreordersEnabled());
 
         return toResponse(companyRepository.save(company));
     }
@@ -256,6 +257,7 @@ public class CompanyServiceImpl implements CompanyService {
                 company.getFoundedYear(),
                 company.getEmployeeCount(),
                 company.getStatus().name(),
+                company.isPreordersEnabled(),
                 company.getCreatedAt(),
                 company.getUpdatedAt()
         );

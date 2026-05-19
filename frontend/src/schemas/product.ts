@@ -67,6 +67,9 @@ export const productFormSchema = z
     featured: z.boolean(),
     purchasable: z.boolean(),
     listed: z.boolean(),
+    preorderEnabled: z.boolean(),
+    /** Local datetime string from `<input type="datetime-local">`. Empty when not set. */
+    preorderExpectedDate: z.string(),
 
     /**
      * Merchandising — pin and boost. Stored as strings on the form (mirrors price/stock)
@@ -161,6 +164,8 @@ export const productFormDefaults: ProductFormValues = {
   featured: false,
   purchasable: true,
   listed: true,
+  preorderEnabled: false,
+  preorderExpectedDate: "",
   boostWeight: "",
   pinnedUntil: "",
   pinnedRank: "",

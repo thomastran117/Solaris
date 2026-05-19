@@ -71,6 +71,12 @@ public class ProductVariant {
     @Column(nullable = false)
     private boolean backorderEnabled = false;
 
+    @Column(nullable = false)
+    private boolean preorderEnabled = false;
+
+    @Column(nullable = true)
+    private Instant preorderExpectedDate;
+
     @Column(nullable = true, length = 100)
     private String option1;
 

@@ -84,9 +84,10 @@ public class OrderItem {
     private String fulfillmentLocationName;
 
     /**
-     * Per-item fulfillment lifecycle status. Starts as PENDING (stock available at order time)
-     * or BACKORDERED (zero stock; waiting for restock). Advances through PACKED → SHIPPED →
-     * DELIVERED, or RETURNED / CANCELLED on terminal paths.
+     * Per-item fulfillment lifecycle status. Starts as PENDING (stock available), BACKORDERED
+     * (zero stock with backorderEnabled), or PREORDERED (zero stock with preorderEnabled and
+     * company preordersEnabled). Advances through PACKED → SHIPPED → DELIVERED, or RETURNED /
+     * CANCELLED on terminal paths.
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -72,6 +72,10 @@ function buildPayload(values: ProductFormValues): AdminProductWritePayload {
     featured: values.featured,
     purchasable: values.purchasable,
     listed: values.listed,
+    preorderEnabled: values.preorderEnabled,
+    preorderExpectedDate: values.preorderEnabled && values.preorderExpectedDate
+      ? new Date(values.preorderExpectedDate).toISOString()
+      : null,
     boostWeight: intOrNull(values.boostWeight),
     pinnedUntil: values.pinnedUntil
       ? new Date(values.pinnedUntil).toISOString()
@@ -98,6 +102,8 @@ function productToFormValues(p: AdminProduct): ProductFormValues {
     featured: p.featured,
     purchasable: p.purchasable,
     listed: p.listed,
+    preorderEnabled: p.preorderEnabled,
+    preorderExpectedDate: toLocalInputValue(p.preorderExpectedDate),
     boostWeight: p.boostWeight == null ? "" : String(p.boostWeight),
     pinnedUntil: toLocalInputValue(p.pinnedUntil),
     pinnedRank: p.pinnedRank == null ? "" : String(p.pinnedRank),
@@ -407,6 +413,24 @@ export default function AdminProductEditor() {
               <input type="checkbox" {...form.register("purchasable")} className="accent-sky-400" />
               Purchasable
             </label>
+          </div>
+
+          {/* Preorders */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-white/80">
+              <input type="checkbox" {...form.register("preorderEnabled")} className="accent-sky-400" />
+              Allow preorders
+            </label>
+            {form.watch("preorderEnabled") && (
+              <label className="flex flex-col gap-1 text-sm text-white/80">
+                Expected availability
+                <input
+                  type="datetime-local"
+                  {...form.register("preorderExpectedDate")}
+                  className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-white placeholder:text-white/45 focus:outline-none focus:ring-1 focus:ring-sky-400/50"
+                />
+              </label>
+            )}
           </div>
 
           {/* Merchandising */}

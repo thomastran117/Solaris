@@ -43,13 +43,15 @@ export interface CatalogProduct {
   tags: string | null;
   thumbnailUrl: string | null;
   images: { id: string; imageUrl: string; displayOrder: number }[];
-  variants: { id: string; sku: string | null; price: number; stock: number | null; option1: string | null; option2: string | null; option3: string | null }[];
+  variants: { id: string; sku: string | null; price: number; stock: number | null; purchasable: boolean; preorderEnabled: boolean; preorderExpectedDate: string | null; option1: string | null; option2: string | null; option3: string | null }[];
   stock: number | null;
   status: string;
   scheduledPublishAt: string | null;
   publishedAt: string | null;
   featured: boolean;
   purchasable: boolean;
+  preorderEnabled: boolean;
+  preorderExpectedDate: string | null;
   createdAt: string;
   updatedAt: string;
   activePromotion: ActivePromotionSummary | null;
@@ -118,6 +120,8 @@ export interface AdminProduct {
   featured: boolean;
   purchasable: boolean;
   listed: boolean;
+  preorderEnabled: boolean;
+  preorderExpectedDate: string | null;
   boostWeight: number | null;
   pinnedUntil: string | null;
   pinnedRank: number | null;
@@ -154,6 +158,9 @@ export interface AdminProductWritePayload {
   featured?: boolean;
   purchasable?: boolean;
   listed?: boolean;
+  preorderEnabled?: boolean;
+  /** ISO 8601 instant. Set to indicate when preordered items are expected. */
+  preorderExpectedDate?: string | null;
   /** Merchandising: pin/boost. Sent as null to clear. */
   boostWeight?: number | null;
   pinnedUntil?: string | null;

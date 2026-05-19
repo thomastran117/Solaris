@@ -26,6 +26,10 @@ public class UpdateProductVariantRequest {
 
     private Boolean purchasable;
 
+    private Boolean preorderEnabled;
+
+    private java.time.Instant preorderExpectedDate;
+
     @Size(max = 100)
     @SafeText
     private String option1;

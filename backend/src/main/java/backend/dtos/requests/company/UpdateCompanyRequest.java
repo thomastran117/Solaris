@@ -61,4 +61,6 @@ public class UpdateCompanyRequest {
 
     @Min(value = 1, message = "Employee count must be at least 1")
     private Integer employeeCount;
+
+    private Boolean preordersEnabled;
 }

@@ -5,6 +5,8 @@ public enum FulfillmentStatus {
     PENDING,
     /** Zero stock at order time and backorderEnabled=true; waiting for restock. */
     BACKORDERED,
+    /** Zero stock at order time and preorderEnabled=true with company preordersEnabled=true; waiting for stock to arrive. */
+    PREORDERED,
     /** Physically assembled by the warehouse; ready for carrier handoff. */
     PACKED,
     /** Pickup orders only: assembled at the store and waiting for the customer to collect. */

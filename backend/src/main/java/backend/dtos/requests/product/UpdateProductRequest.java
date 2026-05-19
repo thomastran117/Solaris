@@ -78,6 +78,10 @@ public class UpdateProductRequest {
 
     private Boolean listed;
 
+    private Boolean preorderEnabled;
+
+    private Instant preorderExpectedDate;
+
     /**
      * Merchandising — folded into the main update payload so the admin editor can save in one go.
      * The dedicated {@code /merchandising} endpoint (see {@code UpdateProductMerchandisingRequest})

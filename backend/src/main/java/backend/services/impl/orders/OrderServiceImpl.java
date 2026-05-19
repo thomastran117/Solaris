@@ -422,6 +422,8 @@ public class OrderServiceImpl implements OrderService {
                     if (updated == 0) {
                         if (variant.isBackorderEnabled()) {
                             item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                        } else if (variant.isPreorderEnabled() && variant.getProduct().getCompany().isPreordersEnabled()) {
+                            item.setFulfillmentStatus(FulfillmentStatus.PREORDERED);
                         } else {
                             safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                             throw new ConflictException("Insufficient stock for variant of product '" + product.getName() + "'");
@@ -445,6 +447,8 @@ public class OrderServiceImpl implements OrderService {
                     if (updated == 0) {
                         if (product.isBackorderEnabled()) {
                             item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                        } else if (product.isPreorderEnabled() && product.getCompany().isPreordersEnabled()) {
+                            item.setFulfillmentStatus(FulfillmentStatus.PREORDERED);
                         } else {
                             safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                             throw new ConflictException("Insufficient stock for product '" + product.getName() + "'");
@@ -459,8 +463,9 @@ public class OrderServiceImpl implements OrderService {
                     item.setUnitPrice(product.getPrice());
                 }
 
-                // Location stock — skip for backordered items (no stock was reserved)
-                if (item.getFulfillmentStatus() != FulfillmentStatus.BACKORDERED) {
+                // Location stock — skip for backordered/preordered items (no stock was reserved)
+                if (item.getFulfillmentStatus() != FulfillmentStatus.BACKORDERED
+                        && item.getFulfillmentStatus() != FulfillmentStatus.PREORDERED) {
                     List<AllocationService.AllocationResult> allocResults =
                             allocationService.allocate(productId, variantId, qty, strategy, buyerLat, buyerLng);
 
@@ -1430,7 +1435,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void restoreItemStock(OrderItem item) {
-        if (item.getFulfillmentStatus() == FulfillmentStatus.BACKORDERED) return;  // no stock was decremented — nothing to restore
+        if (item.getFulfillmentStatus() == FulfillmentStatus.BACKORDERED
+                || item.getFulfillmentStatus() == FulfillmentStatus.PREORDERED) return;  // no stock was decremented — nothing to restore
 
         if (item.getBundle() != null) {
             // Restore each constituent product's stock (no location stock for bundle items)
@@ -1999,7 +2005,8 @@ public class OrderServiceImpl implements OrderService {
         boolean allDoneOrShipped = order.getItems().stream()
                 .allMatch(i -> i.getFulfillmentStatus() == FulfillmentStatus.SHIPPED
                             || i.getFulfillmentStatus() == FulfillmentStatus.CANCELLED
-                            || i.getFulfillmentStatus() == FulfillmentStatus.BACKORDERED);
+                            || i.getFulfillmentStatus() == FulfillmentStatus.BACKORDERED
+                            || i.getFulfillmentStatus() == FulfillmentStatus.PREORDERED);
 
         if (allDoneOrShipped) {
             order.setStatus(OrderStatus.SHIPPED);
