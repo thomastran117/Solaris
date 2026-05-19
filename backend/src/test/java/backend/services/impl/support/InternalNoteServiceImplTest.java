@@ -1,7 +1,5 @@
-package backend.services.impl;
+package backend.services.impl.support;
 
-import java.util.UUID;
-import backend.testutil.TestIds;
 import backend.dtos.requests.note.CreateNoteRequest;
 import backend.dtos.responses.note.InternalNoteResponse;
 import backend.exceptions.http.ForbiddenException;
@@ -12,18 +10,18 @@ import backend.models.enums.NoteEntityType;
 import backend.models.enums.UserRole;
 import backend.repositories.InternalNoteRepository;
 import backend.repositories.UserRepository;
+import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class InternalNoteServiceImplTest {
 
     private InternalNoteRepository noteRepository;
@@ -49,8 +47,8 @@ class InternalNoteServiceImplTest {
             return n;
         });
 
-        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, 10L, "Checked with warehouse");
-        service.addNote(1L, req);
+        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, TestIds.uuid(10), "Checked with warehouse");
+        service.addNote(TestIds.uuid(1), req);
 
         verify(noteRepository).save(any(InternalNote.class));
     }
@@ -60,8 +58,8 @@ class InternalNoteServiceImplTest {
         User customer = makeUser(TestIds.uuid(2), UserRole.USER);
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(customer));
 
-        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, 10L, "note");
-        assertThrows(ForbiddenException.class, () -> service.addNote(2L, req));
+        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, TestIds.uuid(10), "note");
+        assertThrows(ForbiddenException.class, () -> service.addNote(TestIds.uuid(2), req));
     }
 
     // ─── listNotes ───────────────────────────────────────────────────────────
@@ -70,10 +68,10 @@ class InternalNoteServiceImplTest {
     void listNotes_staffSeeNotes() {
         User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
-        when(noteRepository.findAllByEntityTypeAndEntityIdOrderByCreatedAtAsc(NoteEntityType.TICKET, 5L))
+        when(noteRepository.findAllByEntityTypeAndEntityIdOrderByCreatedAtAsc(NoteEntityType.TICKET, TestIds.uuid(5)))
                 .thenReturn(List.of());
 
-        List<InternalNoteResponse> notes = service.listNotes(1L, NoteEntityType.TICKET, 5L);
+        List<InternalNoteResponse> notes = service.listNotes(TestIds.uuid(1), NoteEntityType.TICKET, TestIds.uuid(5));
         assertNotNull(notes);
         assertTrue(notes.isEmpty());
     }
@@ -83,7 +81,8 @@ class InternalNoteServiceImplTest {
         User customer = makeUser(TestIds.uuid(2), UserRole.USER);
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(customer));
 
-        assertThrows(ForbiddenException.class, () -> service.listNotes(2L, NoteEntityType.TICKET, 5L));
+        assertThrows(ForbiddenException.class,
+                () -> service.listNotes(TestIds.uuid(2), NoteEntityType.TICKET, TestIds.uuid(5)));
     }
 
     // ─── deleteNote ──────────────────────────────────────────────────────────
@@ -91,44 +90,44 @@ class InternalNoteServiceImplTest {
     @Test
     void deleteNote_authorCanDelete() {
         User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
-        InternalNote note = makeNote(10L, staff);
+        InternalNote note = makeNote(TestIds.uuid(10), staff);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
-        when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
+        when(noteRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(note));
 
-        service.deleteNote(10L, 1L);
+        service.deleteNote(TestIds.uuid(10), TestIds.uuid(1));
         verify(noteRepository).delete(note);
     }
 
     @Test
     void deleteNote_adminCanDeleteOthersNotes() {
         User author = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
-        User admin = makeUser(TestIds.uuid(2), UserRole.ADMIN);
-        InternalNote note = makeNote(10L, author);
+        User admin  = makeUser(TestIds.uuid(2), UserRole.ADMIN);
+        InternalNote note = makeNote(TestIds.uuid(10), author);
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(admin));
-        when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
+        when(noteRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(note));
 
-        service.deleteNote(10L, 2L);
+        service.deleteNote(TestIds.uuid(10), TestIds.uuid(2));
         verify(noteRepository).delete(note);
     }
 
     @Test
     void deleteNote_nonAuthorStaffForbidden() {
         User author = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
-        User other = makeUser(TestIds.uuid(3), UserRole.SUPPORT);
-        InternalNote note = makeNote(10L, author);
+        User other  = makeUser(TestIds.uuid(3), UserRole.SUPPORT);
+        InternalNote note = makeNote(TestIds.uuid(10), author);
         when(userRepository.findById(TestIds.uuid(3))).thenReturn(Optional.of(other));
-        when(noteRepository.findById(10L)).thenReturn(Optional.of(note));
+        when(noteRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(note));
 
-        assertThrows(ForbiddenException.class, () -> service.deleteNote(10L, 3L));
+        assertThrows(ForbiddenException.class, () -> service.deleteNote(TestIds.uuid(10), TestIds.uuid(3)));
     }
 
     @Test
     void deleteNote_throwsWhenNoteNotFound() {
         User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
-        when(noteRepository.findById(99L)).thenReturn(Optional.empty());
+        when(noteRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.deleteNote(99L, 1L));
+        assertThrows(ResourceNotFoundException.class, () -> service.deleteNote(TestIds.uuid(99), TestIds.uuid(1)));
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
@@ -141,12 +140,12 @@ class InternalNoteServiceImplTest {
         return u;
     }
 
-    private InternalNote makeNote(long id, User author) {
+    private InternalNote makeNote(UUID id, User author) {
         InternalNote n = new InternalNote();
         n.setId(id);
         n.setAuthor(author);
         n.setEntityType(NoteEntityType.ORDER);
-        n.setEntityId(1L);
+        n.setEntityId(TestIds.uuid(1));
         n.setBody("test note");
         return n;
     }

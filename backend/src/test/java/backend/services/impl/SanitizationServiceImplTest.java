@@ -5,9 +5,8 @@ import backend.dtos.requests.inventory.CreateLocationRequest;
 import backend.dtos.requests.inventory.CreateRestockRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -18,12 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SanitizationServiceImplTest {
 
     private SanitizationServiceImpl service;
 
-    @BeforeAll
+    @BeforeEach
     void setUp() {
         service = new SanitizationServiceImpl();
         service.afterPropertiesSet();

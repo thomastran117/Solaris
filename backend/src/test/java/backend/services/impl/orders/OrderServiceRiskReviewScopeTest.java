@@ -1,7 +1,5 @@
-package backend.services.impl;
+package backend.services.impl.orders;
 
-import java.util.UUID;
-import backend.testutil.TestIds;
 import backend.configurations.environment.RiskProperties;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
@@ -35,7 +33,6 @@ import backend.repositories.SubOrderRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.VendorBalanceRepository;
 import backend.services.impl.inventory.StockAlertService;
-import backend.services.impl.orders.OrderServiceImpl;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.CacheService;
 import backend.services.intf.auth.DeviceService;
@@ -46,21 +43,22 @@ import backend.services.intf.pricing.CommissionEngine;
 import backend.services.intf.pricing.PricingEngine;
 import backend.services.intf.pricing.RiskEngine;
 import backend.services.intf.promotions.LoyaltyService;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.support.EmailService;
+import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OrderServiceRiskReviewScopeTest {
 
     private OrderRepository orderRepository;
@@ -72,11 +70,11 @@ class OrderServiceRiskReviewScopeTest {
 
     @BeforeEach
     void setUp() {
-        orderRepository = mock(OrderRepository.class);
-        companyRepository = mock(CompanyRepository.class);
+        orderRepository          = mock(OrderRepository.class);
+        companyRepository        = mock(CompanyRepository.class);
         riskAssessmentRepository = mock(RiskAssessmentRepository.class);
-        riskReviewRepository = mock(RiskReviewRepository.class);
-        paymentService = mock(PaymentService.class);
+        riskReviewRepository     = mock(RiskReviewRepository.class);
+        paymentService           = mock(PaymentService.class);
 
         service = new OrderServiceImpl(
                 orderRepository,
@@ -114,36 +112,39 @@ class OrderServiceRiskReviewScopeTest {
                 mock(CommissionRecordRepository.class),
                 mock(VendorBalanceRepository.class),
                 mock(LoyaltyService.class),
-                mock(ActivityEventPublisher.class));
+                mock(ActivityEventPublisher.class),
+                mock(CompanyAccessService.class));
     }
 
     @Test
     void getOrderRisk_throwsWhenOrderContainsAnotherCompany() {
-        Company company = makeCompany(10L, 3L);
-        Order order = makeMixedCompanyOrder(200L);
+        Company company = makeCompany(TestIds.uuid(10), TestIds.uuid(3));
+        Order order     = makeMixedCompanyOrder(TestIds.uuid(200));
 
-        when(companyRepository.findByIdAndOwnerId(10L, 3L)).thenReturn(Optional.of(company));
-        when(orderRepository.findByIdAndProductCompanyId(200L, 10L)).thenReturn(Optional.of(order));
+        when(companyRepository.findByIdAndOwnerId(TestIds.uuid(10), TestIds.uuid(3))).thenReturn(Optional.of(company));
+        when(orderRepository.findByIdAndProductCompanyId(TestIds.uuid(200), TestIds.uuid(10))).thenReturn(Optional.of(order));
 
-        assertThrows(ResourceNotFoundException.class, () -> service.getOrderRisk(10L, 200L, 3L));
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getOrderRisk(TestIds.uuid(10), TestIds.uuid(200), TestIds.uuid(3)));
         verifyNoInteractions(riskAssessmentRepository);
     }
 
     @Test
     void approveRiskReview_throwsWhenOrderContainsAnotherCompany() {
-        Company company = makeCompany(10L, 3L);
-        Order order = makeMixedCompanyOrder(200L);
+        Company company = makeCompany(TestIds.uuid(10), TestIds.uuid(3));
+        Order order     = makeMixedCompanyOrder(TestIds.uuid(200));
         order.setStatus(OrderStatus.UNDER_REVIEW);
 
-        when(companyRepository.findByIdAndOwnerId(10L, 3L)).thenReturn(Optional.of(company));
-        when(orderRepository.findByIdAndProductCompanyId(200L, 10L)).thenReturn(Optional.of(order));
+        when(companyRepository.findByIdAndOwnerId(TestIds.uuid(10), TestIds.uuid(3))).thenReturn(Optional.of(company));
+        when(orderRepository.findByIdAndProductCompanyId(TestIds.uuid(200), TestIds.uuid(10))).thenReturn(Optional.of(order));
 
-        assertThrows(ResourceNotFoundException.class, () -> service.approveRiskReview(10L, 200L, 3L, null));
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.approveRiskReview(TestIds.uuid(10), TestIds.uuid(200), TestIds.uuid(3), null));
         verifyNoInteractions(riskReviewRepository);
         verifyNoInteractions(paymentService);
     }
 
-    private Company makeCompany(long companyId, long ownerId) {
+    private Company makeCompany(UUID companyId, UUID ownerId) {
         User owner = new User();
         owner.setId(ownerId);
         owner.setRole(UserRole.MERCHANT);
@@ -155,7 +156,7 @@ class OrderServiceRiskReviewScopeTest {
         return company;
     }
 
-    private Order makeMixedCompanyOrder(long orderId) {
+    private Order makeMixedCompanyOrder(UUID orderId) {
         Order order = new Order();
         order.setId(orderId);
         order.setStatus(OrderStatus.RESERVED);
@@ -163,15 +164,15 @@ class OrderServiceRiskReviewScopeTest {
         order.setCurrency("USD");
         order.setUser(makeUser(TestIds.uuid(9)));
         order.setItems(List.of(
-                makeOrderItem(1L, 10L),
-                makeOrderItem(2L, 20L)));
+                makeOrderItem(TestIds.uuid(1), TestIds.uuid(10)),
+                makeOrderItem(TestIds.uuid(2), TestIds.uuid(20))));
         return order;
     }
 
-    private OrderItem makeOrderItem(long itemId, long companyId) {
-        Company company = makeCompany(companyId, 1000L + companyId);
+    private OrderItem makeOrderItem(UUID itemId, UUID companyId) {
+        Company company = makeCompany(companyId, TestIds.uuid(1000));
         Product product = new Product();
-        product.setId(itemId * 10);
+        product.setId(itemId);
         product.setCompany(company);
         product.setName("Product " + itemId);
 

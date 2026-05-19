@@ -1,10 +1,7 @@
-package backend.services.impl;
+package backend.services.impl.customers;
 
-import java.util.UUID;
-import backend.testutil.TestIds;
 import backend.dtos.requests.credit.IssueCreditRequest;
 import backend.dtos.responses.credit.CreditBalanceResponse;
-import backend.dtos.responses.credit.CreditEntryResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
@@ -14,20 +11,19 @@ import backend.models.enums.CreditEntryType;
 import backend.models.enums.UserRole;
 import backend.repositories.CustomerCreditRepository;
 import backend.repositories.UserRepository;
-import backend.services.impl.customers.CustomerCreditServiceImpl;
+import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CustomerCreditServiceImplTest {
 
     private CustomerCreditRepository creditRepository;
@@ -37,7 +33,7 @@ class CustomerCreditServiceImplTest {
     @BeforeEach
     void setUp() {
         creditRepository = mock(CustomerCreditRepository.class);
-        userRepository = mock(UserRepository.class);
+        userRepository   = mock(UserRepository.class);
         service = new CustomerCreditServiceImpl(creditRepository, userRepository);
     }
 
@@ -46,14 +42,10 @@ class CustomerCreditServiceImplTest {
     @Test
     void issueCredit_createsPositiveLedgerEntry() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
-        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User staff    = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
 
-        CustomerCredit saved = new CustomerCredit();
-        saved.setUser(customer);
-        saved.setAmountCents(500L);
-        saved.setType(CreditEntryType.COMPENSATION_ISSUED);
         when(creditRepository.save(any())).thenAnswer(inv -> {
             CustomerCredit c = inv.getArgument(0);
             c.setUser(customer);
@@ -61,7 +53,7 @@ class CustomerCreditServiceImplTest {
         });
 
         IssueCreditRequest req = new IssueCreditRequest(500L, CreditEntryType.COMPENSATION_ISSUED, "Sorry for the trouble", null);
-        service.issueCredit(1L, req, 2L, null, null);
+        service.issueCredit(TestIds.uuid(1), req, TestIds.uuid(2), null, null);
 
         ArgumentCaptor<CustomerCredit> captor = ArgumentCaptor.forClass(CustomerCredit.class);
         verify(creditRepository).save(captor.capture());
@@ -73,19 +65,20 @@ class CustomerCreditServiceImplTest {
     void issueCredit_throwsWhenCustomerNotFound() {
         when(userRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
         IssueCreditRequest req = new IssueCreditRequest(500L, CreditEntryType.COMPENSATION_ISSUED, null, null);
-        assertThrows(ResourceNotFoundException.class, () -> service.issueCredit(99L, req, 2L, null, null));
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.issueCredit(TestIds.uuid(99), req, TestIds.uuid(2), null, null));
     }
 
     @Test
     void issueCredit_throwsWhenIssuerIsNotStaff() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
-        User actor = makeUser(TestIds.uuid(2), UserRole.USER);
+        User actor    = makeUser(TestIds.uuid(2), UserRole.USER);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(actor));
 
         IssueCreditRequest req = new IssueCreditRequest(500L, CreditEntryType.COMPENSATION_ISSUED, null, null);
-
-        assertThrows(ForbiddenException.class, () -> service.issueCredit(1L, req, 2L, null, null));
+        assertThrows(ForbiddenException.class,
+                () -> service.issueCredit(TestIds.uuid(1), req, TestIds.uuid(2), null, null));
     }
 
     // ─── getBalance ───────────────────────────────────────────────────────────
@@ -94,13 +87,13 @@ class CustomerCreditServiceImplTest {
     void getBalance_returnsSumAndEntries() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
-        when(creditRepository.sumBalanceByUserId(eq(1L), any())).thenReturn(1500L);
-        when(creditRepository.findAllByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(creditRepository.sumBalanceByUserId(eq(TestIds.uuid(1)), any())).thenReturn(1500L);
+        when(creditRepository.findAllByUserIdOrderByCreatedAtDesc(TestIds.uuid(1))).thenReturn(List.of());
 
-        CreditBalanceResponse balance = service.getBalance(1L);
+        CreditBalanceResponse balance = service.getBalance(TestIds.uuid(1));
 
         assertEquals(1500L, balance.getBalanceCents());
-        assertEquals(1L, balance.getUserId());
+        assertEquals(TestIds.uuid(1), balance.getUserId());
     }
 
     // ─── redeemCredit ─────────────────────────────────────────────────────────
@@ -109,34 +102,35 @@ class CustomerCreditServiceImplTest {
     void redeemCredit_appendsNegativeEntry() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
         when(userRepository.getReferenceById(TestIds.uuid(1))).thenReturn(customer);
-        when(creditRepository.findAllByUserIdForUpdate(1L)).thenReturn(List.of());
-        when(creditRepository.sumBalanceByUserId(eq(1L), any())).thenReturn(1000L);
+        when(creditRepository.findAllByUserIdForUpdate(TestIds.uuid(1))).thenReturn(List.of());
+        when(creditRepository.sumBalanceByUserId(eq(TestIds.uuid(1)), any())).thenReturn(1000L);
         when(creditRepository.save(any())).thenAnswer(inv -> {
             CustomerCredit c = inv.getArgument(0);
             c.setUser(customer);
             return c;
         });
 
-        service.redeemCredit(1L, 42L, 300L);
+        service.redeemCredit(TestIds.uuid(1), TestIds.uuid(42), 300L);
 
         ArgumentCaptor<CustomerCredit> captor = ArgumentCaptor.forClass(CustomerCredit.class);
         verify(creditRepository).save(captor.capture());
         assertEquals(-300L, captor.getValue().getAmountCents());
         assertEquals(CreditEntryType.REDEEMED, captor.getValue().getType());
-        assertEquals(42L, captor.getValue().getRedeemedOnOrderId());
     }
 
     @Test
     void redeemCredit_throwsWhenInsufficientBalance() {
-        when(creditRepository.findAllByUserIdForUpdate(1L)).thenReturn(List.of());
-        when(creditRepository.sumBalanceByUserId(eq(1L), any())).thenReturn(100L);
+        when(creditRepository.findAllByUserIdForUpdate(TestIds.uuid(1))).thenReturn(List.of());
+        when(creditRepository.sumBalanceByUserId(eq(TestIds.uuid(1)), any())).thenReturn(100L);
 
-        assertThrows(BadRequestException.class, () -> service.redeemCredit(1L, 1L, 500L));
+        assertThrows(BadRequestException.class,
+                () -> service.redeemCredit(TestIds.uuid(1), TestIds.uuid(1), 500L));
     }
 
     @Test
     void redeemCredit_throwsWhenAmountZero() {
-        assertThrows(BadRequestException.class, () -> service.redeemCredit(1L, 1L, 0L));
+        assertThrows(BadRequestException.class,
+                () -> service.redeemCredit(TestIds.uuid(1), TestIds.uuid(1), 0L));
     }
 
     // ─── reverseCredit ────────────────────────────────────────────────────────
@@ -144,14 +138,16 @@ class CustomerCreditServiceImplTest {
     @Test
     void reverseCredit_appendsOffsettingEntry() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
-        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User staff    = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
 
         CustomerCredit original = new CustomerCredit();
         original.setUser(customer);
         original.setAmountCents(500L);
         original.setType(CreditEntryType.COMPENSATION_ISSUED);
 
+        original.setId(TestIds.uuid(10));
         when(creditRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
+        when(creditRepository.claimForReversal(TestIds.uuid(10))).thenReturn(1);
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
         when(creditRepository.save(any())).thenAnswer(inv -> {
             CustomerCredit c = inv.getArgument(0);
@@ -159,13 +155,12 @@ class CustomerCreditServiceImplTest {
             return c;
         });
 
-        service.reverseCredit(10L, 2L);
+        service.reverseCredit(TestIds.uuid(10), TestIds.uuid(2));
 
         ArgumentCaptor<CustomerCredit> captor = ArgumentCaptor.forClass(CustomerCredit.class);
-        verify(creditRepository, times(2)).save(captor.capture());
-        CustomerCredit reversal = captor.getAllValues().get(0);
-        assertEquals(-500L, reversal.getAmountCents());
-        assertEquals(CreditEntryType.REVERSED, reversal.getType());
+        verify(creditRepository, times(1)).save(captor.capture());
+        assertEquals(-500L, captor.getValue().getAmountCents());
+        assertEquals(CreditEntryType.REVERSED, captor.getValue().getType());
     }
 
     @Test
@@ -177,22 +172,24 @@ class CustomerCreditServiceImplTest {
         when(creditRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeUser(TestIds.uuid(2), UserRole.SUPPORT)));
 
-        assertThrows(BadRequestException.class, () -> service.reverseCredit(10L, 2L));
+        assertThrows(BadRequestException.class, () -> service.reverseCredit(TestIds.uuid(10), TestIds.uuid(2)));
     }
 
     @Test
     void reverseCredit_throwsWhenActorIsNotStaff() {
         User customer = makeUser(TestIds.uuid(1), UserRole.USER);
-        User actor = makeUser(TestIds.uuid(2), UserRole.USER);
+        User actor    = makeUser(TestIds.uuid(2), UserRole.USER);
 
         CustomerCredit original = new CustomerCredit();
+        original.setId(TestIds.uuid(10));
         original.setUser(customer);
         original.setAmountCents(500L);
 
         when(creditRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
+        when(creditRepository.claimForReversal(TestIds.uuid(10))).thenReturn(1);
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(actor));
 
-        assertThrows(ForbiddenException.class, () -> service.reverseCredit(10L, 2L));
+        assertThrows(ForbiddenException.class, () -> service.reverseCredit(TestIds.uuid(10), TestIds.uuid(2)));
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

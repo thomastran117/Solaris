@@ -1,4 +1,4 @@
-package backend.services.impl;
+package backend.services.impl.orders;
 
 import backend.dtos.requests.order.CancelSubOrderRequest;
 import backend.exceptions.http.ForbiddenException;
@@ -15,15 +15,15 @@ import backend.repositories.CommissionRecordRepository;
 import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.OrderItemRepository;
 import backend.repositories.SubOrderRepository;
-import backend.services.impl.orders.SubOrderServiceImpl;
+import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,7 +33,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SubOrderServiceImplTest {
 
     private SubOrderRepository subOrderRepository;
@@ -44,8 +43,8 @@ class SubOrderServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        subOrderRepository = mock(SubOrderRepository.class);
-        orderItemRepository = mock(OrderItemRepository.class);
+        subOrderRepository         = mock(SubOrderRepository.class);
+        orderItemRepository        = mock(OrderItemRepository.class);
         commissionRecordRepository = mock(CommissionRecordRepository.class);
         marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
         service = new SubOrderServiceImpl(
@@ -57,29 +56,32 @@ class SubOrderServiceImplTest {
 
     @Test
     void markPacked_throwsWhenActorDoesNotOwnVendor() {
-        MarketplaceVendor vendor = makeVendor(7L, 10L);
-        when(marketplaceVendorRepository.findById(7L)).thenReturn(Optional.of(vendor));
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
 
-        assertThrows(ForbiddenException.class, () -> service.markPacked(100L, 7L, 99L));
+        assertThrows(ForbiddenException.class,
+                () -> service.markPacked(TestIds.uuid(100), TestIds.uuid(7), TestIds.uuid(99)));
     }
 
     @Test
     void cancelSubOrder_marksPendingPackAndBackorderItemsCancelled() {
-        MarketplaceVendor vendor = makeVendor(7L, 10L);
-        SubOrder subOrder = makeSubOrder(100L, vendor, SubOrderStatus.PACKED);
-        OrderItem pending = makeOrderItem(1L, FulfillmentStatus.PENDING);
-        OrderItem packed = makeOrderItem(2L, FulfillmentStatus.PACKED);
-        OrderItem backordered = makeOrderItem(3L, FulfillmentStatus.BACKORDERED);
+        MarketplaceVendor vendor  = makeVendor(TestIds.uuid(7), TestIds.uuid(10));
+        SubOrder subOrder         = makeSubOrder(TestIds.uuid(100), vendor, SubOrderStatus.PACKED);
+        OrderItem pending         = makeOrderItem(TestIds.uuid(1), FulfillmentStatus.PENDING);
+        OrderItem packed          = makeOrderItem(TestIds.uuid(2), FulfillmentStatus.PACKED);
+        OrderItem backordered     = makeOrderItem(TestIds.uuid(3), FulfillmentStatus.BACKORDERED);
 
-        when(marketplaceVendorRepository.findById(7L)).thenReturn(Optional.of(vendor));
-        when(subOrderRepository.findByIdAndMarketplaceVendorId(100L, 7L)).thenReturn(Optional.of(subOrder));
-        when(orderItemRepository.findAllBySubOrderId(100L)).thenReturn(List.of(pending, packed, backordered));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(subOrderRepository.findByIdAndMarketplaceVendorId(TestIds.uuid(100), TestIds.uuid(7)))
+                .thenReturn(Optional.of(subOrder));
+        when(orderItemRepository.findAllBySubOrderId(TestIds.uuid(100)))
+                .thenReturn(List.of(pending, packed, backordered));
         when(subOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CancelSubOrderRequest request = new CancelSubOrderRequest();
         request.setReason("Customer requested cancellation");
 
-        service.cancelSubOrder(100L, 7L, request, 10L);
+        service.cancelSubOrder(TestIds.uuid(100), TestIds.uuid(7), request, TestIds.uuid(10));
 
         assertEquals(SubOrderStatus.CANCELLED, subOrder.getStatus());
         assertEquals(FulfillmentStatus.CANCELLED, pending.getFulfillmentStatus());
@@ -92,13 +94,13 @@ class SubOrderServiceImplTest {
                 assertEquals(FulfillmentStatus.CANCELLED, item.getFulfillmentStatus()));
     }
 
-    private MarketplaceVendor makeVendor(long vendorId, long ownerId) {
+    private MarketplaceVendor makeVendor(UUID vendorId, UUID ownerId) {
         User owner = new User();
         owner.setId(ownerId);
         owner.setRole(UserRole.VENDOR_OWNER);
 
         Company company = new Company();
-        company.setId(42L);
+        company.setId(TestIds.uuid(42));
         company.setName("Vendor Co");
         company.setOwner(owner);
 
@@ -108,9 +110,9 @@ class SubOrderServiceImplTest {
         return vendor;
     }
 
-    private SubOrder makeSubOrder(long id, MarketplaceVendor vendor, SubOrderStatus status) {
+    private SubOrder makeSubOrder(UUID id, MarketplaceVendor vendor, SubOrderStatus status) {
         Order order = new Order();
-        order.setId(500L);
+        order.setId(TestIds.uuid(500));
 
         SubOrder subOrder = new SubOrder();
         subOrder.setId(id);
@@ -124,7 +126,7 @@ class SubOrderServiceImplTest {
         return subOrder;
     }
 
-    private OrderItem makeOrderItem(long id, FulfillmentStatus status) {
+    private OrderItem makeOrderItem(UUID id, FulfillmentStatus status) {
         OrderItem item = new OrderItem();
         item.setId(id);
         item.setFulfillmentStatus(status);

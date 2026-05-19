@@ -319,7 +319,7 @@ public class VendorAnalyticsServiceImpl implements VendorAnalyticsService {
 
     private void assertOperator(UUID marketplaceId, UUID userId) {
         marketplaceProfileRepository.findByCompanyId(marketplaceId)
-                .filter(p -> p.getCompany().getOwner().getId() == userId)
+                .filter(p -> p.getCompany().getOwner().getId().equals(userId))
                 .orElseThrow(() -> new ForbiddenException("You are not an operator of this marketplace"));
     }
 

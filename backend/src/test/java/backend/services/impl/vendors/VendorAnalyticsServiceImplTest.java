@@ -1,4 +1,4 @@
-package backend.services.impl;
+package backend.services.impl.vendors;
 
 import backend.dtos.responses.vendor.VendorPayoutsMetricResponse;
 import backend.exceptions.http.ForbiddenException;
@@ -11,17 +11,17 @@ import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.VendorAnalyticsRepository;
 import backend.repositories.VendorPayoutRepository;
-import backend.services.impl.vendors.VendorAnalyticsServiceImpl;
 import backend.services.intf.CacheService;
+import backend.testutil.TestIds;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -31,7 +31,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class VendorAnalyticsServiceImplTest {
 
     private VendorAnalyticsRepository analyticsRepository;
@@ -43,11 +42,11 @@ class VendorAnalyticsServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        analyticsRepository = mock(VendorAnalyticsRepository.class);
-        payoutRepository = mock(VendorPayoutRepository.class);
+        analyticsRepository          = mock(VendorAnalyticsRepository.class);
+        payoutRepository             = mock(VendorPayoutRepository.class);
         marketplaceProfileRepository = mock(MarketplaceProfileRepository.class);
-        marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
-        cacheService = mock(CacheService.class);
+        marketplaceVendorRepository  = mock(MarketplaceVendorRepository.class);
+        cacheService                 = mock(CacheService.class);
 
         service = new VendorAnalyticsServiceImpl(
                 analyticsRepository,
@@ -60,35 +59,36 @@ class VendorAnalyticsServiceImplTest {
 
     @Test
     void getSummary_throwsWhenActorCannotAccessVendor() {
-        MarketplaceVendor vendor = makeVendor(7L, 20L, 10L);
-        when(marketplaceVendorRepository.findById(7L)).thenReturn(Optional.of(vendor));
-        when(marketplaceProfileRepository.findByCompanyId(20L)).thenReturn(Optional.empty());
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.empty());
 
-        assertThrows(ForbiddenException.class, () -> service.getSummary(7L, 20L, 30, 99L));
+        assertThrows(ForbiddenException.class,
+                () -> service.getSummary(TestIds.uuid(7), TestIds.uuid(20), 30, TestIds.uuid(99)));
     }
 
     @Test
     void getPayouts_allowsMarketplaceOperator() {
-        MarketplaceVendor vendor = makeVendor(7L, 20L, 10L);
-        MarketplaceProfile profile = makeMarketplaceProfile(20L, 55L);
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        MarketplaceProfile profile = makeMarketplaceProfile(TestIds.uuid(20), TestIds.uuid(55));
 
-        when(marketplaceVendorRepository.findById(7L)).thenReturn(Optional.of(vendor));
-        when(marketplaceProfileRepository.findByCompanyId(20L)).thenReturn(Optional.of(profile));
-        when(payoutRepository.findByVendorIdAndStatus(eq(7L), eq(PayoutStatus.PAID), any(Pageable.class)))
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.of(profile));
+        when(payoutRepository.findByVendorIdAndStatus(eq(TestIds.uuid(7)), eq(PayoutStatus.PAID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        VendorPayoutsMetricResponse response = service.getPayouts(7L, 20L, 10, 55L);
+        VendorPayoutsMetricResponse response = service.getPayouts(TestIds.uuid(7), TestIds.uuid(20), 10, TestIds.uuid(55));
 
-        assertEquals(7L, response.getVendorId());
-        verify(payoutRepository).findByVendorIdAndStatus(eq(7L), eq(PayoutStatus.PAID), any(Pageable.class));
+        assertEquals(TestIds.uuid(7), response.getVendorId());
+        verify(payoutRepository).findByVendorIdAndStatus(eq(TestIds.uuid(7)), eq(PayoutStatus.PAID), any(Pageable.class));
     }
 
-    private MarketplaceVendor makeVendor(long vendorId, long marketplaceId, long vendorOwnerId) {
+    private MarketplaceVendor makeVendor(UUID vendorId, UUID marketplaceId, UUID vendorOwnerId) {
         User owner = new User();
         owner.setId(vendorOwnerId);
 
         Company vendorCompany = new Company();
-        vendorCompany.setId(300L);
+        vendorCompany.setId(TestIds.uuid(300));
         vendorCompany.setOwner(owner);
 
         Company marketplaceCompany = new Company();
@@ -101,7 +101,7 @@ class VendorAnalyticsServiceImplTest {
         return vendor;
     }
 
-    private MarketplaceProfile makeMarketplaceProfile(long marketplaceId, long operatorUserId) {
+    private MarketplaceProfile makeMarketplaceProfile(UUID marketplaceId, UUID operatorUserId) {
         User operator = new User();
         operator.setId(operatorUserId);
 
@@ -110,7 +110,7 @@ class VendorAnalyticsServiceImplTest {
         marketplaceCompany.setOwner(operator);
 
         MarketplaceProfile profile = new MarketplaceProfile();
-        profile.setId(500L);
+        profile.setId(TestIds.uuid(500));
         profile.setCompany(marketplaceCompany);
         return profile;
     }
