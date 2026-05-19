@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.repositories.UserRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.OrderRepository;
 
 @Slf4j
 @Component
@@ -21,6 +22,7 @@ public class DevDataSeeder implements ApplicationRunner {
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
     private final ProductRepository productRepository;
+    private final OrderRepository orderRepository;
 
     private final UserSeeder userSeeder;
     private final CompanySeeder companySeeder;
@@ -35,6 +37,20 @@ public class DevDataSeeder implements ApplicationRunner {
     private final BundleSeeder bundleSeeder;
     private final AddressSeeder addressSeeder;
     private final SavedListSeeder savedListSeeder;
+
+    // New seeders
+    private final SmallCompaniesSeeder smallCompaniesSeeder;
+    private final UserProfileSeeder userProfileSeeder;
+    private final CompanyReturnLocationSeeder companyReturnLocationSeeder;
+    private final MarketplaceSeeder marketplaceSeeder;
+    private final CollectionSeeder collectionSeeder;
+    private final LocationStockSeeder locationStockSeeder;
+    private final OrderSeeder orderSeeder;
+    private final SubscriptionSeeder subscriptionSeeder;
+    private final LoyaltyTransactionSeeder loyaltyTransactionSeeder;
+    private final SupportTicketSeeder supportTicketSeeder;
+    private final StockNotificationSeeder stockNotificationSeeder;
+    private final ReviewEnrichmentSeeder reviewEnrichmentSeeder;
 
     @Override
     @Transactional
@@ -57,7 +73,22 @@ public class DevDataSeeder implements ApplicationRunner {
         var bundles = bundleSeeder.seed(companies, techProducts, styleProducts, wellnessProducts, homeProducts, sportProducts);
         pricingSeeder.seed(companies, techProducts, styleProducts, wellnessProducts, homeProducts, sportProducts, bundles);
 
-        log.info("[DevDataSeeder] Seeded {} users, {} companies, {} products",
-                userRepository.count(), companyRepository.count(), productRepository.count());
+        userProfileSeeder.seed(users);
+        companyReturnLocationSeeder.seed(companies);
+        marketplaceSeeder.seed(companies);
+        collectionSeeder.seed(companies, techProducts, styleProducts, wellnessProducts, homeProducts, sportProducts);
+        locationStockSeeder.seed(companies, users, techProducts, styleProducts, wellnessProducts, homeProducts, sportProducts);
+
+        var orders = orderSeeder.seed(users, techProducts, styleProducts, wellnessProducts, homeProducts, sportProducts);
+        subscriptionSeeder.seed(users, companies, wellnessProducts);
+        loyaltyTransactionSeeder.seed(users, companies, orders);
+        supportTicketSeeder.seed(users, orders);
+        stockNotificationSeeder.seed(users, techProducts, styleProducts, wellnessProducts);
+        reviewEnrichmentSeeder.seed(users, orders, techProducts, wellnessProducts);
+        smallCompaniesSeeder.seed(users);
+
+        log.info("[DevDataSeeder] Seeded {} users, {} companies, {} products, {} orders",
+                userRepository.count(), companyRepository.count(),
+                productRepository.count(), orderRepository.count());
     }
 }
