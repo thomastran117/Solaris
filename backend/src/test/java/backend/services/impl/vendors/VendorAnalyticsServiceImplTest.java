@@ -11,6 +11,7 @@ import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.VendorAnalyticsRepository;
 import backend.repositories.VendorPayoutRepository;
+import backend.repositories.projections.VendorRevenueSummaryProjection;
 import backend.services.intf.CacheService;
 import backend.testutil.TestIds;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,13 +24,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class VendorAnalyticsServiceImplTest {
 
@@ -81,6 +78,65 @@ class VendorAnalyticsServiceImplTest {
 
         assertEquals(TestIds.uuid(7), response.getVendorId());
         verify(payoutRepository).findByVendorIdAndStatus(eq(TestIds.uuid(7)), eq(PayoutStatus.PAID), any(Pageable.class));
+    }
+
+    // ─── vendor owner access ──────────────────────────────────────────────────
+
+    @Test
+    void getSummary_allowsVendorOwner() {
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+
+        // Stub analytics repository so the service doesn't NPE past the access check
+        VendorRevenueSummaryProjection rev = mock(VendorRevenueSummaryProjection.class);
+        when(analyticsRepository.vendorRevenueSummary(any(), any(), any(), any())).thenReturn(rev);
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorReturnedCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorShipHours(any(), any(), any(), any(), anyDouble())).thenReturn(null);
+
+        // Vendor owner (uuid 10) should bypass the operator check — no ForbiddenException
+        assertDoesNotThrow(() -> service.getSummary(TestIds.uuid(7), TestIds.uuid(20), 30, TestIds.uuid(10)));
+    }
+
+    @Test
+    void getRevenue_forbidden_throwsForbiddenException() {
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.empty());
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getRevenue(TestIds.uuid(7), TestIds.uuid(20), 30, TestIds.uuid(99)));
+    }
+
+    @Test
+    void getOrders_forbidden_throwsForbiddenException() {
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.empty());
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getOrders(TestIds.uuid(7), TestIds.uuid(20), 30, TestIds.uuid(99)));
+    }
+
+    @Test
+    void getRefunds_forbidden_throwsForbiddenException() {
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.empty());
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getRefunds(TestIds.uuid(7), TestIds.uuid(20), 30, TestIds.uuid(99)));
+    }
+
+    @Test
+    void getTopProducts_forbidden_throwsForbiddenException() {
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(7), TestIds.uuid(20), TestIds.uuid(10));
+        when(marketplaceVendorRepository.findById(TestIds.uuid(7))).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(TestIds.uuid(20))).thenReturn(Optional.empty());
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getTopProducts(TestIds.uuid(7), TestIds.uuid(20), 30, 10, TestIds.uuid(99)));
     }
 
     private MarketplaceVendor makeVendor(UUID vendorId, UUID marketplaceId, UUID vendorOwnerId) {
