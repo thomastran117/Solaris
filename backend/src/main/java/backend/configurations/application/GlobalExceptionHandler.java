@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -48,6 +49,11 @@ public class GlobalExceptionHandler {
             messages.add(message);
         });
         return build(HttpStatus.BAD_REQUEST, "Validation failed", "VALIDATION_ERROR", details);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", "VALIDATION_ERROR", null);
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
