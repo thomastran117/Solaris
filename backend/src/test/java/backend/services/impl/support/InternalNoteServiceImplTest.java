@@ -130,6 +130,63 @@ class InternalNoteServiceImplTest {
         assertThrows(ResourceNotFoundException.class, () -> service.deleteNote(TestIds.uuid(99), TestIds.uuid(1)));
     }
 
+    // ─── addNote — additional roles & response fields ─────────────────────────
+
+    @Test
+    void addNote_adminCanAddNote() {
+        User admin = makeUser(TestIds.uuid(3), UserRole.ADMIN);
+        when(userRepository.findById(TestIds.uuid(3))).thenReturn(Optional.of(admin));
+        when(noteRepository.save(any())).thenAnswer(inv -> {
+            InternalNote n = inv.getArgument(0);
+            n.setAuthor(admin);
+            return n;
+        });
+
+        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.TICKET, TestIds.uuid(10), "Admin note");
+        assertDoesNotThrow(() -> service.addNote(TestIds.uuid(3), req));
+        verify(noteRepository).save(any(InternalNote.class));
+    }
+
+    @Test
+    void addNote_returnsResponseWithCorrectFields() {
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        staff.setFirstName("Jane");
+        staff.setLastName("Doe");
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
+        when(noteRepository.save(any())).thenAnswer(inv -> {
+            InternalNote n = inv.getArgument(0);
+            n.setId(TestIds.uuid(50));
+            n.setAuthor(staff);
+            return n;
+        });
+
+        CreateNoteRequest req = new CreateNoteRequest(NoteEntityType.ORDER, TestIds.uuid(20), "Checked with warehouse");
+        InternalNoteResponse resp = service.addNote(TestIds.uuid(1), req);
+
+        assertEquals(TestIds.uuid(50), resp.getId());
+        assertEquals("Checked with warehouse", resp.getBody());
+        assertEquals("Jane Doe", resp.getAuthorName());
+        assertEquals(TestIds.uuid(1), resp.getAuthorId());
+        assertEquals("ORDER", resp.getEntityType());
+        assertEquals(TestIds.uuid(20), resp.getEntityId());
+    }
+
+    // ─── listNotes — returns content ──────────────────────────────────────────
+
+    @Test
+    void listNotes_returnsAllNotesForEntity() {
+        User staff = makeUser(TestIds.uuid(1), UserRole.SUPPORT);
+        InternalNote note1 = makeNote(TestIds.uuid(10), staff);
+        InternalNote note2 = makeNote(TestIds.uuid(11), staff);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(staff));
+        when(noteRepository.findAllByEntityTypeAndEntityIdOrderByCreatedAtAsc(NoteEntityType.TICKET, TestIds.uuid(5)))
+                .thenReturn(List.of(note1, note2));
+
+        List<InternalNoteResponse> notes = service.listNotes(TestIds.uuid(1), NoteEntityType.TICKET, TestIds.uuid(5));
+
+        assertEquals(2, notes.size());
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private User makeUser(UUID id, UserRole role) {

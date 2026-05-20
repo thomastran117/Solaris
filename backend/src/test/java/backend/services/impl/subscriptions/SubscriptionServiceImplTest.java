@@ -3,12 +3,16 @@ package backend.services.impl.subscriptions;
 import backend.dtos.requests.subscription.CreateSubscriptionRequest;
 import backend.dtos.requests.subscription.ShippingAddressRequest;
 import backend.dtos.requests.subscription.UpdateSubscriptionRequest;
+import backend.dtos.responses.subscription.SetupIntentResponse;
 import backend.dtos.responses.subscription.SubscriptionResponse;
+import backend.events.activity.UserActivityEvent;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
+import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
+import backend.models.core.SavedPaymentMethod;
 import backend.models.core.Subscription;
 import backend.models.core.SubscriptionItem;
 import backend.models.core.User;
@@ -358,6 +362,348 @@ class SubscriptionServiceImplTest {
 
         service.handleInvoicePaymentFailed("in_99", "sub_1");
         assertEquals(SubscriptionStatus.PAST_DUE, sub.getStatus());
+    }
+
+    // ─── resume happy path ───────────────────────────────────────────────────
+
+    @Test
+    void resume_callsStripeAndPersistsActiveStatus() {
+        Subscription sub = makeSubscription(SubscriptionStatus.PAUSED);
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+        when(paymentService.resumeSubscription("sub_1")).thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        SubscriptionResponse res = service.resume(TestIds.uuid(1), TestIds.uuid(99));
+
+        assertEquals(SubscriptionStatus.ACTIVE, res.getStatus());
+        assertNull(res.getPausedAt());
+        verify(paymentService).resumeSubscription("sub_1");
+    }
+
+    // ─── skipNext guard ───────────────────────────────────────────────────────
+
+    @Test
+    void skipNext_nonActiveSubscription_throwsConflict() {
+        Subscription sub = makeSubscription(SubscriptionStatus.PAUSED);
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+
+        assertThrows(ConflictException.class, () -> service.skipNext(TestIds.uuid(1), TestIds.uuid(99)));
+        verifyNoInteractions(paymentService);
+    }
+
+    // ─── cancel guard ─────────────────────────────────────────────────────────
+
+    @Test
+    void cancel_alreadyCancelled_throwsConflict() {
+        Subscription sub = makeSubscription(SubscriptionStatus.CANCELLED);
+        when(subscriptionRepository.findByIdAndUserIdForUpdate(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+
+        assertThrows(ConflictException.class, () -> service.cancel(TestIds.uuid(1), TestIds.uuid(99), true));
+        verifyNoInteractions(paymentService);
+    }
+
+    // ─── create — discount & activity ────────────────────────────────────────
+
+    @Test
+    void create_subscriptionDiscount_reducesUnitPrice() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        product.setSubscriptionDiscountPercent(BigDecimal.TEN); // 10% off $10 = $9 = 900 cents
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+        when(paymentService.retrievePaymentMethod("pm_test"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_123", "visa", "4242", 12, 2030));
+        when(paymentService.createRecurringPrice(eq(900L), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_discounted", 900L, "usd"));
+        when(paymentService.createSubscription(anyString(), anyString(), anyInt(), anyString(), any()))
+                .thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10)));
+
+        verify(paymentService).createRecurringPrice(eq(900L), anyString(), any(), anyInt(), anyString(), any());
+    }
+
+    @Test
+    void create_publishesActivityEvent_whenMarketplaceIdPresent() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        product.setMarketplaceId(TestIds.uuid(99));
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+        when(paymentService.retrievePaymentMethod("pm_test"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_123", "visa", "4242", 12, 2030));
+        when(paymentService.createRecurringPrice(anyLong(), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_1", 1000L, "usd"));
+        when(paymentService.createSubscription(anyString(), anyString(), anyInt(), anyString(), any()))
+                .thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10)));
+
+        verify(activityEventPublisher).publish(any(UserActivityEvent.class));
+    }
+
+    @Test
+    void create_noActivityEvent_whenMarketplaceIdNull() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        // marketplaceId is null by default in makeProduct
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+        when(paymentService.retrievePaymentMethod("pm_test"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_123", "visa", "4242", 12, 2030));
+        when(paymentService.createRecurringPrice(anyLong(), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_1", 1000L, "usd"));
+        when(paymentService.createSubscription(anyString(), anyString(), anyInt(), anyString(), any()))
+                .thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10)));
+
+        verifyNoInteractions(activityEventPublisher);
+    }
+
+    @Test
+    void create_createsStripeCustomer_whenUserHasNoCustomerId() {
+        User user = makeUser(TestIds.uuid(1));
+        // stripeCustomerId is null — ensureStripeCustomer should create one
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+
+        PaymentService.CustomerResult custResult = new PaymentService.CustomerResult("cus_new", "u@example.com", "Test User");
+        when(paymentService.createCustomer(anyString(), anyString(), any())).thenReturn(custResult);
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentService.retrievePaymentMethod("pm_test"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_new", "visa", "4242", 12, 2030));
+        when(paymentService.createRecurringPrice(anyLong(), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_1", 1000L, "usd"));
+        when(paymentService.createSubscription(anyString(), anyString(), anyInt(), anyString(), any()))
+                .thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10)));
+
+        verify(paymentService).createCustomer(anyString(), anyString(), any());
+    }
+
+    // ─── handleInvoicePaid guards ─────────────────────────────────────────────
+
+    @Test
+    void handleInvoicePaid_cancelAtPeriodEnd_skipsOrderCreation() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        sub.setCancelAtPeriodEnd(true);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+
+        service.handleInvoicePaid("in_42", "sub_1", 1500L);
+
+        verify(orderService, never()).createRenewalOrder(any(), anyString(), anyLong());
+    }
+
+    @Test
+    void handleInvoicePaid_cancelledStatus_skipsOrderCreation() {
+        Subscription sub = makeSubscription(SubscriptionStatus.CANCELLED);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+
+        service.handleInvoicePaid("in_42", "sub_1", 1500L);
+
+        verify(orderService, never()).createRenewalOrder(any(), anyString(), anyLong());
+    }
+
+    // ─── handleSubscriptionUpdated ────────────────────────────────────────────
+
+    @Test
+    void handleSubscriptionUpdated_syncsStatusFromStripe() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(stripeResult("canceled"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        assertEquals(SubscriptionStatus.CANCELLED, sub.getStatus());
+        assertNotNull(sub.getCancelledAt());
+        assertNull(sub.getNextBillingAt());
+    }
+
+    @Test
+    void handleSubscriptionUpdated_unknownSubscription_isNoop() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_unknown")).thenReturn(Optional.empty());
+
+        service.handleSubscriptionUpdated("sub_unknown");
+
+        verify(paymentService, never()).retrieveSubscription(any());
+    }
+
+    // ─── handleSetupIntentSucceeded ───────────────────────────────────────────
+
+    @Test
+    void handleSetupIntentSucceeded_savesPaymentMethod() {
+        User user = makeUser(TestIds.uuid(1));
+        when(savedPaymentMethodRepository.findByStripePaymentMethodId("pm_new")).thenReturn(Optional.empty());
+        when(userRepository.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(user));
+        when(paymentService.retrievePaymentMethod("pm_new"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_new", "cus_123", "visa", "4242", 12, 2030));
+        when(savedPaymentMethodRepository.findByUserIdAndIsDefaultTrue(any())).thenReturn(Optional.empty());
+        when(savedPaymentMethodRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSetupIntentSucceeded("cus_123", "pm_new");
+
+        verify(savedPaymentMethodRepository).save(any(SavedPaymentMethod.class));
+    }
+
+    @Test
+    void handleSetupIntentSucceeded_idempotent_skipsIfAlreadySaved() {
+        when(savedPaymentMethodRepository.findByStripePaymentMethodId("pm_existing"))
+                .thenReturn(Optional.of(new SavedPaymentMethod()));
+
+        service.handleSetupIntentSucceeded("cus_123", "pm_existing");
+
+        verify(savedPaymentMethodRepository, never()).save(any());
+    }
+
+    // ─── listForUser & get ────────────────────────────────────────────────────
+
+    @Test
+    void listForUser_returnsMappedList() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findAllByUserIdOrderByCreatedAtDesc(TestIds.uuid(1)))
+                .thenReturn(List.of(sub));
+
+        List<SubscriptionResponse> result = service.listForUser(TestIds.uuid(1));
+
+        assertEquals(1, result.size());
+        assertEquals(SubscriptionStatus.ACTIVE, result.get(0).getStatus());
+    }
+
+    @Test
+    void get_returnsResponse() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1)))
+                .thenReturn(Optional.of(sub));
+
+        SubscriptionResponse res = service.get(TestIds.uuid(1), TestIds.uuid(99));
+
+        assertEquals(SubscriptionStatus.ACTIVE, res.getStatus());
+    }
+
+    @Test
+    void get_notFound_throwsResourceNotFound() {
+        when(subscriptionRepository.findByIdAndUserId(any(), any())).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.get(TestIds.uuid(1), TestIds.uuid(99)));
+    }
+
+    // ─── createSetupIntent ────────────────────────────────────────────────────
+
+    @Test
+    void createSetupIntent_returnsSetupIntentResponse() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(paymentService.createSetupIntent("cus_123"))
+                .thenReturn(new PaymentService.SetupIntentResult("si_abc", "seti_secret", "cus_123"));
+
+        SetupIntentResponse res = service.createSetupIntent(TestIds.uuid(1));
+
+        assertEquals("si_abc", res.getSetupIntentId());
+        assertEquals("seti_secret", res.getClientSecret());
+    }
+
+    // ─── listPaymentMethods ───────────────────────────────────────────────────
+
+    @Test
+    void listPaymentMethods_returnsMappedList() {
+        SavedPaymentMethod spm = new SavedPaymentMethod();
+        spm.setId(TestIds.uuid(55));
+        spm.setStripePaymentMethodId("pm_abc");
+        spm.setBrand("mastercard");
+        spm.setLast4("1234");
+        spm.setExpMonth(6);
+        spm.setExpYear(2028);
+        when(savedPaymentMethodRepository.findAllByUserId(TestIds.uuid(1))).thenReturn(List.of(spm));
+
+        var result = service.listPaymentMethods(TestIds.uuid(1));
+
+        assertEquals(1, result.size());
+        assertEquals("mastercard", result.get(0).getBrand());
+    }
+
+    // ─── detachPaymentMethod ──────────────────────────────────────────────────
+
+    @Test
+    void detachPaymentMethod_happyPath_deletesFromRepo() {
+        User owner = makeUser(TestIds.uuid(1));
+        SavedPaymentMethod spm = new SavedPaymentMethod();
+        spm.setId(TestIds.uuid(55));
+        spm.setStripePaymentMethodId("pm_test");
+        spm.setUser(owner);
+        when(savedPaymentMethodRepository.findById(TestIds.uuid(55))).thenReturn(Optional.of(spm));
+
+        service.detachPaymentMethod(TestIds.uuid(1), TestIds.uuid(55));
+
+        verify(paymentService).detachPaymentMethod("pm_test");
+        verify(savedPaymentMethodRepository).delete(spm);
+    }
+
+    @Test
+    void detachPaymentMethod_differentOwner_throwsResourceNotFound() {
+        User owner = makeUser(TestIds.uuid(1));
+        SavedPaymentMethod spm = new SavedPaymentMethod();
+        spm.setId(TestIds.uuid(55));
+        spm.setUser(owner);
+        when(savedPaymentMethodRepository.findById(TestIds.uuid(55))).thenReturn(Optional.of(spm));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.detachPaymentMethod(TestIds.uuid(2), TestIds.uuid(55)));
+        verify(savedPaymentMethodRepository, never()).delete(any());
+    }
+
+    @Test
+    void detachPaymentMethod_stripeFailure_stillDeletesLocal() {
+        User owner = makeUser(TestIds.uuid(1));
+        SavedPaymentMethod spm = new SavedPaymentMethod();
+        spm.setId(TestIds.uuid(55));
+        spm.setStripePaymentMethodId("pm_test");
+        spm.setUser(owner);
+        when(savedPaymentMethodRepository.findById(TestIds.uuid(55))).thenReturn(Optional.of(spm));
+        doThrow(new RuntimeException("Stripe unavailable")).when(paymentService).detachPaymentMethod("pm_test");
+
+        service.detachPaymentMethod(TestIds.uuid(1), TestIds.uuid(55));
+
+        verify(savedPaymentMethodRepository).delete(spm); // local record removed despite Stripe failure
+    }
+
+    // ─── update guards ────────────────────────────────────────────────────────
+
+    @Test
+    void update_cancelledSubscription_throwsConflict() {
+        Subscription sub = makeSubscription(SubscriptionStatus.CANCELLED);
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+
+        assertThrows(ConflictException.class,
+                () -> service.update(TestIds.uuid(1), TestIds.uuid(99), new UpdateSubscriptionRequest()));
+        verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    void update_sameQuantity_skipsStripeQuantityCall() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        // item quantity is already 1 — sending quantity=1 should not call Stripe
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateSubscriptionRequest req = new UpdateSubscriptionRequest();
+        req.setQuantity(1); // same as existing
+
+        service.update(TestIds.uuid(1), TestIds.uuid(99), req);
+
+        verify(paymentService, never()).updateSubscriptionQuantity(any(), any(), anyInt());
+        verify(paymentService, never()).swapSubscriptionPrice(any(), any(), any(), anyInt());
     }
 
     // ─── helpers ────────────────────────────────────────────────────────────

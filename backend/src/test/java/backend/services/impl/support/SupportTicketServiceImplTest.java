@@ -1,11 +1,15 @@
 package backend.services.impl.support;
 
+import backend.dtos.requests.support.AssignTicketRequest;
 import backend.dtos.requests.support.CreateTicketRequest;
 import backend.dtos.requests.support.TicketMessageRequest;
+import backend.dtos.requests.support.UpdateTicketPriorityRequest;
 import backend.dtos.requests.support.UpdateTicketStatusRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.support.TicketResponse;
 import backend.exceptions.http.ForbiddenException;
+import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.core.Order;
 import backend.models.core.SupportTicket;
 import backend.models.core.SupportTicketMessage;
 import backend.models.core.User;
@@ -226,6 +230,120 @@ class SupportTicketServiceImplTest {
         verify(ticketRepository, never()).findAllByFilters(any(), any(), any());
     }
 
+    // ─── createTicket — order linking & priority ──────────────────────────────
+
+    @Test
+    void createTicket_withOrderId_linksOrderToTicket() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        Order order = makeOrder(TestIds.uuid(99), customer);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(orderRepository.findById(TestIds.uuid(99))).thenReturn(Optional.of(order));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "Order issue", "Item missing", TicketCategory.ORDER_ISSUE, null, TestIds.uuid(99), null);
+        TicketResponse resp = service.createTicket(TestIds.uuid(1), req);
+
+        assertEquals(TestIds.uuid(99), resp.getOrderId());
+    }
+
+    @Test
+    void createTicket_customerLinksOtherUsersOrder_throwsForbidden() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        User otherUser = makeUser(TestIds.uuid(9), UserRole.USER);
+        Order order = makeOrder(TestIds.uuid(99), otherUser); // owned by a different user
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(orderRepository.findById(TestIds.uuid(99))).thenReturn(Optional.of(order));
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "subject", "desc", TicketCategory.ORDER_ISSUE, null, TestIds.uuid(99), null);
+        assertThrows(ForbiddenException.class, () -> service.createTicket(TestIds.uuid(1), req));
+    }
+
+    @Test
+    void createTicket_withExplicitPriority_usesProvidedPriority() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "Urgent", "Fix this now", TicketCategory.OTHER, TicketPriority.HIGH, null, null);
+        TicketResponse resp = service.createTicket(TestIds.uuid(1), req);
+
+        assertEquals("HIGH", resp.getPriority());
+    }
+
+    @Test
+    void createTicket_nullPriority_defaultsToNormal() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            t.setPriority(TicketPriority.NORMAL);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "subject", "desc", TicketCategory.OTHER, null, null, null);
+        TicketResponse resp = service.createTicket(TestIds.uuid(1), req);
+
+        assertEquals("NORMAL", resp.getPriority());
+    }
+
+    // ─── addMessage — additional paths ────────────────────────────────────────
+
+    @Test
+    void addMessage_nonOwnerCustomerForbidden() {
+        User owner  = makeUser(TestIds.uuid(1), UserRole.USER);
+        User other  = makeUser(TestIds.uuid(2), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), owner);
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(other));
+        when(ticketRepository.findByIdForUpdate(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.addMessage(TestIds.uuid(10), TestIds.uuid(2), new TicketMessageRequest("hi")));
+    }
+
+    @Test
+    void addMessage_pendingInternal_alwaysAdvancesToPendingCustomer() {
+        // PENDING_INTERNAL → PENDING_CUSTOMER regardless of who replies
+        User staff  = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.PENDING_INTERNAL);
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findByIdForUpdate(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(messageRepository.save(any())).thenAnswer(inv -> {
+            SupportTicketMessage m = inv.getArgument(0);
+            m.setAuthor(staff);
+            return m;
+        });
+
+        service.addMessage(TestIds.uuid(10), TestIds.uuid(2), new TicketMessageRequest("update"));
+
+        assertEquals(TicketStatus.PENDING_CUSTOMER, ticket.getStatus());
+    }
+
     // ─── updateStatus ─────────────────────────────────────────────────────────
 
     @Test
@@ -238,6 +356,131 @@ class SupportTicketServiceImplTest {
                         new UpdateTicketStatusRequest(TicketStatus.RESOLVED)));
     }
 
+    @Test
+    void updateStatus_resolved_setsResolvedAt() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        TicketResponse resp = service.updateStatus(TestIds.uuid(10), TestIds.uuid(2),
+                new UpdateTicketStatusRequest(TicketStatus.RESOLVED));
+
+        assertNotNull(resp.getResolvedAt());
+        assertNull(resp.getClosedAt());
+    }
+
+    @Test
+    void updateStatus_closed_setsClosedAt() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        TicketResponse resp = service.updateStatus(TestIds.uuid(10), TestIds.uuid(2),
+                new UpdateTicketStatusRequest(TicketStatus.CLOSED));
+
+        assertNotNull(resp.getClosedAt());
+        assertNull(resp.getResolvedAt());
+    }
+
+    // ─── assignTicket ─────────────────────────────────────────────────────────
+
+    @Test
+    void assignTicket_happyPath_assignsStaffMemberAndSaves() {
+        User actor   = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User assignee = makeUser(TestIds.uuid(3), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(actor));
+        when(userRepository.findById(TestIds.uuid(3))).thenReturn(Optional.of(assignee));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        TicketResponse resp = service.assignTicket(TestIds.uuid(10), TestIds.uuid(2),
+                new AssignTicketRequest(TestIds.uuid(3)));
+
+        assertEquals(TestIds.uuid(3), resp.getAssignedToId());
+        verify(ticketRepository).save(ticket);
+    }
+
+    @Test
+    void assignTicket_nonStaffActorForbidden() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.assignTicket(TestIds.uuid(10), TestIds.uuid(1),
+                        new AssignTicketRequest(TestIds.uuid(3))));
+    }
+
+    @Test
+    void assignTicket_assigneeNotStaff_throwsForbidden() {
+        User actor   = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User assignee = makeUser(TestIds.uuid(9), UserRole.USER); // not staff
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(actor));
+        when(userRepository.findById(TestIds.uuid(9))).thenReturn(Optional.of(assignee));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.assignTicket(TestIds.uuid(10), TestIds.uuid(2),
+                        new AssignTicketRequest(TestIds.uuid(9))));
+    }
+
+    // ─── updatePriority ───────────────────────────────────────────────────────
+
+    @Test
+    void updatePriority_happyPath_updatesPriorityAndSaves() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        TicketResponse resp = service.updatePriority(TestIds.uuid(10), TestIds.uuid(2),
+                new UpdateTicketPriorityRequest(TicketPriority.URGENT));
+
+        assertEquals("URGENT", resp.getPriority());
+        verify(ticketRepository).save(ticket);
+    }
+
+    @Test
+    void updatePriority_nonStaffForbidden() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.updatePriority(TestIds.uuid(10), TestIds.uuid(1),
+                        new UpdateTicketPriorityRequest(TicketPriority.LOW)));
+    }
+
+    // ─── getTicket — not found ────────────────────────────────────────────────
+
+    @Test
+    void getTicket_notFound_throwsResourceNotFound() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getTicket(TestIds.uuid(99), TestIds.uuid(2)));
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private User makeUser(UUID id, UserRole role) {
@@ -246,6 +489,13 @@ class SupportTicketServiceImplTest {
         u.setEmail("user" + id + "@test.com");
         u.setRole(role);
         return u;
+    }
+
+    private Order makeOrder(UUID id, User owner) {
+        Order o = new Order();
+        o.setId(id);
+        o.setUser(owner);
+        return o;
     }
 
     private SupportTicket makeTicket(UUID id, User customer) {
