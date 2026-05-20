@@ -341,13 +341,13 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
 
     private void assertVendorOwner(UUID vendorId, UUID userId) {
         marketplaceVendorRepository.findById(vendorId)
-                .filter(v -> v.getVendorCompany().getOwner().getId() == userId)
+                .filter(v -> v.getVendorCompany().getOwner().getId().equals(userId))
                 .orElseThrow(() -> new ForbiddenException("You do not own this vendor account"));
     }
 
     private void assertOperator(UUID marketplaceId, UUID userId) {
         marketplaceProfileRepository.findByCompanyId(marketplaceId)
-                .filter(p -> p.getCompany().getOwner().getId() == userId)
+                .filter(p -> p.getCompany().getOwner().getId().equals(userId))
                 .orElseThrow(() -> new ForbiddenException("You are not an operator of this marketplace"));
     }
 
