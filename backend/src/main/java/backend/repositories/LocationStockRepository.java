@@ -72,15 +72,17 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
             @Param("variantRef") java.util.UUID variantRef);
 
     /** Picks active locations for a product ordered by Haversine distance to buyer (product-level stock). */
-    @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef IS NULL " +
+    @Query(value = "SELECT ls.* FROM location_stocks ls " +
+           "JOIN inventory_locations loc ON loc.id = ls.location_id " +
+           "WHERE ls.product_id = :productId AND ls.variant_ref IS NULL " +
            "AND loc.active = true AND ls.stock > 0 " +
            "AND loc.latitude IS NOT NULL AND loc.longitude IS NOT NULL " +
-           "ORDER BY FUNCTION('ASIN', FUNCTION('SQRT', " +
-           "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.latitude - :buyerLat) / 2), 2) + " +
-           "  FUNCTION('COS', FUNCTION('RADIANS', :buyerLat)) * FUNCTION('COS', FUNCTION('RADIANS', loc.latitude)) * " +
-           "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.longitude - :buyerLng) / 2), 2) " +
-           ")) ASC")
+           "ORDER BY ASIN(SQRT(" +
+           "  POW(SIN(RADIANS(loc.latitude - :buyerLat) / 2), 2) + " +
+           "  COS(RADIANS(:buyerLat)) * COS(RADIANS(loc.latitude)) * " +
+           "  POW(SIN(RADIANS(loc.longitude - :buyerLng) / 2), 2)" +
+           ")) ASC",
+           nativeQuery = true)
     List<LocationStock> findByProductOrderedByDistance(
             @Param("productId") java.util.UUID productId,
             @Param("buyerLat") double buyerLat,
@@ -88,15 +90,17 @@ public interface LocationStockRepository extends JpaRepository<LocationStock, ja
             Pageable pageable);
 
     /** Picks active locations for a variant ordered by Haversine distance to buyer (variant-level stock). */
-    @Query("SELECT ls FROM LocationStock ls JOIN FETCH ls.location loc " +
-           "WHERE ls.product.id = :productId AND ls.variantRef = :variantRef " +
+    @Query(value = "SELECT ls.* FROM location_stocks ls " +
+           "JOIN inventory_locations loc ON loc.id = ls.location_id " +
+           "WHERE ls.product_id = :productId AND ls.variant_ref = :variantRef " +
            "AND loc.active = true AND ls.stock > 0 " +
            "AND loc.latitude IS NOT NULL AND loc.longitude IS NOT NULL " +
-           "ORDER BY FUNCTION('ASIN', FUNCTION('SQRT', " +
-           "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.latitude - :buyerLat) / 2), 2) + " +
-           "  FUNCTION('COS', FUNCTION('RADIANS', :buyerLat)) * FUNCTION('COS', FUNCTION('RADIANS', loc.latitude)) * " +
-           "  FUNCTION('POWER', FUNCTION('SIN', FUNCTION('RADIANS', loc.longitude - :buyerLng) / 2), 2) " +
-           ")) ASC")
+           "ORDER BY ASIN(SQRT(" +
+           "  POW(SIN(RADIANS(loc.latitude - :buyerLat) / 2), 2) + " +
+           "  COS(RADIANS(:buyerLat)) * COS(RADIANS(loc.latitude)) * " +
+           "  POW(SIN(RADIANS(loc.longitude - :buyerLng) / 2), 2)" +
+           ")) ASC",
+           nativeQuery = true)
     List<LocationStock> findByVariantOrderedByDistance(
             @Param("productId") java.util.UUID productId,
             @Param("variantRef") java.util.UUID variantRef,

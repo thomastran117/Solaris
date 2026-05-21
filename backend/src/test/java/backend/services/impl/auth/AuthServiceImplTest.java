@@ -1,6 +1,5 @@
 package backend.services.impl.auth;
 
-import backend.exceptions.http.UnauthorizedException;
 import backend.http.ClientInfo;
 import backend.http.ClientRequestContext;
 import backend.http.DeviceType;
@@ -18,10 +17,10 @@ import backend.testutil.TestIds;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import backend.exceptions.http.UnauthorizedException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -52,7 +51,7 @@ class AuthServiceImplTest {
         emailVerificationService = mock(EmailVerificationService.class);
         deviceService = mock(DeviceService.class);
         service = new AuthServiceImpl(userService, oauthService, tokenService,
-                emailVerificationService, deviceService);
+                emailVerificationService, deviceService, true);
 
         // Inject ClientInfo into Spring's request context so ClientRequestContext.get() works
         MockHttpServletRequest req = new MockHttpServletRequest();
@@ -164,28 +163,20 @@ class AuthServiceImplTest {
 
     @Test
     void refresh_nullToken_throwsUnauthorized() {
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> service.refresh(null));
-        assertEquals(401, ex.getStatusCode().value());
+        assertThrows(UnauthorizedException.class, () -> service.refresh(null));
     }
 
     @Test
     void refresh_tokenFailsValidation_throwsUnauthorized() {
         when(tokenService.validateRefreshToken("bad")).thenReturn(false);
-
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> service.refresh("bad"));
-        assertEquals(401, ex.getStatusCode().value());
+        assertThrows(UnauthorizedException.class, () -> service.refresh("bad"));
     }
 
     @Test
     void refresh_payloadNull_throwsUnauthorized() {
         when(tokenService.validateRefreshToken("tok")).thenReturn(true);
         when(tokenService.getRefreshTokenPayload("tok")).thenReturn(null);
-
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> service.refresh("tok"));
-        assertEquals(401, ex.getStatusCode().value());
+        assertThrows(UnauthorizedException.class, () -> service.refresh("tok"));
     }
 
     @Test

@@ -45,15 +45,15 @@ public class VendorSLAPolicy {
     private double targetResponseHours = 24.0;
 
     /** Max allowed cancellation rate (e.g. 0.02 = 2%). */
-    @Column(nullable = false, precision = 6, scale = 4)
+    @Column(nullable = false)
     private double maxCancellationRate = 0.02;
 
     /** Max allowed refund/return rate (e.g. 0.05 = 5%). */
-    @Column(nullable = false, precision = 6, scale = 4)
+    @Column(nullable = false)
     private double maxRefundRate = 0.05;
 
     /** Max allowed late-shipment rate (e.g. 0.10 = 10%). */
-    @Column(nullable = false, precision = 6, scale = 4)
+    @Column(nullable = false)
     private double maxLateShipmentRate = 0.10;
 
     @Enumerated(EnumType.STRING)

@@ -10,9 +10,9 @@ import backend.services.intf.auth.EmailVerificationService;
 import backend.services.intf.auth.OAuthService;
 import backend.services.intf.auth.TokenService;
 import backend.services.intf.auth.UserService;
-import org.springframework.http.HttpStatus;
+import backend.exceptions.http.UnauthorizedException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -25,17 +25,20 @@ public class AuthServiceImpl implements AuthService {
     private final OAuthService oauthService;
     private final EmailVerificationService emailVerificationService;
     private final DeviceService deviceService;
+    private final boolean deviceCheckEnabled;
 
     public AuthServiceImpl(UserService userService,
                            OAuthService oauthService,
                            TokenService tokenService,
                            EmailVerificationService emailVerificationService,
-                           DeviceService deviceService) {
+                           DeviceService deviceService,
+                           @Value("${app.security.device-check.enabled:true}") boolean deviceCheckEnabled) {
         this.userService = userService;
         this.tokenService = tokenService;
         this.oauthService = oauthService;
         this.emailVerificationService = emailVerificationService;
         this.deviceService = deviceService;
+        this.deviceCheckEnabled = deviceCheckEnabled;
     }
 
     @Override
@@ -47,11 +50,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public RefreshResult refresh(String refreshToken) {
         if (refreshToken == null || !tokenService.validateRefreshToken(refreshToken)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token");
+            throw new UnauthorizedException("Invalid or expired refresh token");
         }
         TokenService.RefreshTokenPayload payload = tokenService.getRefreshTokenPayload(refreshToken);
         if (payload == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token");
+            throw new UnauthorizedException("Invalid or expired refresh token");
         }
 
         User user = userService.getUserByID(payload.userId());
@@ -128,6 +131,9 @@ public class AuthServiceImpl implements AuthService {
 
     private LoginAttemptResult handleDeviceCheck(User user) {
         ClientInfo clientInfo = ClientRequestContext.get();
+        if (!deviceCheckEnabled) {
+            return LoginAttemptResult.success(buildLoginResult(user));
+        }
         String fingerprint = deviceService.computeFingerprint(clientInfo.userAgent());
         if (deviceService.isKnownDevice(user.getId(), fingerprint)) {
             deviceService.recordDeviceSeen(user.getId(), clientInfo);

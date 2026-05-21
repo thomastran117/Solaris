@@ -19,8 +19,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT s.id FROM User u JOIN u.segments s WHERE u.id = :userId")
     List<UUID> findSegmentIdsByUserId(@Param("userId") UUID userId);
 
-    Optional<User> findByIdAndOwnerId(UUID id, UUID ownerId);
-
     /** Returns IDs of users whose birth month and day match today, for birthday reward processing. */
     @Query(value = "SELECT id FROM users WHERE birth_date IS NOT NULL " +
                    "AND MONTH(birth_date) = :month AND DAY(birth_date) = :day",
