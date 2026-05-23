@@ -12,6 +12,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import backend.models.enums.UserRole;
 import backend.models.enums.UserStatus;
+import backend.models.enums.UserTier;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -82,6 +83,18 @@ public class User {
      */
     @Column(nullable = true, length = 100, unique = true)
     private String stripeCustomerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private UserTier tier = UserTier.FREE;
+
+    /** Stripe Subscription ID backing the user's premium membership. Null for FREE users. */
+    @Column(nullable = true, length = 100, unique = true)
+    private String premiumStripeSubscriptionId;
+
+    /** End of the current premium billing period. Null for FREE users. */
+    @Column(nullable = true)
+    private Instant premiumExpiresAt;
 
     /** Date of birth. Used by the LoyaltyScheduler for birthday rewards. Null if not provided. */
     @Column(nullable = true, name = "birth_date")

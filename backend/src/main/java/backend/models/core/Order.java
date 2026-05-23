@@ -187,6 +187,14 @@ public class Order {
     @Column(nullable = false)
     private long loyaltyDiscountCents = 0L;
 
+    /** True when the buyer held a Premium subscription at the time of order creation. */
+    @Column(nullable = false)
+    private boolean priorityOrder = false;
+
+    /** 5% Premium discount applied at checkout (in cents). Zero for FREE-tier orders. */
+    @Column(nullable = false)
+    private long premiumDiscountCents = 0L;
+
     // -------------------------------------------------------------------------
     // Risk / fraud engine
     // -------------------------------------------------------------------------

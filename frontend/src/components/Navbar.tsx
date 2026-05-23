@@ -13,7 +13,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { accessToken, email, companyId } = useSelector((state: RootState) => state.auth);
+  const { accessToken, email, companyId, tier } = useSelector((state: RootState) => state.auth);
   const { can } = useCompanyCapabilities(accessToken ? companyId : null);
   const canManageCompany = can("MANAGE_COMPANY");
   const canManageProducts = can("MANAGE_PRODUCTS");
@@ -220,6 +220,11 @@ export default function Navbar() {
                   <div className="flex items-center gap-1 text-gray-300 hover:text-blue-400">
                     <FaUserCircle />
                     <span>{username}</span>
+                    {tier === "PREMIUM" && (
+                      <span className="text-xs font-semibold text-transparent bg-clip-text bg-gradient-to-r from-sky-200 to-blue-400 border border-white/20 rounded-full px-2 py-0.5 leading-none">
+                        PREMIUM
+                      </span>
+                    )}
                     <svg
                       className={`w-4 h-4 ml-1 transition-transform duration-300 ${
                         userDropdownOpen ? "rotate-180" : ""
@@ -232,6 +237,12 @@ export default function Navbar() {
                   </div>
                   {userDropdownOpen && (
                     <div className="absolute right-0 mt-2 w-44 bg-white text-black rounded-lg shadow-xl z-20 border border-gray-200">
+                      <NavLink
+                        to="/account"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        Account
+                      </NavLink>
                       <NavLink
                         to="/profile"
                         className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"

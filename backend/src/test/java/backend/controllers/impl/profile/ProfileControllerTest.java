@@ -134,7 +134,8 @@ class ProfileControllerTest {
                 "Alex",
                 "Morgan",
                 "+1 555 0101",
-                "123 King St"
+                "123 King St",
+                "FREE"
         );
     }
 

@@ -14,7 +14,7 @@ import java.util.UUID;
 public class CreateOrderRequest {
 
     @NotEmpty(message = "Order must contain at least one item")
-    @Size(max = 50, message = "Order cannot contain more than 50 items")
+    @Size(max = 200, message = "Order cannot contain more than 200 items")
     @Valid
     private List<OrderItemRequest> items;
 

@@ -354,7 +354,7 @@ public class AuthController {
         ResponseCookie cookie = buildRefreshCookie(result.refreshToken(), 7L * 24 * 60 * 60);
         response.addHeader("Set-Cookie", cookie.toString());
         return ResponseEntity.ok(
-                new AuthResponse(result.accessToken(), result.email(), result.usertype(), result.userId()));
+                new AuthResponse(result.accessToken(), result.email(), result.usertype(), result.userId(), result.tier()));
     }
 
     private UUID resolveUserId() {

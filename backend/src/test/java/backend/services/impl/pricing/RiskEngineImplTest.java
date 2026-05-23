@@ -75,7 +75,7 @@ class RiskEngineImplTest {
 
     @Test
     void assess_vipReturnsAllowWithoutEvaluators() {
-        riskProperties.setVipSegmentId(VIP_SEGMENT_ID);
+        riskProperties.setVipSegmentId(VIP_SEGMENT_ID.toString());
         RiskEngineImpl service = new RiskEngineImpl(
                 riskBlocklistRepository,
                 emailVerificationService,

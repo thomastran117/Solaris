@@ -15,6 +15,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByStripeCustomerId(String stripeCustomerId);
 
+    Optional<User> findByPremiumStripeSubscriptionId(String premiumStripeSubscriptionId);
+
     /** Returns the segment ids a user belongs to. Empty for anonymous/unsegmented users. */
     @Query("SELECT s.id FROM User u JOIN u.segments s WHERE u.id = :userId")
     List<UUID> findSegmentIdsByUserId(@Param("userId") UUID userId);

@@ -21,4 +21,6 @@ public interface SavedListRepository extends JpaRepository<SavedList, java.util.
     Optional<SavedList> findByShareSlug(String shareSlug);
 
     boolean existsByNameAndUserIdAndType(String name, UUID userId, SavedListType type);
+
+    long countByUserId(UUID userId);
 }

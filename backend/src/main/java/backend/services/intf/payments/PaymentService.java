@@ -262,6 +262,36 @@ public interface PaymentService {
     SubscriptionResult retrieveSubscription(String stripeSubscriptionId);
 
     // -------------------------------------------------------------------------
+    // Stripe Checkout + Customer Portal (premium membership)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Creates a Stripe Checkout Session for a one-time or subscription purchase.
+     *
+     * @param customerId Stripe Customer ID to pre-fill; must not be null
+     * @param priceId    Stripe Price ID to charge
+     * @param successUrl URL to redirect to after successful payment
+     * @param cancelUrl  URL to redirect to if the user cancels
+     * @return hosted Checkout Session URL
+     */
+    String createCheckoutSession(String customerId, String priceId, String successUrl, String cancelUrl);
+
+    /**
+     * Creates a Stripe Customer Portal Session so the user can manage their subscription.
+     *
+     * @param customerId Stripe Customer ID
+     * @param returnUrl  URL to redirect to when the user exits the portal
+     * @return hosted Customer Portal URL
+     */
+    String createPortalSession(String customerId, String returnUrl);
+
+    /**
+     * Validates the webhook signature and parses a premium-endpoint webhook event using the
+     * premium webhook secret (separate from the general webhook secret).
+     */
+    WebhookEvent constructPremiumWebhookEvent(String payload, String sigHeader);
+
+    // -------------------------------------------------------------------------
     // Stripe Connect Express (marketplace vendor payouts)
     // -------------------------------------------------------------------------
 

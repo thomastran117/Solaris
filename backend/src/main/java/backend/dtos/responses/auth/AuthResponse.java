@@ -14,4 +14,5 @@ public class AuthResponse {
     private String email;
     private String usertype;
     private UUID userid;
+    private String tier;
 }

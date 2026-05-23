@@ -152,7 +152,8 @@ public class AuthServiceImpl implements AuthService {
                 (String) tokens.get("refreshToken"),
                 user.getEmail(),
                 user.getRole().toString(),
-                user.getId()
+                user.getId(),
+                user.getTier().name()
         );
     }
 }

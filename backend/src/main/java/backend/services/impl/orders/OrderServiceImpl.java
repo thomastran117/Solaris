@@ -285,6 +285,12 @@ public class OrderServiceImpl implements OrderService {
 
         List<CreateOrderRequest.OrderItemRequest> itemRequests = request.getItems();
 
+        // Premium tier: free users capped at 50 items per order
+        if (user.getTier() == backend.models.enums.UserTier.FREE && itemRequests.size() > 50) {
+            throw new backend.exceptions.http.PremiumRequiredException(
+                    "Free accounts are limited to 50 items per order. Upgrade to Premium for up to 200 items.");
+        }
+
         // Validate: each item must have exactly one of productId or bundleId
         for (CreateOrderRequest.OrderItemRequest ir : itemRequests) {
             if (ir.getProductId() == null && ir.getBundleId() == null) {
@@ -698,6 +704,16 @@ public class OrderServiceImpl implements OrderService {
                         .max(BigDecimal.ZERO);
             }
 
+            // --- Premium discount: 5% off the entire order for Premium subscribers ---
+            long premiumDiscountCents = 0L;
+            if (user.getTier() == backend.models.enums.UserTier.PREMIUM) {
+                premiumDiscountCents = finalTotal.multiply(new BigDecimal("0.05"))
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .longValue();
+                finalTotal = finalTotal.subtract(BigDecimal.valueOf(premiumDiscountCents).movePointLeft(2))
+                        .max(BigDecimal.ZERO);
+            }
+
             long amountInCents = finalTotal.multiply(BigDecimal.valueOf(100))
                     .setScale(0, RoundingMode.HALF_UP)
                     .longValueExact();
@@ -721,6 +737,8 @@ public class OrderServiceImpl implements OrderService {
             order.setCoupon(appliedCoupon);
             order.setCurrency(currency);
             order.setStatus(OrderStatus.RESERVED);
+            order.setPriorityOrder(user.getTier() == backend.models.enums.UserTier.PREMIUM);
+            order.setPremiumDiscountCents(premiumDiscountCents);
 
             for (OrderItem item : orderItems) {
                 item.setOrder(order);

@@ -45,8 +45,8 @@ export default function LoginPage() {
         email: formData.username,
         password: formData.password,
       });
-      const { token, email, usertype } = res.data;
-      dispatch(setCredentials({ accessToken: token, email, role: usertype }));
+      const { token, email, usertype, tier } = res.data;
+      dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {
@@ -114,8 +114,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/auth/google", { idToken });
-      const { token, email, usertype } = res.data;
-      dispatch(setCredentials({ accessToken: token, email, role: usertype }));
+      const { token, email, usertype, tier } = res.data;
+      dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {

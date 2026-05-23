@@ -11,7 +11,7 @@ public interface AuthService {
     /**
      * Result of a successful login: tokens and user info for the response.
      */
-    record LoginResult(String accessToken, String refreshToken, String email, String usertype, UUID userId) {}
+    record LoginResult(String accessToken, String refreshToken, String email, String usertype, UUID userId, String tier) {}
 
     /**
      * Result of a login attempt. When {@code deviceVerificationRequired} is true, no tokens

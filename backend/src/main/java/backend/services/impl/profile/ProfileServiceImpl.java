@@ -46,7 +46,8 @@ public class ProfileServiceImpl implements ProfileService {
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhoneNumber(),
-                user.getAddress()
+                user.getAddress(),
+                user.getTier().name()
         );
     }
 }

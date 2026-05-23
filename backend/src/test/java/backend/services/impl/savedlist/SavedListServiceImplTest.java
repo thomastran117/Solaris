@@ -803,4 +803,43 @@ class SavedListServiceImplTest {
         req.setPublic(isPublic);
         return req;
     }
+
+    // ─── Premium tier: saved-list cap ────────────────────────────────────────
+
+    @Test
+    void createSavedList_freeUserAtCap_throwsPremiumRequired() {
+        User freeUser = makeUser(USER_ID, "John", "Doe");
+        // tier defaults to FREE; 5 lists already exist
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(freeUser));
+        when(savedListRepository.existsByNameAndUserIdAndType(anyString(), eq(USER_ID), any())).thenReturn(false);
+        when(savedListRepository.countByUserId(USER_ID)).thenReturn(5L);
+
+        assertThrows(backend.exceptions.http.PremiumRequiredException.class,
+                () -> service.createSavedList(USER_ID, makeCreateRequest("New List", SavedListType.WISHLIST, false)));
+    }
+
+    @Test
+    void createSavedList_freeUserBelowCap_succeeds() {
+        User freeUser = makeUser(USER_ID, "John", "Doe");
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(freeUser));
+        when(savedListRepository.existsByNameAndUserIdAndType(anyString(), eq(USER_ID), any())).thenReturn(false);
+        when(savedListRepository.countByUserId(USER_ID)).thenReturn(4L);
+
+        assertDoesNotThrow(
+                () -> service.createSavedList(USER_ID, makeCreateRequest("New List", SavedListType.WISHLIST, false)));
+    }
+
+    @Test
+    void createSavedList_premiumUserAboveCap_succeeds() {
+        User premiumUser = makeUser(USER_ID, "John", "Doe");
+        premiumUser.setTier(backend.models.enums.UserTier.PREMIUM);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser));
+        when(savedListRepository.existsByNameAndUserIdAndType(anyString(), eq(USER_ID), any())).thenReturn(false);
+
+        assertDoesNotThrow(
+                () -> service.createSavedList(USER_ID, makeCreateRequest("List 6", SavedListType.WISHLIST, false)));
+
+        // countByUserId must NOT be called for premium users
+        verify(savedListRepository, never()).countByUserId(any());
+    }
 }

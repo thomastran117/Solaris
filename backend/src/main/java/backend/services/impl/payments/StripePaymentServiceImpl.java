@@ -9,6 +9,7 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.Account;
 import com.stripe.model.AccountLink;
 import com.stripe.model.Charge;
+import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.model.Transfer;
 import com.stripe.param.TransferCreateParams;
 import com.stripe.model.Customer;
@@ -560,6 +561,96 @@ public class StripePaymentServiceImpl implements PaymentService {
             case MONTH -> ChronoUnit.MONTHS;
             case YEAR  -> ChronoUnit.YEARS;
         };
+    }
+
+    // -------------------------------------------------------------------------
+    // Stripe Checkout + Customer Portal
+    // -------------------------------------------------------------------------
+
+    @Override
+    public String createCheckoutSession(String customerId, String priceId, String successUrl, String cancelUrl) {
+        return executeWithRetry(() -> {
+            SessionCreateParams params = SessionCreateParams.builder()
+                    .setCustomer(customerId)
+                    .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
+                    .addLineItem(
+                            SessionCreateParams.LineItem.builder()
+                                    .setPrice(priceId)
+                                    .setQuantity(1L)
+                                    .build()
+                    )
+                    .setSuccessUrl(successUrl)
+                    .setCancelUrl(cancelUrl)
+                    .build();
+            com.stripe.model.checkout.Session session = com.stripe.model.checkout.Session.create(params);
+            return session.getUrl();
+        });
+    }
+
+    @Override
+    public String createPortalSession(String customerId, String returnUrl) {
+        return executeWithRetry(() -> {
+            com.stripe.param.billingportal.SessionCreateParams params =
+                    com.stripe.param.billingportal.SessionCreateParams.builder()
+                            .setCustomer(customerId)
+                            .setReturnUrl(returnUrl)
+                            .build();
+            com.stripe.model.billingportal.Session session =
+                    com.stripe.model.billingportal.Session.create(params);
+            return session.getUrl();
+        });
+    }
+
+    @Override
+    public WebhookEvent constructPremiumWebhookEvent(String payload, String sigHeader) {
+        try {
+            Event event = Webhook.constructEvent(
+                    payload,
+                    sigHeader,
+                    environmentSetting.getStripe().getPremium().getWebhookSecret()
+            );
+
+            StripeObject stripeObject = event.getDataObjectDeserializer().getObject().orElse(null);
+            String objectId = stripeObject != null ? extractId(stripeObject) : null;
+            String eventType = event.getType();
+            String objectType = eventType != null && eventType.contains(".")
+                    ? eventType.substring(0, eventType.indexOf('.'))
+                    : eventType;
+
+            Map<String, String> metadata = extractPremiumMetadata(eventType, stripeObject);
+            return new WebhookEvent(event.getId(), eventType, objectId, objectType, metadata);
+        } catch (SignatureVerificationException e) {
+            throw new BadRequestException("Invalid Stripe webhook signature");
+        } catch (Exception e) {
+            throw new BadRequestException("Malformed webhook payload");
+        }
+    }
+
+    private Map<String, String> extractPremiumMetadata(String eventType, StripeObject stripeObject) {
+        if (stripeObject == null || eventType == null) return Map.of();
+        try {
+            if ("checkout.session.completed".equals(eventType)
+                    && stripeObject instanceof com.stripe.model.checkout.Session session) {
+                Map<String, String> meta = new HashMap<>();
+                if (session.getCustomer() != null)     meta.put("customerId",     session.getCustomer());
+                if (session.getSubscription() != null) meta.put("subscriptionId", session.getSubscription());
+                return meta;
+            } else if (eventType.startsWith("customer.subscription.") && stripeObject instanceof Subscription sub) {
+                Map<String, String> meta = new HashMap<>();
+                meta.put("subscriptionId", sub.getId());
+                if (sub.getStatus() != null)              meta.put("subscriptionStatus", sub.getStatus());
+                if (sub.getCustomer() != null)            meta.put("customerId",         sub.getCustomer());
+                if (sub.getCurrentPeriodEnd() != null)    meta.put("currentPeriodEnd",   String.valueOf(sub.getCurrentPeriodEnd()));
+                return meta;
+            } else if (eventType.startsWith("invoice.") && stripeObject instanceof Invoice inv) {
+                Map<String, String> meta = new HashMap<>();
+                if (inv.getSubscription() != null) meta.put("subscriptionId", inv.getSubscription());
+                return meta;
+            }
+        } catch (Exception ignored) {
+            // metadata extraction is best-effort — never break webhook processing
+        }
+        return Map.of();
     }
 
     // -------------------------------------------------------------------------

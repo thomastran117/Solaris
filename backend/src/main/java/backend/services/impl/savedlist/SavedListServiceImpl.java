@@ -13,7 +13,9 @@ import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
+import backend.exceptions.http.PremiumRequiredException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.UserTier;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.core.SavedList;
@@ -94,6 +96,11 @@ public class SavedListServiceImpl implements SavedListService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getTier() == UserTier.FREE && savedListRepository.countByUserId(userId) >= 5) {
+            throw new PremiumRequiredException(
+                    "Free accounts are limited to 5 saved lists. Upgrade to Premium for unlimited lists.");
+        }
 
         SavedList list = new SavedList();
         list.setUser(user);

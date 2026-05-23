@@ -665,6 +665,7 @@ public class EnvironmentSetting {
         private String publishableKey = "";
         private String webhookSecret = "";
         private final Retry retry = new Retry();
+        private final Premium premium = new Premium();
 
         public String getSecretKey() {
             return secretKey != null ? secretKey : "";
@@ -692,6 +693,33 @@ public class EnvironmentSetting {
 
         public Retry getRetry() {
             return retry;
+        }
+
+        public Premium getPremium() {
+            return premium;
+        }
+
+        public static class Premium {
+            private String priceId = "";
+            private String webhookSecret = "";
+            private String checkoutSuccessUrl = "http://localhost:5173/account?upgrade=success";
+            private String checkoutCancelUrl = "http://localhost:5173/account";
+            private String portalReturnUrl = "http://localhost:5173/account";
+
+            public String getPriceId() { return priceId != null ? priceId : ""; }
+            public void setPriceId(String priceId) { this.priceId = priceId != null ? priceId : ""; }
+
+            public String getWebhookSecret() { return webhookSecret != null ? webhookSecret : ""; }
+            public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret != null ? webhookSecret : ""; }
+
+            public String getCheckoutSuccessUrl() { return checkoutSuccessUrl != null ? checkoutSuccessUrl : ""; }
+            public void setCheckoutSuccessUrl(String checkoutSuccessUrl) { this.checkoutSuccessUrl = checkoutSuccessUrl != null ? checkoutSuccessUrl : ""; }
+
+            public String getCheckoutCancelUrl() { return checkoutCancelUrl != null ? checkoutCancelUrl : ""; }
+            public void setCheckoutCancelUrl(String checkoutCancelUrl) { this.checkoutCancelUrl = checkoutCancelUrl != null ? checkoutCancelUrl : ""; }
+
+            public String getPortalReturnUrl() { return portalReturnUrl != null ? portalReturnUrl : ""; }
+            public void setPortalReturnUrl(String portalReturnUrl) { this.portalReturnUrl = portalReturnUrl != null ? portalReturnUrl : ""; }
         }
 
         public static class Retry {

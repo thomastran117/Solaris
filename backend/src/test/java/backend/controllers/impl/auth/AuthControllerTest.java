@@ -65,7 +65,7 @@ class AuthControllerTest {
     private static final String TEST_CAPTCHA  = "test-captcha";
 
     private static final AuthService.LoginResult LOGIN_RESULT = new AuthService.LoginResult(
-            "access-tok", "refresh-tok", "user@test.com", "USER", USER_ID);
+            "access-tok", "refresh-tok", "user@test.com", "USER", USER_ID, "FREE");
 
     @BeforeEach
     void setUp() {

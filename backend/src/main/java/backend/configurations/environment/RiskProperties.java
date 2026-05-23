@@ -26,8 +26,8 @@ public class RiskProperties {
     /** Score ≥ blockThreshold → BLOCK. */
     private int blockThreshold = 70;
 
-    /** Segment id that short-circuits all checks (ALLOW). Null disables. */
-    private UUID vipSegmentId;
+    /** Segment id that short-circuits all checks (ALLOW). Null or blank disables. */
+    private String vipSegmentId;
 
     private final FailedPayment failedPayment = new FailedPayment();
     private final Device device = new Device();
@@ -47,8 +47,12 @@ public class RiskProperties {
     public int getBlockThreshold() { return blockThreshold; }
     public void setBlockThreshold(int v) { this.blockThreshold = Math.max(0, Math.min(1000, v)); }
 
-    public UUID getVipSegmentId() { return vipSegmentId; }
-    public void setVipSegmentId(UUID vipSegmentId) { this.vipSegmentId = vipSegmentId; }
+    /** Returns null when the property is blank or not a valid UUID (sentinel / unset). */
+    public UUID getVipSegmentId() {
+        if (vipSegmentId == null || vipSegmentId.isBlank()) return null;
+        try { return UUID.fromString(vipSegmentId); } catch (IllegalArgumentException e) { return null; }
+    }
+    public void setVipSegmentId(String vipSegmentId) { this.vipSegmentId = vipSegmentId; }
 
     public FailedPayment getFailedPayment() { return failedPayment; }
     public Device getDevice() { return device; }

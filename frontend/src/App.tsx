@@ -24,6 +24,7 @@ import AdminBulkImportPage from "./pages/admin/AdminBulkImportPage";
 import ReviewModerationPage from "./pages/admin/ReviewModerationPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
+import AccountPage from "./pages/AccountPage";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
@@ -76,6 +77,7 @@ function App() {
             <Route path="/admin/reviews/reports" element={<ReviewModerationPage />} />
             <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
+            <Route path="/account" element={<AccountPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>

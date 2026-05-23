@@ -80,6 +80,7 @@ api.interceptors.response.use(
                 accessToken: newToken,
                 email: payload?.email ?? null,
                 role: payload?.role ?? null,
+                tier: payload?.tier ?? null,
               })
             );
             return newToken;
