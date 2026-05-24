@@ -74,6 +74,18 @@ public class LoyaltyPolicy {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** Points awarded to the referrer when a referred user completes their first order. 0 = disabled. */
+    @Column(nullable = false, name = "referral_bonus_points")
+    private int referralBonusPoints = 0;
+
+    /** Number of consecutive purchase months required to trigger a streak bonus. */
+    @Column(nullable = false, name = "streak_bonus_threshold")
+    private int streakBonusThreshold = 3;
+
+    /** Bonus points awarded each time the streak reaches a multiple of streakBonusThreshold. 0 = disabled. */
+    @Column(nullable = false, name = "streak_bonus_points")
+    private int streakBonusPoints = 0;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

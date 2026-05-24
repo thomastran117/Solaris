@@ -7,8 +7,10 @@ import backend.dtos.requests.loyalty.CreateLoyaltyTierRequest;
 import backend.dtos.requests.loyalty.IssueBonusRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.loyalty.LoyaltyAccountResponse;
+import backend.dtos.responses.loyalty.LoyaltyExpiryWarningResponse;
 import backend.dtos.responses.loyalty.LoyaltyPolicyResponse;
 import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
+import backend.dtos.responses.loyalty.LoyaltyReferralResponse;
 import backend.dtos.responses.loyalty.LoyaltyTierResponse;
 import backend.dtos.responses.loyalty.LoyaltyTransactionResponse;
 import backend.models.core.Order;
@@ -22,6 +24,12 @@ public interface LoyaltyService {
     // -------------------------------------------------------------------------
 
     LoyaltyAccountResponse getAccount(UUID userId, UUID companyId);
+
+    LoyaltyExpiryWarningResponse getExpiryWarning(UUID userId, UUID companyId, int days);
+
+    LoyaltyReferralResponse getReferralInfo(UUID userId, UUID companyId);
+
+    void applyReferralCode(UUID userId, UUID companyId, String code);
 
     PagedResponse<LoyaltyTransactionResponse> getTransactions(UUID userId, UUID companyId, int page, int size);
 

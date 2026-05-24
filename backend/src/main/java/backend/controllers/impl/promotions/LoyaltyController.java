@@ -3,13 +3,16 @@ package backend.controllers.impl.promotions;
 import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.loyalty.AdjustPointsRequest;
+import backend.dtos.requests.loyalty.ApplyReferralCodeRequest;
 import backend.dtos.requests.loyalty.CreateLoyaltyPolicyRequest;
 import backend.dtos.requests.loyalty.CreateLoyaltyTierRequest;
 import backend.dtos.requests.loyalty.IssueBonusRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.loyalty.LoyaltyAccountResponse;
+import backend.dtos.responses.loyalty.LoyaltyExpiryWarningResponse;
 import backend.dtos.responses.loyalty.LoyaltyPolicyResponse;
 import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
+import backend.dtos.responses.loyalty.LoyaltyReferralResponse;
 import backend.dtos.responses.loyalty.LoyaltyTierResponse;
 import backend.dtos.responses.loyalty.LoyaltyTransactionResponse;
 import backend.exceptions.http.AppHttpException;
@@ -79,6 +82,47 @@ public class LoyaltyController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(loyaltyService.getRedemptionQuote(userId, companyId, points));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/loyalty/expiry-warning")
+    public ResponseEntity<LoyaltyExpiryWarningResponse> getExpiryWarning(
+            @RequestParam UUID companyId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(loyaltyService.getExpiryWarning(userId, companyId, days));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/loyalty/referral")
+    public ResponseEntity<LoyaltyReferralResponse> getReferralInfo(@RequestParam UUID companyId) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(loyaltyService.getReferralInfo(userId, companyId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/loyalty/referral/apply")
+    public ResponseEntity<Void> applyReferralCode(
+            @RequestParam UUID companyId,
+            @Valid @RequestBody ApplyReferralCodeRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            loyaltyService.applyReferralCode(userId, companyId, request.code());
+            return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

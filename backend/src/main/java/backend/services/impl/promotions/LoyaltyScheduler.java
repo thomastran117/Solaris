@@ -1,18 +1,24 @@
 package backend.services.impl.promotions;
 
 import java.util.UUID;
+import backend.events.loyalty.LoyaltyEvent;
 import backend.models.core.LoyaltyAccount;
 import backend.models.core.LoyaltyPolicy;
+import backend.models.core.LoyaltyTransaction;
 import backend.repositories.LoyaltyAccountRepository;
 import backend.repositories.LoyaltyPolicyRepository;
+import backend.repositories.LoyaltyTransactionRepository;
 import backend.repositories.UserRepository;
+import backend.services.intf.promotions.LoyaltyEventPublisher;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.MonthDay;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Component
@@ -22,18 +28,24 @@ public class LoyaltyScheduler {
 
     private final LoyaltyPolicyRepository policyRepository;
     private final LoyaltyAccountRepository accountRepository;
+    private final LoyaltyTransactionRepository transactionRepository;
     private final UserRepository userRepository;
     private final LoyaltyServiceImpl loyaltyService;
+    private final LoyaltyEventPublisher loyaltyEventPublisher;
 
     public LoyaltyScheduler(
             LoyaltyPolicyRepository policyRepository,
             LoyaltyAccountRepository accountRepository,
+            LoyaltyTransactionRepository transactionRepository,
             UserRepository userRepository,
-            LoyaltyServiceImpl loyaltyService) {
+            LoyaltyServiceImpl loyaltyService,
+            LoyaltyEventPublisher loyaltyEventPublisher) {
         this.policyRepository = policyRepository;
         this.accountRepository = accountRepository;
+        this.transactionRepository = transactionRepository;
         this.userRepository = userRepository;
         this.loyaltyService = loyaltyService;
+        this.loyaltyEventPublisher = loyaltyEventPublisher;
     }
 
     /**
@@ -59,6 +71,44 @@ public class LoyaltyScheduler {
             }
         }
         log.info("[LOYALTY SCHEDULER] Birthday reward run complete");
+    }
+
+    /**
+     * Daily expiry-warning run (default: 8 AM every day).
+     * Publishes a LoyaltyEvent.PointsExpiringSoon for each account that has points
+     * expiring within the next 7 days so downstream consumers (e.g. email service) can notify users.
+     */
+    @Scheduled(cron = "${app.loyalty.expiry-warning.cron:0 0 8 * * *}")
+    public void publishExpiryWarnings() {
+        log.info("[LOYALTY SCHEDULER] Starting expiry-warning run");
+        Instant now = Instant.now();
+        Instant threshold = now.plus(7, ChronoUnit.DAYS);
+
+        List<UUID> accountIds = transactionRepository.findAccountIdsWithPointsExpiringSoon(now, threshold);
+        log.info("[LOYALTY SCHEDULER] {} accounts have points expiring within 7 days", accountIds.size());
+
+        for (UUID accountId : accountIds) {
+            try {
+                LoyaltyAccount account = accountRepository.findById(accountId).orElse(null);
+                if (account == null) continue;
+
+                List<LoyaltyTransaction> expiring = transactionRepository.findPointsExpiringSoon(accountId, now, threshold);
+                long totalExpiring = expiring.stream().mapToLong(LoyaltyTransaction::getPointsDelta).sum();
+                Instant earliest = expiring.stream()
+                        .map(LoyaltyTransaction::getExpiresAt)
+                        .filter(java.util.Objects::nonNull)
+                        .min(Instant::compareTo)
+                        .orElse(null);
+
+                if (totalExpiring > 0 && earliest != null) {
+                    loyaltyEventPublisher.publish(new LoyaltyEvent.PointsExpiringSoon(
+                            account.getUserId(), account.getCompanyId(), totalExpiring, earliest));
+                }
+            } catch (Exception e) {
+                log.error("[LOYALTY SCHEDULER] Error publishing expiry warning for account {}: {}", accountId, e.getMessage());
+            }
+        }
+        log.info("[LOYALTY SCHEDULER] Expiry-warning run complete");
     }
 
     /**

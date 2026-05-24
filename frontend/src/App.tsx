@@ -25,6 +25,8 @@ import ReviewModerationPage from "./pages/admin/ReviewModerationPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
 import AccountPage from "./pages/AccountPage";
+import LoyaltyPage from "./pages/LoyaltyPage";
+import AdminLoyaltyPage from "./pages/admin/AdminLoyaltyPage";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
@@ -78,6 +80,8 @@ function App() {
             <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/loyalty" element={<LoyaltyPage />} />
+            <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>

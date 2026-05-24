@@ -63,4 +63,29 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
     @Query("UPDATE LoyaltyAccount a SET a.lastBirthdayRewardYear = :year " +
            "WHERE a.id = :id AND (a.lastBirthdayRewardYear IS NULL OR a.lastBirthdayRewardYear != :year)")
     int claimBirthdayRewardForYear(@Param("id") UUID id, @Param("year") int year);
+
+    Optional<LoyaltyAccount> findByReferralCodeAndCompanyId(String referralCode, UUID companyId);
+
+    /**
+     * Sets a referral code only if none is assigned yet. Returns 1 on success, 0 if already set.
+     * Used by the lazy-generation loop to avoid overwriting a code set by a concurrent request.
+     */
+    @Modifying
+    @Query("UPDATE LoyaltyAccount a SET a.referralCode = :code WHERE a.id = :id AND a.referralCode IS NULL")
+    int setReferralCodeIfAbsent(@Param("id") UUID id, @Param("code") String code);
+
+    @Modifying
+    @Query("UPDATE LoyaltyAccount a SET a.currentStreak = :streak, a.lastOrderYearMonth = :month WHERE a.id = :id")
+    void updateStreak(@Param("id") UUID id, @Param("streak") int streak, @Param("month") String month);
+
+    /**
+     * Atomically marks the referral as converted. Returns 1 if this caller won the race, 0 if already converted.
+     */
+    @Modifying
+    @Query("UPDATE LoyaltyAccount a SET a.referralConverted = true WHERE a.id = :id AND a.referralConverted = false")
+    int markReferralConverted(@Param("id") UUID id);
+
+    @Modifying
+    @Query("UPDATE LoyaltyAccount a SET a.referredByCode = :code WHERE a.id = :id AND a.referredByCode IS NULL")
+    int setReferredByCodeIfAbsent(@Param("id") UUID id, @Param("code") String code);
 }

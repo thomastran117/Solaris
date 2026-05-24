@@ -9,8 +9,22 @@ export interface LoyaltyAccount {
   currentTierId: string | null;
   currentTierName: string | null;
   tierUpdatedAt: string | null;
+  referralCode: string | null;
+  currentStreak: number;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export interface LoyaltyExpiryWarning {
+  pointsExpiringSoon: number;
+  nextExpiryAt: string | null;
+}
+
+export interface LoyaltyReferral {
+  referralCode: string;
+  totalReferrals: number;
+  convertedReferrals: number;
+  pointsEarnedFromReferrals: number;
 }
 
 export interface LoyaltyTransaction {
@@ -22,7 +36,11 @@ export interface LoyaltyTransaction {
     | "EARN_ORDER"
     | "EARN_BONUS"
     | "EARN_BIRTHDAY"
+    | "EARN_REFERRAL"
+    | "EARN_STREAK"
     | "REDEEM_ORDER"
+    | "RESTORE_ORDER"
+    | "EARN_REVERSAL"
     | "CONVERT_TO_CREDIT"
     | "EXPIRE"
     | "ADJUST";
@@ -58,6 +76,9 @@ export interface LoyaltyPolicy {
   cashbackRatePercent: number;
   earnMode: "POINTS" | "CASHBACK" | "BOTH";
   active: boolean;
+  referralBonusPoints: number;
+  streakBonusThreshold: number;
+  streakBonusPoints: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +93,9 @@ export interface CreateLoyaltyPolicyRequest {
   birthdayBonusCreditCents?: number;
   cashbackRatePercent?: number;
   earnMode?: "POINTS" | "CASHBACK" | "BOTH";
+  referralBonusPoints?: number;
+  streakBonusThreshold?: number;
+  streakBonusPoints?: number;
 }
 
 export interface LoyaltyTier {
@@ -138,6 +162,16 @@ export const loyaltyApi = {
 
   updateTier: (companyId: string, tierId: string, data: CreateLoyaltyTierRequest) =>
     api.put<LoyaltyTier>(`/companies/${companyId}/loyalty/tiers/${tierId}`, data),
+
+  // Expiry warning & referral
+  getExpiryWarning: (companyId: string, days = 30) =>
+    api.get<LoyaltyExpiryWarning>(`/loyalty/expiry-warning`, { params: { companyId, days } }),
+
+  getReferralInfo: (companyId: string) =>
+    api.get<LoyaltyReferral>(`/loyalty/referral`, { params: { companyId } }),
+
+  applyReferralCode: (companyId: string, code: string) =>
+    api.post<void>(`/loyalty/referral/apply`, { code }, { params: { companyId } }),
 
   // Operator actions
   issueBonus: (companyId: string, data: IssueBonusRequest) =>

@@ -28,8 +28,16 @@ import backend.repositories.LoyaltyTierRepository;
 import backend.repositories.LoyaltyTransactionRepository;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.customers.CustomerCreditService;
+import backend.dtos.responses.loyalty.LoyaltyExpiryWarningResponse;
+import backend.dtos.responses.loyalty.LoyaltyReferralResponse;
+import backend.events.loyalty.LoyaltyEvent;
+import backend.repositories.ReferralConversionRepository;
+import backend.services.intf.promotions.LoyaltyEventPublisher;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
@@ -53,7 +61,8 @@ class LoyaltyServiceImplTest {
     private static final UUID ORDER_ID   = TestIds.uuid(5);
     private static final UUID POLICY_ID  = TestIds.uuid(6);
     private static final UUID TIER_ID    = TestIds.uuid(7);
-    private static final UUID TX_ID      = TestIds.uuid(8);
+    private static final UUID TX_ID               = TestIds.uuid(8);
+    private static final UUID REFERRER_ACCOUNT_ID = TestIds.uuid(9);
 
     private LoyaltyAccountRepository accountRepository;
     private LoyaltyTransactionRepository transactionRepository;
@@ -61,21 +70,26 @@ class LoyaltyServiceImplTest {
     private LoyaltyTierRepository tierRepository;
     private CompanyAccessService companyAccessService;
     private CustomerCreditService customerCreditService;
+    private ReferralConversionRepository referralConversionRepository;
+    private LoyaltyEventPublisher loyaltyEventPublisher;
 
     private LoyaltyServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        accountRepository     = mock(LoyaltyAccountRepository.class);
-        transactionRepository = mock(LoyaltyTransactionRepository.class);
-        policyRepository      = mock(LoyaltyPolicyRepository.class);
-        tierRepository        = mock(LoyaltyTierRepository.class);
-        companyAccessService  = mock(CompanyAccessService.class);
-        customerCreditService = mock(CustomerCreditService.class);
+        accountRepository            = mock(LoyaltyAccountRepository.class);
+        transactionRepository        = mock(LoyaltyTransactionRepository.class);
+        policyRepository             = mock(LoyaltyPolicyRepository.class);
+        tierRepository               = mock(LoyaltyTierRepository.class);
+        companyAccessService         = mock(CompanyAccessService.class);
+        customerCreditService        = mock(CustomerCreditService.class);
+        referralConversionRepository = mock(ReferralConversionRepository.class);
+        loyaltyEventPublisher        = mock(LoyaltyEventPublisher.class);
 
         service = new LoyaltyServiceImpl(
                 accountRepository, transactionRepository, policyRepository,
-                tierRepository, companyAccessService, customerCreditService);
+                tierRepository, referralConversionRepository,
+                companyAccessService, customerCreditService, loyaltyEventPublisher);
 
         // Default stubs
         when(companyAccessService.require(eq(COMPANY_ID), eq(OWNER_ID), any(CompanyCapability.class)))
@@ -92,6 +106,10 @@ class LoyaltyServiceImplTest {
         });
         // Tier evaluation is a no-op unless overridden
         when(tierRepository.findByCompanyIdOrderByMinPointsDesc(any())).thenReturn(List.of());
+        // New dependency defaults — no referral conversions, no expiring points, no first order
+        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(any(), any())).thenReturn(0L);
+        when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(any(), any())).thenReturn(0L);
+        when(transactionRepository.countByAccountIdAndType(any(), any())).thenReturn(0L);
     }
 
     // ─── getAccount ───────────────────────────────────────────────────────────
@@ -856,6 +874,379 @@ class LoyaltyServiceImplTest {
         assertDoesNotThrow(() -> service.issueBirthdayReward(account, policy));
     }
 
+    // ─── getExpiryWarning ─────────────────────────────────────────────────────
+
+    @Test
+    void getExpiryWarning_noAccount_returnsZeros() {
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        LoyaltyExpiryWarningResponse result = service.getExpiryWarning(USER_ID, COMPANY_ID, 30);
+
+        assertEquals(0L, result.pointsExpiringSoon());
+        assertNull(result.nextExpiryAt());
+    }
+
+    @Test
+    void getExpiryWarning_noExpiringTransactions_returnsZeros() {
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 100L)));
+        when(transactionRepository.findPointsExpiringSoon(eq(ACCOUNT_ID), any(), any())).thenReturn(List.of());
+
+        LoyaltyExpiryWarningResponse result = service.getExpiryWarning(USER_ID, COMPANY_ID, 30);
+
+        assertEquals(0L, result.pointsExpiringSoon());
+        assertNull(result.nextExpiryAt());
+    }
+
+    @Test
+    void getExpiryWarning_withExpiringTransactions_returnsSumAndEarliest() {
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 500L)));
+
+        Instant soon  = Instant.now().plus(7, ChronoUnit.DAYS);
+        Instant later = Instant.now().plus(20, ChronoUnit.DAYS);
+        when(transactionRepository.findPointsExpiringSoon(eq(ACCOUNT_ID), any(), any()))
+                .thenReturn(List.of(makeExpiringEarnTx(100L, soon), makeExpiringEarnTx(150L, later)));
+
+        LoyaltyExpiryWarningResponse result = service.getExpiryWarning(USER_ID, COMPANY_ID, 30);
+
+        assertEquals(250L, result.pointsExpiringSoon());
+        assertEquals(soon, result.nextExpiryAt());
+    }
+
+    // ─── getReferralInfo ──────────────────────────────────────────────────────
+
+    @Test
+    void getReferralInfo_existingCode_returnsCode() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("EXISTCODE");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        LoyaltyReferralResponse result = service.getReferralInfo(USER_ID, COMPANY_ID);
+
+        assertEquals("EXISTCODE", result.referralCode());
+    }
+
+    @Test
+    void getReferralInfo_noCode_generatesCodeLazily() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L); // referralCode = null
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByReferralCodeAndCompanyId(anyString(), eq(COMPANY_ID))).thenReturn(Optional.empty());
+        when(accountRepository.setReferralCodeIfAbsent(eq(ACCOUNT_ID), anyString())).thenReturn(1);
+
+        LoyaltyReferralResponse result = service.getReferralInfo(USER_ID, COMPANY_ID);
+
+        assertNotNull(result.referralCode());
+        assertFalse(result.referralCode().isEmpty());
+    }
+
+    @Test
+    void getReferralInfo_returnsConversionStats() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(ACCOUNT_ID, COMPANY_ID)).thenReturn(5L);
+        when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(ACCOUNT_ID, COMPANY_ID)).thenReturn(500L);
+
+        LoyaltyReferralResponse result = service.getReferralInfo(USER_ID, COMPANY_ID);
+
+        assertEquals(5L, result.totalReferrals());
+        assertEquals(500L, result.pointsEarnedFromReferrals());
+    }
+
+    // ─── applyReferralCode ────────────────────────────────────────────────────
+
+    @Test
+    void applyReferralCode_ownCode_throwsBadRequest() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        assertThrows(BadRequestException.class,
+                () -> service.applyReferralCode(USER_ID, COMPANY_ID, "MYCODE12"));
+    }
+
+    @Test
+    void applyReferralCode_alreadyApplied_throwsConflict() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        account.setReferredByCode("OTHERCODE");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        assertThrows(ConflictException.class,
+                () -> service.applyReferralCode(USER_ID, COMPANY_ID, "OTHERCODE"));
+    }
+
+    @Test
+    void applyReferralCode_alreadyConverted_throwsConflict() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        account.setReferralConverted(true);
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        assertThrows(ConflictException.class,
+                () -> service.applyReferralCode(USER_ID, COMPANY_ID, "OTHERCODE"));
+    }
+
+    @Test
+    void applyReferralCode_codeNotFound_throwsResourceNotFound() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByReferralCodeAndCompanyId("REFCODE99", COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.applyReferralCode(USER_ID, COMPANY_ID, "REFCODE99"));
+    }
+
+    @Test
+    void applyReferralCode_happyPath_setsReferredByCode() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferralCode("MYCODE12");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByReferralCodeAndCompanyId("REFCODE99", COMPANY_ID))
+                .thenReturn(Optional.of(makeReferrerAccount()));
+        when(accountRepository.setReferredByCodeIfAbsent(ACCOUNT_ID, "REFCODE99")).thenReturn(1);
+
+        assertDoesNotThrow(() -> service.applyReferralCode(USER_ID, COMPANY_ID, "REFCODE99"));
+
+        verify(accountRepository).setReferredByCodeIfAbsent(ACCOUNT_ID, "REFCODE99");
+    }
+
+    // ─── recordOrderEarn — streak logic ──────────────────────────────────────
+
+    @Test
+    void recordOrderEarn_firstOrder_setsStreakToOne() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 0L)));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).updateStreak(ACCOUNT_ID, 1, YearMonth.now().toString());
+    }
+
+    @Test
+    void recordOrderEarn_consecutiveMonth_incrementsStreak() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setLastOrderYearMonth(YearMonth.now().minusMonths(1).toString());
+        account.setCurrentStreak(2);
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).updateStreak(ACCOUNT_ID, 3, YearMonth.now().toString());
+    }
+
+    @Test
+    void recordOrderEarn_sameMonth_streakUnchanged() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setLastOrderYearMonth(YearMonth.now().toString());
+        account.setCurrentStreak(4);
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).updateStreak(ACCOUNT_ID, 4, YearMonth.now().toString());
+    }
+
+    @Test
+    void recordOrderEarn_gapInMonths_resetsStreakToOne() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setLastOrderYearMonth(YearMonth.now().minusMonths(3).toString());
+        account.setCurrentStreak(5);
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).updateStreak(ACCOUNT_ID, 1, YearMonth.now().toString());
+    }
+
+    @Test
+    void recordOrderEarn_atStreakThreshold_awardsStreakBonus() {
+        LoyaltyPolicy policy = makeZeroEarnPolicy();
+        policy.setStreakBonusThreshold(3);
+        policy.setStreakBonusPoints(100);
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setLastOrderYearMonth(YearMonth.now().minusMonths(1).toString());
+        account.setCurrentStreak(2); // consecutive month makes it 3 = divisible by threshold
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).addPoints(ACCOUNT_ID, 100);
+        ArgumentCaptor<LoyaltyTransaction> captor = ArgumentCaptor.forClass(LoyaltyTransaction.class);
+        verify(transactionRepository).save(captor.capture());
+        assertEquals(LoyaltyTransactionType.EARN_STREAK, captor.getValue().getType());
+        assertEquals(100L, captor.getValue().getPointsDelta());
+    }
+
+    // ─── recordOrderEarn — referral conversion ────────────────────────────────
+
+    @Test
+    void recordOrderEarn_firstOrderWithReferral_awardsReferrerAndSavesConversion() {
+        LoyaltyPolicy policy = makeZeroEarnPolicy();
+        policy.setReferralBonusPoints(50);
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferredByCode("REFCODE99");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(transactionRepository.countByAccountIdAndType(ACCOUNT_ID, LoyaltyTransactionType.EARN_ORDER))
+                .thenReturn(1L);
+        when(accountRepository.findByReferralCodeAndCompanyId("REFCODE99", COMPANY_ID))
+                .thenReturn(Optional.of(makeReferrerAccount()));
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(accountRepository).addPoints(REFERRER_ACCOUNT_ID, 50);
+        ArgumentCaptor<LoyaltyTransaction> txCaptor = ArgumentCaptor.forClass(LoyaltyTransaction.class);
+        verify(transactionRepository).save(txCaptor.capture());
+        assertEquals(LoyaltyTransactionType.EARN_REFERRAL, txCaptor.getValue().getType());
+        verify(referralConversionRepository).save(any());
+        verify(accountRepository).markReferralConverted(ACCOUNT_ID);
+    }
+
+    @Test
+    void recordOrderEarn_secondOrder_noReferralConversion() {
+        LoyaltyPolicy policy = makeZeroEarnPolicy();
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
+        account.setReferredByCode("REFCODE99");
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+        when(transactionRepository.countByAccountIdAndType(ACCOUNT_ID, LoyaltyTransactionType.EARN_ORDER))
+                .thenReturn(2L); // not first order
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(referralConversionRepository, never()).save(any());
+        verify(accountRepository, never()).markReferralConverted(any());
+    }
+
+    @Test
+    void recordOrderEarn_firstOrderNoReferralCode_noConversion() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 0L))); // referredByCode = null
+        when(transactionRepository.countByAccountIdAndType(ACCOUNT_ID, LoyaltyTransactionType.EARN_ORDER))
+                .thenReturn(1L);
+
+        service.recordOrderEarn(makeOrder(), COMPANY_ID);
+
+        verify(referralConversionRepository, never()).save(any());
+    }
+
+    // ─── recordOrderEarn — Kafka events ──────────────────────────────────────
+
+    @Test
+    void recordOrderEarn_pointsEarned_publishesPointsEarnedEvent() {
+        LoyaltyPolicy policy = makePolicy(0);
+        policy.setEarnRatePerDollar(BigDecimal.ONE);
+        policy.setEarnMode(LoyaltyEarnMode.POINTS);
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 0L)));
+
+        service.recordOrderEarn(makeOrder(new BigDecimal("50.00")), COMPANY_ID);
+
+        verify(loyaltyEventPublisher).publish(any(LoyaltyEvent.PointsEarned.class));
+    }
+
+    @Test
+    void recordOrderEarn_zeroPointsEarned_noKafkaEvent() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID))
+                .thenReturn(Optional.of(makeZeroEarnPolicy()));
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 0L)));
+
+        service.recordOrderEarn(makeOrder(new BigDecimal("100.00")), COMPANY_ID);
+
+        verifyNoInteractions(loyaltyEventPublisher);
+    }
+
+    @Test
+    void recordOrderEarn_tierChanges_publishesTierUpgradedEvent() {
+        LoyaltyPolicy policy = makePolicy(0);
+        policy.setEarnRatePerDollar(BigDecimal.ONE);
+        policy.setEarnMode(LoyaltyEarnMode.POINTS);
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeAccount(ACCOUNT_ID, 0L)));
+
+        LoyaltyTier gold = makeTier(TIER_ID, COMPANY_ID, "Gold");
+        gold.setMinPoints(0L);
+        when(tierRepository.findByCompanyIdOrderByMinPointsDesc(COMPANY_ID)).thenReturn(List.of(gold));
+        when(accountRepository.updateTierIfChanged(eq(ACCOUNT_ID), eq(TIER_ID), any())).thenReturn(1);
+
+        service.recordOrderEarn(makeOrder(new BigDecimal("50.00")), COMPANY_ID);
+
+        verify(loyaltyEventPublisher, atLeastOnce()).publish(any(LoyaltyEvent.TierUpgraded.class));
+    }
+
+    // ─── createOrUpdatePolicy — new fields ───────────────────────────────────
+
+    @Test
+    void createOrUpdatePolicy_mapsReferralAndStreakFields() {
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.empty());
+        when(policyRepository.save(any(LoyaltyPolicy.class))).thenAnswer(inv -> {
+            LoyaltyPolicy p = inv.getArgument(0);
+            if (p.getId() == null) p.setId(POLICY_ID);
+            return p;
+        });
+
+        CreateLoyaltyPolicyRequest req = makeCreatePolicyRequest("POINTS");
+        req.setReferralBonusPoints(200);
+        req.setStreakBonusThreshold(4);
+        req.setStreakBonusPoints(150);
+
+        LoyaltyPolicyResponse result = service.createOrUpdatePolicy(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(200, result.getReferralBonusPoints());
+        assertEquals(4, result.getStreakBonusThreshold());
+        assertEquals(150, result.getStreakBonusPoints());
+    }
+
+    // ─── mapper coverage ──────────────────────────────────────────────────────
+
+    @Test
+    void getAccount_includesReferralCodeAndStreak() {
+        LoyaltyAccount account = makeAccount(ACCOUNT_ID, 200L);
+        account.setReferralCode("MYCODE12");
+        account.setCurrentStreak(5);
+        when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
+
+        LoyaltyAccountResponse result = service.getAccount(USER_ID, COMPANY_ID);
+
+        assertEquals("MYCODE12", result.getReferralCode());
+        assertEquals(5, result.getCurrentStreak());
+    }
+
+    @Test
+    void getPolicy_includesReferralAndStreakFields() {
+        LoyaltyPolicy policy = makePolicy(0);
+        policy.setReferralBonusPoints(50);
+        policy.setStreakBonusThreshold(3);
+        policy.setStreakBonusPoints(75);
+        when(policyRepository.findFirstByCompanyIdAndActiveTrue(COMPANY_ID)).thenReturn(Optional.of(policy));
+
+        LoyaltyPolicyResponse result = service.getPolicy(COMPANY_ID);
+
+        assertEquals(50, result.getReferralBonusPoints());
+        assertEquals(3, result.getStreakBonusThreshold());
+        assertEquals(75, result.getStreakBonusPoints());
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private LoyaltyAccount makeAccount(UUID id, long balance) {
@@ -936,5 +1327,33 @@ class LoyaltyServiceImplTest {
         req.setMinPoints(1000L);
         req.setEarnMultiplier(new BigDecimal("2.00"));
         return req;
+    }
+
+    private LoyaltyPolicy makeZeroEarnPolicy() {
+        LoyaltyPolicy p = makePolicy(0);
+        p.setEarnRatePerDollar(BigDecimal.ZERO);
+        p.setEarnMode(LoyaltyEarnMode.POINTS);
+        return p;
+    }
+
+    private LoyaltyAccount makeReferrerAccount() {
+        LoyaltyAccount a = new LoyaltyAccount();
+        a.setId(REFERRER_ACCOUNT_ID);
+        a.setUserId(TestIds.uuid(99));
+        a.setCompanyId(COMPANY_ID);
+        a.setPointsBalance(0L);
+        return a;
+    }
+
+    private LoyaltyTransaction makeExpiringEarnTx(long points, Instant expiresAt) {
+        LoyaltyAccount account = new LoyaltyAccount();
+        account.setId(ACCOUNT_ID);
+        LoyaltyTransaction tx = new LoyaltyTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setAccount(account);
+        tx.setType(LoyaltyTransactionType.EARN_ORDER);
+        tx.setPointsDelta(points);
+        tx.setExpiresAt(expiresAt);
+        return tx;
     }
 }

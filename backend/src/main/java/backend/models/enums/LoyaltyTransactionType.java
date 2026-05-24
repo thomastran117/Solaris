@@ -14,5 +14,7 @@ public enum LoyaltyTransactionType {
     EARN_REVERSAL,
     CONVERT_TO_CREDIT,
     EXPIRE,
-    ADJUST
+    ADJUST,
+    EARN_REFERRAL,
+    EARN_STREAK
 }

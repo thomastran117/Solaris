@@ -15,10 +15,13 @@ import backend.dtos.requests.loyalty.CreateLoyaltyTierRequest;
 import backend.dtos.requests.loyalty.IssueBonusRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.loyalty.LoyaltyAccountResponse;
+import backend.dtos.responses.loyalty.LoyaltyExpiryWarningResponse;
 import backend.dtos.responses.loyalty.LoyaltyPolicyResponse;
 import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
+import backend.dtos.responses.loyalty.LoyaltyReferralResponse;
 import backend.dtos.responses.loyalty.LoyaltyTierResponse;
 import backend.dtos.responses.loyalty.LoyaltyTransactionResponse;
+import backend.events.loyalty.LoyaltyEvent;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
@@ -28,22 +31,26 @@ import backend.models.core.LoyaltyPolicy;
 import backend.models.core.LoyaltyTier;
 import backend.models.core.LoyaltyTransaction;
 import backend.models.core.Order;
+import backend.models.core.ReferralConversion;
 import backend.models.enums.CreditEntryType;
 import backend.models.enums.LoyaltyEarnMode;
 import backend.models.enums.LoyaltyTransactionType;
 import backend.repositories.LoyaltyAccountRepository;
+import backend.repositories.ReferralConversionRepository;
 import backend.services.intf.company.CompanyAccessService;
 import backend.models.enums.CompanyCapability;
 import backend.services.intf.customers.CustomerCreditService;
 import backend.repositories.LoyaltyPolicyRepository;
 import backend.repositories.LoyaltyTierRepository;
 import backend.repositories.LoyaltyTransactionRepository;
-import backend.services.intf.customers.CustomerCreditService;
+import backend.services.intf.promotions.LoyaltyEventPublisher;
 import backend.services.intf.promotions.LoyaltyService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -51,27 +58,36 @@ import java.util.List;
 public class LoyaltyServiceImpl implements LoyaltyService {
 
     private static final Logger log = LoggerFactory.getLogger(LoyaltyServiceImpl.class);
+    private static final String REFERRAL_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final int REFERRAL_CODE_LENGTH = 8;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final LoyaltyAccountRepository accountRepository;
     private final LoyaltyTransactionRepository transactionRepository;
     private final LoyaltyPolicyRepository policyRepository;
     private final LoyaltyTierRepository tierRepository;
+    private final ReferralConversionRepository referralConversionRepository;
     private final CompanyAccessService companyAccessService;
     private final CustomerCreditService customerCreditService;
+    private final LoyaltyEventPublisher loyaltyEventPublisher;
 
     public LoyaltyServiceImpl(
             LoyaltyAccountRepository accountRepository,
             LoyaltyTransactionRepository transactionRepository,
             LoyaltyPolicyRepository policyRepository,
             LoyaltyTierRepository tierRepository,
+            ReferralConversionRepository referralConversionRepository,
             CompanyAccessService companyAccessService,
-            CustomerCreditService customerCreditService) {
+            CustomerCreditService customerCreditService,
+            LoyaltyEventPublisher loyaltyEventPublisher) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.policyRepository = policyRepository;
         this.tierRepository = tierRepository;
+        this.referralConversionRepository = referralConversionRepository;
         this.companyAccessService = companyAccessService;
         this.customerCreditService = customerCreditService;
+        this.loyaltyEventPublisher = loyaltyEventPublisher;
     }
 
     // -------------------------------------------------------------------------
@@ -95,6 +111,63 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         var pageable = PageRequest.of(page, cap, Sort.by(Sort.Direction.DESC, "createdAt"));
         return new PagedResponse<>(transactionRepository.findByAccountId(account.getId(), pageable)
                 .map(this::toTransactionResponse));
+    }
+
+    @Override
+    @Transactional
+    public LoyaltyExpiryWarningResponse getExpiryWarning(UUID userId, UUID companyId, int days) {
+        LoyaltyAccount account = accountRepository.findByUserIdAndCompanyId(userId, companyId).orElse(null);
+        if (account == null) return new LoyaltyExpiryWarningResponse(0L, null);
+
+        Instant from = Instant.now();
+        Instant to = from.plus(days, ChronoUnit.DAYS);
+        List<LoyaltyTransaction> expiring = transactionRepository.findPointsExpiringSoon(account.getId(), from, to);
+        long total = expiring.stream().mapToLong(LoyaltyTransaction::getPointsDelta).sum();
+        Instant earliest = expiring.stream()
+                .map(LoyaltyTransaction::getExpiresAt)
+                .filter(java.util.Objects::nonNull)
+                .min(Instant::compareTo)
+                .orElse(null);
+        return new LoyaltyExpiryWarningResponse(total, earliest);
+    }
+
+    @Override
+    @Transactional
+    public LoyaltyReferralResponse getReferralInfo(UUID userId, UUID companyId) {
+        LoyaltyAccount account = getOrCreateAccount(userId, companyId);
+        String code = ensureReferralCode(account, companyId);
+        long total = referralConversionRepository.countByReferrerAccountIdAndCompanyId(account.getId(), companyId);
+        long converted = referralConversionRepository.countByReferrerAccountIdAndCompanyId(account.getId(), companyId);
+        long pointsEarned = referralConversionRepository.sumPointsAwardedByReferrerAccountId(account.getId(), companyId);
+        return new LoyaltyReferralResponse(code, total, converted, pointsEarned);
+    }
+
+    @Override
+    @Transactional
+    public void applyReferralCode(UUID userId, UUID companyId, String code) {
+        LoyaltyAccount account = getOrCreateAccount(userId, companyId);
+
+        // Ensure this user has a referral code and check they're not applying their own
+        String ownCode = ensureReferralCode(account, companyId);
+        if (ownCode.equalsIgnoreCase(code.trim())) {
+            throw new BadRequestException("You cannot apply your own referral code");
+        }
+        if (account.getReferredByCode() != null) {
+            throw new ConflictException("A referral code has already been applied to your account");
+        }
+        if (account.isReferralConverted()) {
+            throw new ConflictException("Your account has already completed a referral conversion");
+        }
+
+        // Verify the code belongs to a real account in this company
+        accountRepository.findByReferralCodeAndCompanyId(code.toUpperCase(), companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Referral code not found"));
+
+        int updated = accountRepository.setReferredByCodeIfAbsent(account.getId(), code.toUpperCase());
+        if (updated == 0) {
+            throw new ConflictException("A referral code has already been applied to your account");
+        }
+        log.info("[LOYALTY] User {} applied referral code {} in company {}", userId, code, companyId);
     }
 
     @Override
@@ -177,9 +250,10 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         boolean earnPoints = policy.getEarnMode() == LoyaltyEarnMode.POINTS || policy.getEarnMode() == LoyaltyEarnMode.BOTH;
         boolean earnCashback = policy.getEarnMode() == LoyaltyEarnMode.CASHBACK || policy.getEarnMode() == LoyaltyEarnMode.BOTH;
 
+        long earnedPoints = 0;
         if (earnPoints) {
             BigDecimal orderDollars = order.getTotalAmount();
-            long earnedPoints = orderDollars
+            earnedPoints = orderDollars
                     .multiply(policy.getEarnRatePerDollar())
                     .multiply(multiplier)
                     .setScale(0, RoundingMode.FLOOR)
@@ -210,6 +284,78 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
                 log.info("[LOYALTY] User {} earned {} points from order {}", userId, earnedPoints, order.getId());
             }
+        }
+
+        // ── Streak tracking ──────────────────────────────────────────────────
+        String currentMonth = YearMonth.now().toString();
+        String lastMonth = account.getLastOrderYearMonth();
+        int streak = account.getCurrentStreak();
+        if (lastMonth == null) {
+            streak = 1;
+        } else if (YearMonth.parse(lastMonth).plusMonths(1).toString().equals(currentMonth)) {
+            streak++;
+        } else if (!lastMonth.equals(currentMonth)) {
+            streak = 1;
+        }
+        // same month → streak unchanged
+        accountRepository.updateStreak(account.getId(), streak, currentMonth);
+
+        if (policy.getStreakBonusPoints() > 0 && policy.getStreakBonusThreshold() > 0
+                && streak % policy.getStreakBonusThreshold() == 0) {
+            accountRepository.addPoints(account.getId(), policy.getStreakBonusPoints());
+            LoyaltyTransaction streakTx = new LoyaltyTransaction();
+            streakTx.setAccount(account);
+            streakTx.setUserId(userId);
+            streakTx.setCompanyId(companyId);
+            streakTx.setType(LoyaltyTransactionType.EARN_STREAK);
+            streakTx.setPointsDelta(policy.getStreakBonusPoints());
+            streakTx.setValueCents((long) policy.getStreakBonusPoints() * policy.getPointValueCents());
+            streakTx.setReason(streak + "-month purchase streak bonus");
+            transactionRepository.save(streakTx);
+            log.info("[LOYALTY] User {} earned {} streak bonus points (streak={})", userId, policy.getStreakBonusPoints(), streak);
+        }
+
+        // ── Referral conversion (first order only) ───────────────────────────
+        final LoyaltyAccount finalAccount = account;
+        long orderEarnCount = transactionRepository.countByAccountIdAndType(account.getId(), LoyaltyTransactionType.EARN_ORDER);
+        if (orderEarnCount == 1 && account.getReferredByCode() != null && !account.isReferralConverted()) {
+            accountRepository.findByReferralCodeAndCompanyId(account.getReferredByCode(), companyId)
+                    .ifPresent(referrerAccount -> {
+                        int bonus = policy.getReferralBonusPoints();
+                        if (bonus > 0) {
+                            accountRepository.addPoints(referrerAccount.getId(), bonus);
+                            LoyaltyTransaction refTx = new LoyaltyTransaction();
+                            refTx.setAccount(referrerAccount);
+                            refTx.setUserId(referrerAccount.getUserId());
+                            refTx.setCompanyId(companyId);
+                            refTx.setType(LoyaltyTransactionType.EARN_REFERRAL);
+                            refTx.setPointsDelta(bonus);
+                            refTx.setValueCents((long) bonus * policy.getPointValueCents());
+                            refTx.setSourceOrderId(order.getId());
+                            refTx.setReason("Referral bonus — " + finalAccount.getUserId() + " completed first order");
+                            transactionRepository.save(refTx);
+                        }
+                        ReferralConversion conversion = new ReferralConversion();
+                        conversion.setReferrerAccountId(referrerAccount.getId());
+                        conversion.setReferredAccountId(finalAccount.getId());
+                        conversion.setCompanyId(companyId);
+                        conversion.setOrderId(order.getId());
+                        conversion.setPointsAwarded(bonus);
+                        referralConversionRepository.save(conversion);
+                        accountRepository.markReferralConverted(finalAccount.getId());
+                        log.info("[LOYALTY] Referral conversion: referrer={} referred={} bonus={}", referrerAccount.getId(), finalAccount.getId(), bonus);
+                    });
+        }
+
+        // ── Kafka: publish PointsEarned ──────────────────────────────────────
+        if (earnedPoints > 0) {
+            final long finalEarned = earnedPoints;
+            accountRepository.findByUserIdAndCompanyId(userId, companyId).ifPresent(refreshed ->
+                    loyaltyEventPublisher.publish(new LoyaltyEvent.PointsEarned(
+                            userId, companyId, finalEarned,
+                            LoyaltyTransactionType.EARN_ORDER.name(),
+                            refreshed.getPointsBalance()))
+            );
         }
 
         if (earnCashback && policy.getCashbackRatePercent().compareTo(BigDecimal.ZERO) > 0) {
@@ -408,6 +554,9 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         policy.setCashbackRatePercent(request.getCashbackRatePercent());
         policy.setEarnMode(mode);
         policy.setActive(true);
+        policy.setReferralBonusPoints(request.getReferralBonusPoints());
+        policy.setStreakBonusThreshold(request.getStreakBonusThreshold());
+        policy.setStreakBonusPoints(request.getStreakBonusPoints());
         return toPolicyResponse(policyRepository.save(policy));
     }
 
@@ -563,12 +712,44 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         return a;
     }
 
+    /**
+     * Returns the account's referral code, generating and persisting one lazily if absent.
+     * Uses a retry loop with the atomic setReferralCodeIfAbsent guard to handle concurrent requests.
+     */
+    private String ensureReferralCode(LoyaltyAccount account, UUID companyId) {
+        if (account.getReferralCode() != null) return account.getReferralCode();
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String candidate = generateReferralCode();
+            // Check uniqueness within company before trying to persist
+            if (accountRepository.findByReferralCodeAndCompanyId(candidate, companyId).isPresent()) {
+                continue;
+            }
+            int set = accountRepository.setReferralCodeIfAbsent(account.getId(), candidate);
+            if (set > 0) return candidate;
+            // Another thread beat us — re-read and return their code
+            return accountRepository.findById(account.getId())
+                    .map(LoyaltyAccount::getReferralCode)
+                    .orElse(candidate);
+        }
+        throw new IllegalStateException("Failed to generate unique referral code after 10 attempts");
+    }
+
+    private static String generateReferralCode() {
+        StringBuilder sb = new StringBuilder(REFERRAL_CODE_LENGTH);
+        for (int i = 0; i < REFERRAL_CODE_LENGTH; i++) {
+            sb.append(REFERRAL_CODE_CHARS.charAt(SECURE_RANDOM.nextInt(REFERRAL_CODE_CHARS.length())));
+        }
+        return sb.toString();
+    }
+
     private void evaluateTierPromotion(LoyaltyAccount account, UUID companyId) {
         List<LoyaltyTier> tiers = tierRepository.findByCompanyIdOrderByMinPointsDesc(companyId);
         UUID newTierId = null;
+        String newTierName = null;
         for (LoyaltyTier tier : tiers) {
             if (account.getLifetimePoints() >= tier.getMinPoints()) {
                 newTierId = tier.getId();
+                newTierName = tier.getName();
                 break;
             }
         }
@@ -576,6 +757,11 @@ public class LoyaltyServiceImpl implements LoyaltyService {
             int updated = accountRepository.updateTierIfChanged(account.getId(), newTierId, Instant.now());
             if (updated > 0) {
                 log.info("[LOYALTY] Account {} tier updated to {}", account.getId(), newTierId);
+                String previousTierName = account.getCurrentTierId() != null
+                        ? tierRepository.findById(account.getCurrentTierId()).map(LoyaltyTier::getName).orElse(null)
+                        : null;
+                loyaltyEventPublisher.publish(new LoyaltyEvent.TierUpgraded(
+                        account.getUserId(), companyId, newTierName, previousTierName));
             }
         }
     }
@@ -608,6 +794,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                 a.getUserId(), a.getCompanyId(),
                 a.getPointsBalance(), a.getLifetimePoints(),
                 a.getCurrentTierId(), tierName, a.getTierUpdatedAt(),
+                a.getReferralCode(), a.getCurrentStreak(),
                 a.getCreatedAt(), a.getUpdatedAt());
     }
 
@@ -624,6 +811,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                 p.getEarnRatePerDollar(), p.getPointValueCents(), p.getMinRedemptionPoints(),
                 p.getPointsExpiryDays(), p.getBirthdayBonusPoints(), p.getBirthdayBonusCreditCents(),
                 p.getCashbackRatePercent(), p.getEarnMode().name(), p.isActive(),
+                p.getReferralBonusPoints(), p.getStreakBonusThreshold(), p.getStreakBonusPoints(),
                 p.getCreatedAt(), p.getUpdatedAt());
     }
 

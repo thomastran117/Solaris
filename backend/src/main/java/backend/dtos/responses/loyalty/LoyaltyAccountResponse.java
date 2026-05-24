@@ -17,6 +17,8 @@ public class LoyaltyAccountResponse {
     private UUID currentTierId;
     private String currentTierName;
     private Instant tierUpdatedAt;
+    private String referralCode;
+    private int currentStreak;
     private Instant createdAt;
     private Instant updatedAt;
 }

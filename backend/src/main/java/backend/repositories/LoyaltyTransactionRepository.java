@@ -64,4 +64,24 @@ public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTrans
            "AND a.points_balance > 0",
            nativeQuery = true)
     List<UUID> findAccountIdsWithExpiredPoints(@Param("now") Instant now);
+
+    /** Earn rows expiring in the window [from, to] that haven't been claimed yet. Used for expiry warnings. */
+    @Query("SELECT t FROM LoyaltyTransaction t WHERE t.account.id = :accountId " +
+           "AND t.expired = false AND t.expiresAt IS NOT NULL " +
+           "AND t.expiresAt BETWEEN :from AND :to AND t.pointsDelta > 0")
+    List<LoyaltyTransaction> findPointsExpiringSoon(@Param("accountId") UUID accountId,
+                                                    @Param("from") Instant from,
+                                                    @Param("to") Instant to);
+
+    /** Count of EARN_ORDER transactions for an account — used to detect first order for referral logic. */
+    long countByAccountIdAndType(UUID accountId, LoyaltyTransactionType type);
+
+    /** Accounts with earn rows expiring between now and threshold — candidates for the expiry-warning scheduler. */
+    @Query(value =
+           "SELECT DISTINCT t.account_id FROM loyalty_transactions t " +
+           "WHERE t.type IN ('EARN_ORDER','EARN_BONUS','EARN_BIRTHDAY','EARN_STREAK','EARN_REFERRAL') " +
+           "AND t.expires_at IS NOT NULL AND t.expires_at BETWEEN :from AND :to " +
+           "AND t.expired = false",
+           nativeQuery = true)
+    List<UUID> findAccountIdsWithPointsExpiringSoon(@Param("from") Instant from, @Param("to") Instant to);
 }

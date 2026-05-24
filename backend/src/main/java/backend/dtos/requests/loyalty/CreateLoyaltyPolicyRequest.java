@@ -41,4 +41,13 @@ public class CreateLoyaltyPolicyRequest {
 
     @NotNull
     private String earnMode = "POINTS";
+
+    @Min(0)
+    private int referralBonusPoints = 0;
+
+    @Min(1)
+    private int streakBonusThreshold = 3;
+
+    @Min(0)
+    private int streakBonusPoints = 0;
 }

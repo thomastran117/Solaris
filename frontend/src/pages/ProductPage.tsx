@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark } from "lucide-react";
+import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
+import { loyaltyApi } from "../api/loyalty";
 import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
 import ReviewsSection from "../components/reviews/ReviewsSection";
@@ -69,6 +70,20 @@ export default function ProductPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-notifications"] });
     },
+  });
+
+  const { data: loyaltyPolicy } = useQuery({
+    queryKey: ["loyalty", "policy", product?.companyId],
+    queryFn: () => loyaltyApi.getPolicy(product!.companyId).then((r) => r.data),
+    enabled: !!accessToken && !!product?.companyId,
+    retry: false,
+  });
+
+  const { data: loyaltyAccount } = useQuery({
+    queryKey: ["loyalty", "account", product?.companyId],
+    queryFn: () => loyaltyApi.getAccount(product!.companyId).then((r) => r.data),
+    enabled: !!accessToken && !!product?.companyId,
+    retry: false,
   });
 
   const selectedVariant = product?.variants.find(v => v.id === selectedVariantId) ?? null;
@@ -146,6 +161,15 @@ export default function ProductPage() {
     if (ms <= 0 || ms > fourteenDaysMs) return null;
     return end.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   })();
+
+  const earnablePts = useMemo(() => {
+    if (!loyaltyPolicy || loyaltyPolicy.earnMode === "CASHBACK") return null;
+    if (typeof price !== "number") return null;
+    const multiplier = loyaltyAccount?.currentTierId
+      ? 1  // multiplier from tier not fetched here; default to 1
+      : 1;
+    return Math.floor(price * loyaltyPolicy.earnRatePerDollar * multiplier);
+  }, [loyaltyPolicy, loyaltyAccount, price]);
 
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden">
@@ -237,6 +261,14 @@ export default function ProductPage() {
                 <p className="text-xs text-white/55">Sale ends {saleEndsLabel}</p>
               )}
             </div>
+
+            {/* Points-earning indicator */}
+            {earnablePts !== null && earnablePts > 0 && (
+              <div className="flex items-center gap-1.5 text-sky-300 text-xs font-medium">
+                <Star className="h-3.5 w-3.5 fill-sky-300" />
+                Earn ~{earnablePts.toLocaleString()} pts on this purchase
+              </div>
+            )}
 
             {/* Variant selector */}
             {hasVariants && (

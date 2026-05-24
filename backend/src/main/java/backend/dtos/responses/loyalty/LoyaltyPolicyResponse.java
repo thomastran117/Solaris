@@ -22,6 +22,9 @@ public class LoyaltyPolicyResponse {
     private BigDecimal cashbackRatePercent;
     private String earnMode;
     private boolean active;
+    private int referralBonusPoints;
+    private int streakBonusThreshold;
+    private int streakBonusPoints;
     private Instant createdAt;
     private Instant updatedAt;
 }

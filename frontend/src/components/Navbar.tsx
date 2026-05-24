@@ -18,6 +18,7 @@ export default function Navbar() {
   const canManageCompany = can("MANAGE_COMPANY");
   const canManageProducts = can("MANAGE_PRODUCTS");
   const canFulfillOrders = can("FULFILL_ORDERS");
+  const canManagePromotions = can("MANAGE_PROMOTIONS");
 
   const username = email ?? null;
 
@@ -157,6 +158,11 @@ export default function Navbar() {
                   Team
                 </NavLink>
               )}
+              {accessToken && companyId && canManagePromotions && (
+                <NavLink to="/admin/loyalty" className={navLinkClass}>
+                  Loyalty
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div
@@ -242,6 +248,12 @@ export default function Navbar() {
                         className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
                       >
                         Account
+                      </NavLink>
+                      <NavLink
+                        to="/loyalty"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        My Rewards
                       </NavLink>
                       <NavLink
                         to="/profile"
