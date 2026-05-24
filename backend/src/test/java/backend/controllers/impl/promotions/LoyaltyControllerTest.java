@@ -239,7 +239,7 @@ class LoyaltyControllerTest {
     private LoyaltyAccountResponse makeAccountResponse() {
         return new LoyaltyAccountResponse(
                 ACCOUNT_ID, USER_ID, COMPANY_ID, 100L, 500L,
-                null, null, null, null, null);
+                null, null, null, null, 0, null, null);
     }
 
     private LoyaltyPolicyResponse makePolicyResponse() {
@@ -248,7 +248,7 @@ class LoyaltyControllerTest {
                 BigDecimal.ONE, 1, 100,
                 null, 0, 0,
                 BigDecimal.ZERO, "POINTS", true,
-                null, null);
+                0, 0, 0, null, null);
     }
 
     private LoyaltyTierResponse makeTierResponse() {

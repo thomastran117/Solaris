@@ -27,6 +27,9 @@ import CollectionPage from "./pages/CollectionPage";
 import AccountPage from "./pages/AccountPage";
 import LoyaltyPage from "./pages/LoyaltyPage";
 import AdminLoyaltyPage from "./pages/admin/AdminLoyaltyPage";
+import FeedbackPage from "./pages/FeedbackPage";
+import AdminFeedbackPage from "./pages/admin/AdminFeedbackPage";
+import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
@@ -81,11 +84,14 @@ function App() {
             <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/loyalty" element={<LoyaltyPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
+            <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>
         </div>
+        <FeedbackButton />
         <Footer />
       </Router>
     </>

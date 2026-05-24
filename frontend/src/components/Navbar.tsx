@@ -13,7 +13,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { accessToken, email, companyId, tier } = useSelector((state: RootState) => state.auth);
+  const { accessToken, email, companyId, tier, role } = useSelector((state: RootState) => state.auth);
   const { can } = useCompanyCapabilities(accessToken ? companyId : null);
   const canManageCompany = can("MANAGE_COMPANY");
   const canManageProducts = can("MANAGE_PRODUCTS");
@@ -146,6 +146,16 @@ export default function Navbar() {
               {accessToken && (
                 <NavLink to="/lists" className={navLinkClass}>
                   My Lists
+                </NavLink>
+              )}
+              {accessToken && (
+                <NavLink to="/feedback" className={navLinkClass}>
+                  Feedback
+                </NavLink>
+              )}
+              {accessToken && role === "ADMIN" && (
+                <NavLink to="/admin/feedback" className={navLinkClass}>
+                  Feedback Admin
                 </NavLink>
               )}
               {accessToken && companyId && (canManageProducts || canFulfillOrders) && (

@@ -51,6 +51,7 @@ public class DevDataSeeder implements ApplicationRunner {
     private final SupportTicketSeeder supportTicketSeeder;
     private final StockNotificationSeeder stockNotificationSeeder;
     private final ReviewEnrichmentSeeder reviewEnrichmentSeeder;
+    private final FeedbackSeeder feedbackSeeder;
 
     @Override
     @Transactional
@@ -86,6 +87,7 @@ public class DevDataSeeder implements ApplicationRunner {
         stockNotificationSeeder.seed(users, techProducts, styleProducts, wellnessProducts);
         reviewEnrichmentSeeder.seed(users, orders, techProducts, wellnessProducts);
         smallCompaniesSeeder.seed(users);
+        feedbackSeeder.seed(users);
 
         log.info("[DevDataSeeder] Seeded {} users, {} companies, {} products, {} orders",
                 userRepository.count(), companyRepository.count(),
