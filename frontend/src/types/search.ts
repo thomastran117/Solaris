@@ -1,7 +1,15 @@
 import type { CatalogPagedResponse } from "../api/catalog";
 
+export interface ProductSuggestion {
+  id: string;
+  name: string;
+  price: number | null;
+  discountedPrice: number | null;
+  thumbnailUrl: string | null;
+}
+
 export interface SearchSuggestionsResponse {
-  productNames: string[];
+  products: ProductSuggestion[];
   categories: string[];
   brands: string[];
 }

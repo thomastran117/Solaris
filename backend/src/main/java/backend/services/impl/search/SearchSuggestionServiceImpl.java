@@ -1,6 +1,7 @@
 package backend.services.impl.search;
 
 import backend.documents.ProductDocument;
+import backend.dtos.responses.search.ProductSuggestion;
 import backend.dtos.responses.search.SearchSuggestionsResponse;
 import backend.services.impl.SingleFlightCache;
 import backend.services.intf.search.SearchSuggestionService;
@@ -61,7 +62,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
 
                 NativeQuery query = NativeQuery.builder()
                         .withQuery(bq.build()._toQuery())
-                        .withPageable(PageRequest.of(0, clampedLimit))
+                        .withPageable(PageRequest.of(0, 3))
                         .withAggregation("categories",
                                 Aggregation.of(a -> a.terms(t -> t.field("category").size(5))))
                         .withAggregation("brands",
@@ -70,11 +71,13 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(query, ProductDocument.class);
 
-                List<String> productNames = hits.stream()
-                        .map(h -> h.getContent().getName())
-                        .filter(name -> name != null && !name.isBlank())
-                        .distinct()
-                        .limit(clampedLimit)
+                List<ProductSuggestion> products = hits.stream()
+                        .map(h -> {
+                            ProductDocument d = h.getContent();
+                            return new ProductSuggestion(d.getId(), d.getName(), d.getPrice(),
+                                    d.getDiscountedPrice(), d.getThumbnailUrl());
+                        })
+                        .limit(3)
                         .toList();
 
                 List<String> categories = List.of();
@@ -100,7 +103,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
                     }
                 }
 
-                return new SearchSuggestionsResponse(productNames, categories, brands);
+                return new SearchSuggestionsResponse(products, categories, brands);
 
             } catch (Exception e) {
                 log.warn("[SUGGESTIONS] Elasticsearch unavailable: {}", e.getMessage());
@@ -129,7 +132,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
 
                 NativeQuery query = NativeQuery.builder()
                         .withQuery(bq.build()._toQuery())
-                        .withPageable(PageRequest.of(0, clampedLimit))
+                        .withPageable(PageRequest.of(0, 3))
                         .withAggregation("categories",
                                 Aggregation.of(a -> a.terms(t -> t.field("category").size(5))))
                         .withAggregation("brands",
@@ -138,11 +141,13 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(query, ProductDocument.class);
 
-                List<String> productNames = hits.stream()
-                        .map(h -> h.getContent().getName())
-                        .filter(name -> name != null && !name.isBlank())
-                        .distinct()
-                        .limit(clampedLimit)
+                List<ProductSuggestion> products = hits.stream()
+                        .map(h -> {
+                            ProductDocument d = h.getContent();
+                            return new ProductSuggestion(d.getId(), d.getName(), d.getPrice(),
+                                    d.getDiscountedPrice(), d.getThumbnailUrl());
+                        })
+                        .limit(3)
                         .toList();
 
                 List<String> categories = List.of();
@@ -168,7 +173,7 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
                     }
                 }
 
-                return new SearchSuggestionsResponse(productNames, categories, brands);
+                return new SearchSuggestionsResponse(products, categories, brands);
 
             } catch (Exception e) {
                 log.warn("[SUGGESTIONS] Elasticsearch unavailable: {}", e.getMessage());

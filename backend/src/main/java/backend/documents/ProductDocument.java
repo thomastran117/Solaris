@@ -77,6 +77,9 @@ public class ProductDocument {
 
     private boolean listed;
 
+    @Field(type = FieldType.Keyword)
+    private String thumbnailUrl;
+
     @Field(type = FieldType.Double)
     private BigDecimal price;
 

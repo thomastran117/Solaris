@@ -1,6 +1,7 @@
 package backend.controllers.impl.search;
 
 import backend.configurations.application.GlobalExceptionHandler;
+import backend.dtos.responses.search.ProductSuggestion;
 import backend.dtos.responses.search.SearchSuggestionsResponse;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.services.intf.RateLimitService;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,15 +46,18 @@ class SearchSuggestionControllerTest {
 
     @Test
     void getSuggestions_returns200WithSuggestions() throws Exception {
+        ProductSuggestion product = new ProductSuggestion(
+                UUID.randomUUID(), "Widget Pro", new BigDecimal("29.99"), null, null);
         SearchSuggestionsResponse resp = new SearchSuggestionsResponse(
-                List.of("Widget Pro"), List.of("Electronics"), List.of("Acme"));
+                List.of(product), List.of("Electronics"), List.of("Acme"));
         when(searchSuggestionService.getSuggestions(eq(MARKETPLACE_ID), eq("wid"), eq(8)))
                 .thenReturn(resp);
 
         mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/search/suggestions")
                         .param("q", "wid"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.productNames[0]").value("Widget Pro"))
+                .andExpect(jsonPath("$.products[0].name").value("Widget Pro"))
+                .andExpect(jsonPath("$.products[0].price").value(29.99))
                 .andExpect(jsonPath("$.categories[0]").value("Electronics"))
                 .andExpect(jsonPath("$.brands[0]").value("Acme"));
     }

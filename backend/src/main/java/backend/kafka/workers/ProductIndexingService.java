@@ -385,6 +385,7 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getPublishedAt(),
                 p.isFeatured(),
                 p.isListed(),
+                p.getThumbnailUrl(),
                 p.getPrice(),
                 discountCategories.isEmpty() ? null : discountCategories,
                 hasActiveDiscount,

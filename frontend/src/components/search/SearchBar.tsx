@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { Search, Tag, Layers } from "lucide-react";
+import { Search, Tag, Layers, ImageOff } from "lucide-react";
 import { catalogApi } from "../../api/catalog";
-import type { SearchSuggestionsResponse } from "../../types/search";
+import type { ProductSuggestion, SearchSuggestionsResponse } from "../../types/search";
 import type { RootState } from "../../stores";
 
 interface Props {
@@ -24,6 +24,11 @@ interface Props {
    */
   onSelectCategory?: (cat: string) => void;
   onSelectBrand?: (brand: string) => void;
+}
+
+function formatPrice(price: number | null): string {
+  if (price == null) return "";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(price);
 }
 
 export default function SearchBar({
@@ -82,7 +87,7 @@ export default function SearchBar({
         .then((data) => {
           setSuggestions(data);
           const hasAny =
-            data.productNames.length > 0 ||
+            data.products.length > 0 ||
             data.categories.length > 0 ||
             data.brands.length > 0;
           setOpen(hasAny);
@@ -110,23 +115,26 @@ export default function SearchBar({
     onSearch(value.trim());
   }
 
-  function selectSuggestion(type: "product" | "category" | "brand", val: string) {
+  function selectProduct(product: ProductSuggestion) {
     setOpen(false);
-    if (type === "product") {
-      setValue(val);
-      onSearch(val);
-    } else if (type === "category") {
-      if (onSelectCategory) onSelectCategory(val);
-      else navigate(`/browse?category=${encodeURIComponent(val)}`);
-    } else {
-      if (onSelectBrand) onSelectBrand(val);
-      else navigate(`/browse?brand=${encodeURIComponent(val)}`);
-    }
+    navigate(`/products/${product.id}`);
+  }
+
+  function selectCategory(cat: string) {
+    setOpen(false);
+    if (onSelectCategory) onSelectCategory(cat);
+    else navigate(`/browse?category=${encodeURIComponent(cat)}`);
+  }
+
+  function selectBrand(brand: string) {
+    setOpen(false);
+    if (onSelectBrand) onSelectBrand(brand);
+    else navigate(`/browse?brand=${encodeURIComponent(brand)}`);
   }
 
   const hasSuggestions =
     suggestions &&
-    (suggestions.productNames.length > 0 ||
+    (suggestions.products.length > 0 ||
       suggestions.categories.length > 0 ||
       suggestions.brands.length > 0);
 
@@ -151,20 +159,50 @@ export default function SearchBar({
 
       {open && hasSuggestions && (
         <div className="absolute top-full mt-2 left-0 right-0 z-50 rounded-2xl border border-white/10 bg-slate-900/95 backdrop-blur shadow-xl overflow-hidden">
-          {suggestions!.productNames.length > 0 && (
+          {suggestions!.products.length > 0 && (
             <div>
               <p className="px-4 pt-3 pb-1 text-xs uppercase tracking-[0.2em] font-semibold text-sky-200/60">
                 Products
               </p>
-              {suggestions!.productNames.slice(0, 5).map((name) => (
+              {suggestions!.products.map((product) => (
                 <button
-                  key={name}
+                  key={product.id}
                   type="button"
-                  onMouseDown={() => selectSuggestion("product", name)}
-                  className="flex items-center gap-3 w-full px-4 py-2 text-sm text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors text-left"
+                  onMouseDown={() => selectProduct(product)}
+                  className="flex items-center gap-3 w-full px-4 py-2 hover:bg-white/[0.06] transition-colors text-left"
                 >
-                  <Search className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
-                  <span className="truncate">{name}</span>
+                  {product.thumbnailUrl ? (
+                    <img
+                      src={product.thumbnailUrl}
+                      alt={product.name}
+                      className="w-10 h-10 rounded-lg object-cover bg-white/10 flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center flex-shrink-0">
+                      <ImageOff className="w-4 h-4 text-white/25" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-white/80 truncate leading-tight">{product.name}</p>
+                    {(product.price != null || product.discountedPrice != null) && (
+                      <p className="text-xs text-white/55 mt-0.5">
+                        {product.discountedPrice != null ? (
+                          <>
+                            <span className="text-white/80 font-semibold">
+                              {formatPrice(product.discountedPrice)}
+                            </span>
+                            <span className="line-through ml-1.5">
+                              {formatPrice(product.price)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-white/80 font-semibold">
+                            {formatPrice(product.price)}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -179,7 +217,7 @@ export default function SearchBar({
                 <button
                   key={cat}
                   type="button"
-                  onMouseDown={() => selectSuggestion("category", cat)}
+                  onMouseDown={() => selectCategory(cat)}
                   className="flex items-center gap-3 w-full px-4 py-2 text-sm text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors text-left"
                 >
                   <Layers className="w-3.5 h-3.5 text-sky-200/50 flex-shrink-0" />
@@ -198,7 +236,7 @@ export default function SearchBar({
                 <button
                   key={brand}
                   type="button"
-                  onMouseDown={() => selectSuggestion("brand", brand)}
+                  onMouseDown={() => selectBrand(brand)}
                   className="flex items-center gap-3 w-full px-4 py-2 pb-2 text-sm text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors text-left"
                 >
                   <Tag className="w-3.5 h-3.5 text-sky-200/50 flex-shrink-0" />
