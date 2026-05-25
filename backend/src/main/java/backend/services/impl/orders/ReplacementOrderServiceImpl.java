@@ -15,6 +15,7 @@ import backend.models.core.Order;
 import backend.models.core.OrderItem;
 import backend.models.core.ProductVariant;
 import backend.models.core.User;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
 import backend.repositories.OrderRepository;
@@ -120,7 +121,8 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                         i.getFulfillmentStatus(),
                         null,
                         null,
-                        i.getDiscountAmount()))
+                        i.getDiscountAmount(),
+                        i.getFulfillmentMethod()))
                 .toList();
 
         return new OrderResponse(
@@ -134,6 +136,17 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                 null,
                 order.getCouponCode(),
                 order.getCouponDiscountAmount(),
+                order.getFulfillmentMethod() != null ? order.getFulfillmentMethod().name() : FulfillmentMethod.DELIVERY.name(),
+                order.getPickupLocationName(),
+                order.getPickupReadyAt(),
+                order.getShipRecipientName(),
+                order.getShipStreet(),
+                order.getShipStreet2(),
+                order.getShipCity(),
+                order.getShipState(),
+                order.getShipPostalCode(),
+                order.getShipCountry(),
+                order.getShipPhoneNumber(),
                 order.getTrackingNumber(),
                 order.getCarrier(),
                 order.getShippedAt(),

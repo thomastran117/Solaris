@@ -8,6 +8,8 @@ import backend.dtos.requests.inventory.UpdateLocationRequest;
 import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
 
+import backend.dtos.responses.inventory.NearbyPickupLocationResponse;
+
 import java.util.List;
 
 public interface LocationInventoryService {
@@ -33,4 +35,7 @@ public interface LocationInventoryService {
     /** variantId=null means product-level stock. Reuses AdjustStockRequest (delta, reason, note). */
     LocationStockResponse adjustLocationStock(UUID companyId, UUID locationId, UUID productId,
                                               UUID ownerId, AdjustStockRequest request, UUID variantId);
+
+    /** Returns STORE and HYBRID locations for a company sorted by Haversine distance. No auth required. */
+    List<NearbyPickupLocationResponse> getNearbyPickupLocations(UUID companyId, double lat, double lng, int limit);
 }

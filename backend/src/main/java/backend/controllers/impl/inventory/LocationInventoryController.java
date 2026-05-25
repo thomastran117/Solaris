@@ -14,12 +14,15 @@ import backend.dtos.requests.inventory.SetLocationStockRequest;
 import backend.dtos.requests.inventory.UpdateLocationRequest;
 import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
+import backend.dtos.responses.inventory.NearbyPickupLocationResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.inventory.LocationInventoryService;
 import backend.services.intf.SanitizationService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 import java.util.List;
 
@@ -34,6 +37,21 @@ public class LocationInventoryController {
                                        SanitizationService sanitizationService) {
         this.locationInventoryService = locationInventoryService;
         this.sanitizationService = sanitizationService;
+    }
+
+    @GetMapping("/pickup/nearby")
+    public ResponseEntity<List<NearbyPickupLocationResponse>> getNearbyPickupLocations(
+            @PathVariable UUID companyId,
+            @RequestParam double lat,
+            @RequestParam double lng,
+            @RequestParam(defaultValue = "5") @Min(1) @Max(20) int limit) {
+        try {
+            return ResponseEntity.ok(locationInventoryService.getNearbyPickupLocations(companyId, lat, lng, limit));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
     }
 
     @GetMapping

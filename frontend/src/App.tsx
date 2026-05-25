@@ -29,6 +29,10 @@ import LoyaltyPage from "./pages/LoyaltyPage";
 import AdminLoyaltyPage from "./pages/admin/AdminLoyaltyPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import AdminFeedbackPage from "./pages/admin/AdminFeedbackPage";
+import OrdersPage from "./pages/OrdersPage";
+import OrderDetailPage from "./pages/OrderDetailPage";
+import CompanyOrdersPage from "./pages/admin/CompanyOrdersPage";
+import CompanyOrderDetailPage from "./pages/admin/CompanyOrderDetailPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -87,6 +91,10 @@ function App() {
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
             <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
+            <Route path="/admin/orders" element={<CompanyOrdersPage />} />
+            <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
           </Routes>

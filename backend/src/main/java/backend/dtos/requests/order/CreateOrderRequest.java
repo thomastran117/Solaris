@@ -1,6 +1,8 @@
 package backend.dtos.requests.order;
 
+import backend.annotations.safeText.SafeText;
 import backend.models.enums.AllocationStrategy;
+import backend.models.enums.FulfillmentMethod;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
@@ -47,6 +49,39 @@ public class CreateOrderRequest {
     /** Loyalty points to redeem for a discount on this order. Null or 0 = don't use points. */
     @Min(value = 0, message = "Loyalty points to redeem cannot be negative")
     private Integer loyaltyPointsToRedeem;
+
+    /** DELIVERY (default) ships to the address below; PICKUP collects from pickupLocationId. */
+    private FulfillmentMethod fulfillmentMethod = FulfillmentMethod.DELIVERY;
+
+    /** Required when fulfillmentMethod == PICKUP: UUID of a STORE or HYBRID InventoryLocation. */
+    private UUID pickupLocationId;
+
+    // Shipping address — required when fulfillmentMethod == DELIVERY.
+    // Validated in the service layer because the constraint is conditional on fulfillmentMethod.
+
+    @SafeText @Size(max = 150)
+    private String shipRecipientName;
+
+    @SafeText @Size(max = 255)
+    private String shipStreet;
+
+    @SafeText @Size(max = 255)
+    private String shipStreet2;
+
+    @SafeText @Size(max = 100)
+    private String shipCity;
+
+    @SafeText @Size(max = 100)
+    private String shipState;
+
+    @Size(max = 20)
+    private String shipPostalCode;
+
+    @Pattern(regexp = "^[A-Z]{2}$", message = "country must be a 2-letter ISO 3166-1 alpha-2 code")
+    private String shipCountry;
+
+    @Size(max = 30)
+    private String shipPhoneNumber;
 
     @Getter
     @Setter

@@ -21,7 +21,21 @@ public class OrderResponse {
     private String paymentClientSecret;
     private String couponCode;
     private BigDecimal couponDiscountAmount;
-    // Fulfillment fields
+    // Fulfillment method
+    private String fulfillmentMethod;
+    // Pickup fields (PICKUP orders)
+    private String pickupLocationName;
+    private Instant pickupReadyAt;
+    // Shipping address (DELIVERY orders)
+    private String shipRecipientName;
+    private String shipStreet;
+    private String shipStreet2;
+    private String shipCity;
+    private String shipState;
+    private String shipPostalCode;
+    private String shipCountry;
+    private String shipPhoneNumber;
+    // Carrier tracking (DELIVERY orders)
     private String trackingNumber;
     private String carrier;
     private Instant shippedAt;

@@ -12,6 +12,22 @@ public record CompanyOrderResponse(
         String currency,
         BigDecimal companyItemsTotal,
         List<OrderItemResponse> items,
+        // Fulfillment method
+        String fulfillmentMethod,
+        // Pickup fields
+        UUID pickupLocationId,
+        String pickupLocationName,
+        Instant pickupReadyAt,
+        // Shipping address
+        String shipRecipientName,
+        String shipStreet,
+        String shipStreet2,
+        String shipCity,
+        String shipState,
+        String shipPostalCode,
+        String shipCountry,
+        String shipPhoneNumber,
+        // Carrier tracking
         String trackingNumber,
         String carrier,
         Instant shippedAt,

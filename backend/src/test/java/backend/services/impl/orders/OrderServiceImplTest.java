@@ -47,8 +47,12 @@ import backend.services.intf.payments.PaymentService;
 import backend.services.intf.pricing.CommissionEngine;
 import backend.services.intf.pricing.PricingEngine;
 import backend.services.intf.pricing.RiskEngine;
+import backend.services.intf.orders.OrderFulfillmentEventPublisher;
+import backend.services.intf.orders.TrackingService;
 import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.support.EmailService;
+import backend.models.enums.FulfillmentMethod;
+import backend.models.core.InventoryLocation;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -122,7 +126,9 @@ class OrderServiceImplTest {
                 mock(VendorBalanceRepository.class),
                 mock(LoyaltyService.class),
                 mock(ActivityEventPublisher.class),
-                companyAccessService);
+                companyAccessService,
+                mock(OrderFulfillmentEventPublisher.class),
+                mock(TrackingService.class));
     }
 
     @Test
@@ -201,6 +207,144 @@ class OrderServiceImplTest {
         assertEquals(ORDER_ID, response.orderId());
         assertEquals(new BigDecimal("10.00"), response.companyItemsTotal());
         assertEquals("USD", response.currency());
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsPickupReady
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsPickupReady_transitionsPendingItemsToPickupReady() {
+        Order order = packedPickupOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(FulfillmentStatus.PICKUP_READY, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    @Test
+    void markAsPickupReady_setsPickupReadyAtTimestamp() {
+        Order order = packedPickupOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertNonNull(order.getPickupReadyAt());
+    }
+
+    @Test
+    void markAsPickupReady_orderStatusRemainsPackedAfterCall() {
+        Order order = packedPickupOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.PACKED, order.getStatus());
+    }
+
+    @Test
+    void markAsPickupReady_throwsBadRequestOnDeliveryOrder() {
+        Order order = packedPickupOrder();
+        order.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsShipped guard
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsShipped_throwsBadRequestOnPickupOrder() {
+        Order order = packedPickupOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.markAsShipped(COMPANY_ID, ORDER_ID, USER_ID,
+                        new backend.dtos.requests.order.ShipOrderRequest("TRK123", "UPS", null, null)));
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsDelivered — PICKUP path
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsDelivered_acceptsPackedStatusForPickupOrders() {
+        Order order = pickupReadyOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsDelivered(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.DELIVERED, order.getStatus());
+    }
+
+    @Test
+    void markAsDelivered_transitionsPickupReadyItemsToDelivered() {
+        Order order = pickupReadyOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsDelivered(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(FulfillmentStatus.DELIVERED, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // Builders
+    // -------------------------------------------------------------------------
+
+    private Order packedPickupOrder() {
+        InventoryLocation loc = new InventoryLocation();
+        loc.setId(TestIds.uuid(50));
+        loc.setName("Downtown Store");
+
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        order.setPickupLocation(loc);
+        order.setPickupLocationName("Downtown Store");
+        order.setStatus(OrderStatus.PACKED);
+        order.setTotalAmount(new BigDecimal("19.99"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        order.setUpdatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        OrderItem item = orderItem(TestIds.uuid(10), company(COMPANY_ID), "Desk", new BigDecimal("19.99"));
+        item.setFulfillmentStatus(FulfillmentStatus.PACKED);
+        order.setItems(List.of(item));
+        return order;
+    }
+
+    private Order pickupReadyOrder() {
+        Order order = packedPickupOrder();
+        order.getItems().forEach(i -> i.setFulfillmentStatus(FulfillmentStatus.PICKUP_READY));
+        return order;
+    }
+
+    private static void assertNonNull(Object value) {
+        if (value == null) throw new AssertionError("Expected non-null value");
     }
 
     private Order order() {

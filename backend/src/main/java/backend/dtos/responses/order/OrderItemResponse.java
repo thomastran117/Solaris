@@ -1,5 +1,6 @@
 package backend.dtos.responses.order;
 
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -24,4 +25,5 @@ public class OrderItemResponse {
     private UUID bundleId;
     private String bundleName;
     private BigDecimal discountAmount;
+    private FulfillmentMethod fulfillmentMethod;
 }

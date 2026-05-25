@@ -158,6 +158,11 @@ export default function Navbar() {
                   Feedback Admin
                 </NavLink>
               )}
+              {accessToken && companyId && canFulfillOrders && (
+                <NavLink to="/admin/orders" className={navLinkClass}>
+                  Fulfillment
+                </NavLink>
+              )}
               {accessToken && companyId && (canManageProducts || canFulfillOrders) && (
                 <NavLink to="/admin/products" className={navLinkClass}>
                   Admin

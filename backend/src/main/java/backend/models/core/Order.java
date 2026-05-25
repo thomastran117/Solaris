@@ -10,6 +10,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import backend.models.enums.CancellationReason;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskAction;
 
@@ -28,7 +29,8 @@ import java.util.List;
         @Index(name = "idx_order_payment_intent", columnList = "payment_intent_id"),
         @Index(name = "idx_order_replacement_of", columnList = "replacement_of_order_id"),
         @Index(name = "idx_order_stripe_invoice", columnList = "stripe_invoice_id"),
-        @Index(name = "idx_order_subscription", columnList = "subscription_id")
+        @Index(name = "idx_order_subscription", columnList = "subscription_id"),
+        @Index(name = "idx_order_pickup_location", columnList = "pickup_location_id")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_order_payment_intent_id", columnNames = "payment_intent_id"),
         @UniqueConstraint(name = "uq_order_stripe_invoice_id", columnNames = "stripe_invoice_id")
@@ -127,6 +129,57 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(nullable = true, length = 25)
     private CancellationReason cancellationReason;
+
+    // -------------------------------------------------------------------------
+    // Fulfillment method + pickup
+    // -------------------------------------------------------------------------
+
+    /** Order-level fulfillment method: DELIVERY (ship to address) or PICKUP (collect in store). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'DELIVERY'")
+    private FulfillmentMethod fulfillmentMethod = FulfillmentMethod.DELIVERY;
+
+    /** For PICKUP orders: the store/hybrid location the customer will collect from. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "pickup_location_id", nullable = true)
+    private InventoryLocation pickupLocation;
+
+    /** Snapshot of the pickup location name at order time. Null for DELIVERY orders. */
+    @Column(nullable = true, length = 255)
+    private String pickupLocationName;
+
+    /** Timestamp when the merchant marked all PICKUP items as PICKUP_READY. */
+    @Column(nullable = true)
+    private Instant pickupReadyAt;
+
+    // -------------------------------------------------------------------------
+    // Shipping address snapshot (DELIVERY orders only)
+    // Snapshotted at checkout so a later address change does not affect the record.
+    // -------------------------------------------------------------------------
+
+    @Column(nullable = true, length = 150)
+    private String shipRecipientName;
+
+    @Column(nullable = true, length = 255)
+    private String shipStreet;
+
+    @Column(nullable = true, length = 255)
+    private String shipStreet2;
+
+    @Column(nullable = true, length = 100)
+    private String shipCity;
+
+    @Column(nullable = true, length = 100)
+    private String shipState;
+
+    @Column(nullable = true, length = 20)
+    private String shipPostalCode;
+
+    @Column(nullable = true, length = 2)
+    private String shipCountry;
+
+    @Column(nullable = true, length = 30)
+    private String shipPhoneNumber;
 
     // -------------------------------------------------------------------------
     // Fulfillment tracking

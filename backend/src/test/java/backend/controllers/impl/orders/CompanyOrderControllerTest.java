@@ -8,6 +8,9 @@ import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.dtos.responses.risk.RiskAssessmentResponse;
 import backend.dtos.responses.risk.RiskReviewResponse;
+import backend.exceptions.http.BadRequestException;
+import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskAction;
@@ -109,6 +112,37 @@ class CompanyOrderControllerTest {
     }
 
     @Test
+    void pickupReady_returns200_withCompanyOrderResponse() throws Exception {
+        authenticateAs(USER_ID);
+        when(orderService.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID))
+                .thenReturn(companyOrderResponse());
+
+        mockMvc.perform(post("/companies/" + COMPANY_ID + "/orders/" + ORDER_ID + "/pickup-ready"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value(ORDER_ID.toString()));
+    }
+
+    @Test
+    void pickupReady_returns400_whenServiceThrowsBadRequest() throws Exception {
+        authenticateAs(USER_ID);
+        when(orderService.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID))
+                .thenThrow(new BadRequestException("Cannot mark pickup-ready on a delivery order"));
+
+        mockMvc.perform(post("/companies/" + COMPANY_ID + "/orders/" + ORDER_ID + "/pickup-ready"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void pickupReady_returns404_whenOrderNotFound() throws Exception {
+        authenticateAs(USER_ID);
+        when(orderService.markAsPickupReady(COMPANY_ID, ORDER_ID, USER_ID))
+                .thenThrow(new ResourceNotFoundException("Order not found"));
+
+        mockMvc.perform(post("/companies/" + COMPANY_ID + "/orders/" + ORDER_ID + "/pickup-ready"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void merchantInitiateReturn_returnsResponse() throws Exception {
         authenticateAs(USER_ID);
         when(returnService.merchantInitiateReturn(eq(ORDER_ID), eq(COMPANY_ID), eq(USER_ID), any()))
@@ -193,8 +227,21 @@ class CompanyOrderControllerTest {
                         FulfillmentStatus.PACKED,
                         null,
                         null,
-                        BigDecimal.ZERO
+                        BigDecimal.ZERO,
+                        FulfillmentMethod.DELIVERY
                 )),
+                "DELIVERY",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "TRACK-123",
                 "UPS",
                 Instant.parse("2026-05-19T00:00:00Z"),
@@ -258,6 +305,17 @@ class CompanyOrderControllerTest {
                 "secret",
                 null,
                 BigDecimal.ZERO,
+                "DELIVERY",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

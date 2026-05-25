@@ -11,6 +11,7 @@ import backend.dtos.requests.inventory.SetLocationStockRequest;
 import backend.dtos.requests.inventory.UpdateLocationRequest;
 import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
+import backend.dtos.responses.inventory.NearbyPickupLocationResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
@@ -33,6 +34,7 @@ import backend.repositories.UserRepository;
 import backend.services.intf.CacheService;
 import backend.services.intf.inventory.LocationInventoryService;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.UUID;
 
@@ -396,10 +398,36 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         }
     }
 
+    // --- Nearby pickup ---
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<NearbyPickupLocationResponse> getNearbyPickupLocations(UUID companyId, double lat, double lng, int limit) {
+        return locationRepository.findNearbyPickupLocations(companyId, lat, lng, limit)
+                .stream()
+                .map(row -> new NearbyPickupLocationResponse(
+                        bytesToUuid((byte[]) row[0]),
+                        (String) row[1],
+                        (String) row[2],
+                        (String) row[3],
+                        (String) row[4],
+                        (String) row[5],
+                        ((Number) row[8]).doubleValue(),
+                        row[6] != null ? ((Number) row[6]).intValue() : null,
+                        LocationType.valueOf((String) row[7])
+                ))
+                .toList();
+    }
+
     // --- Helpers ---
 
     private void assertCompanyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 
     private LocationResponse toLocationResponse(InventoryLocation loc) {

@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import backend.annotations.retry.RetryOnConcurrency;
 import backend.dtos.requests.order.CreateOrderRequest;
@@ -57,7 +58,9 @@ import backend.models.enums.AdjustmentReason;
 import backend.models.enums.CompensationStatus;
 import backend.models.enums.CompensationType;
 import backend.models.enums.DiscountStatus;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
+import backend.models.enums.LocationType;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.ProductStatus;
 import backend.models.enums.RiskAction;
@@ -97,8 +100,11 @@ import backend.models.enums.AllocationStrategy;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.services.impl.inventory.StockAlertService;
+import backend.events.order.OrderFulfillmentEvent;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.company.CompanyAccessService;
+import backend.services.intf.orders.OrderFulfillmentEventPublisher;
+import backend.services.intf.orders.TrackingService;
 import backend.services.intf.inventory.AllocationService;
 import backend.services.intf.CacheService;
 import backend.models.enums.CompanyCapability;
@@ -185,6 +191,8 @@ public class OrderServiceImpl implements OrderService {
     private final LoyaltyService loyaltyService;
     private final ActivityEventPublisher activityEventPublisher;
     private final CompanyAccessService companyAccessService;
+    private final OrderFulfillmentEventPublisher fulfillmentEventPublisher;
+    private final TrackingService trackingService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
@@ -226,7 +234,9 @@ public class OrderServiceImpl implements OrderService {
             VendorBalanceRepository vendorBalanceRepository,
             LoyaltyService loyaltyService,
             ActivityEventPublisher activityEventPublisher,
-            CompanyAccessService companyAccessService) {
+            CompanyAccessService companyAccessService,
+            OrderFulfillmentEventPublisher fulfillmentEventPublisher,
+            TrackingService trackingService) {
         this.orderRepository = orderRepository;
         this.compensationRepository = compensationRepository;
         this.productRepository = productRepository;
@@ -264,6 +274,8 @@ public class OrderServiceImpl implements OrderService {
         this.loyaltyService = loyaltyService;
         this.activityEventPublisher = activityEventPublisher;
         this.companyAccessService = companyAccessService;
+        this.fulfillmentEventPublisher = fulfillmentEventPublisher;
+        this.trackingService = trackingService;
     }
 
     /** Setter injection breaks the circular dependency: ReturnService → OrderServiceImpl → ReturnService. */
@@ -298,6 +310,35 @@ public class OrderServiceImpl implements OrderService {
             }
             if (ir.getProductId() != null && ir.getBundleId() != null) {
                 throw new BadRequestException("Each order item must specify either a productId or a bundleId, not both");
+            }
+        }
+
+        // Resolve fulfillment method and validate address/location before acquiring stock locks
+        FulfillmentMethod fulfillmentMethod = request.getFulfillmentMethod() != null
+                ? request.getFulfillmentMethod() : FulfillmentMethod.DELIVERY;
+
+        InventoryLocation resolvedPickupLocation = null;
+        if (fulfillmentMethod == FulfillmentMethod.DELIVERY) {
+            if (!StringUtils.hasText(request.getShipRecipientName())
+                    || !StringUtils.hasText(request.getShipStreet())
+                    || !StringUtils.hasText(request.getShipCity())
+                    || !StringUtils.hasText(request.getShipPostalCode())
+                    || !StringUtils.hasText(request.getShipCountry())) {
+                throw new BadRequestException(
+                        "Shipping address (recipientName, street, city, postalCode, country) is required for delivery orders");
+            }
+        } else {
+            if (request.getPickupLocationId() == null) {
+                throw new BadRequestException("A pickup location must be specified for pickup orders");
+            }
+            resolvedPickupLocation = locationRepository.findById(request.getPickupLocationId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Pickup location not found with id: " + request.getPickupLocationId()));
+            if (!resolvedPickupLocation.isActive()) {
+                throw new BadRequestException("The selected pickup location is not currently active");
+            }
+            if (resolvedPickupLocation.getType() == LocationType.WAREHOUSE) {
+                throw new BadRequestException("The selected location does not support in-store pickup");
             }
         }
 
@@ -740,7 +781,29 @@ public class OrderServiceImpl implements OrderService {
             order.setPriorityOrder(user.getTier() == backend.models.enums.UserTier.PREMIUM);
             order.setPremiumDiscountCents(premiumDiscountCents);
 
+            // Fulfillment method + address snapshot
+            order.setFulfillmentMethod(fulfillmentMethod);
+            if (fulfillmentMethod == FulfillmentMethod.DELIVERY) {
+                order.setShipRecipientName(request.getShipRecipientName());
+                order.setShipStreet(request.getShipStreet());
+                order.setShipStreet2(request.getShipStreet2());
+                order.setShipCity(request.getShipCity());
+                order.setShipState(request.getShipState());
+                order.setShipPostalCode(request.getShipPostalCode());
+                order.setShipCountry(request.getShipCountry());
+                order.setShipPhoneNumber(request.getShipPhoneNumber());
+            } else {
+                order.setPickupLocation(resolvedPickupLocation);
+                order.setPickupLocationName(resolvedPickupLocation.getName());
+            }
+
+            // Stamp every item with the order-level fulfillment method
             for (OrderItem item : orderItems) {
+                item.setFulfillmentMethod(fulfillmentMethod);
+                if (fulfillmentMethod == FulfillmentMethod.PICKUP) {
+                    item.setFulfillmentLocation(resolvedPickupLocation);
+                    item.setFulfillmentLocationName(resolvedPickupLocation.getName());
+                }
                 item.setOrder(order);
             }
             order.setItems(orderItems);
@@ -1926,6 +1989,18 @@ public class OrderServiceImpl implements OrderService {
                 order.getCurrency(),
                 total,
                 itemResponses,
+                order.getFulfillmentMethod() != null ? order.getFulfillmentMethod().name() : FulfillmentMethod.DELIVERY.name(),
+                order.getPickupLocation() != null ? order.getPickupLocation().getId() : null,
+                order.getPickupLocationName(),
+                order.getPickupReadyAt(),
+                order.getShipRecipientName(),
+                order.getShipStreet(),
+                order.getShipStreet2(),
+                order.getShipCity(),
+                order.getShipState(),
+                order.getShipPostalCode(),
+                order.getShipCountry(),
+                order.getShipPhoneNumber(),
                 order.getTrackingNumber(),
                 order.getCarrier(),
                 order.getShippedAt(),
@@ -1952,6 +2027,17 @@ public class OrderServiceImpl implements OrderService {
                 order.getPaymentClientSecret(),
                 order.getCouponCode(),
                 order.getCouponDiscountAmount(),
+                order.getFulfillmentMethod() != null ? order.getFulfillmentMethod().name() : FulfillmentMethod.DELIVERY.name(),
+                order.getPickupLocationName(),
+                order.getPickupReadyAt(),
+                order.getShipRecipientName(),
+                order.getShipStreet(),
+                order.getShipStreet2(),
+                order.getShipCity(),
+                order.getShipState(),
+                order.getShipPostalCode(),
+                order.getShipCountry(),
+                order.getShipPhoneNumber(),
                 order.getTrackingNumber(),
                 order.getCarrier(),
                 order.getShippedAt(),
@@ -1979,7 +2065,8 @@ public class OrderServiceImpl implements OrderService {
                 item.getFulfillmentStatus(),
                 item.getBundle() != null ? item.getBundle().getId() : null,
                 item.getBundleName(),
-                item.getDiscountAmount()
+                item.getDiscountAmount(),
+                item.getFulfillmentMethod()
         );
     }
 
@@ -2018,11 +2105,45 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     @RetryOnConcurrency
+    public CompanyOrderResponse markAsPickupReady(UUID companyId, UUID orderId, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
+
+        Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+        if (order.getFulfillmentMethod() != FulfillmentMethod.PICKUP) {
+            throw new BadRequestException("This order is not a pickup order");
+        }
+
+        validateTransition(order, OrderStatus.PACKED, OrderStatus.PAID, OrderStatus.PACKED);
+
+        for (OrderItem item : order.getItems()) {
+            if (item.getFulfillmentStatus() == FulfillmentStatus.PENDING
+                    || item.getFulfillmentStatus() == FulfillmentStatus.PACKED) {
+                item.setFulfillmentStatus(FulfillmentStatus.PICKUP_READY);
+            }
+        }
+        // Order-level status intentionally stays PACKED — PICKUP_READY is item-level only.
+        order.setPickupReadyAt(Instant.now());
+        Order saved = orderRepository.save(order);
+        fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.PickupReady(
+                saved.getId(), saved.getUser().getId(), companyId,
+                saved.getPickupLocationName(), saved.getPickupReadyAt()));
+        return toCompanyOrderResponse(saved, companyId);
+    }
+
+    @Override
+    @Transactional
+    @RetryOnConcurrency
     public CompanyOrderResponse markAsShipped(UUID companyId, UUID orderId, UUID ownerId, ShipOrderRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+        if (order.getFulfillmentMethod() == FulfillmentMethod.PICKUP) {
+            throw new BadRequestException("Cannot ship a pickup order — use the pickup-ready endpoint instead");
+        }
 
         validateTransition(order, OrderStatus.SHIPPED, OrderStatus.PACKED, OrderStatus.PARTIALLY_FULFILLED);
 
@@ -2058,7 +2179,16 @@ public class OrderServiceImpl implements OrderService {
         }
         // else: remains PARTIALLY_FULFILLED if called again for remaining items
 
-        return toCompanyOrderResponse(orderRepository.save(order), companyId);
+        Order saved = orderRepository.save(order);
+        String tn = saved.getTrackingNumber();
+        String carrier = saved.getCarrier();
+        if (tn != null) {
+            fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Shipped(
+                    saved.getId(), saved.getUser().getId(), companyId,
+                    tn, carrier, saved.getShippedAt()));
+            trackingService.registerTracking(saved.getId(), tn, carrier);
+        }
+        return toCompanyOrderResponse(saved, companyId);
     }
 
     @Override
@@ -2070,8 +2200,36 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
-        validateTransition(order, OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.PARTIALLY_FULFILLED);
+        if (order.getFulfillmentMethod() == FulfillmentMethod.PICKUP) {
+            validateTransition(order, OrderStatus.DELIVERED, OrderStatus.PACKED);
+            for (OrderItem item : order.getItems()) {
+                if (item.getFulfillmentStatus() == FulfillmentStatus.PICKUP_READY
+                        || item.getFulfillmentStatus() == FulfillmentStatus.PACKED
+                        || item.getFulfillmentStatus() == FulfillmentStatus.PENDING) {
+                    item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+                }
+            }
+        } else {
+            validateTransition(order, OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.PARTIALLY_FULFILLED);
+            for (OrderItem item : order.getItems()) {
+                if (item.getFulfillmentStatus() == FulfillmentStatus.SHIPPED) {
+                    item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+                }
+            }
+        }
+        order.setDeliveredAt(Instant.now());
+        order.setStatus(OrderStatus.DELIVERED);
+        Order saved = orderRepository.save(order);
+        fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
+                saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+        return toCompanyOrderResponse(saved, companyId);
+    }
 
+    @Override
+    @Transactional
+    public void autoMarkDeliveredByTracking(String trackingNumber) {
+        Order order = orderRepository.findByTrackingNumber(trackingNumber).orElse(null);
+        if (order == null || order.getStatus() == OrderStatus.DELIVERED) return;
         for (OrderItem item : order.getItems()) {
             if (item.getFulfillmentStatus() == FulfillmentStatus.SHIPPED) {
                 item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
@@ -2079,7 +2237,13 @@ public class OrderServiceImpl implements OrderService {
         }
         order.setDeliveredAt(Instant.now());
         order.setStatus(OrderStatus.DELIVERED);
-        return toCompanyOrderResponse(orderRepository.save(order), companyId);
+        Order saved = orderRepository.save(order);
+        UUID companyId = saved.getItems().stream()
+                .findFirst()
+                .map(i -> i.getProduct().getCompany().getId())
+                .orElse(null);
+        fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
+                saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
     }
 
     @Override

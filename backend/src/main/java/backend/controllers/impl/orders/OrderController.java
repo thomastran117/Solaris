@@ -1,5 +1,6 @@
 package backend.controllers.impl.orders;
 
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,14 +13,19 @@ import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.requests.order.CreateOrderRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderResponse;
+import backend.dtos.responses.order.TrackingEvent;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.enums.OrderStatus;
 import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
+import backend.services.intf.orders.TrackingService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.orders.ReplacementOrderService;
 import backend.services.intf.returns.ReturnService;
@@ -59,6 +65,10 @@ public class OrderController {
     private final VendorOnboardingService vendorOnboardingService;
     private final IdempotencyService idempotencyService;
     private final CacheService cacheService;
+    private final TrackingService trackingService;
+    private final ObjectMapper objectMapper;
+
+    private static final long TRACKING_CACHE_TTL_SECONDS = 60;
 
     public OrderController(OrderService orderService, PaymentService paymentService,
                            ReturnService returnService, ReplacementOrderService replacementOrderService,
@@ -66,7 +76,9 @@ public class OrderController {
                            VendorPayoutService vendorPayoutService,
                            VendorOnboardingService vendorOnboardingService,
                            IdempotencyService idempotencyService,
-                           CacheService cacheService) {
+                           CacheService cacheService,
+                           TrackingService trackingService,
+                           ObjectMapper objectMapper) {
         this.orderService = orderService;
         this.paymentService = paymentService;
         this.returnService = returnService;
@@ -76,6 +88,8 @@ public class OrderController {
         this.vendorOnboardingService = vendorOnboardingService;
         this.idempotencyService = idempotencyService;
         this.cacheService = cacheService;
+        this.trackingService = trackingService;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping
@@ -299,6 +313,38 @@ public class OrderController {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(replacementOrderService.createReplacement(orderId, request, resolveUserId()));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/{id}/tracking")
+    @RequireAuth
+    public ResponseEntity<List<TrackingEvent>> getTracking(@PathVariable UUID id) {
+        try {
+            UUID userId = resolveUserId();
+            OrderResponse order = orderService.getOrder(id, userId);
+            if (order.getTrackingNumber() == null) {
+                throw new ResourceNotFoundException("No tracking information available for this order yet");
+            }
+            String cacheKey = "order:tracking:" + order.getTrackingNumber();
+            String cached = cacheService.get(cacheKey);
+            if (cached != null) {
+                try {
+                    List<TrackingEvent> events = objectMapper.readValue(cached,
+                            new TypeReference<>() {});
+                    return ResponseEntity.ok(events);
+                } catch (Exception ignored) {}
+            }
+            List<TrackingEvent> events = trackingService.getTrackingEvents(
+                    order.getTrackingNumber(), order.getCarrier());
+            try {
+                cacheService.set(cacheKey, objectMapper.writeValueAsString(events),
+                        TRACKING_CACHE_TTL_SECONDS);
+            } catch (Exception ignored) {}
+            return ResponseEntity.ok(events);
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

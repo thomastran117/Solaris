@@ -39,7 +39,13 @@ public interface OrderService {
     /** Transitions PACKED (or PARTIALLY_FULFILLED) order items to SHIPPED; records tracking info. */
     CompanyOrderResponse markAsShipped(UUID companyId, UUID orderId, UUID ownerId, ShipOrderRequest request);
 
-    /** Transitions SHIPPED (or PARTIALLY_FULFILLED) order to DELIVERED. */
+    /**
+     * PICKUP orders only — transitions PACKED/PENDING items to PICKUP_READY and records pickupReadyAt.
+     * Order-level status stays PACKED; the customer is notified that their order is ready to collect.
+     */
+    CompanyOrderResponse markAsPickupReady(UUID companyId, UUID orderId, UUID ownerId);
+
+    /** Transitions SHIPPED (or PARTIALLY_FULFILLED) order to DELIVERED. Also accepts PACKED for PICKUP orders. */
     CompanyOrderResponse markAsDelivered(UUID companyId, UUID orderId, UUID ownerId);
 
     /** Processes a return for a DELIVERED (or SHIPPED) order — optionally restocks and refunds. */
@@ -61,6 +67,9 @@ public interface OrderService {
 
     /** Rejects an UNDER_REVIEW order — delegates to cancelOrder to release reservation and restore stock. */
     OrderResponse rejectRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req);
+
+    /** Called by the Aftership webhook when tag == "Delivered". Looks up order by tracking number and transitions to DELIVERED. No-ops if not found or already delivered. */
+    void autoMarkDeliveredByTracking(String trackingNumber);
 
     // -------------------------------------------------------------------------
     // Subscription renewals

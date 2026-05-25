@@ -43,6 +43,7 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
                                       @Param("excludeStatus") OrderStatus excludeStatus);
     Optional<Order> findByPaymentIntentId(String paymentIntentId);
     Optional<Order> findByStripeInvoiceId(String stripeInvoiceId);
+    Optional<Order> findByTrackingNumber(String trackingNumber);
     Page<Order> findAllByUserIdAndStatus(UUID userId, OrderStatus status, Pageable pageable);
     List<Order> findAllByStatusAndCompensatedFalseAndCreatedAtBefore(OrderStatus status, Instant before);
 

@@ -6,12 +6,14 @@ import backend.dtos.responses.order.OrderItemResponse;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.ConflictException;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
 import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.orders.ReplacementOrderService;
+import backend.services.intf.orders.TrackingService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.payments.VendorPayoutService;
 import backend.services.intf.returns.ReturnService;
@@ -91,7 +93,9 @@ class OrderControllerTest {
                         vendorPayoutService,
                         vendorOnboardingService,
                         idempotencyService,
-                        cacheService))
+                        cacheService,
+                        mock(TrackingService.class),
+                        new ObjectMapper().findAndRegisterModules()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .build();
@@ -284,7 +288,8 @@ class OrderControllerTest {
                         FulfillmentStatus.PENDING,
                         null,
                         null,
-                        BigDecimal.ZERO
+                        BigDecimal.ZERO,
+                        FulfillmentMethod.DELIVERY
                 )),
                 new BigDecimal("19.99"),
                 "USD",
@@ -293,6 +298,17 @@ class OrderControllerTest {
                 "secret",
                 null,
                 BigDecimal.ZERO,
+                "DELIVERY",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

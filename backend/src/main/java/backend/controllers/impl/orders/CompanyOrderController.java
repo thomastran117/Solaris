@@ -102,6 +102,20 @@ public class CompanyOrderController {
         }
     }
 
+    @PostMapping("/{orderId}/pickup-ready")
+    public ResponseEntity<CompanyOrderResponse> markAsPickupReady(
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.markAsPickupReady(companyId, orderId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @PostMapping("/{orderId}/deliver")
     public ResponseEntity<CompanyOrderResponse> markAsDelivered(
             @PathVariable UUID companyId,

@@ -41,6 +41,8 @@ import backend.services.intf.payments.PaymentService;
 import backend.services.intf.pricing.CommissionEngine;
 import backend.services.intf.pricing.PricingEngine;
 import backend.services.intf.pricing.RiskEngine;
+import backend.services.intf.orders.OrderFulfillmentEventPublisher;
+import backend.services.intf.orders.TrackingService;
 import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.support.EmailService;
 import backend.testutil.TestIds;
@@ -109,7 +111,9 @@ class OrderServicePremiumTest {
                 mock(VendorBalanceRepository.class),
                 mock(LoyaltyService.class),
                 mock(ActivityEventPublisher.class),
-                mock(CompanyAccessService.class));
+                mock(CompanyAccessService.class),
+                mock(OrderFulfillmentEventPublisher.class),
+                mock(TrackingService.class));
     }
 
     // ─── item-count gate ─────────────────────────────────────────────────────

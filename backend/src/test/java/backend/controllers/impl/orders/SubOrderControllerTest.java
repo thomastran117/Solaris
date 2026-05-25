@@ -5,6 +5,7 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.CommissionRecordResponse;
 import backend.dtos.responses.order.OrderItemResponse;
 import backend.dtos.responses.order.SubOrderResponse;
+import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.SubOrderStatus;
 import backend.services.intf.orders.SubOrderService;
@@ -192,7 +193,8 @@ class SubOrderControllerTest {
                         FulfillmentStatus.PENDING,
                         null,
                         null,
-                        BigDecimal.ZERO
+                        BigDecimal.ZERO,
+                        FulfillmentMethod.DELIVERY
                 ))
         );
     }
