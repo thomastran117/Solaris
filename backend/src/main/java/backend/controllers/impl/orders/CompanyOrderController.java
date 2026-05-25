@@ -130,6 +130,20 @@ public class CompanyOrderController {
         }
     }
 
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<CompanyOrderResponse> cancelOrder(
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.cancelOrderByCompany(companyId, orderId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @PostMapping("/{orderId}/return")
     public ResponseEntity<CompanyOrderResponse> initiateReturn(
             @PathVariable UUID companyId,

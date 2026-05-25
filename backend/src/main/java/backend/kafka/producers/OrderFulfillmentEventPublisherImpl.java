@@ -57,6 +57,7 @@ public class OrderFulfillmentEventPublisherImpl implements OrderFulfillmentEvent
             case OrderFulfillmentEvent.Shipped e     -> e.orderId().toString();
             case OrderFulfillmentEvent.PickupReady e -> e.orderId().toString();
             case OrderFulfillmentEvent.Delivered e   -> e.orderId().toString();
+            case OrderFulfillmentEvent.Cancelled e   -> e.orderId().toString();
         };
     }
 }

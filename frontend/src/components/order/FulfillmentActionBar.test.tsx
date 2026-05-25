@@ -13,6 +13,7 @@ vi.mock("../../api/companyOrders", () => ({
     ship: vi.fn(),
     markPickupReady: vi.fn(),
     deliver: vi.fn(),
+    cancel: vi.fn(),
   },
 }));
 
@@ -21,6 +22,7 @@ const mockPack = vi.mocked(companyOrdersApi.pack);
 const mockShip = vi.mocked(companyOrdersApi.ship);
 const mockPickupReady = vi.mocked(companyOrdersApi.markPickupReady);
 const mockDeliver = vi.mocked(companyOrdersApi.deliver);
+const mockCancel = vi.mocked(companyOrdersApi.cancel);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -177,5 +179,86 @@ describe("FulfillmentActionBar — pickup ready mutation", () => {
     await userEvent.click(screen.getByRole("button", { name: /Mark Pickup Ready/i }));
 
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+});
+
+// ─── cancel button visibility ─────────────────────────────────────────────────
+
+describe("FulfillmentActionBar — cancel button visibility", () => {
+  it("PAID: shows Cancel Order alongside primary action", () => {
+    renderBar(makeOrder({ orderStatus: "PAID", fulfillmentMethod: "DELIVERY" }));
+    expect(screen.getByRole("button", { name: /Cancel Order/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark Packed/i })).toBeInTheDocument();
+  });
+
+  it("PACKED: shows Cancel Order alongside primary action", () => {
+    renderBar(makeOrder({ orderStatus: "PACKED", fulfillmentMethod: "DELIVERY" }));
+    expect(screen.getByRole("button", { name: /Cancel Order/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark Shipped/i })).toBeInTheDocument();
+  });
+
+  it("RESERVED: shows Cancel Order even with no primary fulfillment action", () => {
+    renderBar(makeOrder({ orderStatus: "RESERVED", fulfillmentMethod: "DELIVERY" }));
+    expect(screen.getByRole("button", { name: /Cancel Order/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mark Packed/i })).not.toBeInTheDocument();
+  });
+
+  it("SHIPPED: does not show Cancel Order", () => {
+    renderBar(makeOrder({ orderStatus: "SHIPPED", fulfillmentMethod: "DELIVERY" }));
+    expect(screen.queryByRole("button", { name: /Cancel Order/i })).not.toBeInTheDocument();
+  });
+
+  it("DELIVERED: renders nothing at all", () => {
+    const { container } = (() => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      return render(
+        <QueryClientProvider client={qc}>
+          <FulfillmentActionBar order={makeOrder({ orderStatus: "DELIVERED" })} companyId="company-1" />
+        </QueryClientProvider>
+      );
+    })();
+    expect(container.firstChild).toBeNull();
+  });
+});
+
+// ─── cancel modal ─────────────────────────────────────────────────────────────
+
+describe("FulfillmentActionBar — cancel modal", () => {
+  it("opens cancel modal when Cancel Order is clicked", async () => {
+    renderBar(makeOrder({ orderStatus: "PAID" }));
+    await userEvent.click(screen.getByRole("button", { name: /Cancel Order/i }));
+    expect(screen.getByText(/Cancel this order\?/i)).toBeInTheDocument();
+  });
+
+  it("closes modal when Go back is clicked", async () => {
+    renderBar(makeOrder({ orderStatus: "PAID" }));
+    await userEvent.click(screen.getByRole("button", { name: /Cancel Order/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Go back/i }));
+    expect(screen.queryByText(/Cancel this order\?/i)).not.toBeInTheDocument();
+  });
+
+  it("calls cancel API and onRefresh on confirmation", async () => {
+    mockCancel.mockResolvedValue({ data: makeOrder({ orderStatus: "CANCELLED" }) } as never);
+    const { onRefresh } = renderBar(makeOrder({ orderStatus: "PAID" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /Cancel Order/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Confirm cancel/i }));
+
+    await waitFor(() => expect(mockCancel).toHaveBeenCalledWith("company-1", "order-1"));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  it("shows error and keeps modal open on cancel failure", async () => {
+    mockCancel.mockRejectedValue(new Error("Server error"));
+    renderBar(makeOrder({ orderStatus: "PAID" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /Cancel Order/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Confirm cancel/i }));
+
+    // Error appears in both the action bar and inside the modal
+    await waitFor(() =>
+      expect(screen.getAllByText(/Failed to cancel order/i).length).toBeGreaterThan(0)
+    );
+    expect(screen.getByText(/Cancel this order\?/i)).toBeInTheDocument();
   });
 });

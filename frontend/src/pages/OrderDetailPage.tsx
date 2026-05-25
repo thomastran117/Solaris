@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Package } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Loader2, Package, X } from "lucide-react";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
 import SectionGlow from "../components/section/SectionGlow";
 import SectionFade from "../components/section/SectionFade";
@@ -10,6 +11,8 @@ import TrackingPanel from "../components/order/TrackingPanel";
 import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import { ordersApi } from "../api/orders";
+
+const CANCELLABLE = new Set(["RESERVED", "PAID", "PACKED"]);
 
 const useAnims = () => {
   const reduced = useReducedMotion();
@@ -25,12 +28,24 @@ const useAnims = () => {
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { fadeInUp, stagger } = useAnims();
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ["order", id],
     queryFn: () => ordersApi.get(id!).then((r) => r.data),
     enabled: !!id,
+  });
+
+  const cancel = useMutation({
+    mutationFn: () => ordersApi.cancel(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["order", id] });
+      navigate("/orders");
+    },
+    onError: () => setCancelError("Failed to cancel order. Please try again."),
   });
 
   const hasPickupReady = order?.items.some((i) => i.fulfillmentStatus === "PICKUP_READY") ?? false;
@@ -79,6 +94,14 @@ export default function OrderDetailPage() {
                 <div className="text-right">
                   <p className="text-xl font-extrabold text-white">{order.currency} {order.totalAmount.toFixed(2)}</p>
                   <p className="text-xs text-white/50 capitalize">{order.status.toLowerCase().replace(/_/g, " ")}</p>
+                  {CANCELLABLE.has(order.status) && (
+                    <button
+                      onClick={() => { setCancelError(null); setShowCancelModal(true); }}
+                      className="mt-2 text-xs text-red-400 hover:text-red-300 transition underline underline-offset-2"
+                    >
+                      Cancel order
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -152,6 +175,40 @@ export default function OrderDetailPage() {
         )}
         <SectionFade bottom />
       </div>
+
+      {/* Cancel confirmation modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Cancel this order?</h3>
+              <button onClick={() => setShowCancelModal(false)} className="text-white/40 hover:text-white transition">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-white/60">
+              This will cancel your order and release any stock reservation.
+              {order && ["PAID", "PACKED"].includes(order.status) && " A full refund will be issued to your original payment method."}
+            </p>
+            {cancelError && <p className="text-sm text-red-400">{cancelError}</p>}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 rounded-full border border-white/20 py-2 text-sm text-white/70 hover:bg-white/10 transition"
+              >
+                Go back
+              </button>
+              <button
+                onClick={() => cancel.mutate()}
+                disabled={cancel.isPending}
+                className="flex-1 rounded-full bg-red-600 hover:bg-red-500 disabled:opacity-50 py-2 text-sm text-white font-medium transition"
+              >
+                {cancel.isPending ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

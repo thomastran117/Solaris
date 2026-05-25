@@ -1081,6 +1081,17 @@ public class OrderServiceImpl implements OrderService {
         return cancelOrderInternal(orderId, userId, backend.models.enums.CancellationReason.CUSTOMER_REQUEST);
     }
 
+    @Override
+    @Transactional
+    @RetryOnConcurrency
+    public CompanyOrderResponse cancelOrderByCompany(UUID companyId, UUID orderId, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
+        Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        doCancelOrder(order, backend.models.enums.CancellationReason.MERCHANT_CANCELLED);
+        return toCompanyOrderResponse(orderRepository.save(order), companyId);
+    }
+
     /**
      * Same flow as the public {@link #cancelOrder} but lets internal callers
      * (risk reject, payment failure escalation, etc.) tag the cancellation
@@ -1089,14 +1100,25 @@ public class OrderServiceImpl implements OrderService {
     OrderResponse cancelOrderInternal(UUID orderId, UUID userId, backend.models.enums.CancellationReason reason) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        doCancelOrder(order, reason);
+        return toResponse(orderRepository.save(order));
+    }
 
+    /**
+     * Applies all cancellation side-effects to {@code order} in place: status guard,
+     * payment void/refund, stock restoration, coupon release, and Kafka event registration.
+     * Does NOT call {@link backend.repositories.orders.OrderRepository#save} — callers are
+     * responsible for persisting and mapping to their response type.
+     */
+    private void doCancelOrder(Order order, backend.models.enums.CancellationReason reason) {
         // Explicit positive list — we never want to silently start accepting cancellation
         // for a newly added intermediate status (PARTIALLY_FULFILLED, UNDER_REVIEW, etc).
         // Anything not in this set must throw, even if it gets added later.
-        switch (order.getStatus()) {
+        OrderStatus preStatus = order.getStatus();
+        switch (preStatus) {
             case RESERVED, PAID, PACKED -> { /* allowed */ }
             default -> throw new ConflictException(
-                    "Orders can only be cancelled before they are shipped (status: " + order.getStatus() + ")");
+                    "Orders can only be cancelled before they are shipped (status: " + preStatus + ")");
         }
 
         order.setStatus(OrderStatus.CANCELLED);
@@ -1105,14 +1127,27 @@ public class OrderServiceImpl implements OrderService {
 
         if (order.getPaymentIntentId() != null) {
             try {
-                paymentService.cancelPaymentIntent(order.getPaymentIntentId());
-                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
-                        "Cancelled payment intent: " + order.getPaymentIntentId(), CompensationStatus.COMPLETED);
+                if (preStatus == OrderStatus.RESERVED) {
+                    // Intent not yet captured — void it
+                    paymentService.cancelPaymentIntent(order.getPaymentIntentId());
+                    recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                            "Cancelled payment intent: " + order.getPaymentIntentId(), CompensationStatus.COMPLETED);
+                } else {
+                    // Payment already captured (PAID or PACKED) — issue a full refund
+                    long amountInCents = order.getTotalAmount().multiply(java.math.BigDecimal.valueOf(100)).longValue();
+                    paymentService.refundPayment(order.getPaymentIntentId(), amountInCents);
+                    recordCompensation(order, CompensationType.PAYMENT_REFUND,
+                            "Refunded captured payment for order cancellation: " + order.getPaymentIntentId(), CompensationStatus.COMPLETED);
+                }
             } catch (Exception e) {
-                log.error("Failed to cancel payment intent {} for order {}: {}",
+                CompensationType compType = (preStatus == OrderStatus.RESERVED)
+                        ? CompensationType.PAYMENT_CANCEL : CompensationType.PAYMENT_REFUND;
+                log.error("Failed to {} payment intent {} for order {}: {}",
+                        preStatus == OrderStatus.RESERVED ? "cancel" : "refund",
                         order.getPaymentIntentId(), order.getId(), e.getMessage());
-                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
-                        "Failed to cancel payment intent: " + order.getPaymentIntentId(), CompensationStatus.FAILED, e.getMessage());
+                recordCompensation(order, compType,
+                        "Failed to process payment for cancellation: " + order.getPaymentIntentId(),
+                        CompensationStatus.FAILED, e.getMessage());
             }
         }
 
@@ -1132,7 +1167,10 @@ public class OrderServiceImpl implements OrderService {
 
         releaseCouponUsage(order);
         order.setCompensated(true);
-        return toResponse(orderRepository.save(order));
+
+        // Publish after the enclosing @Transactional commits — publisher registers an afterCommit hook
+        fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Cancelled(
+                order.getId(), order.getUser().getId(), reason, order.getCancelledAt()));
     }
 
     @Override

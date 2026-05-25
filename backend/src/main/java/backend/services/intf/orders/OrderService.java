@@ -22,6 +22,7 @@ public interface OrderService {
     PagedResponse<OrderResponse> getOrders(UUID userId, OrderStatus status, int page, int size, String sort, String direction);
     OrderResponse reorderOrder(UUID orderId, UUID userId);
     OrderResponse cancelOrder(UUID orderId, UUID userId);
+    CompanyOrderResponse cancelOrderByCompany(UUID companyId, UUID orderId, UUID ownerId);
     void handlePaymentSuccess(String paymentIntentId);
     void handlePaymentFailure(String paymentIntentId);
     PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status, int page, int size);

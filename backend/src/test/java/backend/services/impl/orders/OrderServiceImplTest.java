@@ -4,12 +4,15 @@ import backend.configurations.environment.RiskProperties;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.CompanyOrderResponse;
 import backend.dtos.responses.order.OrderResponse;
+import backend.events.order.OrderFulfillmentEvent;
+import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
 import backend.models.core.Order;
 import backend.models.core.OrderItem;
 import backend.models.core.Product;
 import backend.models.core.User;
+import backend.models.enums.CancellationReason;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.UserRole;
@@ -28,6 +31,7 @@ import backend.repositories.OrderCompensationRepository;
 import backend.repositories.OrderItemRepository;
 import backend.repositories.OrderRepository;
 import backend.repositories.ProductRepository;
+import backend.services.intf.payments.PaymentService;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRedemptionRepository;
 import backend.repositories.PromotionRuleRepository;
@@ -71,28 +75,37 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OrderServiceImplTest {
 
-    private static final UUID USER_ID = TestIds.uuid(1);
-    private static final UUID COMPANY_ID = TestIds.uuid(2);
-    private static final UUID ORDER_ID = TestIds.uuid(3);
+    private static final UUID USER_ID      = TestIds.uuid(1);
+    private static final UUID COMPANY_ID   = TestIds.uuid(2);
+    private static final UUID ORDER_ID     = TestIds.uuid(3);
+    private static final UUID PRODUCT_ID   = TestIds.uuid(4);
+    private static final String PAYMENT_INTENT_ID = "pi_test_123";
 
     private OrderRepository orderRepository;
     private CompanyAccessService companyAccessService;
+    private PaymentService paymentService;
+    private ProductRepository productRepository;
+    private OrderFulfillmentEventPublisher fulfillmentEventPublisher;
     private OrderServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        orderRepository = mock(OrderRepository.class);
-        companyAccessService = mock(CompanyAccessService.class);
+        orderRepository          = mock(OrderRepository.class);
+        companyAccessService     = mock(CompanyAccessService.class);
+        paymentService           = mock(PaymentService.class);
+        productRepository        = mock(ProductRepository.class);
+        fulfillmentEventPublisher = mock(OrderFulfillmentEventPublisher.class);
 
         service = new OrderServiceImpl(
                 orderRepository,
                 mock(OrderCompensationRepository.class),
-                mock(ProductRepository.class),
+                productRepository,
                 mock(ProductVariantRepository.class),
                 mock(LocationStockRepository.class),
                 mock(InventoryAdjustmentRepository.class),
@@ -106,7 +119,7 @@ class OrderServiceImplTest {
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 mock(PricingEngine.class),
-                mock(PaymentService.class),
+                paymentService,
                 mock(CacheService.class),
                 mock(StockAlertService.class),
                 mock(EmailService.class),
@@ -127,7 +140,7 @@ class OrderServiceImplTest {
                 mock(LoyaltyService.class),
                 mock(ActivityEventPublisher.class),
                 companyAccessService,
-                mock(OrderFulfillmentEventPublisher.class),
+                fulfillmentEventPublisher,
                 mock(TrackingService.class));
     }
 
@@ -311,8 +324,170 @@ class OrderServiceImplTest {
     }
 
     // -------------------------------------------------------------------------
+    // cancelOrder — customer-initiated
+    // -------------------------------------------------------------------------
+
+    @Test
+    void cancelOrder_reservedOrder_voidsPaymentIntentNotRefund() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrder(ORDER_ID, USER_ID);
+
+        verify(paymentService).cancelPaymentIntent(PAYMENT_INTENT_ID);
+        verify(paymentService, never()).refundPayment(any(), any());
+    }
+
+    @Test
+    void cancelOrder_paidOrder_issuesFullRefundInCents() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrder(ORDER_ID, USER_ID);
+
+        verify(paymentService).refundPayment(PAYMENT_INTENT_ID, 5000L);
+        verify(paymentService, never()).cancelPaymentIntent(any());
+    }
+
+    @Test
+    void cancelOrder_shippedOrder_throwsConflict() {
+        Order order = cancellableOrder(OrderStatus.SHIPPED);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () -> service.cancelOrder(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void cancelOrder_setsCancelledStatusAndCustomerRequestReason() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+
+        ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
+        when(orderRepository.save(saved.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrder(ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.CANCELLED, saved.getValue().getStatus());
+        assertEquals(CancellationReason.CUSTOMER_REQUEST, saved.getValue().getCancellationReason());
+        assertNonNull(saved.getValue().getCancelledAt());
+    }
+
+    @Test
+    void cancelOrder_restoresStockForItems() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrder(ORDER_ID, USER_ID);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 1);
+    }
+
+    @Test
+    void cancelOrder_publishesCancelledKafkaEvent() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrder(ORDER_ID, USER_ID);
+
+        ArgumentCaptor<OrderFulfillmentEvent> eventCaptor = ArgumentCaptor.forClass(OrderFulfillmentEvent.class);
+        verify(fulfillmentEventPublisher).publish(eventCaptor.capture());
+        OrderFulfillmentEvent.Cancelled event = (OrderFulfillmentEvent.Cancelled) eventCaptor.getValue();
+        assertEquals(ORDER_ID, event.orderId());
+        assertEquals(USER_ID, event.userId());
+        assertEquals(CancellationReason.CUSTOMER_REQUEST, event.reason());
+    }
+
+    // -------------------------------------------------------------------------
+    // cancelOrderByCompany — merchant-initiated
+    // -------------------------------------------------------------------------
+
+    @Test
+    void cancelOrderByCompany_requiresCompanyAccess() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
+
+        verify(companyAccessService).require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS);
+    }
+
+    @Test
+    void cancelOrderByCompany_throwsWhenOrderNotFound() {
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void cancelOrderByCompany_setsMerchantCancelledReason() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
+        when(orderRepository.save(saved.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(CancellationReason.MERCHANT_CANCELLED, saved.getValue().getCancellationReason());
+    }
+
+    @Test
+    void cancelOrderByCompany_paidOrder_issuesFullRefund() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
+
+        verify(paymentService).refundPayment(PAYMENT_INTENT_ID, 5000L);
+    }
+
+    // -------------------------------------------------------------------------
     // Builders
     // -------------------------------------------------------------------------
+
+    private Order cancellableOrder(OrderStatus status) {
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(company(COMPANY_ID));
+        product.setName("Widget");
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(product);
+        item.setProductName("Widget");
+        item.setQuantity(1);
+        item.setUnitPrice(new BigDecimal("50.00"));
+        item.setFulfillmentStatus(FulfillmentStatus.PENDING);
+        item.setDiscountAmount(BigDecimal.ZERO);
+
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setStatus(status);
+        order.setPaymentIntentId(PAYMENT_INTENT_ID);
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        order.setUpdatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        order.setItems(List.of(item));
+        return order;
+    }
 
     private Order packedPickupOrder() {
         InventoryLocation loc = new InventoryLocation();

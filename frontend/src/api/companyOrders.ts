@@ -26,4 +26,7 @@ export const companyOrdersApi = {
 
   deliver: (companyId: string, orderId: string) =>
     api.post<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/deliver`),
+
+  cancel: (companyId: string, orderId: string) =>
+    api.post<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/cancel`),
 };
