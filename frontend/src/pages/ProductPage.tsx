@@ -3,13 +3,14 @@ import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star } from "lucide-react";
+import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star, Flag } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
 import { loyaltyApi } from "../api/loyalty";
 import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
 import ReviewsSection from "../components/reviews/ReviewsSection";
+import ReportModal from "../components/report/ReportModal";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
 import { useNavigate } from "react-router-dom";
@@ -42,6 +43,7 @@ export default function ProductPage() {
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const navigate = useNavigate();
 
   const { data: product, isLoading, isError } = useQuery({
@@ -410,6 +412,18 @@ export default function ProductPage() {
                 )
               )}
             </div>
+
+            {/* Report link */}
+            {accessToken && (
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="mt-1 flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
+              >
+                <Flag className="h-3 w-3" />
+                Report this product
+              </button>
+            )}
           </div>
         </motion.div>
 
@@ -442,6 +456,13 @@ export default function ProductPage() {
         onClose={() => setSaveOpen(false)}
         productId={product.id}
         productName={product.name}
+      />
+      <ReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        targetType="PRODUCT"
+        targetId={product.id}
+        targetName={product.name}
       />
     </div>
   );

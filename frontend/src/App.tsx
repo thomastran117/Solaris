@@ -21,7 +21,7 @@ import AdminCollectionEditor from "./pages/admin/AdminCollectionEditor";
 import AdminCollectionProductsPage from "./pages/admin/AdminCollectionProductsPage";
 import AdminTeamPage from "./pages/admin/AdminTeamPage";
 import AdminBulkImportPage from "./pages/admin/AdminBulkImportPage";
-import ReviewModerationPage from "./pages/admin/ReviewModerationPage";
+import AdminReportsPage from "./pages/admin/AdminReportsPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
 import AccountPage from "./pages/AccountPage";
@@ -83,7 +83,7 @@ function App() {
             <Route path="/admin/collections/:id/products" element={<AdminCollectionProductsPage />} />
             <Route path="/admin/team" element={<AdminTeamPage />} />
             <Route path="/admin/bulk-import" element={<AdminBulkImportPage />} />
-            <Route path="/admin/reviews/reports" element={<ReviewModerationPage />} />
+            <Route path="/admin/reports" element={<AdminReportsPage />} />
             <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/account" element={<AccountPage />} />

@@ -3,7 +3,7 @@ import { CheckCircle, Flag } from "lucide-react";
 import RatingStars from "./RatingStars";
 import HelpfulButton from "./HelpfulButton";
 import ReviewPhotoGallery from "./ReviewPhotoGallery";
-import ReportReviewModal from "./ReportReviewModal";
+import ReportModal from "../report/ReportModal";
 import type { Review } from "../../types/review";
 
 interface Props {
@@ -92,12 +92,12 @@ export default function ReviewCard({
         )}
       </footer>
 
-      <ReportReviewModal
+      <ReportModal
         open={reportOpen}
-        companyId={companyId}
-        productId={productId}
-        reviewId={review.id}
         onClose={() => setReportOpen(false)}
+        targetType="REVIEW"
+        targetId={review.id}
+        targetName={review.title || `${reviewerName}'s review`}
       />
     </article>
   );

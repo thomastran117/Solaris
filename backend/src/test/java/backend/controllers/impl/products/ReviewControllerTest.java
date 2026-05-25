@@ -11,10 +11,8 @@ import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.exceptions.http.TooManyRequestException;
-import backend.kafka.workers.ReviewIndexingService;
 import backend.services.intf.RateLimitService;
 import backend.services.intf.products.ReviewMediaService;
-import backend.services.intf.products.ReviewReportService;
 import backend.services.intf.products.ReviewSearchService;
 import backend.services.intf.products.ReviewService;
 import backend.services.intf.products.ReviewVoteService;
@@ -53,7 +51,6 @@ class ReviewControllerTest {
     private ReviewService reviewService;
     private ReviewVoteService reviewVoteService;
     private ReviewMediaService reviewMediaService;
-    private ReviewReportService reviewReportService;
     private ReviewSearchService reviewSearchService;
     private RateLimitService rateLimitService;
     private MockMvc mockMvc;
@@ -65,14 +62,12 @@ class ReviewControllerTest {
         reviewService        = mock(ReviewService.class);
         reviewVoteService    = mock(ReviewVoteService.class);
         reviewMediaService   = mock(ReviewMediaService.class);
-        reviewReportService  = mock(ReviewReportService.class);
         reviewSearchService  = mock(ReviewSearchService.class);
         rateLimitService     = mock(RateLimitService.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ReviewController(reviewService, reviewVoteService,
-                                reviewMediaService, reviewReportService,
-                                reviewSearchService, rateLimitService))
+                                reviewMediaService, reviewSearchService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .build();

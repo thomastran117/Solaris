@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.review.AttachReviewMediaRequest;
 import backend.dtos.requests.review.CreateReviewRequest;
-import backend.dtos.requests.review.ReportReviewRequest;
 import backend.dtos.requests.review.UpdateReviewRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.review.HelpfulVoteResponse;
@@ -22,7 +21,6 @@ import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.RateLimitService;
 import backend.services.intf.products.ReviewMediaService;
-import backend.services.intf.products.ReviewReportService;
 import backend.services.intf.products.ReviewSearchService;
 import backend.services.intf.products.ReviewService;
 import backend.services.intf.products.ReviewVoteService;
@@ -45,23 +43,19 @@ public class ReviewController {
     private static final int REVIEW_WINDOW_SECONDS = 3600;
     private static final int VOTE_LIMIT = 60;
     private static final int VOTE_WINDOW_SECONDS = 3600;
-    private static final int REPORT_LIMIT = 5;
-    private static final int REPORT_WINDOW_SECONDS = 86400;
 
     private final ReviewService reviewService;
     private final ReviewVoteService reviewVoteService;
     private final ReviewMediaService reviewMediaService;
-    private final ReviewReportService reviewReportService;
     private final ReviewSearchService reviewSearchService;
     private final RateLimitService rateLimitService;
 
     public ReviewController(ReviewService reviewService, ReviewVoteService reviewVoteService,
-                            ReviewMediaService reviewMediaService, ReviewReportService reviewReportService,
+                            ReviewMediaService reviewMediaService,
                             ReviewSearchService reviewSearchService, RateLimitService rateLimitService) {
         this.reviewService = reviewService;
         this.reviewVoteService = reviewVoteService;
         this.reviewMediaService = reviewMediaService;
-        this.reviewReportService = reviewReportService;
         this.reviewSearchService = reviewSearchService;
         this.rateLimitService = rateLimitService;
     }
@@ -212,25 +206,6 @@ public class ReviewController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(reviewVoteService.removeHelpful(reviewId, userId));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
-    }
-
-    @PostMapping("/{reviewId}/report")
-    @RequireAuth
-    public ResponseEntity<Void> reportReview(
-            @PathVariable UUID companyId,
-            @PathVariable UUID productId,
-            @PathVariable UUID reviewId,
-            @Valid @RequestBody ReportReviewRequest request) {
-        try {
-            UUID userId = resolveUserId();
-            rateLimitService.enforce("review:report", userId.toString(), REPORT_LIMIT, REPORT_WINDOW_SECONDS);
-            reviewReportService.reportReview(companyId, productId, reviewId, userId, request);
-            return ResponseEntity.accepted().build();
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

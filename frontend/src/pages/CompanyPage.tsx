@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useSelector } from "react-redux";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store } from "lucide-react";
+import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { companiesApi } from "../api/companies";
 import SearchBar from "../components/search/SearchBar";
 import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel";
 import ProductCard from "../components/product/ProductCard";
 import CompanyHeader from "../components/company/CompanyHeader";
+import ReportModal from "../components/report/ReportModal";
 import type { SearchFacets } from "../types/search";
+import type { RootState } from "../stores";
 
 const useAnims = () => {
   const prefersReducedMotion = useReducedMotion();
@@ -48,6 +51,9 @@ export default function CompanyPage() {
   const pageParam = Number(searchParams.get("page") ?? "0");
 
   const [mobileFacetsOpen, setMobileFacetsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
 
   const facetSelection: FacetSelection = {
     category: categoryParam,
@@ -195,6 +201,18 @@ export default function CompanyPage() {
         {companyResult.data && (
           <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
             <CompanyHeader company={companyResult.data} />
+            {accessToken && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setReportOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  Report this company
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -417,6 +435,15 @@ export default function CompanyPage() {
           </div>
         </div>
       </div>
+      {companyResult.data && (
+        <ReportModal
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+          targetType="COMPANY"
+          targetId={companyResult.data.id}
+          targetName={companyResult.data.name}
+        />
+      )}
     </div>
   );
 }

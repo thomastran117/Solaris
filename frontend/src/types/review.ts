@@ -1,3 +1,5 @@
+export type { ReportStatus } from "./report";
+
 export type ReviewStatus = "PUBLISHED" | "HIDDEN" | "PENDING_MODERATION" | "REMOVED";
 
 export interface ReviewMedia {
@@ -56,28 +58,4 @@ export interface ReviewSearchHit {
   relevanceScore: number;
 }
 
-export type ReportReason = "SPAM" | "OFFENSIVE" | "OFF_TOPIC" | "FAKE" | "OTHER";
-export type ReportStatus = "OPEN" | "ACTIONED" | "DISMISSED";
 export type ModerationAction = "PUBLISH" | "HIDE" | "REMOVE";
-
-export interface ReviewReport {
-  id: string;
-  reviewId: string;
-  reporterId: string;
-  reason: ReportReason;
-  detail: string | null;
-  status: ReportStatus;
-  createdAt: string;
-  resolvedAt: string | null;
-  resolvedBy: string | null;
-
-  productId: string | null;
-  reviewerId: string | null;
-  reviewerName: string;
-  rating: number;
-  reviewTitle: string | null;
-  reviewBody: string | null;
-  reviewStatus: ReviewStatus | null;
-  reportCount: number;
-  media: ReviewMedia[];
-}

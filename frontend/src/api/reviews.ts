@@ -2,11 +2,8 @@ import api from "../api";
 import type {
   HelpfulVote,
   ModerationAction,
-  ReportReason,
-  ReportStatus,
   Review,
   ReviewMedia,
-  ReviewReport,
   ReviewSearchHit,
   ReviewSummary,
 } from "../types/review";
@@ -96,17 +93,6 @@ export const reviewsApi = {
       `/companies/${companyId}/products/${productId}/reviews/${reviewId}/media/${mediaId}`,
     ),
 
-  reportReview: (
-    companyId: string,
-    productId: string,
-    reviewId: string,
-    payload: { reason: ReportReason; detail?: string },
-  ) =>
-    api.post<void>(
-      `/companies/${companyId}/products/${productId}/reviews/${reviewId}/report`,
-      payload,
-    ),
-
   search: (
     companyId: string,
     productId: string,
@@ -126,9 +112,6 @@ export const reviewsApi = {
 };
 
 export const reviewAdminApi = {
-  listReports: (params: { status?: ReportStatus; page?: number; size?: number } = {}) =>
-    api.get<PagedResponse<ReviewReport>>("/admin/reviews/reports", { params }),
-
   moderate: (reviewId: string, action: ModerationAction) =>
     api.post<void>(`/admin/reviews/${reviewId}/moderate`, { action }),
 

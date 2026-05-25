@@ -1,58 +1,39 @@
 package backend.controllers.impl.admin;
 
-import java.util.UUID;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.*;
-
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.review.ModerateReviewRequest;
 import backend.dtos.responses.general.MessageResponse;
-import backend.dtos.responses.general.PagedResponse;
-import backend.dtos.responses.review.ReviewReportResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.kafka.workers.IndexVersionManager;
 import backend.kafka.workers.ReviewIndexingService;
-import backend.models.enums.ReportStatus;
-import backend.services.intf.products.ReviewReportService;
-
+import backend.services.intf.products.ReviewModerationService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @Validated
 @RestController
 @RequestMapping("/admin/reviews")
 @RequireAuth(roles = {"ADMIN"})
-public class ReviewModerationController {
+public class ReviewAdminController {
 
-    private final ReviewReportService reviewReportService;
+    private final ReviewModerationService reviewModerationService;
     private final ReviewIndexingService reviewIndexingService;
     private final IndexVersionManager indexVersionManager;
 
-    public ReviewModerationController(ReviewReportService reviewReportService,
-                                       ReviewIndexingService reviewIndexingService,
-                                       IndexVersionManager indexVersionManager) {
-        this.reviewReportService = reviewReportService;
+    public ReviewAdminController(
+            ReviewModerationService reviewModerationService,
+            ReviewIndexingService reviewIndexingService,
+            IndexVersionManager indexVersionManager) {
+        this.reviewModerationService = reviewModerationService;
         this.reviewIndexingService = reviewIndexingService;
         this.indexVersionManager = indexVersionManager;
-    }
-
-    @GetMapping("/reports")
-    public ResponseEntity<PagedResponse<ReviewReportResponse>> listReports(
-            @RequestParam(required = false) ReportStatus status,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
-        try {
-            return ResponseEntity.ok(reviewReportService.listReports(status, page, size));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
     }
 
     @PostMapping("/{reviewId}/moderate")
@@ -61,7 +42,7 @@ public class ReviewModerationController {
             @Valid @RequestBody ModerateReviewRequest request) {
         try {
             UUID moderatorId = resolveUserId();
-            reviewReportService.moderate(reviewId, moderatorId, request);
+            reviewModerationService.moderate(reviewId, moderatorId, request);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
             throw e;

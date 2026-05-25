@@ -7,7 +7,8 @@ public enum UploadFolder {
     RETURN_EVIDENCE("return-evidence"),
     REVIEW_MEDIA("review-media"),
     IMPORT_CSV("imports/csv"),
-    IMPORT_ERROR_REPORT("imports/errors");
+    IMPORT_ERROR_REPORT("imports/errors"),
+    REPORT_SCREENSHOT("report-screenshots");
 
     private final String path;
 
