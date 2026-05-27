@@ -2,6 +2,7 @@ package backend.services.intf.products;
 
 import java.util.UUID;
 import backend.dtos.requests.product.AddProductImageRequest;
+import backend.dtos.requests.product.AddProductRelationshipRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
 import backend.dtos.requests.product.BatchUpdateProductsRequest;
@@ -20,6 +21,8 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
+import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.models.enums.ProductRelationshipType;
 import backend.dtos.responses.product.ProductHistoryEntryResponse;
 import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
@@ -65,6 +68,11 @@ public interface ProductService {
     // Attributes
     List<ProductAttributeResponse> getProductAttributes(UUID companyId, UUID productId);
     List<ProductAttributeResponse> setProductAttributes(UUID companyId, UUID productId, UUID ownerId, SetProductAttributesRequest request);
+
+    // Relationships
+    List<ProductRelationshipResponse> getProductRelationships(UUID companyId, UUID productId, ProductRelationshipType type);
+    ProductRelationshipResponse addProductRelationship(UUID companyId, UUID productId, UUID ownerId, AddProductRelationshipRequest request);
+    void removeProductRelationship(UUID companyId, UUID productId, UUID targetProductId, ProductRelationshipType type, UUID ownerId);
 
     // -------------------------------------------------------------------------
     // Marketplace catalog

@@ -136,7 +136,9 @@ class ProductServiceImplTest {
                 eventPublisher, elasticsearchOperations,
                 singleFlightCache, activePromotionLookupService,
                 productChangeLogger, productChangeLogRepository,
-                inventoryAdjustmentRepository, companyAccessService,
+                inventoryAdjustmentRepository,
+                mock(backend.repositories.ProductRelationshipRepository.class),
+                companyAccessService,
                 300L, 60L);
 
         // Common stubs

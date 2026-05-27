@@ -27,6 +27,7 @@ public class ProductResponse {
     private List<ProductOptionResponse> options;
     private List<ProductVariantResponse> variants;
     private List<ProductAttributeResponse> attributes;
+    private List<ProductRelationshipResponse> relationships;
     private Integer stock;
     private Integer lowStockThreshold;
     private BigDecimal weight;

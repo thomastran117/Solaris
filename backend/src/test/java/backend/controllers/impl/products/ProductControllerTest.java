@@ -60,6 +60,7 @@ class ProductControllerTest {
     private static final UUID IMAGE_ID   = TestIds.uuid(4);
     private static final UUID OPTION_ID  = TestIds.uuid(5);
     private static final UUID VARIANT_ID = TestIds.uuid(6);
+    private static final UUID TARGET_ID  = TestIds.uuid(7);
 
     private ProductService productService;
     private BundleService bundleService;
@@ -484,6 +485,110 @@ class ProductControllerTest {
         verify(productService).deleteProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, USER_ID);
     }
 
+    // ─── GET /{productId}/relationships ──────────────────────────────────────
+
+    @Test
+    void getRelationships_returns200() throws Exception {
+        when(productService.getProductRelationships(COMPANY_ID, PRODUCT_ID, null))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getRelationships_withTypeFilter_returnsFilteredList() throws Exception {
+        backend.dtos.responses.product.ProductRelationshipResponse rel =
+                new backend.dtos.responses.product.ProductRelationshipResponse(
+                        TARGET_ID, "Target Product", "SKU-TARGET", null,
+                        backend.models.enums.ProductRelationshipType.UPGRADE, null, 0);
+        when(productService.getProductRelationships(
+                COMPANY_ID, PRODUCT_ID, backend.models.enums.ProductRelationshipType.UPGRADE))
+                .thenReturn(List.of(rel));
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID)
+                        .param("type", "UPGRADE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetProductId").value(TARGET_ID.toString()))
+                .andExpect(jsonPath("$[0].type").value("UPGRADE"));
+    }
+
+    @Test
+    void getRelationships_productNotFound_returns404() throws Exception {
+        when(productService.getProductRelationships(COMPANY_ID, PRODUCT_ID, null))
+                .thenThrow(new ResourceNotFoundException("Product not found"));
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isNotFound());
+    }
+
+    // ─── POST /{productId}/relationships ──────────────────────────────────────
+
+    @Test
+    void addRelationship_validRequest_returns201() throws Exception {
+        authenticateAs(USER_ID);
+        backend.dtos.responses.product.ProductRelationshipResponse resp =
+                new backend.dtos.responses.product.ProductRelationshipResponse(
+                        TARGET_ID, "Target Product", "SKU-TARGET", null,
+                        backend.models.enums.ProductRelationshipType.ACCESSORY, "Compatible case", 0);
+        when(productService.addProductRelationship(eq(COMPANY_ID), eq(PRODUCT_ID), eq(USER_ID), any()))
+                .thenReturn(resp);
+
+        mockMvc.perform(post("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID)
+                        .contentType("application/json")
+                        .content("{\"targetProductId\":\"" + TARGET_ID + "\",\"type\":\"ACCESSORY\",\"note\":\"Compatible case\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type").value("ACCESSORY"))
+                .andExpect(jsonPath("$.note").value("Compatible case"));
+    }
+
+    @Test
+    void addRelationship_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(post("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID)
+                        .contentType("application/json")
+                        .content("{\"targetProductId\":\"" + TARGET_ID + "\",\"type\":\"UPGRADE\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void addRelationship_conflict_returns409() throws Exception {
+        authenticateAs(USER_ID);
+        when(productService.addProductRelationship(eq(COMPANY_ID), eq(PRODUCT_ID), eq(USER_ID), any()))
+                .thenThrow(new ConflictException("Relationship already exists"));
+
+        mockMvc.perform(post("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID)
+                        .contentType("application/json")
+                        .content("{\"targetProductId\":\"" + TARGET_ID + "\",\"type\":\"REPLACEMENT\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    // ─── DELETE /{productId}/relationships/{targetProductId} ─────────────────
+
+    @Test
+    void removeRelationship_returns204() throws Exception {
+        authenticateAs(USER_ID);
+        doNothing().when(productService).removeProductRelationship(
+                eq(COMPANY_ID), eq(PRODUCT_ID), eq(TARGET_ID),
+                eq(backend.models.enums.ProductRelationshipType.UPGRADE), eq(USER_ID));
+
+        mockMvc.perform(delete("/companies/{cid}/products/{pid}/relationships/{tid}",
+                        COMPANY_ID, PRODUCT_ID, TARGET_ID)
+                        .param("type", "UPGRADE"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void removeRelationship_notFound_returns404() throws Exception {
+        authenticateAs(USER_ID);
+        doThrow(new ResourceNotFoundException("Relationship not found"))
+                .when(productService).removeProductRelationship(any(), any(), any(), any(), any());
+
+        mockMvc.perform(delete("/companies/{cid}/products/{pid}/relationships/{tid}",
+                        COMPANY_ID, PRODUCT_ID, TARGET_ID)
+                        .param("type", "ALTERNATIVE"))
+                .andExpect(status().isNotFound());
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private void authenticateAs(UUID userId) {
@@ -495,7 +600,7 @@ class ProductControllerTest {
         return new ProductResponse(
                 PRODUCT_ID, COMPANY_ID, "Test Product", null, null,
                 new BigDecimal("29.99"), null, "USD", null, null, null, null,
-                List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, null, null,
                 status, null, null, false, true, false, false, null,
                 null, null, null, null, null, null, null, null);

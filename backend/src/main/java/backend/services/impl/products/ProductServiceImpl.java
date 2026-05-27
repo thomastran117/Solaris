@@ -75,7 +75,12 @@ import backend.dtos.requests.product.UpdateMarketplaceListingRequest;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.models.core.MarketplaceVendor;
+import backend.dtos.requests.product.AddProductRelationshipRequest;
+import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.models.core.ProductRelationship;
+import backend.models.enums.ProductRelationshipType;
 import backend.repositories.BundleRepository;
+import backend.repositories.ProductRelationshipRepository;
 import backend.repositories.CollectionProductRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
@@ -140,6 +145,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductChangeLogger productChangeLogger;
     private final ProductChangeLogRepository productChangeLogRepository;
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    private final ProductRelationshipRepository productRelationshipRepository;
     private final CompanyAccessService companyAccessService;
     private final long cacheTtl;
     private final long cacheTtlShort;
@@ -164,6 +170,7 @@ public class ProductServiceImpl implements ProductService {
             ProductChangeLogger productChangeLogger,
             ProductChangeLogRepository productChangeLogRepository,
             InventoryAdjustmentRepository inventoryAdjustmentRepository,
+            ProductRelationshipRepository productRelationshipRepository,
             CompanyAccessService companyAccessService,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
             @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
@@ -186,6 +193,7 @@ public class ProductServiceImpl implements ProductService {
         this.productChangeLogger = productChangeLogger;
         this.productChangeLogRepository = productChangeLogRepository;
         this.inventoryAdjustmentRepository = inventoryAdjustmentRepository;
+        this.productRelationshipRepository = productRelationshipRepository;
         this.companyAccessService = companyAccessService;
         this.cacheTtl = cacheTtl;
         this.cacheTtlShort = cacheTtlShort;
@@ -296,7 +304,16 @@ public class ProductServiceImpl implements ProductService {
             ActivePromotionSummary promo = activePromotionLookupService
                     .findForProducts(List.of(product))
                     .get(productId);
-            return toResponse(product, promo);
+            List<ProductRelationshipResponse> relationships = productRelationshipRepository
+                    .findAllBySourceProductIdAndSourceProductCompanyId(productId, companyId)
+                    .stream()
+                    .map(this::toRelationshipResponse)
+                    .toList();
+            List<ProductImageResponse> images = product.getImages().stream().map(this::toImageResponse).toList();
+            List<ProductOptionResponse> options = product.getOptions().stream().map(this::toOptionResponse).toList();
+            List<ProductVariantResponse> variants = product.getVariants().stream().map(this::toVariantResponse).toList();
+            List<ProductAttributeResponse> attributes = product.getAttributes().stream().map(this::toAttrResponse).toList();
+            return toResponseWithRating(product, images, options, variants, attributes, relationships, null, 0L, promo);
         }, ProductResponse.class);
     }
 
@@ -1470,6 +1487,65 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Relationships
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductRelationshipResponse> getProductRelationships(UUID companyId, UUID productId, ProductRelationshipType type) {
+        assertProductBelongsToCompany(companyId, productId);
+        List<ProductRelationship> rels = (type == null)
+                ? productRelationshipRepository.findAllBySourceProductIdAndSourceProductCompanyId(productId, companyId)
+                : productRelationshipRepository.findAllBySourceProductIdAndTypeAndSourceProductCompanyId(productId, type, companyId);
+        return rels.stream().map(this::toRelationshipResponse).toList();
+    }
+
+    @Override
+    @Transactional
+    public ProductRelationshipResponse addProductRelationship(UUID companyId, UUID productId, UUID ownerId, AddProductRelationshipRequest request) {
+        assertProductBelongsToCompany(companyId, productId);
+        if (productId.equals(request.getTargetProductId())) {
+            throw new BadRequestException("A product cannot have a relationship with itself");
+        }
+        Product target = productRepository.findByIdAndCompanyId(request.getTargetProductId(), companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target product not found with id: " + request.getTargetProductId()));
+        if (productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(productId, target.getId(), request.getType())) {
+            throw new ConflictException("Relationship of this type already exists between these products");
+        }
+        Product source = productRepository.findByIdAndCompanyId(productId, companyId).orElseThrow();
+        ProductRelationship rel = new ProductRelationship();
+        rel.setSourceProduct(source);
+        rel.setTargetProduct(target);
+        rel.setType(request.getType());
+        rel.setNote(request.getNote());
+        rel.setDisplayOrder(request.getDisplayOrder());
+        return toRelationshipResponse(productRelationshipRepository.save(rel));
+    }
+
+    @Override
+    @Transactional
+    public void removeProductRelationship(UUID companyId, UUID productId, UUID targetProductId, ProductRelationshipType type, UUID ownerId) {
+        assertProductBelongsToCompany(companyId, productId);
+        if (!productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(productId, targetProductId, type)) {
+            throw new ResourceNotFoundException("Relationship not found");
+        }
+        productRelationshipRepository.deleteBySourceProductIdAndTargetProductIdAndType(productId, targetProductId, type);
+    }
+
+    private ProductRelationshipResponse toRelationshipResponse(ProductRelationship rel) {
+        Product target = rel.getTargetProduct();
+        return new ProductRelationshipResponse(
+                target.getId(),
+                target.getName(),
+                target.getSku(),
+                target.getThumbnailUrl(),
+                rel.getType(),
+                rel.getNote(),
+                rel.getDisplayOrder()
+        );
+    }
+
     private void assertCompanyExists(UUID companyId) {
         if (!companyRepository.existsById(companyId)) {
             throw new ResourceNotFoundException("Company not found with id: " + companyId);
@@ -1679,7 +1755,7 @@ public class ProductServiceImpl implements ProductService {
                 .map(this::toAttrResponse)
                 .toList();
 
-        return toResponseWithRating(product, images, options, variants, attributes, null, 0L, activePromotion);
+        return toResponseWithRating(product, images, options, variants, attributes, List.of(), null, 0L, activePromotion);
     }
 
     private ProductResponse toResponseWithRating(
@@ -1689,8 +1765,9 @@ public class ProductServiceImpl implements ProductService {
             List<ProductVariantResponse> variants,
             List<ProductAttributeResponse> attributes,
             Double avgRating,
-            Long reviewCount) {
-        return toResponseWithRating(product, images, options, variants, attributes, avgRating, reviewCount, null);
+            Long reviewCount,
+            ActivePromotionSummary activePromotion) {
+        return toResponseWithRating(product, images, options, variants, attributes, List.of(), avgRating, reviewCount, activePromotion);
     }
 
     private ProductResponse toResponseWithRating(
@@ -1699,6 +1776,7 @@ public class ProductServiceImpl implements ProductService {
             List<ProductOptionResponse> options,
             List<ProductVariantResponse> variants,
             List<ProductAttributeResponse> attributes,
+            List<ProductRelationshipResponse> relationships,
             Double avgRating,
             Long reviewCount,
             ActivePromotionSummary activePromotion) {
@@ -1719,6 +1797,7 @@ public class ProductServiceImpl implements ProductService {
                 options,
                 variants,
                 attributes,
+                relationships,
                 product.getStock(),
                 product.getLowStockThreshold(),
                 product.getWeight(),

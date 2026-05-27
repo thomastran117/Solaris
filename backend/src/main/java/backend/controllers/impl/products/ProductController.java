@@ -17,7 +17,10 @@ import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.ReorderProductImagesRequest;
 import backend.dtos.requests.product.RevertProductChangesRequest;
+import backend.dtos.requests.product.AddProductRelationshipRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
+import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.models.enums.ProductRelationshipType;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
 import backend.dtos.requests.product.UpdateMarketplaceListingRequest;
@@ -484,6 +487,57 @@ public class ProductController {
             sanitizationService.normalize(request);
             UUID userId = resolveUserId();
             return ResponseEntity.ok(productService.setProductAttributes(companyId, productId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    // --- Relationship endpoints ---
+
+    @GetMapping("/{productId}/relationships")
+    public ResponseEntity<List<ProductRelationshipResponse>> getProductRelationships(
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @RequestParam(required = false) ProductRelationshipType type) {
+        try {
+            return ResponseEntity.ok(productService.getProductRelationships(companyId, productId, type));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{productId}/relationships")
+    @RequireAuth
+    public ResponseEntity<ProductRelationshipResponse> addProductRelationship(
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @Valid @RequestBody AddProductRelationshipRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(productService.addProductRelationship(companyId, productId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @DeleteMapping("/{productId}/relationships/{targetProductId}")
+    @RequireAuth
+    public ResponseEntity<Void> removeProductRelationship(
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @PathVariable UUID targetProductId,
+            @RequestParam ProductRelationshipType type) {
+        try {
+            UUID userId = resolveUserId();
+            productService.removeProductRelationship(companyId, productId, targetProductId, type, userId);
+            return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

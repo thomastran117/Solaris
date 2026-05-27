@@ -22,6 +22,7 @@ import backend.repositories.OrderCompensationRepository;
 import backend.repositories.OrderItemRepository;
 import backend.repositories.OrderRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.ProductKitRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRedemptionRepository;
 import backend.repositories.PromotionRuleRepository;
@@ -83,6 +84,7 @@ class OrderServicePremiumTest {
                 mock(InventoryAdjustmentRepository.class),
                 mock(InventoryLocationRepository.class),
                 mock(BundleRepository.class),
+                mock(ProductKitRepository.class),
                 userRepository,
                 mock(CompanyRepository.class),
                 mock(CouponRepository.class),
