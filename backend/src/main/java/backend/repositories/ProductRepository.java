@@ -355,4 +355,16 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     Page<Product> findFeaturedFeed(
             @Param("marketplaceId") java.util.UUID marketplaceId,
             Pageable pageable);
+
+    /** Used by ProductSimilarityWorker to page through active products per company. */
+    @Query("SELECT p FROM Product p WHERE p.company.id = :companyId AND p.status = backend.models.enums.ProductStatus.ACTIVE ORDER BY p.id ASC")
+    Page<Product> findActiveByCompanyId(@Param("companyId") java.util.UUID companyId, Pageable pageable);
+
+    /** Returns distinct company IDs that have at least one ACTIVE product — used by nightly similarity worker. */
+    @Query("SELECT DISTINCT p.company.id FROM Product p WHERE p.status = backend.models.enums.ProductStatus.ACTIVE")
+    List<java.util.UUID> findDistinctCompanyIdsWithActiveProducts();
+
+    /** Featured products by company — last-resort fallback when no similar products are found. */
+    @Query("SELECT p FROM Product p WHERE p.company.id = :companyId AND p.featured = true AND p.status = backend.models.enums.ProductStatus.ACTIVE AND p.listed = true ORDER BY p.boostWeight DESC NULLS LAST, p.publishedAt DESC")
+    Page<Product> findFeaturedByCompanyId(@Param("companyId") java.util.UUID companyId, Pageable pageable);
 }

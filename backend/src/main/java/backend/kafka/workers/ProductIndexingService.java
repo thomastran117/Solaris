@@ -366,6 +366,12 @@ public class ProductIndexingService implements ApplicationRunner {
             pinnedRank = null;
         }
 
+        String attributeText = p.getAttributes() == null || p.getAttributes().isEmpty() ? null
+                : p.getAttributes().stream()
+                        .filter(a -> a.getName() != null && a.getValue() != null)
+                        .map(a -> a.getName() + ":" + a.getValue())
+                        .collect(java.util.stream.Collectors.joining(" "));
+
         return new ProductDocument(
                 p.getId(),
                 companyId,
@@ -393,7 +399,8 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getBoostWeight(),
                 pinnedUntil,
                 pinnedRank,
-                collectionIds
+                collectionIds,
+                attributeText
         );
     }
 

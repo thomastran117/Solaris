@@ -94,6 +94,7 @@ class ProductRelationshipServiceTest {
                 mock(ProductChangeLogRepository.class),
                 mock(InventoryAdjustmentRepository.class),
                 productRelationshipRepository,
+                mock(backend.repositories.ProductSimilarityRepository.class),
                 companyAccessService,
                 300L, 60L);
 

@@ -1,6 +1,7 @@
 package backend.dtos.responses.product;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record SimilarProductResponse(
@@ -15,5 +16,6 @@ public record SimilarProductResponse(
         String brand,
         Double avgRating,
         Long reviewCount,
-        String source
+        String source,
+        List<String> matchReasons
 ) {}

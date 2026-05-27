@@ -138,6 +138,7 @@ class ProductServiceImplTest {
                 productChangeLogger, productChangeLogRepository,
                 inventoryAdjustmentRepository,
                 mock(backend.repositories.ProductRelationshipRepository.class),
+                mock(backend.repositories.ProductSimilarityRepository.class),
                 companyAccessService,
                 300L, 60L);
 

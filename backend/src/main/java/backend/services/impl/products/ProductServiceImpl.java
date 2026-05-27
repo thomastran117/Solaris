@@ -82,6 +82,8 @@ import backend.models.core.ProductRelationship;
 import backend.models.enums.ProductRelationshipType;
 import backend.repositories.BundleRepository;
 import backend.repositories.ProductRelationshipRepository;
+import backend.repositories.ProductSimilarityRepository;
+import backend.models.core.ProductSimilarity;
 import backend.repositories.CollectionProductRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.InventoryAdjustmentRepository;
@@ -148,6 +150,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductChangeLogRepository productChangeLogRepository;
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final ProductRelationshipRepository productRelationshipRepository;
+    private final ProductSimilarityRepository productSimilarityRepository;
     private final CompanyAccessService companyAccessService;
     private final long cacheTtl;
     private final long cacheTtlShort;
@@ -173,6 +176,7 @@ public class ProductServiceImpl implements ProductService {
             ProductChangeLogRepository productChangeLogRepository,
             InventoryAdjustmentRepository inventoryAdjustmentRepository,
             ProductRelationshipRepository productRelationshipRepository,
+            ProductSimilarityRepository productSimilarityRepository,
             CompanyAccessService companyAccessService,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
             @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
@@ -196,6 +200,7 @@ public class ProductServiceImpl implements ProductService {
         this.productChangeLogRepository = productChangeLogRepository;
         this.inventoryAdjustmentRepository = inventoryAdjustmentRepository;
         this.productRelationshipRepository = productRelationshipRepository;
+        this.productSimilarityRepository = productSimilarityRepository;
         this.companyAccessService = companyAccessService;
         this.cacheTtl = cacheTtl;
         this.cacheTtlShort = cacheTtlShort;
@@ -1583,22 +1588,72 @@ public class ProductServiceImpl implements ProductService {
                 for (ProductRelationship rel : manualRels) {
                     UUID tid = rel.getTargetProduct().getId();
                     if (manualProductMap.containsKey(tid)) {
-                        results.add(toSimilarResponse(manualProductMap.get(tid), "MANUAL", manualRatings));
+                        results.add(toSimilarResponse(manualProductMap.get(tid), "MANUAL", manualRatings, List.of()));
                         excludeIds.add(tid);
                     }
                     if (results.size() >= clampedLimit) break;
                 }
             }
 
-            // 2. Auto-fill remaining slots from Elasticsearch
+            // 2. Pre-computed similarity rows
             int remaining = clampedLimit - results.size();
+            if (remaining > 0) {
+                List<ProductSimilarity> preRows = productSimilarityRepository
+                        .findTop10ByIdSourceProductIdOrderByScoreDesc(productId);
+                if (!preRows.isEmpty()) {
+                    List<UUID> preIds = preRows.stream()
+                            .map(r -> r.getId().getTargetProductId())
+                            .filter(id -> !excludeIds.contains(id))
+                            .limit(remaining)
+                            .toList();
+                    if (!preIds.isEmpty()) {
+                        Map<UUID, ProductSimilarity> rowByTarget = preRows.stream()
+                                .collect(Collectors.toMap(r -> r.getId().getTargetProductId(), r -> r));
+                        List<Product> preProducts = productRepository.findAllByIdInAndCompanyId(preIds, companyId)
+                                .stream()
+                                .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
+                                .toList();
+                        Map<UUID, double[]> preRatings = buildRatingMap(preIds);
+                        for (Product p : preProducts) {
+                            ProductSimilarity row = rowByTarget.get(p.getId());
+                            List<String> reasons = row != null
+                                    ? ProductSimilarityService.parseSignals(row.getMatchSignals())
+                                            .stream().map(Enum::name).toList()
+                                    : List.of();
+                            results.add(toSimilarResponse(p, "AUTO", preRatings, reasons));
+                            excludeIds.add(p.getId());
+                        }
+                    }
+                }
+            }
+
+            // 3. On-demand ES auto-fill for remaining slots
+            remaining = clampedLimit - results.size();
             if (remaining > 0) {
                 List<UUID> autoIds = findAutoSimilarIds(source, remaining, excludeIds);
                 if (!autoIds.isEmpty()) {
                     List<Product> autoProducts = productRepository.findAllByIdInAndCompanyId(autoIds, companyId);
                     Map<UUID, double[]> autoRatings = buildRatingMap(autoIds);
                     for (Product p : autoProducts) {
-                        results.add(toSimilarResponse(p, "AUTO", autoRatings));
+                        results.add(toSimilarResponse(p, "AUTO", autoRatings, List.of()));
+                    }
+                }
+            }
+
+            // 4. Featured fallback — only when all other steps yielded nothing
+            if (results.isEmpty()) {
+                List<Product> featured = productRepository
+                        .findFeaturedByCompanyId(companyId, PageRequest.of(0, clampedLimit + 1))
+                        .getContent()
+                        .stream()
+                        .filter(p -> !p.getId().equals(productId))
+                        .limit(clampedLimit)
+                        .toList();
+                if (!featured.isEmpty()) {
+                    List<UUID> featuredIds = featured.stream().map(Product::getId).toList();
+                    Map<UUID, double[]> featuredRatings = buildRatingMap(featuredIds);
+                    for (Product p : featured) {
+                        results.add(toSimilarResponse(p, "FEATURED", featuredRatings, List.of()));
                     }
                 }
             }
@@ -1652,7 +1707,8 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    private SimilarProductResponse toSimilarResponse(Product p, String source, Map<UUID, double[]> ratingMap) {
+    private SimilarProductResponse toSimilarResponse(Product p, String source, Map<UUID, double[]> ratingMap,
+                                                       List<String> matchReasons) {
         double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
         Double avgRating = stats[1] > 0 ? stats[0] : null;
         Long reviewCount = (long) stats[1];
@@ -1668,7 +1724,8 @@ public class ProductServiceImpl implements ProductService {
                 p.getBrand(),
                 avgRating,
                 reviewCount,
-                source
+                source,
+                matchReasons != null ? matchReasons : List.of()
         );
     }
 

@@ -21,6 +21,7 @@ import backend.repositories.ProductOptionRepository;
 import backend.repositories.ProductRelationshipRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductReviewRepository;
+import backend.repositories.ProductSimilarityRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.services.impl.SingleFlightCache;
@@ -64,6 +65,7 @@ class SimilarProductServiceTest {
     private ProductRepository productRepository;
     private CompanyRepository companyRepository;
     private ProductRelationshipRepository productRelationshipRepository;
+    private ProductSimilarityRepository productSimilarityRepository;
     private ProductReviewRepository productReviewRepository;
     private ElasticsearchOperations elasticsearchOperations;
     private SingleFlightCache singleFlightCache;
@@ -76,6 +78,7 @@ class SimilarProductServiceTest {
         productRepository             = mock(ProductRepository.class);
         companyRepository             = mock(CompanyRepository.class);
         productRelationshipRepository = mock(ProductRelationshipRepository.class);
+        productSimilarityRepository   = mock(ProductSimilarityRepository.class);
         productReviewRepository       = mock(ProductReviewRepository.class);
         elasticsearchOperations       = mock(ElasticsearchOperations.class);
         singleFlightCache             = mock(SingleFlightCache.class);
@@ -101,8 +104,12 @@ class SimilarProductServiceTest {
                 mock(ProductChangeLogRepository.class),
                 mock(InventoryAdjustmentRepository.class),
                 productRelationshipRepository,
+                productSimilarityRepository,
                 mock(CompanyAccessService.class),
                 300L, 60L);
+
+        when(productSimilarityRepository.findTop10ByIdSourceProductIdOrderByScoreDesc(any()))
+                .thenReturn(List.of());
 
         when(companyRepository.existsById(COMPANY_ID)).thenReturn(true);
         when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());

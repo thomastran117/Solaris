@@ -589,7 +589,7 @@ class ProductControllerTest {
         SimilarProductResponse resp = new SimilarProductResponse(
                 TARGET_ID, "Similar Product", "SKU-SIM-001", null,
                 new BigDecimal("49.99"), null, "USD", "Electronics", "Acme",
-                4.5, 12L, "AUTO");
+                4.5, 12L, "AUTO", List.of());
         when(productService.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 8))
                 .thenReturn(List.of(resp));
 

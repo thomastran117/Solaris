@@ -127,4 +127,11 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Keyword)
     private List<UUID> collectionIds;
+
+    /**
+     * Space-separated "Name:Value" pairs from all product attributes (e.g. "Color:Blue Material:Cotton").
+     * Used for text-overlap matching in similarity scoring via multi_match should clauses.
+     */
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String attributeText;
 }
