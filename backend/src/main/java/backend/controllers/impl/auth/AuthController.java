@@ -9,10 +9,10 @@ import backend.configurations.environment.EnvironmentSetting;
 import backend.http.ClientInfo;
 import backend.http.ClientRequestContext;
 import backend.services.intf.AuthAuditLogger;
+import backend.services.intf.CaptchaService;
 import backend.services.intf.RateLimitService;
 import backend.services.intf.auth.AuthService;
 import backend.services.intf.auth.DeviceService;
-import backend.services.intf.auth.OAuthService;
 import backend.utilities.intf.Logger;
 import backend.dtos.requests.auth.SignupRequest;
 import backend.dtos.responses.auth.AuthResponse;
@@ -27,7 +27,6 @@ import backend.exceptions.http.InternalServerErrorException;
 import backend.exceptions.http.ServiceUnavaliableException;
 import backend.exceptions.http.UnauthorizedException;
 import backend.annotations.requireAuth.RequireAuth;
-import backend.models.other.OAuthUser;
 import backend.security.oauth.InvalidOAuthTokenException;
 import backend.security.oauth.OAuthProviderNotConfiguredException;
 
@@ -54,36 +53,26 @@ import jakarta.servlet.http.HttpServletResponse;
 @RequestMapping("/auth")
 public class AuthController {
 
-    // Conservative defaults — tune via config if needed. The IP buckets stop generic
-    // floods; the email bucket stops credential-stuffing against a single account from
-    // many IPs.
-    private static final int LOGIN_PER_IP_LIMIT      = 10;
-    private static final int LOGIN_PER_EMAIL_LIMIT   = 5;
-    private static final int SIGNUP_PER_IP_LIMIT     = 5;
-    private static final int OAUTH_PER_IP_LIMIT      = 10;
-    private static final int VERIFY_PER_IP_LIMIT     = 10;
-    private static final int REFRESH_PER_IP_LIMIT    = 30;
-    private static final int RATE_WINDOW_SECONDS     = 60;
 
     private final AuthService authService;
-    private final OAuthService oauthService;
     private final DeviceService deviceService;
     private final Logger logger;
     private final EnvironmentSetting env;
     private final RateLimitService rateLimitService;
     private final AuthAuditLogger audit;
+    private final CaptchaService captchaService;
 
-    public AuthController(AuthService authService, OAuthService oauthService,
+    public AuthController(AuthService authService,
                           DeviceService deviceService, Logger logger,
                           EnvironmentSetting env, RateLimitService rateLimitService,
-                          AuthAuditLogger audit) {
+                          AuthAuditLogger audit, CaptchaService captchaService) {
         this.authService = authService;
-        this.oauthService = oauthService;
         this.deviceService = deviceService;
         this.logger = logger;
         this.env = env;
         this.rateLimitService = rateLimitService;
         this.audit = audit;
+        this.captchaService = captchaService;
     }
 
     private String clientIp() {
@@ -110,19 +99,29 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
-        rateLimitService.enforce("auth:login:ip", clientIp(), LOGIN_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:login:ip", clientIp(), rl.getLoginPerIpLimit(), rl.getWindowSeconds());
         rateLimitService.enforce("auth:login:email", emailKey(request.getEmail()),
-                LOGIN_PER_EMAIL_LIMIT, RATE_WINDOW_SECONDS);
+                rl.getLoginPerEmailLimit(), rl.getWindowSeconds());
+        rateLimitService.enforceLoginLockout(emailKey(request.getEmail()));
+        verifyCaptchaOrThrow(request.getCaptcha());
         try {
             AuthService.LoginAttemptResult attempt = authService.localAuthenicate(
                     request.getEmail(), request.getPassword());
 
             if (attempt.deviceVerificationRequired()) {
+                rateLimitService.clearLoginFailures(emailKey(request.getEmail()));
                 audit.log(AuthAuditLogger.Event.DEVICE_VERIFICATION_REQUIRED, emailKey(request.getEmail()), null);
                 return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
             }
+            rateLimitService.clearLoginFailures(emailKey(request.getEmail()));
             audit.log(AuthAuditLogger.Event.LOGIN_SUCCESS, emailKey(request.getEmail()), null);
             return buildLoginResponse(attempt.loginResult(), response);
+        } catch (UnauthorizedException e) {
+            rateLimitService.recordLoginFailure(emailKey(request.getEmail()),
+                    rl.getLockoutThreshold(), rl.getLockoutWindowSeconds(), rl.getLockoutDurationSeconds());
+            audit.log(AuthAuditLogger.Event.LOGIN_FAILURE, emailKey(request.getEmail()), e.getClass().getSimpleName());
+            throw e;
         } catch (AppHttpException e) {
             audit.log(AuthAuditLogger.Event.LOGIN_FAILURE, emailKey(request.getEmail()), e.getClass().getSimpleName());
             throw e;
@@ -134,7 +133,9 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest request) {
-        rateLimitService.enforce("auth:signup:ip", clientIp(), SIGNUP_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:signup:ip", clientIp(), rl.getSignupPerIpLimit(), rl.getWindowSeconds());
+        verifyCaptchaOrThrow(request.getCaptcha());
         try {
             AuthService.SignupResult result = authService.signup(
                     request.getEmail(),
@@ -152,7 +153,8 @@ public class AuthController {
 
     @PostMapping("/verify")
     public ResponseEntity<?> verifyEmail(@RequestParam(name = "token") String token) {
-        rateLimitService.enforce("auth:verify:ip", clientIp(), VERIFY_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:verify:ip", clientIp(), rl.getVerifyPerIpLimit(), rl.getWindowSeconds());
         try {
             authService.verifyEmail(token);
             return ResponseEntity.ok(new MessageResponse("Email verified successfully."));
@@ -166,7 +168,8 @@ public class AuthController {
     @PostMapping("/verify-device")
     public ResponseEntity<?> verifyDevice(@RequestParam(name = "token") String token,
                                           HttpServletResponse response) {
-        rateLimitService.enforce("auth:verify-device:ip", clientIp(), VERIFY_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:verify-device:ip", clientIp(), rl.getVerifyDevicePerIpLimit(), rl.getWindowSeconds());
         try {
             AuthService.LoginResult result = authService.verifyDevice(token);
             return buildLoginResponse(result, response);
@@ -218,7 +221,8 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refreshToken(HttpServletRequest request, HttpServletResponse response) {
-        rateLimitService.enforce("auth:refresh:ip", clientIp(), REFRESH_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:refresh:ip", clientIp(), rl.getRefreshPerIpLimit(), rl.getWindowSeconds());
         String refreshToken = null;
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
@@ -238,7 +242,10 @@ public class AuthController {
         return ResponseEntity.ok(new TokenResponse(
                 result.accessToken(),
                 "Bearer",
-                result.expiresInSeconds()
+                result.expiresInSeconds(),
+                result.email(),
+                result.role(),
+                result.tier()
         ));
     }
 
@@ -264,16 +271,15 @@ public class AuthController {
 
     @PostMapping("/google")
     public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
-        rateLimitService.enforce("auth:oauth:ip", clientIp(), OAUTH_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:oauth:ip", clientIp(), rl.getOauthPerIpLimit(), rl.getWindowSeconds());
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
             throw new BadRequestException("Missing idToken");
         }
 
         try {
-            OAuthUser oauthUser = oauthService.verifyGoogleToken(idTokenString);
-
-            AuthService.LoginAttemptResult attempt = authService.googleAuthenicate(oauthUser.email());
+            AuthService.LoginAttemptResult attempt = authService.googleAuthenicate(idTokenString);
 
             if (attempt.deviceVerificationRequired()) {
                 return ResponseEntity.ok(DeviceVerificationRequiredResponse.standard());
@@ -292,7 +298,8 @@ public class AuthController {
 
     @PostMapping("/apple")
     public ResponseEntity<?> appleLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
-        rateLimitService.enforce("auth:oauth:ip", clientIp(), OAUTH_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:oauth:ip", clientIp(), rl.getOauthPerIpLimit(), rl.getWindowSeconds());
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
             throw new BadRequestException("Missing idToken");
@@ -318,7 +325,8 @@ public class AuthController {
 
     @PostMapping("/microsoft")
     public ResponseEntity<?> microsoftLogin(@RequestBody Map<String, String> body, HttpServletResponse response) {
-        rateLimitService.enforce("auth:oauth:ip", clientIp(), OAUTH_PER_IP_LIMIT, RATE_WINDOW_SECONDS);
+        EnvironmentSetting.Security.RateLimits rl = env.getSecurity().getRateLimits();
+        rateLimitService.enforce("auth:oauth:ip", clientIp(), rl.getOauthPerIpLimit(), rl.getWindowSeconds());
         String idTokenString = body.get("idToken");
         if (idTokenString == null) {
             throw new BadRequestException("Missing idToken");
@@ -349,6 +357,12 @@ public class AuthController {
     }
 
     // ---- private helpers ----
+
+    private void verifyCaptchaOrThrow(String token) {
+        if (!captchaService.verify(token, clientIp())) {
+            throw new BadRequestException("Captcha verification failed.");
+        }
+    }
 
     private ResponseEntity<?> buildLoginResponse(AuthService.LoginResult result, HttpServletResponse response) {
         ResponseCookie cookie = buildRefreshCookie(result.refreshToken(), 7L * 24 * 60 * 60);

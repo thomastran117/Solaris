@@ -24,4 +24,24 @@ public interface RateLimitService {
      * @param windowSeconds  the window size in seconds (TTL applied on first hit)
      */
     void enforce(String scope, String subject, int limit, int windowSeconds);
+
+    /**
+     * Throws {@link backend.exceptions.http.TooManyRequestException} if the email is
+     * currently under a credential-failure lockout. Fail-open on Redis errors.
+     */
+    void enforceLoginLockout(String email);
+
+    /**
+     * Records one credential failure for {@code email}. Once the failure count reaches
+     * {@code threshold} within {@code windowSeconds}, a lockout key valid for
+     * {@code lockoutDurationSeconds} is set. Fail-open on Redis errors.
+     */
+    void recordLoginFailure(String email, int threshold, int windowSeconds, int lockoutDurationSeconds);
+
+    /**
+     * Clears the failure counter and any active lockout for {@code email}. Call on
+     * successful login so a legitimate user who previously fat-fingered their password
+     * is not stuck waiting out a lockout. Fail-open on Redis errors.
+     */
+    void clearLoginFailures(String email);
 }

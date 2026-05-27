@@ -9,12 +9,25 @@ import "../styles/login.css";
 
 const images = ["/carousel1.jpg", "/carousel2.jpg", "/carousel3.jpg"];
 
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const res = (err as { response?: { status?: number; data?: { message?: string } } }).response;
+    if (res?.data?.message) return res.data.message;
+    if (res?.status === 429) return "Too many attempts. Please try again later.";
+    if (res?.status === 401) return "Invalid email or password.";
+    if (res?.status === 403) return "Invalid email or password.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ username: "", password: "" });
   const [slide, setSlide] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deviceVerificationPending, setDeviceVerificationPending] = useState(false);
   const dispatch = useDispatch<AppDispatch>();
   const authState = useSelector((state: RootState) => state.auth);
 
@@ -39,18 +52,24 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setDeviceVerificationPending(false);
     setLoading(true);
     try {
       const res = await api.post("/auth/login", {
         email: formData.username,
         password: formData.password,
       });
+      if (res.data.status === "DEVICE_VERIFICATION_REQUIRED") {
+        setDeviceVerificationPending(true);
+        return;
+      }
       const { token, email, usertype, tier } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {
-      console.error("Login failed", err);
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -111,15 +130,21 @@ export default function LoginPage() {
   };
 
   const handleGoogleResponse = async (idToken: string) => {
+    setError(null);
+    setDeviceVerificationPending(false);
     setLoading(true);
     try {
       const res = await api.post("/auth/google", { idToken });
+      if (res.data.status === "DEVICE_VERIFICATION_REQUIRED") {
+        setDeviceVerificationPending(true);
+        return;
+      }
       const { token, email, usertype, tier } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
       navigate("/dashboard");
     } catch (err) {
-      console.error("Google login failed", err);
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -298,6 +323,16 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
+
+              {/* Error / device-verification feedback */}
+              {error && (
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              )}
+              {deviceVerificationPending && (
+                <p className="text-blue-300 text-sm text-center">
+                  We&apos;ve sent a verification email to your inbox. Check it to complete login.
+                </p>
+              )}
 
               {/* Submit */}
               <button

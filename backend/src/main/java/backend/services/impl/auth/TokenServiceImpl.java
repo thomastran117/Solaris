@@ -239,13 +239,20 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public void revokeRefreshToken(String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) return;
-        RefreshTokenPayload payload = getRefreshTokenPayload(refreshToken);
-        cache.delete(REFRESH_TOKEN_PREFIX + refreshToken);
+    public RefreshTokenPayload consumeRefreshToken(String token) {
+        if (token == null || token.isBlank()) return null;
+        String raw = cache.getAndDelete(REFRESH_TOKEN_PREFIX + token);
+        if (raw == null) return null;
+        RefreshTokenPayload payload = parsePayload(raw);
         if (payload != null) {
-            cache.setRemove(REFRESH_USER_SET_PREFIX + payload.userId(), refreshToken);
+            cache.setRemove(REFRESH_USER_SET_PREFIX + payload.userId(), token);
         }
+        return payload;
+    }
+
+    @Override
+    public void revokeRefreshToken(String refreshToken) {
+        consumeRefreshToken(refreshToken);
     }
 
     @Override

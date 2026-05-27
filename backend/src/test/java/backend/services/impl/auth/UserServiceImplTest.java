@@ -7,8 +7,10 @@ import backend.exceptions.http.UnauthorizedException;
 import backend.models.core.User;
 import backend.models.enums.UserRole;
 import backend.models.enums.UserStatus;
+import backend.models.other.OAuthUser;
 import backend.repositories.UserRepository;
 import backend.services.intf.AuthAuditLogger;
+import backend.services.intf.auth.TokenService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,7 @@ class UserServiceImplTest {
     private UserRepository userRepository;
     private PasswordEncoder passwordEncoder;
     private AuthAuditLogger auditLogger;
+    private TokenService tokenService;
     private UserServiceImpl service;
 
     @BeforeEach
@@ -34,7 +37,8 @@ class UserServiceImplTest {
         userRepository = mock(UserRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         auditLogger = mock(AuthAuditLogger.class);
-        service = new UserServiceImpl(userRepository, passwordEncoder, auditLogger);
+        tokenService = mock(TokenService.class);
+        service = new UserServiceImpl(userRepository, passwordEncoder, auditLogger, tokenService);
     }
 
     // ─── login ───────────────────────────────────────────────────────────────
@@ -254,6 +258,19 @@ class UserServiceImplTest {
     }
 
     @Test
+    void changePassword_success_revokesAllRefreshTokens() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.ACTIVE);
+        user.setPassword("hashed-old");
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("old", "hashed-old")).thenReturn(true);
+        when(passwordEncoder.encode("new")).thenReturn("hashed-new");
+
+        service.changePassword(TestIds.uuid(1), "old", "new");
+
+        verify(tokenService).revokeAllRefreshTokensForUser(TestIds.uuid(1));
+    }
+
+    @Test
     void changePassword_wrongCurrentPassword_throwsForbidden() {
         User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.ACTIVE);
         user.setPassword("hashed-old");
@@ -297,102 +314,231 @@ class UserServiceImplTest {
 
     // ─── loginOrSignupGoogle ─────────────────────────────────────────────────
 
+    private static final OAuthUser GOOGLE_OAUTH = new OAuthUser("g-sub-123", "g@gmail.com", "Google User", "google");
+
     @Test
-    void loginOrSignupGoogle_newUser_createsWithNullPasswordAndUserRole() {
+    void loginOrSignupGoogle_newUser_createsWithSubAndNullPassword() {
+        when(userRepository.findByGoogleId("g-sub-123")).thenReturn(Optional.empty());
         when(userRepository.findByEmail("g@gmail.com")).thenReturn(Optional.empty());
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        User result = service.loginOrSignupGoogle("g@gmail.com");
+        User result = service.loginOrSignupGoogle(GOOGLE_OAUTH);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
         assertNull(captor.getValue().getPassword());
         assertEquals(UserRole.USER, captor.getValue().getRole());
+        assertEquals("g@gmail.com", captor.getValue().getEmail());
+        assertEquals("g-sub-123", captor.getValue().getGoogleId());
         assertEquals("g@gmail.com", result.getEmail());
     }
 
     @Test
-    void loginOrSignupGoogle_existingUserWithPassword_logsAccountLinked() {
+    void loginOrSignupGoogle_knownSub_returnsUserWithoutAudit() {
         User user = makeUser(TestIds.uuid(2), UserRole.USER, UserStatus.ACTIVE);
-        user.setPassword("hashed");
+        user.setGoogleId("g-sub-123");
+        when(userRepository.findByGoogleId("g-sub-123")).thenReturn(Optional.of(user));
+
+        User result = service.loginOrSignupGoogle(GOOGLE_OAUTH);
+
+        assertSame(user, result);
+        verify(userRepository, never()).findByEmail(any());
+        verify(auditLogger, never()).log(any(), any(), any());
+    }
+
+    @Test
+    void loginOrSignupGoogle_emailMatchNoSub_linksSubAndLogsAudit() {
+        User user = makeUser(TestIds.uuid(2), UserRole.USER, UserStatus.ACTIVE);
+        user.setGoogleId(null);
+        when(userRepository.findByGoogleId("g-sub-123")).thenReturn(Optional.empty());
         when(userRepository.findByEmail("g@gmail.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        service.loginOrSignupGoogle("g@gmail.com");
+        service.loginOrSignupGoogle(GOOGLE_OAUTH);
 
+        assertEquals("g-sub-123", user.getGoogleId());
         verify(auditLogger).log(eq(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED),
                 eq(TestIds.uuid(2).toString()), eq("provider=google"));
     }
 
     @Test
-    void loginOrSignupGoogle_existingUserWithoutPassword_doesNotLogAccountLinked() {
+    void loginOrSignupGoogle_emailMatchDifferentSub_throwsUnauthorized() {
         User user = makeUser(TestIds.uuid(2), UserRole.USER, UserStatus.ACTIVE);
-        user.setPassword(null);
+        user.setGoogleId("other-sub");
+        when(userRepository.findByGoogleId("g-sub-123")).thenReturn(Optional.empty());
         when(userRepository.findByEmail("g@gmail.com")).thenReturn(Optional.of(user));
 
-        service.loginOrSignupGoogle("g@gmail.com");
-
-        verify(auditLogger, never()).log(any(), any(), any());
+        assertThrows(UnauthorizedException.class, () -> service.loginOrSignupGoogle(GOOGLE_OAUTH));
     }
 
     @Test
-    void loginOrSignupGoogle_suspendedExistingUser_throwsForbidden() {
+    void loginOrSignupGoogle_suspendedUser_throwsForbidden() {
         User user = makeUser(TestIds.uuid(2), UserRole.USER, UserStatus.SUSPENDED);
-        when(userRepository.findByEmail("g@gmail.com")).thenReturn(Optional.of(user));
+        user.setGoogleId("g-sub-123");
+        when(userRepository.findByGoogleId("g-sub-123")).thenReturn(Optional.of(user));
 
-        assertThrows(ForbiddenException.class,
-                () -> service.loginOrSignupGoogle("g@gmail.com"));
+        assertThrows(ForbiddenException.class, () -> service.loginOrSignupGoogle(GOOGLE_OAUTH));
     }
 
     // ─── loginOrSignupMicrosoft ───────────────────────────────────────────────
 
+    private static final OAuthUser MS_OAUTH = new OAuthUser("ms-sub-456", "m@outlook.com", "MS User", "microsoft");
+
     @Test
-    void loginOrSignupMicrosoft_newUser_createsWithNullPassword() {
-        when(userRepository.findByEmail("m@microsoft.com")).thenReturn(Optional.empty());
+    void loginOrSignupMicrosoft_newUser_createsWithSubAndNullPassword() {
+        when(userRepository.findByMicrosoftId("ms-sub-456")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("m@outlook.com")).thenReturn(Optional.empty());
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        service.loginOrSignupMicrosoft("m@microsoft.com");
+        service.loginOrSignupMicrosoft(MS_OAUTH);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
         assertNull(captor.getValue().getPassword());
+        assertEquals("ms-sub-456", captor.getValue().getMicrosoftId());
     }
 
     @Test
-    void loginOrSignupMicrosoft_existingUserWithPassword_logsAccountLinked() {
+    void loginOrSignupMicrosoft_knownSub_returnsUserWithoutAudit() {
         User user = makeUser(TestIds.uuid(3), UserRole.USER, UserStatus.ACTIVE);
-        user.setPassword("hashed");
-        when(userRepository.findByEmail("m@microsoft.com")).thenReturn(Optional.of(user));
+        user.setMicrosoftId("ms-sub-456");
+        when(userRepository.findByMicrosoftId("ms-sub-456")).thenReturn(Optional.of(user));
 
-        service.loginOrSignupMicrosoft("m@microsoft.com");
+        User result = service.loginOrSignupMicrosoft(MS_OAUTH);
 
+        assertSame(user, result);
+        verify(auditLogger, never()).log(any(), any(), any());
+    }
+
+    @Test
+    void loginOrSignupMicrosoft_emailMatchNoSub_linksSubAndLogsAudit() {
+        User user = makeUser(TestIds.uuid(3), UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findByMicrosoftId("ms-sub-456")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("m@outlook.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.loginOrSignupMicrosoft(MS_OAUTH);
+
+        assertEquals("ms-sub-456", user.getMicrosoftId());
         verify(auditLogger).log(eq(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED),
                 eq(TestIds.uuid(3).toString()), eq("provider=microsoft"));
     }
 
+    @Test
+    void loginOrSignupMicrosoft_emailMatchDifferentSub_throwsUnauthorized() {
+        User user = makeUser(TestIds.uuid(3), UserRole.USER, UserStatus.ACTIVE);
+        user.setMicrosoftId("other-sub");
+        when(userRepository.findByMicrosoftId("ms-sub-456")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("m@outlook.com")).thenReturn(Optional.of(user));
+
+        assertThrows(UnauthorizedException.class, () -> service.loginOrSignupMicrosoft(MS_OAUTH));
+    }
+
     // ─── loginOrSignupApple ──────────────────────────────────────────────────
 
+    private static final OAuthUser APPLE_OAUTH = new OAuthUser("apple-sub-789", "a@icloud.com", "Apple User", "apple");
+
     @Test
-    void loginOrSignupApple_newUser_createsWithNullPassword() {
-        when(userRepository.findByEmail("a@apple.com")).thenReturn(Optional.empty());
+    void loginOrSignupApple_newUser_createsWithSubAndNullPassword() {
+        when(userRepository.findByAppleId("apple-sub-789")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("a@icloud.com")).thenReturn(Optional.empty());
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        service.loginOrSignupApple("a@apple.com");
+        service.loginOrSignupApple(APPLE_OAUTH);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
         assertNull(captor.getValue().getPassword());
+        assertEquals("apple-sub-789", captor.getValue().getAppleId());
     }
 
     @Test
-    void loginOrSignupApple_existingUserWithPassword_logsAccountLinked() {
+    void loginOrSignupApple_knownSub_returnsUserWithoutAudit() {
         User user = makeUser(TestIds.uuid(4), UserRole.USER, UserStatus.ACTIVE);
-        user.setPassword("hashed");
-        when(userRepository.findByEmail("a@apple.com")).thenReturn(Optional.of(user));
+        user.setAppleId("apple-sub-789");
+        when(userRepository.findByAppleId("apple-sub-789")).thenReturn(Optional.of(user));
 
-        service.loginOrSignupApple("a@apple.com");
+        User result = service.loginOrSignupApple(APPLE_OAUTH);
 
+        assertSame(user, result);
+        verify(auditLogger, never()).log(any(), any(), any());
+    }
+
+    @Test
+    void loginOrSignupApple_emailMatchNoSub_linksSubAndLogsAudit() {
+        User user = makeUser(TestIds.uuid(4), UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findByAppleId("apple-sub-789")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("a@icloud.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.loginOrSignupApple(APPLE_OAUTH);
+
+        assertEquals("apple-sub-789", user.getAppleId());
         verify(auditLogger).log(eq(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED),
                 eq(TestIds.uuid(4).toString()), eq("provider=apple"));
+    }
+
+    @Test
+    void loginOrSignupApple_emailMatchDifferentSub_throwsUnauthorized() {
+        User user = makeUser(TestIds.uuid(4), UserRole.USER, UserStatus.ACTIVE);
+        user.setAppleId("other-sub");
+        when(userRepository.findByAppleId("apple-sub-789")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("a@icloud.com")).thenReturn(Optional.of(user));
+
+        assertThrows(UnauthorizedException.class, () -> service.loginOrSignupApple(APPLE_OAUTH));
+    }
+
+    // ─── getAccessibleUserByID ───────────────────────────────────────────────
+
+    @Test
+    void getAccessibleUserByID_activeUser_returnsUser() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+
+        assertSame(user, service.getAccessibleUserByID(TestIds.uuid(1)));
+    }
+
+    @Test
+    void getAccessibleUserByID_inactiveUser_returnsUser() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.INACTIVE);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+
+        assertSame(user, service.getAccessibleUserByID(TestIds.uuid(1)));
+    }
+
+    @Test
+    void getAccessibleUserByID_suspendedUser_throwsForbidden() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.SUSPENDED);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getAccessibleUserByID(TestIds.uuid(1)));
+    }
+
+    @Test
+    void getAccessibleUserByID_pendingVerification_throwsForbidden() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.PENDING_VERIFICATION);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getAccessibleUserByID(TestIds.uuid(1)));
+    }
+
+    @Test
+    void getAccessibleUserByID_deletedUser_throwsForbidden() {
+        User user = makeUser(TestIds.uuid(1), UserRole.USER, UserStatus.DELETED);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getAccessibleUserByID(TestIds.uuid(1)));
+    }
+
+    @Test
+    void getAccessibleUserByID_notFound_throwsResourceNotFound() {
+        when(userRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getAccessibleUserByID(TestIds.uuid(99)));
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

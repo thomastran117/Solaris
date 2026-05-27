@@ -2,6 +2,7 @@ package backend.services.intf.auth;
 
 import backend.models.core.User;
 import backend.models.enums.UserRole;
+import backend.models.other.OAuthUser;
 
 import java.util.UUID;
 
@@ -24,11 +25,18 @@ public interface UserService {
 
     User getUserByID(UUID id);
 
+    /**
+     * Same as {@link #getUserByID} but also asserts the account is in an accessible state
+     * (ACTIVE or INACTIVE). Throws ForbiddenException for suspended, deleted, or unverified accounts.
+     * Use this in any token-issuing flow that loads a user by ID.
+     */
+    User getAccessibleUserByID(UUID id);
+
     UUID getID(String email);
 
-    User loginOrSignupGoogle(String email);
+    User loginOrSignupGoogle(OAuthUser oauthUser);
 
-    User loginOrSignupMicrosoft(String email);
+    User loginOrSignupMicrosoft(OAuthUser oauthUser);
 
-    User loginOrSignupApple(String email);
+    User loginOrSignupApple(OAuthUser oauthUser);
 }

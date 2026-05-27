@@ -12,9 +12,12 @@ import backend.exceptions.http.UnauthorizedException;
 import backend.models.core.User;
 import backend.models.enums.UserRole;
 import backend.models.enums.UserStatus;
+import backend.models.other.OAuthUser;
 import backend.repositories.UserRepository;
 import backend.services.intf.AuthAuditLogger;
+import backend.services.intf.auth.TokenService;
 import backend.services.intf.auth.UserService;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,12 +29,14 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthAuditLogger auditLogger;
+    private final TokenService tokenService;
 
     public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                           AuthAuditLogger auditLogger) {
+                           AuthAuditLogger auditLogger, TokenService tokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogger = auditLogger;
+        this.tokenService = tokenService;
     }
 
     @Override
@@ -92,6 +97,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public User getAccessibleUserByID(UUID id) {
+        User user = getUserByID(id);
+        validateAccountAccessible(user);
+        return user;
+    }
+
+    @Override
     public UUID getID(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email))
@@ -107,6 +119,7 @@ public class UserServiceImpl implements UserService {
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        tokenService.revokeAllRefreshTokensForUser(id);
         return true;
     }
 
@@ -119,60 +132,97 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User loginOrSignupGoogle(String email) {
-        Optional<User> existing = userRepository.findByEmail(email);
-
-        if (existing.isPresent()) {
-            validateAccountAccessible(existing.get());
-            if (existing.get().getPassword() != null) {
-                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        existing.get().getId().toString(), "provider=google");
-            }
-            return existing.get();
+    @Transactional
+    public User loginOrSignupGoogle(OAuthUser oauthUser) {
+        // 1. Sub-first: stable identity lookup — immune to email reassignment.
+        Optional<User> bySub = userRepository.findByGoogleId(oauthUser.sub());
+        if (bySub.isPresent()) {
+            validateAccountAccessible(bySub.get());
+            return bySub.get();
         }
 
+        // 2. Email fallback: existing local account linking for first-time Google login.
+        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        if (byEmail.isPresent()) {
+            User user = byEmail.get();
+            validateAccountAccessible(user);
+            if (user.getGoogleId() != null) {
+                // Email matched an account already linked to a different Google sub — reject.
+                throw new UnauthorizedException("This email is linked to a different Google account");
+            }
+            user.setGoogleId(oauthUser.sub());
+            userRepository.save(user);
+            auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                    user.getId().toString(), "provider=google");
+            return user;
+        }
+
+        // 3. New user.
         User user = new User();
-        user.setEmail(email);
+        user.setEmail(oauthUser.email());
+        user.setGoogleId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);
         return userRepository.save(user);
     }
 
     @Override
-    public User loginOrSignupMicrosoft(String email) {
-        Optional<User> existing = userRepository.findByEmail(email);
+    @Transactional
+    public User loginOrSignupMicrosoft(OAuthUser oauthUser) {
+        Optional<User> bySub = userRepository.findByMicrosoftId(oauthUser.sub());
+        if (bySub.isPresent()) {
+            validateAccountAccessible(bySub.get());
+            return bySub.get();
+        }
 
-        if (existing.isPresent()) {
-            validateAccountAccessible(existing.get());
-            if (existing.get().getPassword() != null) {
-                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        existing.get().getId().toString(), "provider=microsoft");
+        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        if (byEmail.isPresent()) {
+            User user = byEmail.get();
+            validateAccountAccessible(user);
+            if (user.getMicrosoftId() != null) {
+                throw new UnauthorizedException("This email is linked to a different Microsoft account");
             }
-            return existing.get();
+            user.setMicrosoftId(oauthUser.sub());
+            userRepository.save(user);
+            auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                    user.getId().toString(), "provider=microsoft");
+            return user;
         }
 
         User user = new User();
-        user.setEmail(email);
+        user.setEmail(oauthUser.email());
+        user.setMicrosoftId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);
         return userRepository.save(user);
     }
 
     @Override
-    public User loginOrSignupApple(String email) {
-        Optional<User> existing = userRepository.findByEmail(email);
+    @Transactional
+    public User loginOrSignupApple(OAuthUser oauthUser) {
+        Optional<User> bySub = userRepository.findByAppleId(oauthUser.sub());
+        if (bySub.isPresent()) {
+            validateAccountAccessible(bySub.get());
+            return bySub.get();
+        }
 
-        if (existing.isPresent()) {
-            validateAccountAccessible(existing.get());
-            if (existing.get().getPassword() != null) {
-                auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
-                        existing.get().getId().toString(), "provider=apple");
+        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        if (byEmail.isPresent()) {
+            User user = byEmail.get();
+            validateAccountAccessible(user);
+            if (user.getAppleId() != null) {
+                throw new UnauthorizedException("This email is linked to a different Apple account");
             }
-            return existing.get();
+            user.setAppleId(oauthUser.sub());
+            userRepository.save(user);
+            auditLogger.log(AuthAuditLogger.Event.OAUTH_ACCOUNT_LINKED,
+                    user.getId().toString(), "provider=apple");
+            return user;
         }
 
         User user = new User();
-        user.setEmail(email);
+        user.setEmail(oauthUser.email());
+        user.setAppleId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);
         return userRepository.save(user);

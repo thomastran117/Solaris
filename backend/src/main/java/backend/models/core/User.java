@@ -46,6 +46,9 @@ public class User {
     @Column(unique = true, nullable = true)
     private String microsoftId;
 
+    @Column(unique = true, nullable = true)
+    private String appleId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private UserStatus status = UserStatus.ACTIVE;

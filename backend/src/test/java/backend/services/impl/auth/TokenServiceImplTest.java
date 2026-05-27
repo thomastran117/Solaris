@@ -5,6 +5,11 @@ import backend.services.intf.CacheService;
 import backend.services.intf.auth.TokenService;
 import backend.testutil.TestIds;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -12,6 +17,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import java.security.Key;
+import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -228,21 +235,21 @@ class TokenServiceImplTest {
     @Test
     void revokeRefreshToken_deletesFromCacheAndRemovesFromUserSet() {
         UUID userId = TestIds.uuid(4);
-        when(cache.get("refresh:token:tok")).thenReturn(userId + ":USER:u@test.com");
+        when(cache.getAndDelete("refresh:token:tok")).thenReturn(userId + ":USER:u@test.com");
 
         service.revokeRefreshToken("tok");
 
-        verify(cache).delete("refresh:token:tok");
+        verify(cache).getAndDelete("refresh:token:tok");
         verify(cache).setRemove("refresh:user:" + userId, "tok");
     }
 
     @Test
-    void revokeRefreshToken_noPayload_stillDeletesKey() {
-        when(cache.get("refresh:token:tok")).thenReturn(null);
+    void revokeRefreshToken_noPayload_noFurtherInteractions() {
+        when(cache.getAndDelete("refresh:token:tok")).thenReturn(null);
 
         service.revokeRefreshToken("tok");
 
-        verify(cache).delete("refresh:token:tok");
+        verify(cache).getAndDelete("refresh:token:tok");
         verify(cache, never()).setRemove(any(), any());
     }
 
@@ -258,6 +265,83 @@ class TokenServiceImplTest {
         verify(cache).delete("refresh:token:tok1");
         verify(cache).delete("refresh:token:tok2");
         verify(cache).delete("refresh:user:" + userId);
+    }
+
+    // ─── consumeRefreshToken ─────────────────────────────────────────────────
+
+    @Test
+    void consumeRefreshToken_null_returnsNull() {
+        assertNull(service.consumeRefreshToken(null));
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void consumeRefreshToken_blank_returnsNull() {
+        assertNull(service.consumeRefreshToken("   "));
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void consumeRefreshToken_notInCache_returnsNull() {
+        when(cache.getAndDelete(anyString())).thenReturn(null);
+        assertNull(service.consumeRefreshToken("tok"));
+    }
+
+    @Test
+    void consumeRefreshToken_validToken_returnsPayloadAndCleansUserSet() {
+        UUID userId = TestIds.uuid(6);
+        when(cache.getAndDelete("refresh:token:tok")).thenReturn(userId + ":USER:u@test.com");
+
+        TokenService.RefreshTokenPayload payload = service.consumeRefreshToken("tok");
+
+        assertNotNull(payload);
+        assertEquals(userId, payload.userId());
+        assertEquals("USER", payload.role());
+        assertEquals("u@test.com", payload.email());
+        verify(cache).setRemove("refresh:user:" + userId, "tok");
+    }
+
+    @Test
+    void consumeRefreshToken_usesAtomicGetDelete_notSeparateGetAndDelete() {
+        // Verifies that a single getAndDelete call (not get + delete) is the gating
+        // operation, ensuring exactly one concurrent caller can consume the token.
+        UUID userId = TestIds.uuid(6);
+        when(cache.getAndDelete("refresh:token:tok")).thenReturn(userId + ":USER:u@test.com");
+
+        service.consumeRefreshToken("tok");
+
+        verify(cache).getAndDelete("refresh:token:tok");
+        verify(cache, never()).get(anyString());
+        verify(cache, never()).delete(anyString());
+    }
+
+    // ─── issuer validation ────────────────────────────────────────────────────
+
+    @Test
+    void parseToken_wrongIssuer_throwsJwtException() {
+        Key key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(TEST_SECRET));
+        String token = Jwts.builder()
+                .setIssuer("attacker-service")
+                .setSubject(TestIds.uuid(1).toString())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 900_000L))
+                .signWith(key, SignatureAlgorithm.HS512)
+                .compact();
+
+        assertThrows(JwtException.class, () -> service.getAuthentication(token));
+    }
+
+    @Test
+    void parseToken_missingIssuer_throwsJwtException() {
+        Key key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(TEST_SECRET));
+        String token = Jwts.builder()
+                .setSubject(TestIds.uuid(1).toString())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 900_000L))
+                .signWith(key, SignatureAlgorithm.HS512)
+                .compact();
+
+        assertThrows(JwtException.class, () -> service.getAuthentication(token));
     }
 
     // ─── getAuthentication ────────────────────────────────────────────────────

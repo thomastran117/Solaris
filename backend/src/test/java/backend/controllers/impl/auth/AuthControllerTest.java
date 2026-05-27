@@ -9,14 +9,13 @@ import backend.http.ClientRequestContext;
 import backend.http.DeviceType;
 import backend.models.core.User;
 import backend.models.core.UserDevice;
-import backend.models.other.OAuthUser;
 import backend.security.oauth.InvalidOAuthTokenException;
 import backend.security.oauth.OAuthProviderNotConfiguredException;
 import backend.services.intf.AuthAuditLogger;
+import backend.services.intf.CaptchaService;
 import backend.services.intf.RateLimitService;
 import backend.services.intf.auth.AuthService;
 import backend.services.intf.auth.DeviceService;
-import backend.services.intf.auth.OAuthService;
 import backend.testutil.TestIds;
 import backend.utilities.intf.Logger;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,14 +45,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerTest {
 
     private AuthService authService;
-    private OAuthService oauthService;
     private DeviceService deviceService;
     private Logger logger;
     private EnvironmentSetting env;
     private EnvironmentSetting.Security security;
     private EnvironmentSetting.Security.Cookie cookieCfg;
+    private EnvironmentSetting.Security.RateLimits rateLimits;
     private RateLimitService rateLimitService;
     private AuthAuditLogger audit;
+    private CaptchaService captchaService;
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -70,22 +70,26 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         authService    = mock(AuthService.class);
-        oauthService   = mock(OAuthService.class);
         deviceService  = mock(DeviceService.class);
         logger         = mock(Logger.class);
         env            = mock(EnvironmentSetting.class);
         security       = mock(EnvironmentSetting.Security.class);
         cookieCfg      = mock(EnvironmentSetting.Security.Cookie.class);
+        rateLimits     = mock(EnvironmentSetting.Security.RateLimits.class);
         rateLimitService = mock(RateLimitService.class);
         audit          = mock(AuthAuditLogger.class);
+        captchaService = mock(CaptchaService.class);
 
         when(env.getSecurity()).thenReturn(security);
         when(security.getCookie()).thenReturn(cookieCfg);
+        when(security.getRateLimits()).thenReturn(rateLimits);
         when(cookieCfg.isSecure()).thenReturn(false);
         when(cookieCfg.getSameSite()).thenReturn("Strict");
+        // Default: captcha passes. Override in individual failure tests.
+        when(captchaService.verify(anyString(), anyString())).thenReturn(true);
 
-        AuthController controller = new AuthController(authService, oauthService, deviceService,
-                logger, env, rateLimitService, audit);
+        AuthController controller = new AuthController(authService, deviceService,
+                logger, env, rateLimitService, audit, captchaService);
 
         // GlobalExceptionHandler converts AppHttpExceptions to proper HTTP status codes
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
@@ -312,20 +316,23 @@ class AuthControllerTest {
     @Test
     void refreshToken_withCookie_returns200WithTokenResponse() throws Exception {
         when(authService.refresh("old-refresh"))
-                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L));
+                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L, "u@test.com", "USER", "FREE"));
 
         mockMvc.perform(post("/auth/refresh")
                         .cookie(new jakarta.servlet.http.Cookie("refreshToken", "old-refresh")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("new-access"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
-                .andExpect(jsonPath("$.expiresIn").value(900));
+                .andExpect(jsonPath("$.expiresIn").value(900))
+                .andExpect(jsonPath("$.email").value("u@test.com"))
+                .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.tier").value("FREE"));
     }
 
     @Test
     void refreshToken_noCookie_passesNullToService() throws Exception {
         when(authService.refresh(null))
-                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L));
+                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L, "u@test.com", "USER", "FREE"));
 
         mockMvc.perform(post("/auth/refresh"));
 
@@ -335,7 +342,7 @@ class AuthControllerTest {
     @Test
     void refreshToken_setsNewRefreshTokenCookie() throws Exception {
         when(authService.refresh(anyString()))
-                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L));
+                .thenReturn(new AuthService.RefreshResult("new-access", "new-refresh", 900L, "u@test.com", "USER", "FREE"));
 
         mockMvc.perform(post("/auth/refresh")
                         .cookie(new jakarta.servlet.http.Cookie("refreshToken", "old-refresh")))
@@ -345,7 +352,7 @@ class AuthControllerTest {
     @Test
     void refreshToken_enforces_rateLimit() throws Exception {
         when(authService.refresh(any()))
-                .thenReturn(new AuthService.RefreshResult("a", "b", 900L));
+                .thenReturn(new AuthService.RefreshResult("a", "b", 900L, "u@test.com", "USER", "FREE"));
 
         mockMvc.perform(post("/auth/refresh"));
 
@@ -355,7 +362,7 @@ class AuthControllerTest {
     @Test
     void refreshToken_auditsRefresh() throws Exception {
         when(authService.refresh(any()))
-                .thenReturn(new AuthService.RefreshResult("a", "b", 900L));
+                .thenReturn(new AuthService.RefreshResult("a", "b", 900L, "u@test.com", "USER", "FREE"));
 
         mockMvc.perform(post("/auth/refresh"));
 
@@ -460,9 +467,7 @@ class AuthControllerTest {
 
     @Test
     void googleLogin_knownDevice_returns200WithAuthResponse() throws Exception {
-        when(oauthService.verifyGoogleToken("g-token"))
-                .thenReturn(new OAuthUser("sub", "g@test.com", "Google User", "google"));
-        when(authService.googleAuthenicate("g@test.com"))
+        when(authService.googleAuthenicate("g-token"))
                 .thenReturn(AuthService.LoginAttemptResult.success(LOGIN_RESULT));
 
         mockMvc.perform(post("/auth/google")
@@ -474,9 +479,7 @@ class AuthControllerTest {
 
     @Test
     void googleLogin_unknownDevice_returns200WithDeviceVerificationRequired() throws Exception {
-        when(oauthService.verifyGoogleToken("g-token"))
-                .thenReturn(new OAuthUser("sub", "g@test.com", "Google User", "google"));
-        when(authService.googleAuthenicate("g@test.com"))
+        when(authService.googleAuthenicate("g-token"))
                 .thenReturn(AuthService.LoginAttemptResult.pendingVerification());
 
         mockMvc.perform(post("/auth/google")
@@ -488,7 +491,7 @@ class AuthControllerTest {
 
     @Test
     void googleLogin_providerNotConfigured_returns503() throws Exception {
-        when(oauthService.verifyGoogleToken(anyString()))
+        when(authService.googleAuthenicate(anyString()))
                 .thenThrow(new OAuthProviderNotConfiguredException("Google not configured"));
 
         mockMvc.perform(post("/auth/google")
@@ -499,7 +502,7 @@ class AuthControllerTest {
 
     @Test
     void googleLogin_invalidToken_returns401() throws Exception {
-        when(oauthService.verifyGoogleToken(anyString()))
+        when(authService.googleAuthenicate(anyString()))
                 .thenThrow(new InvalidOAuthTokenException("bad token"));
 
         mockMvc.perform(post("/auth/google")
@@ -510,8 +513,6 @@ class AuthControllerTest {
 
     @Test
     void googleLogin_enforces_rateLimit() throws Exception {
-        when(oauthService.verifyGoogleToken(anyString()))
-                .thenReturn(new OAuthUser("sub", "g@test.com", "Google User", "google"));
         when(authService.googleAuthenicate(anyString()))
                 .thenReturn(AuthService.LoginAttemptResult.success(LOGIN_RESULT));
 
@@ -597,6 +598,56 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(oauthBody("ms-token")))
                 .andExpect(status().isServiceUnavailable());
+    }
+
+    // ─── captcha enforcement ─────────────────────────────────────────────────
+
+    @Test
+    void login_captchaFailed_returns400BeforeAuthAttempt() throws Exception {
+        when(captchaService.verify(anyString(), anyString())).thenReturn(false);
+
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody("user@test.com")))
+                .andExpect(status().isBadRequest());
+
+        verify(authService, never()).localAuthenicate(anyString(), anyString());
+    }
+
+    @Test
+    void login_captchaVerifiedWithTokenAndIp() throws Exception {
+        when(authService.localAuthenicate(anyString(), anyString()))
+                .thenReturn(AuthService.LoginAttemptResult.success(LOGIN_RESULT));
+
+        mockMvc.perform(post("/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("user@test.com")));
+
+        verify(captchaService).verify(eq(TEST_CAPTCHA), anyString());
+    }
+
+    @Test
+    void signup_captchaFailed_returns400BeforeSignupAttempt() throws Exception {
+        when(captchaService.verify(anyString(), anyString())).thenReturn(false);
+
+        mockMvc.perform(post("/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signupBody("new@test.com")))
+                .andExpect(status().isBadRequest());
+
+        verify(authService, never()).signup(anyString(), anyString());
+    }
+
+    @Test
+    void signup_captchaVerifiedWithTokenAndIp() throws Exception {
+        when(authService.signup(anyString(), anyString()))
+                .thenReturn(new AuthService.SignupResult("new@test.com", "ok"));
+
+        mockMvc.perform(post("/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(signupBody("new@test.com")));
+
+        verify(captchaService).verify(eq(TEST_CAPTCHA), anyString());
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

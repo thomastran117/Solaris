@@ -37,6 +37,7 @@ import CompanyOrderDetailPage from "./pages/admin/CompanyOrderDetailPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
   return (
@@ -68,37 +69,42 @@ function App() {
                 />
               }
             />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            {/* Public routes */}
             <Route path="/browse" element={<BrowsePage />} />
             <Route path="/c/:id" element={<CompanyPage />} />
             <Route path="/products/:id" element={<ProductPage />} />
-            <Route path="/lists" element={<SavedListsPage />} />
-            <Route path="/lists/:id" element={<SavedListDetailPage />} />
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
-            <Route path="/admin/products" element={<AdminProductsPage />} />
-            <Route path="/admin/bundles" element={<AdminBundlesPage />} />
-            <Route path="/admin/products/new" element={<AdminProductEditor />} />
-            <Route path="/admin/products/:id" element={<AdminProductEditor />} />
-            <Route path="/admin/collections" element={<AdminCollectionsPage />} />
-            <Route path="/admin/collections/new" element={<AdminCollectionEditor />} />
-            <Route path="/admin/collections/:id/edit" element={<AdminCollectionEditor />} />
-            <Route path="/admin/collections/:id/products" element={<AdminCollectionProductsPage />} />
-            <Route path="/admin/team" element={<AdminTeamPage />} />
-            <Route path="/admin/bulk-import" element={<AdminBulkImportPage />} />
-            <Route path="/admin/reports" element={<AdminReportsPage />} />
-            <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/loyalty" element={<LoyaltyPage />} />
-            <Route path="/feedback" element={<FeedbackPage />} />
-            <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
-            <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/admin/orders" element={<CompanyOrdersPage />} />
-            <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
+            <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
+
+            {/* Protected routes — redirect to /login if unauthenticated */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/lists" element={<SavedListsPage />} />
+              <Route path="/lists/:id" element={<SavedListDetailPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/loyalty" element={<LoyaltyPage />} />
+              <Route path="/feedback" element={<FeedbackPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:id" element={<OrderDetailPage />} />
+              <Route path="/admin/products" element={<AdminProductsPage />} />
+              <Route path="/admin/bundles" element={<AdminBundlesPage />} />
+              <Route path="/admin/products/new" element={<AdminProductEditor />} />
+              <Route path="/admin/products/:id" element={<AdminProductEditor />} />
+              <Route path="/admin/collections" element={<AdminCollectionsPage />} />
+              <Route path="/admin/collections/new" element={<AdminCollectionEditor />} />
+              <Route path="/admin/collections/:id/edit" element={<AdminCollectionEditor />} />
+              <Route path="/admin/collections/:id/products" element={<AdminCollectionProductsPage />} />
+              <Route path="/admin/team" element={<AdminTeamPage />} />
+              <Route path="/admin/bulk-import" element={<AdminBulkImportPage />} />
+              <Route path="/admin/reports" element={<AdminReportsPage />} />
+              <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
+              <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+              <Route path="/admin/orders" element={<CompanyOrdersPage />} />
+              <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
+            </Route>
           </Routes>
         </div>
         <FeedbackButton />

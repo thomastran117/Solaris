@@ -103,6 +103,7 @@ public class EnvironmentSetting {
         private final Jwt jwt = new Jwt();
         private final Jwks jwks = new Jwks();
         private final Cookie cookie = new Cookie();
+        private final RateLimits rateLimits = new RateLimits();
 
         private String googleClientId = "";
         private String microsoftClientId = "";
@@ -135,6 +136,10 @@ public class EnvironmentSetting {
 
         public Cookie getCookie() {
             return cookie;
+        }
+
+        public RateLimits getRateLimits() {
+            return rateLimits;
         }
 
         public String getGoogleClientId() {
@@ -348,6 +353,61 @@ public class EnvironmentSetting {
             public void setSameSite(String sameSite) {
                 this.sameSite = sameSite;
             }
+        }
+
+        /**
+         * Per-endpoint auth rate-limit buckets. Values map to {@code enforce()} calls in
+         * AuthController. All limits apply within {@code windowSeconds}. Lockout settings
+         * apply only to the credential-check (password) login path.
+         */
+        public static class RateLimits {
+            private int loginPerIpLimit = 10;
+            private int loginPerEmailLimit = 5;
+            private int signupPerIpLimit = 5;
+            private int oauthPerIpLimit = 10;
+            private int verifyPerIpLimit = 10;
+            private int verifyDevicePerIpLimit = 10;
+            private int refreshPerIpLimit = 30;
+            private int windowSeconds = 60;
+            /** Number of credential failures within lockoutWindowSeconds before the account is locked. */
+            private int lockoutThreshold = 10;
+            /** Rolling window (seconds) used to count credential failures per email. */
+            private int lockoutWindowSeconds = 600;
+            /** Duration (seconds) the lockout key survives after the threshold is crossed. */
+            private int lockoutDurationSeconds = 900;
+
+            public int getLoginPerIpLimit() { return loginPerIpLimit; }
+            public void setLoginPerIpLimit(int v) { loginPerIpLimit = Math.max(1, v); }
+
+            public int getLoginPerEmailLimit() { return loginPerEmailLimit; }
+            public void setLoginPerEmailLimit(int v) { loginPerEmailLimit = Math.max(1, v); }
+
+            public int getSignupPerIpLimit() { return signupPerIpLimit; }
+            public void setSignupPerIpLimit(int v) { signupPerIpLimit = Math.max(1, v); }
+
+            public int getOauthPerIpLimit() { return oauthPerIpLimit; }
+            public void setOauthPerIpLimit(int v) { oauthPerIpLimit = Math.max(1, v); }
+
+            public int getVerifyPerIpLimit() { return verifyPerIpLimit; }
+            public void setVerifyPerIpLimit(int v) { verifyPerIpLimit = Math.max(1, v); }
+
+            public int getVerifyDevicePerIpLimit() { return verifyDevicePerIpLimit; }
+            public void setVerifyDevicePerIpLimit(int v) { verifyDevicePerIpLimit = Math.max(1, v); }
+
+            public int getRefreshPerIpLimit() { return refreshPerIpLimit; }
+            public void setRefreshPerIpLimit(int v) { refreshPerIpLimit = Math.max(1, v); }
+
+            public int getWindowSeconds() { return windowSeconds; }
+            public void setWindowSeconds(int v) { windowSeconds = Math.max(1, v); }
+
+            public int getLockoutThreshold() { return lockoutThreshold; }
+            public void setLockoutThreshold(int v) { lockoutThreshold = Math.max(1, v); }
+
+            public int getLockoutWindowSeconds() { return lockoutWindowSeconds; }
+            public void setLockoutWindowSeconds(int v) { lockoutWindowSeconds = Math.max(60, v); }
+
+            public int getLockoutDurationSeconds() { return lockoutDurationSeconds; }
+            public void setLockoutDurationSeconds(int v) { lockoutDurationSeconds = Math.max(60, v); }
         }
     }
 

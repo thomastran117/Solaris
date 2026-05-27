@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -90,15 +89,8 @@ function SectionHead({ kicker, title }: { kicker: string; title: string }) {
 type LookbackDays = 7 | 30 | 90;
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
   const { fadeInUp, stagger } = useAnims();
-  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const companyId   = useSelector((s: RootState) => s.auth.companyId);
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!accessToken) navigate("/login");
-  }, [accessToken, navigate]);
 
   // ---- Global time range ----
   const [lookbackDays, setLookbackDays] = useState<LookbackDays>(30);

@@ -27,9 +27,11 @@ public interface AuthService {
     }
 
     /**
-     * Result of a successful token refresh: new access token and refresh token.
+     * Result of a successful token refresh: new access token and refresh token,
+     * plus user identity fields so clients can repopulate their auth store.
      */
-    record RefreshResult(String accessToken, String refreshToken, long expiresInSeconds) {}
+    record RefreshResult(String accessToken, String refreshToken, long expiresInSeconds,
+                         String email, String role, String tier) {}
 
     /**
      * Authenticate user with email/password. Returns a LoginAttemptResult — either tokens

@@ -32,8 +32,16 @@ public interface TokenService {
 
     /**
      * Returns payload for a valid cache-backed refresh token, or null if invalid/expired/revoked.
+     * Does NOT consume the token — use {@link #consumeRefreshToken} for one-time consumption.
      */
     RefreshTokenPayload getRefreshTokenPayload(String refreshToken);
+
+    /**
+     * Atomically removes the token from cache (GETDEL) and cleans up the user-set index.
+     * Returns the stored payload, or null if the token was not found, already consumed, or expired.
+     * Exactly one concurrent caller receives a non-null result.
+     */
+    RefreshTokenPayload consumeRefreshToken(String token);
 
     /**
      * Invalidates the old refresh token and issues a new one (rotation). Old token must be valid.

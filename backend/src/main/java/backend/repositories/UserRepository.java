@@ -13,6 +13,12 @@ import org.springframework.stereotype.Repository;
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByGoogleId(String googleId);
+
+    Optional<User> findByMicrosoftId(String microsoftId);
+
+    Optional<User> findByAppleId(String appleId);
+
     Optional<User> findByStripeCustomerId(String stripeCustomerId);
 
     Optional<User> findByPremiumStripeSubscriptionId(String premiumStripeSubscriptionId);

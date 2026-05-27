@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import App from "./App.tsx";
 import { store } from "./stores";
+import AuthInitializer from "./components/auth/AuthInitializer.tsx";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,7 +17,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <AuthInitializer>
+          <App />
+        </AuthInitializer>
       </QueryClientProvider>
     </Provider>
   </StrictMode>

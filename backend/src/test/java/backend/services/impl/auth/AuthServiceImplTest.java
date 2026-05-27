@@ -17,6 +17,7 @@ import backend.testutil.TestIds;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.UnauthorizedException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -106,7 +107,7 @@ class AuthServiceImplTest {
         User user = makeUser(TestIds.uuid(2));
         when(oauthService.verifyGoogleToken("g-id-token"))
                 .thenReturn(new OAuthUser("sub", "g@test.com", "Google User", "google"));
-        when(userService.loginOrSignupGoogle("g@test.com")).thenReturn(user);
+        when(userService.loginOrSignupGoogle(any(OAuthUser.class))).thenReturn(user);
         when(deviceService.isKnownDevice(TestIds.uuid(2), FINGERPRINT)).thenReturn(true);
 
         AuthService.LoginAttemptResult result = service.googleAuthenicate("g-id-token");
@@ -120,7 +121,7 @@ class AuthServiceImplTest {
         User user = makeUser(TestIds.uuid(2), "g@test.com");
         when(oauthService.verifyGoogleToken("g-id-token"))
                 .thenReturn(new OAuthUser("sub", "g@test.com", "Google User", "google"));
-        when(userService.loginOrSignupGoogle("g@test.com")).thenReturn(user);
+        when(userService.loginOrSignupGoogle(any(OAuthUser.class))).thenReturn(user);
         when(deviceService.isKnownDevice(TestIds.uuid(2), FINGERPRINT)).thenReturn(false);
 
         AuthService.LoginAttemptResult result = service.googleAuthenicate("g-id-token");
@@ -136,7 +137,7 @@ class AuthServiceImplTest {
         User user = makeUser(TestIds.uuid(3));
         when(oauthService.verifyMicrosoftToken("ms-tok"))
                 .thenReturn(new OAuthUser("sub", "m@test.com", "MS User", "microsoft"));
-        when(userService.loginOrSignupMicrosoft("m@test.com")).thenReturn(user);
+        when(userService.loginOrSignupMicrosoft(any(OAuthUser.class))).thenReturn(user);
         when(deviceService.isKnownDevice(TestIds.uuid(3), FINGERPRINT)).thenReturn(true);
 
         AuthService.LoginAttemptResult result = service.microsoftAuthenticate("ms-tok");
@@ -151,7 +152,7 @@ class AuthServiceImplTest {
         User user = makeUser(TestIds.uuid(4));
         when(oauthService.verifyAppleToken("apple-tok"))
                 .thenReturn(new OAuthUser("sub", "a@icloud.com", "Apple User", "apple"));
-        when(userService.loginOrSignupApple("a@icloud.com")).thenReturn(user);
+        when(userService.loginOrSignupApple(any(OAuthUser.class))).thenReturn(user);
         when(deviceService.isKnownDevice(TestIds.uuid(4), FINGERPRINT)).thenReturn(true);
 
         AuthService.LoginAttemptResult result = service.appleAuthenticate("apple-tok");
@@ -167,40 +168,49 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void refresh_tokenFailsValidation_throwsUnauthorized() {
-        when(tokenService.validateRefreshToken("bad")).thenReturn(false);
+    void refresh_consumeReturnsNull_throwsUnauthorized() {
+        when(tokenService.consumeRefreshToken("bad")).thenReturn(null);
         assertThrows(UnauthorizedException.class, () -> service.refresh("bad"));
     }
 
     @Test
-    void refresh_payloadNull_throwsUnauthorized() {
-        when(tokenService.validateRefreshToken("tok")).thenReturn(true);
-        when(tokenService.getRefreshTokenPayload("tok")).thenReturn(null);
-        assertThrows(UnauthorizedException.class, () -> service.refresh("tok"));
-    }
-
-    @Test
-    void refresh_validToken_revokesOldAndReturnsNewTokens() {
+    void refresh_validToken_atomicallyConsumesAndReturnsNewTokens() {
         UUID userId = TestIds.uuid(5);
         User user = makeUser(userId);
         TokenService.RefreshTokenPayload payload =
                 new TokenService.RefreshTokenPayload(userId, "USER", "u@test.com");
 
-        when(tokenService.validateRefreshToken("old-tok")).thenReturn(true);
-        when(tokenService.getRefreshTokenPayload("old-tok")).thenReturn(payload);
-        when(userService.getUserByID(userId)).thenReturn(user);
-        when(tokenService.generateRefreshToken(userId, "USER", "u@test.com"))
-                .thenReturn("new-refresh");
-        when(tokenService.generateAccessToken(userId, "USER", "u@test.com"))
-                .thenReturn("new-access");
+        when(tokenService.consumeRefreshToken("old-tok")).thenReturn(payload);
+        when(userService.getAccessibleUserByID(userId)).thenReturn(user);
+        when(tokenService.generateRefreshToken(userId, "USER", "u@test.com")).thenReturn("new-refresh");
+        when(tokenService.generateAccessToken(userId, "USER", "u@test.com")).thenReturn("new-access");
         when(tokenService.getAccessTokenExpiresInSeconds()).thenReturn(900L);
 
         AuthService.RefreshResult result = service.refresh("old-tok");
 
-        verify(tokenService).revokeRefreshToken("old-tok");
+        // consumeRefreshToken is the single atomic gating call — no separate revoke
+        verify(tokenService).consumeRefreshToken("old-tok");
+        verify(tokenService, never()).revokeRefreshToken(any());
         assertEquals("new-access", result.accessToken());
         assertEquals("new-refresh", result.refreshToken());
         assertEquals(900L, result.expiresInSeconds());
+        assertEquals("u@test.com", result.email());
+        assertEquals("USER", result.role());
+        assertEquals("FREE", result.tier());
+    }
+
+    @Test
+    void refresh_blockedUser_throwsForbiddenAfterConsumingToken() {
+        UUID userId = TestIds.uuid(5);
+        TokenService.RefreshTokenPayload payload =
+                new TokenService.RefreshTokenPayload(userId, "USER", "u@test.com");
+
+        when(tokenService.consumeRefreshToken("tok")).thenReturn(payload);
+        when(userService.getAccessibleUserByID(userId))
+                .thenThrow(new ForbiddenException("Account suspended"));
+
+        assertThrows(ForbiddenException.class, () -> service.refresh("tok"));
+        verify(tokenService).consumeRefreshToken("tok");
     }
 
     // ─── signup ──────────────────────────────────────────────────────────────
@@ -248,7 +258,7 @@ class AuthServiceImplTest {
                 userId, FINGERPRINT, "Chrome", "Windows", DeviceType.DESKTOP, "1.2.3.4", "Mozilla/5.0"
         );
         when(deviceService.consumeDeviceVerificationToken("dv-tok")).thenReturn(dvp);
-        when(userService.getUserByID(userId)).thenReturn(user);
+        when(userService.getAccessibleUserByID(userId)).thenReturn(user);
 
         AuthService.LoginResult result = service.verifyDevice("dv-tok");
 

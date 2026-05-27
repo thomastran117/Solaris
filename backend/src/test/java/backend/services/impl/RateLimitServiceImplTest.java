@@ -97,4 +97,100 @@ class RateLimitServiceImplTest {
         service.enforce("scope", "sub", 5, 120);
         verify(cache).incrementWithTtl(anyString(), eq(120L));
     }
+
+    // ─── enforceLoginLockout ──────────────────────────────────────────────────
+
+    @Test
+    void enforceLoginLockout_noLockoutKey_doesNotThrow() {
+        when(cache.exists("lockout:until:user@example.com")).thenReturn(false);
+        assertDoesNotThrow(() -> service.enforceLoginLockout("user@example.com"));
+    }
+
+    @Test
+    void enforceLoginLockout_lockoutKeyPresent_throwsTooManyRequest() {
+        when(cache.exists("lockout:until:user@example.com")).thenReturn(true);
+        assertThrows(TooManyRequestException.class,
+                () -> service.enforceLoginLockout("user@example.com"));
+    }
+
+    @Test
+    void enforceLoginLockout_nullEmail_skipsCheck() {
+        service.enforceLoginLockout(null);
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void enforceLoginLockout_blankEmail_skipsCheck() {
+        service.enforceLoginLockout("   ");
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void enforceLoginLockout_cacheThrows_failsOpen() {
+        when(cache.exists(anyString())).thenThrow(new RuntimeException("Redis down"));
+        assertDoesNotThrow(() -> service.enforceLoginLockout("user@example.com"));
+    }
+
+    // ─── recordLoginFailure ───────────────────────────────────────────────────
+
+    @Test
+    void recordLoginFailure_belowThreshold_doesNotSetLockout() {
+        when(cache.incrementWithTtl("lockout:count:user@example.com", 600L)).thenReturn(2L);
+        service.recordLoginFailure("user@example.com", 5, 600, 900);
+        verify(cache, never()).set(eq("lockout:until:user@example.com"), anyString(), anyLong());
+    }
+
+    @Test
+    void recordLoginFailure_atThreshold_setsLockoutKey() {
+        when(cache.incrementWithTtl("lockout:count:user@example.com", 600L)).thenReturn(5L);
+        service.recordLoginFailure("user@example.com", 5, 600, 900);
+        verify(cache).set("lockout:until:user@example.com", "1", 900L);
+    }
+
+    @Test
+    void recordLoginFailure_aboveThreshold_setsLockoutKey() {
+        when(cache.incrementWithTtl("lockout:count:user@example.com", 600L)).thenReturn(8L);
+        service.recordLoginFailure("user@example.com", 5, 600, 900);
+        verify(cache).set("lockout:until:user@example.com", "1", 900L);
+    }
+
+    @Test
+    void recordLoginFailure_nullEmail_skipsCheck() {
+        service.recordLoginFailure(null, 5, 600, 900);
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void recordLoginFailure_cacheThrows_failsOpen() {
+        when(cache.incrementWithTtl(anyString(), anyLong()))
+                .thenThrow(new RuntimeException("Redis down"));
+        assertDoesNotThrow(() -> service.recordLoginFailure("user@example.com", 5, 600, 900));
+    }
+
+    // ─── clearLoginFailures ───────────────────────────────────────────────────
+
+    @Test
+    void clearLoginFailures_deletesBothKeys() {
+        service.clearLoginFailures("user@example.com");
+        verify(cache).delete("lockout:count:user@example.com");
+        verify(cache).delete("lockout:until:user@example.com");
+    }
+
+    @Test
+    void clearLoginFailures_nullEmail_skipsCheck() {
+        service.clearLoginFailures(null);
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void clearLoginFailures_blankEmail_skipsCheck() {
+        service.clearLoginFailures("  ");
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void clearLoginFailures_cacheThrows_failsOpen() {
+        doThrow(new RuntimeException("Redis down")).when(cache).delete(anyString());
+        assertDoesNotThrow(() -> service.clearLoginFailures("user@example.com"));
+    }
 }

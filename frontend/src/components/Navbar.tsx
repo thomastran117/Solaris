@@ -71,7 +71,7 @@ export default function Navbar() {
       // Ignore errors — token may already be expired. Always clear local state.
     }
     dispatch(clearCredentials());
-    navigate("/auth");
+    navigate("/login");
   };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>

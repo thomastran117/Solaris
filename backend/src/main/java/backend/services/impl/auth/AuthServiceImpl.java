@@ -49,42 +49,41 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public RefreshResult refresh(String refreshToken) {
-        if (refreshToken == null || !tokenService.validateRefreshToken(refreshToken)) {
-            throw new UnauthorizedException("Invalid or expired refresh token");
-        }
-        TokenService.RefreshTokenPayload payload = tokenService.getRefreshTokenPayload(refreshToken);
+        // consumeRefreshToken performs a single atomic GETDEL: exactly one concurrent
+        // caller receives the payload; every other caller gets null and is rejected.
+        TokenService.RefreshTokenPayload payload = tokenService.consumeRefreshToken(refreshToken);
         if (payload == null) {
             throw new UnauthorizedException("Invalid or expired refresh token");
         }
 
-        User user = userService.getUserByID(payload.userId());
+        User user = userService.getAccessibleUserByID(payload.userId());
 
-        tokenService.revokeRefreshToken(refreshToken);
         String newRefreshToken = tokenService.generateRefreshToken(user.getId(), user.getRole().toString(), user.getEmail());
         String newAccessToken = tokenService.generateAccessToken(user.getId(), user.getRole().toString(), user.getEmail());
         long expiresIn = tokenService.getAccessTokenExpiresInSeconds();
 
-        return new RefreshResult(newAccessToken, newRefreshToken, expiresIn);
+        return new RefreshResult(newAccessToken, newRefreshToken, expiresIn,
+                user.getEmail(), user.getRole().toString(), user.getTier().name());
     }
 
     @Override
     public LoginAttemptResult googleAuthenicate(String token) {
         OAuthUser oauthUser = oauthService.verifyGoogleToken(token);
-        User user = userService.loginOrSignupGoogle(oauthUser.email());
+        User user = userService.loginOrSignupGoogle(oauthUser);
         return handleDeviceCheck(user);
     }
 
     @Override
     public LoginAttemptResult microsoftAuthenticate(String token) {
         OAuthUser oauthUser = oauthService.verifyMicrosoftToken(token);
-        User user = userService.loginOrSignupMicrosoft(oauthUser.email());
+        User user = userService.loginOrSignupMicrosoft(oauthUser);
         return handleDeviceCheck(user);
     }
 
     @Override
     public LoginAttemptResult appleAuthenticate(String token) {
         OAuthUser oauthUser = oauthService.verifyAppleToken(token);
-        User user = userService.loginOrSignupApple(oauthUser.email());
+        User user = userService.loginOrSignupApple(oauthUser);
         return handleDeviceCheck(user);
     }
 
@@ -113,7 +112,7 @@ public class AuthServiceImpl implements AuthService {
                 payload.userAgent()
         );
         deviceService.recordDeviceSeen(payload.userId(), reconstructed);
-        User user = userService.getUserByID(payload.userId());
+        User user = userService.getAccessibleUserByID(payload.userId());
         return buildLoginResult(user);
     }
 
