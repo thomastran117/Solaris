@@ -120,6 +120,9 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                         i.getFulfillmentStatus(),
                         null,
                         null,
+                        null,
+                        null,
+                        null,
                         i.getDiscountAmount(),
                         i.getFulfillmentMethod()))
                 .toList();

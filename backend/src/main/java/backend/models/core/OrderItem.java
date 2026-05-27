@@ -110,6 +110,18 @@ public class OrderItem {
     @Column(name = "bundle_name", nullable = true, length = 255)
     private String bundleName;
 
+    /** Non-null for kit order items; null for regular product/bundle items. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "kit_id", nullable = true)
+    private ProductKit kit;
+
+    /** Snapshot of kit name at order time. */
+    @Column(name = "kit_name", nullable = true, length = 255)
+    private String kitName;
+
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<OrderKitSelection> kitSelections = new java.util.ArrayList<>();
+
     /**
      * Denormalized FK to the MarketplaceVendor that owns this line item's product.
      * Null for standalone (non-marketplace) orders. Set at order creation time from

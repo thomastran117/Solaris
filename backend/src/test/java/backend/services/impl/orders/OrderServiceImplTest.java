@@ -111,6 +111,7 @@ class OrderServiceImplTest {
                 mock(InventoryAdjustmentRepository.class),
                 mock(InventoryLocationRepository.class),
                 mock(BundleRepository.class),
+                mock(backend.repositories.ProductKitRepository.class),
                 mock(UserRepository.class),
                 mock(CompanyRepository.class),
                 mock(CouponRepository.class),

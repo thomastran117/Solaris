@@ -288,6 +288,9 @@ class OrderControllerTest {
                         FulfillmentStatus.PENDING,
                         null,
                         null,
+                        null,
+                        null,
+                        null,
                         BigDecimal.ZERO,
                         FulfillmentMethod.DELIVERY
                 )),

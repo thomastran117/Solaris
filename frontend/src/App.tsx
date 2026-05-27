@@ -22,6 +22,9 @@ import AdminCollectionProductsPage from "./pages/admin/AdminCollectionProductsPa
 import AdminTeamPage from "./pages/admin/AdminTeamPage";
 import AdminBulkImportPage from "./pages/admin/AdminBulkImportPage";
 import AdminBundlesPage from "./pages/admin/AdminBundlesPage";
+import AdminKitsPage from "./pages/admin/AdminKitsPage";
+import AdminKitEditor from "./pages/admin/AdminKitEditor";
+import KitPage from "./pages/KitPage";
 import AdminReportsPage from "./pages/admin/AdminReportsPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
@@ -76,6 +79,7 @@ function App() {
             <Route path="/products/:id" element={<ProductPage />} />
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
+            <Route path="/kits/:companyId/:kitId" element={<KitPage />} />
             <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />
@@ -93,6 +97,9 @@ function App() {
               <Route path="/orders/:id" element={<OrderDetailPage />} />
               <Route path="/admin/products" element={<AdminProductsPage />} />
               <Route path="/admin/bundles" element={<AdminBundlesPage />} />
+              <Route path="/admin/kits" element={<AdminKitsPage />} />
+              <Route path="/admin/kits/new" element={<AdminKitEditor />} />
+              <Route path="/admin/kits/:id/edit" element={<AdminKitEditor />} />
               <Route path="/admin/products/new" element={<AdminProductEditor />} />
               <Route path="/admin/products/:id" element={<AdminProductEditor />} />
               <Route path="/admin/collections" element={<AdminCollectionsPage />} />

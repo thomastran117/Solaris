@@ -67,8 +67,13 @@ import backend.models.enums.RiskAction;
 import backend.models.enums.RiskAssessmentKind;
 import backend.models.enums.RiskMode;
 import backend.models.enums.RiskReviewStatus;
+import backend.models.core.KitSlot;
+import backend.models.core.KitSlotChoice;
+import backend.models.core.OrderKitSelection;
+import backend.models.core.ProductKit;
 import backend.repositories.BundleRepository;
 import backend.repositories.CommissionRecordRepository;
+import backend.repositories.ProductKitRepository;
 import backend.repositories.CouponRepository;
 import backend.repositories.VendorBalanceRepository;
 import backend.repositories.MarketplaceVendorRepository;
@@ -162,6 +167,7 @@ public class OrderServiceImpl implements OrderService {
     private final InventoryAdjustmentRepository adjustmentRepository;
     private final InventoryLocationRepository locationRepository;
     private final BundleRepository bundleRepository;
+    private final ProductKitRepository kitRepository;
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
     private final CouponRepository couponRepository;
@@ -206,6 +212,7 @@ public class OrderServiceImpl implements OrderService {
             InventoryAdjustmentRepository adjustmentRepository,
             InventoryLocationRepository locationRepository,
             BundleRepository bundleRepository,
+            ProductKitRepository kitRepository,
             UserRepository userRepository,
             CompanyRepository companyRepository,
             CouponRepository couponRepository,
@@ -245,6 +252,7 @@ public class OrderServiceImpl implements OrderService {
         this.adjustmentRepository = adjustmentRepository;
         this.locationRepository = locationRepository;
         this.bundleRepository = bundleRepository;
+        this.kitRepository = kitRepository;
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
         this.couponRepository = couponRepository;
@@ -303,13 +311,16 @@ public class OrderServiceImpl implements OrderService {
                     "Free accounts are limited to 50 items per order. Upgrade to Premium for up to 200 items.");
         }
 
-        // Validate: each item must have exactly one of productId or bundleId
+        // Validate: each item must have exactly one of productId, bundleId, or kitId
         for (CreateOrderRequest.OrderItemRequest ir : itemRequests) {
-            if (ir.getProductId() == null && ir.getBundleId() == null) {
-                throw new BadRequestException("Each order item must specify either a productId or a bundleId");
+            int typeCount = (ir.getProductId() != null ? 1 : 0)
+                    + (ir.getBundleId() != null ? 1 : 0)
+                    + (ir.getKitId() != null ? 1 : 0);
+            if (typeCount == 0) {
+                throw new BadRequestException("Each order item must specify either a productId, a bundleId, or a kitId");
             }
-            if (ir.getProductId() != null && ir.getBundleId() != null) {
-                throw new BadRequestException("Each order item must specify either a productId or a bundleId, not both");
+            if (typeCount > 1) {
+                throw new BadRequestException("Each order item must specify exactly one of productId, bundleId, or kitId");
             }
         }
 
@@ -343,9 +354,11 @@ public class OrderServiceImpl implements OrderService {
         }
 
         List<CreateOrderRequest.OrderItemRequest> productItemRequests = itemRequests.stream()
-                .filter(i -> i.getBundleId() == null).toList();
+                .filter(i -> i.getBundleId() == null && i.getKitId() == null).toList();
         List<CreateOrderRequest.OrderItemRequest> bundleItemRequests = itemRequests.stream()
                 .filter(i -> i.getBundleId() != null).toList();
+        List<CreateOrderRequest.OrderItemRequest> kitItemRequests = itemRequests.stream()
+                .filter(i -> i.getKitId() != null).toList();
 
         // Resolve and validate bundles before locking (fail fast)
         Map<UUID, ProductBundle> resolvedBundles = new HashMap<>();
@@ -360,6 +373,19 @@ public class OrderServiceImpl implements OrderService {
             resolvedBundles.put(bundleId, bundle);
         }
 
+        // Resolve and validate kits before locking (fail fast)
+        Map<UUID, ProductKit> resolvedKits = new HashMap<>();
+        for (CreateOrderRequest.OrderItemRequest ir : kitItemRequests) {
+            UUID kitId = ir.getKitId();
+            if (resolvedKits.containsKey(kitId)) continue;
+            ProductKit kit = kitRepository.findById(kitId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Kit not found with id: " + kitId));
+            if (kit.getStatus() != backend.models.enums.ProductStatus.ACTIVE || !kit.isListed()) {
+                throw new BadRequestException("Kit '" + kit.getName() + "' is not available for purchase");
+            }
+            resolvedKits.put(kitId, kit);
+        }
+
         // Collect product IDs from product items
         List<UUID> productIds = productItemRequests.stream()
                 .map(CreateOrderRequest.OrderItemRequest::getProductId)
@@ -371,6 +397,14 @@ public class OrderServiceImpl implements OrderService {
         for (ProductBundle bundle : resolvedBundles.values()) {
             for (BundleItem bi : bundle.getItems()) {
                 allProductIdSet.add(bi.getProduct().getId());
+            }
+        }
+        // Merge constituent product IDs from all kit selections into the lock set
+        for (CreateOrderRequest.OrderItemRequest ir : kitItemRequests) {
+            if (ir.getKitSelections() != null) {
+                for (CreateOrderRequest.KitSelectionRequest sel : ir.getKitSelections()) {
+                    if (sel.getProductId() != null) allProductIdSet.add(sel.getProductId());
+                }
             }
         }
         List<UUID> allProductIds = new ArrayList<>(allProductIdSet);
@@ -616,6 +650,109 @@ public class OrderServiceImpl implements OrderService {
                 orderItems.add(bundleItem);
             }
 
+            // Process kit items (inside lock block — all constituent product IDs already locked)
+            for (CreateOrderRequest.OrderItemRequest req : kitItemRequests) {
+                ProductKit kit = resolvedKits.get(req.getKitId());
+                int kitQty = req.getQuantity();
+                List<CreateOrderRequest.KitSelectionRequest> selections =
+                        req.getKitSelections() != null ? req.getKitSelections() : List.of();
+
+                validateKitSelections(kit, selections);
+
+                OrderItem kitItem = new OrderItem();
+                kitItem.setKit(kit);
+                kitItem.setKitName(kit.getName());
+                kitItem.setProduct(null);
+                kitItem.setQuantity(kitQty);
+                kitItem.setProductName(kit.getName());
+
+                List<Object[]> kitDecrProd = new ArrayList<>();
+                List<Object[]> kitDecrVar  = new ArrayList<>();
+                BigDecimal kitLineUnitPrice = BigDecimal.ZERO;
+                List<OrderKitSelection> orderSelections = new ArrayList<>();
+
+                for (CreateOrderRequest.KitSelectionRequest sel : selections) {
+                    KitSlot slot = kit.getSlots().stream()
+                            .filter(s -> s.getId().equals(sel.getSlotId()))
+                            .findFirst()
+                            .orElseThrow(() -> new BadRequestException("Unknown slot id: " + sel.getSlotId()));
+
+                    KitSlotChoice choice = slot.getChoices().stream()
+                            .filter(c -> c.getProduct().getId().equals(sel.getProductId())
+                                    && Objects.equals(
+                                            c.getVariant() != null ? c.getVariant().getId() : null,
+                                            sel.getVariantId()))
+                            .findFirst()
+                            .orElseThrow(() -> new BadRequestException(
+                                    "Invalid choice for slot '" + slot.getName() + "'"));
+
+                    Product selProd    = choice.getProduct();
+                    ProductVariant selVar = choice.getVariant();
+
+                    if (selProd.getStatus() != backend.models.enums.ProductStatus.ACTIVE || !selProd.isPurchasable()) {
+                        safeRestoreAll(kitDecrProd, kitDecrVar, Collections.emptyList());
+                        safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
+                        throw new BadRequestException("Kit '" + kit.getName()
+                                + "' — product '" + selProd.getName() + "' is not available");
+                    }
+                    if (selVar != null && !selVar.isPurchasable()) {
+                        safeRestoreAll(kitDecrProd, kitDecrVar, Collections.emptyList());
+                        safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
+                        throw new BadRequestException("Kit '" + kit.getName()
+                                + "' — selected variant of '" + selProd.getName() + "' is not available");
+                    }
+
+                    int totalUnits = kitQty * sel.getQuantity();
+                    int updated;
+                    if (selVar != null) {
+                        updated = variantRepository.decrementStock(selVar.getId(), totalUnits);
+                    } else {
+                        updated = productRepository.decrementStock(selProd.getId(), totalUnits);
+                    }
+
+                    if (updated == 0) {
+                        safeRestoreAll(kitDecrProd, kitDecrVar, Collections.emptyList());
+                        safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
+                        throw new ConflictException("Insufficient stock for '" + selProd.getName()
+                                + "' in kit '" + kit.getName() + "'");
+                    }
+
+                    if (selVar != null) kitDecrVar.add(new Object[]{selVar.getId(), totalUnits});
+                    else               kitDecrProd.add(new Object[]{selProd.getId(), totalUnits});
+
+                    Integer actualStock = selVar != null ? selVar.getStock() : selProd.getStock();
+                    if (actualStock != null) {
+                        purchaseRecords.add(new PurchaseRecord(selProd, selVar, actualStock, actualStock - totalUnits));
+                    }
+
+                    BigDecimal base = selVar != null ? selVar.getPrice() : selProd.getPrice();
+                    BigDecimal delta = choice.getPriceDelta() != null ? choice.getPriceDelta() : BigDecimal.ZERO;
+                    BigDecimal effectiveUnit = base.add(delta);
+                    kitLineUnitPrice = kitLineUnitPrice.add(effectiveUnit.multiply(BigDecimal.valueOf(sel.getQuantity())));
+
+                    String variantTitle = selVar != null ? buildVariantTitle(selVar) : null;
+                    OrderKitSelection oks = new OrderKitSelection();
+                    oks.setOrderItem(kitItem);
+                    oks.setSlot(slot);
+                    oks.setSlotName(slot.getName());
+                    oks.setProduct(selProd);
+                    oks.setProductName(selProd.getName());
+                    oks.setVariant(selVar);
+                    oks.setVariantTitle(variantTitle);
+                    oks.setVariantSku(selVar != null ? selVar.getSku() : null);
+                    oks.setQuantity(sel.getQuantity());
+                    oks.setUnitPrice(effectiveUnit);
+                    orderSelections.add(oks);
+                }
+
+                decrementedProducts.addAll(kitDecrProd);
+                decrementedVariants.addAll(kitDecrVar);
+
+                kitItem.setUnitPrice(kitLineUnitPrice);
+                kitItem.setKitSelections(orderSelections);
+                orderItems.add(kitItem);
+            }
+
             String currency = request.getCurrency() != null ? request.getCurrency().toLowerCase() : "usd";
 
             // --- Build cart lines for the pricing engine (products + bundles).
@@ -645,6 +782,18 @@ public class OrderServiceImpl implements OrderService {
                             item.getUnitPrice(),
                             item.getBundle().getCompany().getId(),
                             item.getBundle().getId()));
+                    itemsInLineOrder.add(item);
+                } else if (item.getKit() != null) {
+                    // Kit lines pass through the pricing engine as a single line at their computed price.
+                    // Promotion rules do not apply to kit lines (same treatment as bundles).
+                    cartLines.add(new CartLine(
+                            lineIdx++,
+                            null,
+                            null,
+                            item.getQuantity(),
+                            item.getUnitPrice(),
+                            item.getKit().getCompany().getId(),
+                            null));
                     itemsInLineOrder.add(item);
                 }
             }
@@ -1595,6 +1744,19 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
+        if (item.getKit() != null) {
+            // Restore each selected component's stock
+            for (OrderKitSelection oks : item.getKitSelections()) {
+                int totalQty = item.getQuantity() * oks.getQuantity();
+                if (oks.getVariant() != null) {
+                    variantRepository.restoreStock(oks.getVariant().getId(), totalQty);
+                } else if (oks.getProduct() != null) {
+                    productRepository.restoreStock(oks.getProduct().getId(), totalQty);
+                }
+            }
+            return;
+        }
+
         if (item.getVariant() != null) {
             variantRepository.restoreStock(item.getVariant().getId(), item.getQuantity());
         } else {
@@ -2089,6 +2251,21 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderItemResponse toItemResponse(OrderItem item) {
+        List<backend.dtos.responses.order.KitSelectionResponse> kitSelections = null;
+        if (item.getKit() != null && item.getKitSelections() != null) {
+            kitSelections = item.getKitSelections().stream()
+                    .map(oks -> new backend.dtos.responses.order.KitSelectionResponse(
+                            oks.getSlot() != null ? oks.getSlot().getId() : null,
+                            oks.getSlotName(),
+                            oks.getProduct() != null ? oks.getProduct().getId() : null,
+                            oks.getProductName(),
+                            oks.getVariant() != null ? oks.getVariant().getId() : null,
+                            oks.getVariantTitle(),
+                            oks.getVariantSku(),
+                            oks.getQuantity(),
+                            oks.getUnitPrice()))
+                    .toList();
+        }
         return new OrderItemResponse(
                 item.getId(),
                 item.getProduct() != null ? item.getProduct().getId() : null,
@@ -2103,10 +2280,44 @@ public class OrderServiceImpl implements OrderService {
                 item.getFulfillmentStatus(),
                 item.getBundle() != null ? item.getBundle().getId() : null,
                 item.getBundleName(),
+                item.getKit() != null ? item.getKit().getId() : null,
+                item.getKitName(),
+                kitSelections,
                 item.getDiscountAmount(),
                 item.getFulfillmentMethod()
         );
     }
+
+    private void validateKitSelections(ProductKit kit, List<CreateOrderRequest.KitSelectionRequest> selections) {
+        Map<UUID, CreateOrderRequest.KitSelectionRequest> bySlot = new HashMap<>();
+        for (CreateOrderRequest.KitSelectionRequest sel : selections) {
+            if (bySlot.put(sel.getSlotId(), sel) != null) {
+                throw new BadRequestException("Duplicate slot selection for slot id: " + sel.getSlotId());
+            }
+        }
+        for (KitSlot slot : kit.getSlots()) {
+            CreateOrderRequest.KitSelectionRequest sel = bySlot.get(slot.getId());
+            if (sel == null) {
+                if (slot.isRequired()) {
+                    throw new BadRequestException("Kit '" + kit.getName()
+                            + "' requires a selection for slot '" + slot.getName() + "'");
+                }
+                continue;
+            }
+            if (sel.getQuantity() < slot.getMinQty() || sel.getQuantity() > slot.getMaxQty()) {
+                throw new BadRequestException("Slot '" + slot.getName() + "' quantity must be between "
+                        + slot.getMinQty() + " and " + slot.getMaxQty());
+            }
+        }
+        // Ensure no unknown slot IDs were supplied
+        Set<UUID> kitSlotIds = kit.getSlots().stream().map(KitSlot::getId).collect(Collectors.toSet());
+        for (UUID slotId : bySlot.keySet()) {
+            if (!kitSlotIds.contains(slotId)) {
+                throw new BadRequestException("Unrecognised slot id in kit '" + kit.getName() + "': " + slotId);
+            }
+        }
+    }
+
 
     // -------------------------------------------------------------------------
     // Fulfillment transitions (merchant-facing)

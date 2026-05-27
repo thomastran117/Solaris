@@ -227,6 +227,9 @@ class CompanyOrderControllerTest {
                         FulfillmentStatus.PACKED,
                         null,
                         null,
+                        null,
+                        null,
+                        null,
                         BigDecimal.ZERO,
                         FulfillmentMethod.DELIVERY
                 )),

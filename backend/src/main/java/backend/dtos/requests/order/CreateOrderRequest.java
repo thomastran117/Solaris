@@ -87,17 +87,40 @@ public class CreateOrderRequest {
     @Setter
     public static class OrderItemRequest {
 
-        /** Either productId or bundleId must be set, not both. Validated in service layer. */
+        /** Exactly one of productId, bundleId, or kitId must be set. Validated in service layer. */
         private UUID productId;
 
         private UUID variantId;
 
-        /** Set to order a bundle instead of a single product. Mutually exclusive with productId. */
+        /** Set to order a bundle instead of a single product. Mutually exclusive with productId/kitId. */
         private UUID bundleId;
+
+        /** Set to order a configurable kit. Mutually exclusive with productId/bundleId. */
+        private UUID kitId;
+
+        /** Per-slot component selections for kit orders. Required when kitId is set. */
+        @Valid
+        private List<KitSelectionRequest> kitSelections;
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")
         @Max(value = 999, message = "Quantity must be at most 999")
         private Integer quantity;
+    }
+
+    @Getter
+    @Setter
+    public static class KitSelectionRequest {
+
+        @NotNull
+        private UUID slotId;
+
+        private UUID productId;
+
+        private UUID variantId;
+
+        @Min(value = 1)
+        @Max(value = 99)
+        private int quantity = 1;
     }
 }

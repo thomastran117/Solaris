@@ -10,6 +10,7 @@ import backend.models.core.User;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.UserRole;
 import backend.repositories.BundleRepository;
+import backend.repositories.ProductKitRepository;
 import backend.repositories.CommissionRecordRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.CouponPerUserCountRepository;
@@ -87,6 +88,7 @@ class OrderServiceRiskReviewScopeTest {
                 mock(InventoryAdjustmentRepository.class),
                 mock(InventoryLocationRepository.class),
                 mock(BundleRepository.class),
+                mock(ProductKitRepository.class),
                 mock(UserRepository.class),
                 companyRepository,
                 mock(CouponRepository.class),

@@ -233,6 +233,9 @@ public class SubOrderServiceImpl implements SubOrderService {
                 i.getFulfillmentStatus(),
                 i.getBundle() != null ? i.getBundle().getId() : null,
                 i.getBundleName(),
+                i.getKit() != null ? i.getKit().getId() : null,
+                i.getKitName(),
+                null,
                 i.getDiscountAmount(),
                 i.getFulfillmentMethod()
         );
