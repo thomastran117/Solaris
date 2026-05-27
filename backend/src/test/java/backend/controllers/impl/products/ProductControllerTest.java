@@ -4,6 +4,7 @@ import backend.configurations.application.GlobalExceptionHandler;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
+import backend.dtos.requests.product.BatchUpdateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
@@ -420,6 +421,54 @@ class ProductControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isCreated());
+    }
+
+    // ─── POST /companies/{companyId}/products/batch-update ────────────────────
+
+    @Test
+    void batchUpdateProducts_returns200WithResults() throws Exception {
+        authenticateAs(USER_ID);
+        when(productService.batchUpdateProducts(eq(COMPANY_ID), eq(USER_ID), any()))
+                .thenReturn(List.of(makeProductResponse("ACTIVE")));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(PRODUCT_ID));
+        req.setStatus(backend.models.enums.ProductStatus.ACTIVE);
+
+        mockMvc.perform(post("/companies/{cid}/products/batch-update", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(PRODUCT_ID.toString()));
+    }
+
+    @Test
+    void batchUpdateProducts_scheduledStatus_returns400() throws Exception {
+        authenticateAs(USER_ID);
+        when(productService.batchUpdateProducts(any(), any(), any()))
+                .thenThrow(new BadRequestException("SCHEDULED not allowed in bulk"));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(PRODUCT_ID));
+        req.setStatus(backend.models.enums.ProductStatus.SCHEDULED);
+
+        mockMvc.perform(post("/companies/{cid}/products/batch-update", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ─── POST /companies/{companyId}/products/{productId}/duplicate ───────────
+
+    @Test
+    void duplicateProduct_returns201() throws Exception {
+        authenticateAs(USER_ID);
+        when(productService.duplicateProduct(eq(COMPANY_ID), eq(PRODUCT_ID), eq(USER_ID)))
+                .thenReturn(makeProductResponse("DRAFT"));
+
+        mockMvc.perform(post("/companies/{cid}/products/{pid}/duplicate", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(PRODUCT_ID.toString()));
     }
 
     // ─── DELETE /companies/{companyId}/products/{productId}/variants/{variantId}

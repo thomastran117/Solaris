@@ -1,6 +1,8 @@
 package backend.controllers.impl.products;
 
 import backend.configurations.application.GlobalExceptionHandler;
+import backend.dtos.requests.product.BatchDeleteBundlesRequest;
+import backend.dtos.requests.product.BatchUpdateBundlesRequest;
 import backend.dtos.requests.product.BundleItemRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
 import backend.dtos.requests.product.UpdateBundleRequest;
@@ -180,6 +182,73 @@ class BundleControllerTest {
         mockMvc.perform(get("/companies/{cid}/bundles/compare", COMPANY_ID)
                         .param("ids", TestIds.uuid(10).toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ─── POST /companies/{companyId}/bundles/batch-update ─────────────────────
+
+    @Test
+    void batchUpdateBundles_returns200WithResults() throws Exception {
+        authenticateAs(USER_ID);
+        when(bundleService.batchUpdateBundles(eq(COMPANY_ID), eq(USER_ID), any()))
+                .thenReturn(List.of(makeBundleResponse()));
+
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID));
+        req.setListed(true);
+
+        mockMvc.perform(post("/companies/{cid}/bundles/batch-update", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(BUNDLE_ID.toString()));
+    }
+
+    @Test
+    void batchUpdateBundles_scheduledStatus_returns400() throws Exception {
+        authenticateAs(USER_ID);
+        when(bundleService.batchUpdateBundles(any(), any(), any()))
+                .thenThrow(new BadRequestException("SCHEDULED not allowed in bulk"));
+
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID));
+        req.setStatus(ProductStatus.SCHEDULED);
+
+        mockMvc.perform(post("/companies/{cid}/bundles/batch-update", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ─── POST /companies/{companyId}/bundles/batch-delete ─────────────────────
+
+    @Test
+    void batchDeleteBundles_returns204() throws Exception {
+        authenticateAs(USER_ID);
+
+        BatchDeleteBundlesRequest req = new BatchDeleteBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID));
+
+        mockMvc.perform(post("/companies/{cid}/bundles/batch-delete", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isNoContent());
+
+        verify(bundleService).batchDeleteBundles(eq(COMPANY_ID), eq(USER_ID), any());
+    }
+
+    @Test
+    void batchDeleteBundles_notFound_returns404() throws Exception {
+        authenticateAs(USER_ID);
+        doThrow(new ResourceNotFoundException("not found"))
+                .when(bundleService).batchDeleteBundles(any(), any(), any());
+
+        BatchDeleteBundlesRequest req = new BatchDeleteBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID));
+
+        mockMvc.perform(post("/companies/{cid}/bundles/batch-delete", COMPANY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isNotFound());
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────

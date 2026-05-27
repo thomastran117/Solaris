@@ -13,6 +13,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import backend.services.impl.SingleFlightCache;
 
+import backend.dtos.requests.product.BatchDeleteBundlesRequest;
+import backend.dtos.requests.product.BatchUpdateBundlesRequest;
 import backend.dtos.requests.product.BundleItemRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
 import backend.dtos.requests.product.UpdateBundleRequest;
@@ -190,6 +192,60 @@ public class BundleServiceImpl implements BundleService {
         eventPublisher.publishEvent(new BundleRemoveEvent(bundleId));
         evictAfterCommit(() -> {
             singleFlightCache.evict("bundle:" + companyId + ":" + bundleId);
+            singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*");
+        });
+    }
+
+    @Override
+    @Transactional
+    public List<BundleResponse> batchUpdateBundles(UUID companyId, UUID ownerId, BatchUpdateBundlesRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
+
+        if (request.getStatus() == ProductStatus.SCHEDULED) {
+            throw new BadRequestException("SCHEDULED status cannot be set in bulk — edit each bundle individually to set a publish date");
+        }
+
+        List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
+        if (bundles.size() != request.getIds().size()) {
+            throw new ResourceNotFoundException("One or more bundles were not found in this company");
+        }
+
+        List<BundleResponse> results = new ArrayList<>();
+        for (ProductBundle bundle : bundles) {
+            if (request.getStatus() != null) bundle.setStatus(request.getStatus());
+            if (request.getListed() != null) bundle.setListed(request.getListed());
+
+            ProductBundle saved = bundleRepository.save(bundle);
+            eventPublisher.publishEvent(new BundleIndexEvent(saved));
+            results.add(toResponse(saved));
+        }
+
+        final List<UUID> updatedIds = bundles.stream().map(ProductBundle::getId).toList();
+        evictAfterCommit(() -> {
+            for (UUID id : updatedIds) singleFlightCache.evict("bundle:" + companyId + ":" + id);
+            singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*");
+        });
+        return results;
+    }
+
+    @Override
+    @Transactional
+    public void batchDeleteBundles(UUID companyId, UUID ownerId, BatchDeleteBundlesRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
+
+        List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
+        if (bundles.size() != request.getIds().size()) {
+            throw new ResourceNotFoundException("One or more bundles were not found in this company");
+        }
+
+        bundleRepository.deleteAll(bundles);
+        for (ProductBundle b : bundles) {
+            eventPublisher.publishEvent(new BundleRemoveEvent(b.getId()));
+        }
+
+        final List<UUID> deletedIds = bundles.stream().map(ProductBundle::getId).toList();
+        evictAfterCommit(() -> {
+            for (UUID id : deletedIds) singleFlightCache.evict("bundle:" + companyId + ":" + id);
             singleFlightCache.evictByPattern("bundles:list:" + companyId + ":*");
         });
     }

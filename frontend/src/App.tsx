@@ -21,6 +21,7 @@ import AdminCollectionEditor from "./pages/admin/AdminCollectionEditor";
 import AdminCollectionProductsPage from "./pages/admin/AdminCollectionProductsPage";
 import AdminTeamPage from "./pages/admin/AdminTeamPage";
 import AdminBulkImportPage from "./pages/admin/AdminBulkImportPage";
+import AdminBundlesPage from "./pages/admin/AdminBundlesPage";
 import AdminReportsPage from "./pages/admin/AdminReportsPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import CollectionPage from "./pages/CollectionPage";
@@ -75,6 +76,7 @@ function App() {
             <Route path="/lists/:id" element={<SavedListDetailPage />} />
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
             <Route path="/admin/products" element={<AdminProductsPage />} />
+            <Route path="/admin/bundles" element={<AdminBundlesPage />} />
             <Route path="/admin/products/new" element={<AdminProductEditor />} />
             <Route path="/admin/products/:id" element={<AdminProductEditor />} />
             <Route path="/admin/collections" element={<AdminCollectionsPage />} />

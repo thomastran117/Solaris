@@ -34,6 +34,7 @@ import backend.events.ProductRemoveEvent;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
+import backend.dtos.requests.product.BatchUpdateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
@@ -548,6 +549,179 @@ public class ProductServiceImpl implements ProductService {
                 singleFlightCache.evictByPattern("marketplace:storefront:" + mpId + ":*");
             }
         });
+    }
+
+    @Override
+    @Transactional
+    public List<ProductResponse> batchUpdateProducts(UUID companyId, UUID ownerId, BatchUpdateProductsRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
+
+        if (request.getStatus() == ProductStatus.SCHEDULED) {
+            throw new BadRequestException("SCHEDULED status cannot be set in bulk — use individual product edit to set a publish date");
+        }
+
+        List<Product> products = productRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
+        if (products.size() != request.getIds().size()) {
+            throw new ResourceNotFoundException("One or more products were not found in this company");
+        }
+
+        boolean needsImageCheck = request.getStatus() == ProductStatus.ACTIVE
+                || Boolean.TRUE.equals(request.getListed());
+        if (needsImageCheck) {
+            List<String> missing = new java.util.ArrayList<>();
+            for (Product p : products) {
+                if (productImageRepository.countByProductId(p.getId()) < 1) {
+                    missing.add(p.getName());
+                }
+            }
+            if (!missing.isEmpty()) {
+                throw new BadRequestException(
+                        "The following products need at least one image before being activated or listed: "
+                                + String.join(", ", missing));
+            }
+        }
+
+        List<ProductResponse> results = new java.util.ArrayList<>();
+        Set<UUID> affectedMarketplaces = new java.util.HashSet<>();
+
+        for (Product product : products) {
+            Product before = productChangeLogger.snapshot(product);
+            if (request.getStatus() != null) {
+                applyStatusTransition(product, request.getStatus(), null, false);
+            }
+            if (request.getFeatured() != null) product.setFeatured(request.getFeatured());
+            if (request.getListed() != null) product.setListed(request.getListed());
+            if (request.getCategory() != null) product.setCategory(request.getCategory());
+            if (request.getBrand() != null) product.setBrand(request.getBrand());
+
+            Product saved = productRepository.save(product);
+            productChangeLogger.logUpdate(before, saved, ChangeSource.USER, null);
+            eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
+            if (saved.getMarketplaceId() != null) affectedMarketplaces.add(saved.getMarketplaceId());
+            results.add(toResponse(saved));
+        }
+
+        final Set<UUID> mpIds = affectedMarketplaces;
+        final List<UUID> updatedIds = products.stream().map(Product::getId).toList();
+        evictAfterCommit(() -> {
+            for (UUID id : updatedIds) singleFlightCache.evict("product:" + companyId + ":" + id);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            for (UUID mpId : mpIds) {
+                singleFlightCache.evictByPattern("marketplace:search:" + mpId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + mpId + ":*");
+            }
+        });
+        return results;
+    }
+
+    @Override
+    @Transactional
+    public ProductResponse duplicateProduct(UUID companyId, UUID productId, UUID ownerId) {
+        Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
+
+        Product source = productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        Product copy = new Product();
+        copy.setCompany(company);
+        copy.setName(source.getName() + " (Copy)");
+        copy.setDescription(source.getDescription());
+        copy.setSku(null);
+        copy.setPrice(source.getPrice());
+        copy.setCompareAtPrice(source.getCompareAtPrice());
+        copy.setCurrency(source.getCurrency());
+        copy.setCategory(source.getCategory());
+        copy.setBrand(source.getBrand());
+        copy.setTags(source.getTags());
+        copy.setThumbnailUrl(source.getThumbnailUrl());
+        copy.setStock(source.getStock());
+        copy.setWeight(source.getWeight());
+        copy.setWeightUnit(source.getWeightUnit());
+        copy.setFeatured(false);
+        copy.setPurchasable(source.isPurchasable());
+        copy.setListed(false);
+        copy.setStatus(ProductStatus.DRAFT);
+        copy.setLowStockThreshold(source.getLowStockThreshold());
+        copy.setLowStockThresholdPercent(source.getLowStockThresholdPercent());
+        copy.setMaxStock(source.getMaxStock());
+        copy.setAutoRestockEnabled(source.isAutoRestockEnabled());
+        copy.setAutoRestockQty(source.getAutoRestockQty());
+        copy.setBackorderEnabled(source.isBackorderEnabled());
+        copy.setPreorderEnabled(source.isPreorderEnabled());
+        copy.setSubscribable(source.isSubscribable());
+        copy.setSubscriptionIntervals(source.getSubscriptionIntervals());
+        copy.setSubscriptionDiscountPercent(source.getSubscriptionDiscountPercent());
+
+        Product saved = productRepository.save(copy);
+
+        // Copy images
+        List<backend.models.core.ProductImage> images = productImageRepository
+                .findAllByProductIdOrderByDisplayOrderAsc(source.getId());
+        for (int i = 0; i < images.size(); i++) {
+            backend.models.core.ProductImage img = new backend.models.core.ProductImage();
+            img.setProduct(saved);
+            img.setImageUrl(images.get(i).getImageUrl());
+            img.setDisplayOrder(i);
+            productImageRepository.save(img);
+        }
+
+        // Copy options
+        List<backend.models.core.ProductOption> options = productOptionRepository
+                .findAllByProductIdOrderByPositionAsc(source.getId());
+        for (backend.models.core.ProductOption opt : options) {
+            backend.models.core.ProductOption newOpt = new backend.models.core.ProductOption();
+            newOpt.setProduct(saved);
+            newOpt.setName(opt.getName());
+            newOpt.setPosition(opt.getPosition());
+            productOptionRepository.save(newOpt);
+        }
+
+        // Copy variants (sku cleared)
+        List<backend.models.core.ProductVariant> variants = productVariantRepository
+                .findAllByProductIdOrderByDisplayOrderAsc(source.getId());
+        for (backend.models.core.ProductVariant v : variants) {
+            backend.models.core.ProductVariant newV = new backend.models.core.ProductVariant();
+            newV.setProduct(saved);
+            newV.setSku(null);
+            newV.setPrice(v.getPrice());
+            newV.setCompareAtPrice(v.getCompareAtPrice());
+            newV.setStock(v.getStock());
+            newV.setLowStockThreshold(v.getLowStockThreshold());
+            newV.setLowStockThresholdPercent(v.getLowStockThresholdPercent());
+            newV.setMaxStock(v.getMaxStock());
+            newV.setAutoRestockEnabled(v.isAutoRestockEnabled());
+            newV.setAutoRestockQty(v.getAutoRestockQty());
+            newV.setPurchasable(v.isPurchasable());
+            newV.setBackorderEnabled(v.isBackorderEnabled());
+            newV.setPreorderEnabled(v.isPreorderEnabled());
+            newV.setPreorderExpectedDate(v.getPreorderExpectedDate());
+            newV.setOption1(v.getOption1());
+            newV.setOption2(v.getOption2());
+            newV.setOption3(v.getOption3());
+            newV.setDisplayOrder(v.getDisplayOrder());
+            productVariantRepository.save(newV);
+        }
+
+        // Copy attributes
+        List<backend.models.core.ProductAttribute> attrs = productAttributeRepository
+                .findAllByProductIdOrderByDisplayOrderAsc(source.getId());
+        for (backend.models.core.ProductAttribute a : attrs) {
+            backend.models.core.ProductAttribute newA = new backend.models.core.ProductAttribute();
+            newA.setProduct(saved);
+            newA.setName(a.getName());
+            newA.setValue(a.getValue());
+            newA.setDisplayOrder(a.getDisplayOrder());
+            productAttributeRepository.save(newA);
+        }
+
+        productChangeLogger.logCreate(saved, ChangeSource.USER);
+        eventPublisher.publishEvent(new ProductIndexEvent(saved, companyId));
+        evictAfterCommit(() -> {
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+        });
+        return toResponse(saved);
     }
 
     // --- Images ---
@@ -1458,8 +1632,10 @@ public class ProductServiceImpl implements ProductService {
         Instant now = Instant.now();
 
         if (targetStatus == ProductStatus.SCHEDULED) {
-            if (previousStatus == ProductStatus.ARCHIVED) {
-                throw new BadRequestException("Cannot schedule an archived product. Restore it to draft first.");
+            if (previousStatus == ProductStatus.ARCHIVED
+                    || previousStatus == ProductStatus.INACTIVE
+                    || previousStatus == ProductStatus.DISCONTINUED) {
+                throw new BadRequestException("Cannot schedule a product in this state. Restore it to draft first.");
             }
             Instant publishAt = scheduledPublishAt != null ? scheduledPublishAt : product.getScheduledPublishAt();
             if (publishAt == null) {

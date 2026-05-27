@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { CalendarClock, Eye, EyeOff, Trash2 } from "lucide-react";
 import {
-  Plus, Pencil, Trash2, CalendarClock, FileSpreadsheet, Copy,
-  Star, StarOff, Eye, EyeOff,
-} from "lucide-react";
-import {
-  adminProductsApi,
-  type AdminProduct,
+  adminBundlesApi,
+  type AdminBundle,
   type AdminProductStatus,
-  type BatchUpdateProductsPayload,
+  type BatchUpdateBundlesPayload,
 } from "../../api/catalog";
 import type { RootState } from "../../stores";
 
@@ -44,7 +41,7 @@ const useAnims = () => {
   return { fadeInUp, stagger };
 };
 
-function StatusBadge({ status, scheduledPublishAt }: { status: AdminProductStatus; scheduledPublishAt: string | null }) {
+function StatusBadge({ status }: { status: AdminProductStatus }) {
   const tone: Record<AdminProductStatus, string> = {
     DRAFT: "bg-white/10 border-white/15 text-white/70",
     ACTIVE: "bg-green-500/15 border-green-400/30 text-green-300",
@@ -53,10 +50,7 @@ function StatusBadge({ status, scheduledPublishAt }: { status: AdminProductStatu
     DISCONTINUED: "bg-red-500/10 border-red-400/20 text-red-300/80",
     ARCHIVED: "bg-white/[0.04] border-white/10 text-white/45",
   };
-  const label =
-    status === "SCHEDULED" && scheduledPublishAt
-      ? `Scheduled · ${new Date(scheduledPublishAt).toLocaleString()}`
-      : status.charAt(0) + status.slice(1).toLowerCase();
+  const label = status.charAt(0) + status.slice(1).toLowerCase();
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${tone[status]}`}>
       {status === "SCHEDULED" && <CalendarClock className="w-3 h-3" />}
@@ -67,7 +61,7 @@ function StatusBadge({ status, scheduledPublishAt }: { status: AdminProductStatu
 
 const inputCls = "rounded-xl border border-white/10 bg-white/[0.06] backdrop-blur px-3 py-1.5 text-xs text-white placeholder:text-white/45 focus:outline-none focus:border-white/20";
 
-export default function AdminProductsPage() {
+export default function AdminBundlesPage() {
   const navigate = useNavigate();
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
@@ -79,8 +73,6 @@ export default function AdminProductsPage() {
   const [debouncedQ, setDebouncedQ] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkBrand, setBulkBrand] = useState("");
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -91,13 +83,12 @@ export default function AdminProductsPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [q]);
 
-  // Clear selection when page changes
   useEffect(() => { setSelectedIds(new Set()); }, [page, statusFilter, debouncedQ]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["admin-products", "list", { companyId, statusFilter, page, q: debouncedQ }],
+    queryKey: ["admin-bundles", "list", { companyId, statusFilter, page, q: debouncedQ }],
     queryFn: () =>
-      adminProductsApi
+      adminBundlesApi
         .list(companyId!, {
           status: statusFilter === "ALL" ? undefined : statusFilter,
           q: debouncedQ || undefined,
@@ -108,36 +99,31 @@ export default function AdminProductsPage() {
     enabled: !!companyId,
   });
 
-  const invalidateList = () => queryClient.invalidateQueries({ queryKey: ["admin-products", "list"] });
+  const invalidateList = () => queryClient.invalidateQueries({ queryKey: ["admin-bundles", "list"] });
   const clearSelection = () => setSelectedIds(new Set());
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) => adminProductsApi.remove(companyId!, id),
-    onSuccess: invalidateList,
-  });
-
-  const duplicateMutation = useMutation({
-    mutationFn: (id: string) => adminProductsApi.duplicate(companyId!, id),
+    mutationFn: (id: string) => adminBundlesApi.remove(companyId!, id),
     onSuccess: invalidateList,
   });
 
   const batchDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) => adminProductsApi.batchDelete(companyId!, ids),
+    mutationFn: (ids: string[]) => adminBundlesApi.batchDelete(companyId!, ids),
     onSuccess: () => { invalidateList(); clearSelection(); },
   });
 
   const batchUpdateMutation = useMutation({
-    mutationFn: (payload: BatchUpdateProductsPayload) => adminProductsApi.batchUpdate(companyId!, payload),
+    mutationFn: (payload: BatchUpdateBundlesPayload) => adminBundlesApi.batchUpdate(companyId!, payload),
     onSuccess: () => { invalidateList(); clearSelection(); },
   });
 
-  function handleDelete(p: AdminProduct) {
-    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
-    removeMutation.mutate(p.id);
+  function handleDelete(b: AdminBundle) {
+    if (!confirm(`Delete "${b.name}"? This cannot be undone.`)) return;
+    removeMutation.mutate(b.id);
   }
 
   function handleBulkDelete() {
-    if (!confirm(`Delete ${selectedIds.size} product(s)? This cannot be undone.`)) return;
+    if (!confirm(`Delete ${selectedIds.size} bundle(s)? This cannot be undone.`)) return;
     batchDeleteMutation.mutate([...selectedIds]);
   }
 
@@ -145,19 +131,7 @@ export default function AdminProductsPage() {
     batchUpdateMutation.mutate({ ids: [...selectedIds], status });
   }
 
-  function handleBulkCategory() {
-    if (!bulkCategory.trim()) return;
-    batchUpdateMutation.mutate({ ids: [...selectedIds], category: bulkCategory.trim() });
-    setBulkCategory("");
-  }
-
-  function handleBulkBrand() {
-    if (!bulkBrand.trim()) return;
-    batchUpdateMutation.mutate({ ids: [...selectedIds], brand: bulkBrand.trim() });
-    setBulkBrand("");
-  }
-
-  const currentPageIds = data?.items.map(p => p.id) ?? [];
+  const currentPageIds = data?.items.map(b => b.id) ?? [];
   const allSelected = currentPageIds.length > 0 && currentPageIds.every(id => selectedIds.has(id));
   const someSelected = currentPageIds.some(id => selectedIds.has(id));
 
@@ -184,7 +158,7 @@ export default function AdminProductsPage() {
   if (!companyId) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <p className="text-white/60 text-sm">Sign in with a vendor account to manage products.</p>
+        <p className="text-white/60 text-sm">Sign in with a vendor account to manage bundles.</p>
       </div>
     );
   }
@@ -209,27 +183,16 @@ export default function AdminProductsPage() {
             <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-2">
               Admin · Catalogue
             </p>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">Products</h1>
-            <p className="text-sm text-white/60 mt-1">Drafts, scheduled launches, and live items.</p>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">Bundles</h1>
+            <p className="text-sm text-white/60 mt-1">Grouped product sets sold together.</p>
           </div>
-          <div className="inline-flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate("/admin/bulk-import")}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/20 hover:bg-white/10 text-sm font-semibold text-white transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              Bulk import
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/admin/products/new")}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              New product
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/products")}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/20 hover:bg-white/10 text-sm font-semibold text-white transition-colors"
+          >
+            Products
+          </button>
         </motion.header>
 
         {/* Search */}
@@ -238,7 +201,7 @@ export default function AdminProductsPage() {
             type="search"
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Search products…"
+            placeholder="Search bundles…"
             className="w-full rounded-xl border border-white/10 bg-white/[0.06] backdrop-blur px-4 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20"
           />
         </div>
@@ -290,25 +253,6 @@ export default function AdminProductsPage() {
 
             <button
               type="button"
-              title="Mark featured"
-              onClick={() => batchUpdateMutation.mutate({ ids: [...selectedIds], featured: true })}
-              disabled={bulkPending}
-              className="p-1.5 rounded-lg text-white/60 hover:text-yellow-300 hover:bg-white/10 transition-colors disabled:opacity-40"
-            >
-              <Star className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              title="Unfeature"
-              onClick={() => batchUpdateMutation.mutate({ ids: [...selectedIds], featured: false })}
-              disabled={bulkPending}
-              className="p-1.5 rounded-lg text-white/60 hover:text-white/80 hover:bg-white/10 transition-colors disabled:opacity-40"
-            >
-              <StarOff className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
               title="List on storefront"
               onClick={() => batchUpdateMutation.mutate({ ids: [...selectedIds], listed: true })}
               disabled={bulkPending}
@@ -325,46 +269,6 @@ export default function AdminProductsPage() {
             >
               <EyeOff className="w-4 h-4" />
             </button>
-
-            <span className="text-white/25">|</span>
-
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={bulkCategory}
-                onChange={e => setBulkCategory(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleBulkCategory()}
-                placeholder="Set category…"
-                className={inputCls}
-              />
-              <button
-                type="button"
-                onClick={handleBulkCategory}
-                disabled={!bulkCategory.trim() || bulkPending}
-                className="px-2 py-1.5 rounded-lg text-xs font-semibold text-sky-200 hover:bg-white/10 disabled:opacity-40 transition-colors"
-              >
-                Apply
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={bulkBrand}
-                onChange={e => setBulkBrand(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleBulkBrand()}
-                placeholder="Set brand…"
-                className={inputCls}
-              />
-              <button
-                type="button"
-                onClick={handleBulkBrand}
-                disabled={!bulkBrand.trim() || bulkPending}
-                className="px-2 py-1.5 rounded-lg text-xs font-semibold text-sky-200 hover:bg-white/10 disabled:opacity-40 transition-colors"
-              >
-                Apply
-              </button>
-            </div>
 
             <span className="text-white/25">|</span>
 
@@ -392,9 +296,9 @@ export default function AdminProductsPage() {
               ))}
             </div>
           ) : isError ? (
-            <p className="p-6 text-red-400 text-sm">Failed to load products.</p>
+            <p className="p-6 text-red-400 text-sm">Failed to load bundles.</p>
           ) : !data || data.items.length === 0 ? (
-            <p className="p-10 text-center text-white/55 text-sm">No products yet. Create one to get started.</p>
+            <p className="p-10 text-center text-white/55 text-sm">No bundles yet.</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-[0.18em] font-semibold text-white/45 bg-white/[0.04]">
@@ -409,68 +313,45 @@ export default function AdminProductsPage() {
                     />
                   </th>
                   <th className="px-5 py-3">Name</th>
-                  <th className="px-5 py-3">SKU</th>
                   <th className="px-5 py-3">Price</th>
+                  <th className="px-5 py-3">Items</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map(p => (
+                {data.items.map(b => (
                   <motion.tr
-                    key={p.id}
+                    key={b.id}
                     variants={fadeInUp}
                     className="border-t border-white/5 hover:bg-white/[0.04] transition-colors"
                   >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(p.id)}
-                        onChange={() => toggleOne(p.id)}
+                        checked={selectedIds.has(b.id)}
+                        onChange={() => toggleOne(b.id)}
                         className="accent-sky-400 cursor-pointer"
                       />
                     </td>
-                    <td className="px-5 py-3 font-medium text-white">
-                      <Link to={`/admin/products/${p.id}`} className="hover:text-sky-200">
-                        {p.name}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3 text-white/60">{p.sku ?? "—"}</td>
+                    <td className="px-5 py-3 font-medium text-white">{b.name}</td>
                     <td className="px-5 py-3 text-white/80">
-                      {p.currency} {p.price.toFixed(2)}
+                      {b.currency} {b.price.toFixed(2)}
                     </td>
+                    <td className="px-5 py-3 text-white/60">{b.items.length}</td>
                     <td className="px-5 py-3">
-                      <StatusBadge status={p.status} scheduledPublishAt={p.scheduledPublishAt} />
+                      <StatusBadge status={b.status} />
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/admin/products/${p.id}`)}
-                          aria-label={`Edit ${p.name}`}
-                          className="p-2 rounded-lg text-white/60 hover:text-sky-200 hover:bg-white/10 transition-colors"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => duplicateMutation.mutate(p.id)}
-                          disabled={duplicateMutation.isPending}
-                          aria-label={`Duplicate ${p.name}`}
-                          className="p-2 rounded-lg text-white/60 hover:text-sky-200 hover:bg-white/10 transition-colors disabled:opacity-40"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(p)}
-                          disabled={removeMutation.isPending}
-                          aria-label={`Delete ${p.name}`}
-                          className="p-2 rounded-lg text-white/60 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(b)}
+                        disabled={removeMutation.isPending}
+                        aria-label={`Delete ${b.name}`}
+                        className="p-2 rounded-lg text-white/60 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </motion.tr>
                 ))}

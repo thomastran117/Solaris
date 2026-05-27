@@ -3,6 +3,7 @@ package backend.services.impl.products;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
+import backend.dtos.requests.product.BatchUpdateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
@@ -1046,6 +1047,226 @@ class ProductServiceImplTest {
 
         assertNotNull(result);
         verify(productRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    // ─── batchUpdateProducts ──────────────────────────────────────────────────
+
+    @Test
+    void batchUpdateProducts_validRequest_setsStatusOnAllAndReturnsResponses() {
+        UUID pid1 = TestIds.uuid(10);
+        UUID pid2 = TestIds.uuid(11);
+        Product p1 = makeProduct(pid1);
+        Product p2 = makeProduct(pid2);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(p1, p2));
+        when(productImageRepository.countByProductId(pid1)).thenReturn(1);
+        when(productImageRepository.countByProductId(pid2)).thenReturn(1);
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid1, pid2));
+        req.setStatus(ProductStatus.ACTIVE);
+
+        List<ProductResponse> results = service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(2, results.size());
+        verify(productRepository, times(2)).save(any(Product.class));
+        verify(eventPublisher, times(2)).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void batchUpdateProducts_scheduledStatus_throwsBadRequest() {
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(PRODUCT_ID));
+        req.setStatus(ProductStatus.SCHEDULED);
+
+        assertThrows(BadRequestException.class,
+                () -> service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req));
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void batchUpdateProducts_productCountMismatch_throwsNotFound() {
+        UUID pid1 = TestIds.uuid(10);
+        UUID pid2 = TestIds.uuid(11);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(makeProduct(pid1)));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid1, pid2));
+        req.setStatus(ProductStatus.INACTIVE);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void batchUpdateProducts_activatingWithoutImages_throwsBadRequest() {
+        UUID pid = TestIds.uuid(10);
+        Product p = makeProduct(pid);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID))).thenReturn(List.of(p));
+        when(productImageRepository.countByProductId(pid)).thenReturn(0);
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid));
+        req.setStatus(ProductStatus.ACTIVE);
+
+        assertThrows(BadRequestException.class,
+                () -> service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req));
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void batchUpdateProducts_settingInactive_noImageCheckPerformed() {
+        UUID pid = TestIds.uuid(10);
+        Product p = makeProduct(pid);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID))).thenReturn(List.of(p));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid));
+        req.setStatus(ProductStatus.INACTIVE);
+
+        service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req);
+
+        verify(productImageRepository, never()).countByProductId(any(UUID.class));
+    }
+
+    @Test
+    void batchUpdateProducts_settingDiscontinued_noImageCheckPerformed() {
+        UUID pid = TestIds.uuid(10);
+        Product p = makeProduct(pid);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID))).thenReturn(List.of(p));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid));
+        req.setStatus(ProductStatus.DISCONTINUED);
+
+        service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req);
+
+        verify(productImageRepository, never()).countByProductId(any(UUID.class));
+    }
+
+    @Test
+    void batchUpdateProducts_categoryAndBrand_appliedToAll() {
+        UUID pid1 = TestIds.uuid(10);
+        UUID pid2 = TestIds.uuid(11);
+        Product p1 = makeProduct(pid1);
+        Product p2 = makeProduct(pid2);
+        when(productRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(p1, p2));
+
+        BatchUpdateProductsRequest req = new BatchUpdateProductsRequest();
+        req.setIds(List.of(pid1, pid2));
+        req.setCategory("Electronics");
+        req.setBrand("Acme");
+
+        service.batchUpdateProducts(COMPANY_ID, OWNER_ID, req);
+
+        verify(productRepository, times(2)).save(argThat(p ->
+                "Electronics".equals(p.getCategory()) && "Acme".equals(p.getBrand())));
+    }
+
+    // ─── duplicateProduct ─────────────────────────────────────────────────────
+
+    @Test
+    void duplicateProduct_createsDraftCopyWithNameSuffix() {
+        Product source = makeProduct(PRODUCT_ID);
+        source.setName("Widget");
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID)).thenReturn(List.of());
+        when(productOptionRepository.findAllByProductIdOrderByPositionAsc(PRODUCT_ID)).thenReturn(List.of());
+        when(productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID)).thenReturn(List.of());
+        when(productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID)).thenReturn(List.of());
+
+        ProductResponse result = service.duplicateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals("Widget (Copy)", result.getName());
+        assertEquals("DRAFT", result.getStatus());
+        assertNull(result.getSku());
+        verify(productChangeLogger).logCreate(any(Product.class), any());
+    }
+
+    @Test
+    void duplicateProduct_productNotFound_throwsNotFound() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.duplicateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+    }
+
+    @Test
+    void duplicateProduct_copiesImagesOptionsAndVariants() {
+        Product source = makeProduct(PRODUCT_ID);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+
+        ProductImage img1 = makeImage(TestIds.uuid(20), "https://example.com/1.jpg");
+        ProductImage img2 = makeImage(TestIds.uuid(21), "https://example.com/2.jpg");
+        when(productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(img1, img2));
+
+        ProductOption opt = makeOption(TestIds.uuid(30), "Size");
+        when(productOptionRepository.findAllByProductIdOrderByPositionAsc(PRODUCT_ID)).thenReturn(List.of(opt));
+
+        ProductVariant variant = makeVariant(TestIds.uuid(40));
+        when(productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID)).thenReturn(List.of(variant));
+
+        when(productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID)).thenReturn(List.of());
+
+        service.duplicateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        verify(productRepository).save(any(Product.class));
+        verify(productImageRepository, times(2)).save(any(ProductImage.class));
+        verify(productOptionRepository).save(any(ProductOption.class));
+        verify(productVariantRepository).save(any(ProductVariant.class));
+    }
+
+    // ─── status transitions: INACTIVE / DISCONTINUED (via updateProduct) ──────
+
+    @Test
+    void updateProduct_activeToInactive_succeeds() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setStatus(ProductStatus.ACTIVE);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setStatus(ProductStatus.INACTIVE);
+
+        ProductResponse result = service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertEquals("INACTIVE", result.getStatus());
+        verify(productRepository).save(any(Product.class));
+    }
+
+    @Test
+    void updateProduct_inactiveToActive_withoutImage_throwsBadRequest() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setStatus(ProductStatus.INACTIVE);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+        when(productImageRepository.countByProductId(PRODUCT_ID)).thenReturn(0);
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setStatus(ProductStatus.ACTIVE);
+
+        assertThrows(BadRequestException.class,
+                () -> service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void updateProduct_activeToDiscontinued_noImageCheckRequired() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setStatus(ProductStatus.ACTIVE);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setStatus(ProductStatus.DISCONTINUED);
+
+        ProductResponse result = service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertEquals("DISCONTINUED", result.getStatus());
+        verify(productImageRepository, never()).countByProductId(any(UUID.class));
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────

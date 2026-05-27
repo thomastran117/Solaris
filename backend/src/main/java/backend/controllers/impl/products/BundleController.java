@@ -8,6 +8,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import backend.annotations.requireAuth.RequireAuth;
+import backend.dtos.requests.product.BatchDeleteBundlesRequest;
+import backend.dtos.requests.product.BatchUpdateBundlesRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
 import backend.dtos.requests.product.UpdateBundleRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -71,6 +73,23 @@ public class BundleController {
             @PathVariable UUID companyId,
             @PathVariable UUID bundleId) {
         bundleService.deleteBundle(companyId, bundleId, resolveUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/batch-update")
+    @RequireAuth
+    public ResponseEntity<List<BundleResponse>> batchUpdateBundles(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody BatchUpdateBundlesRequest request) {
+        return ResponseEntity.ok(bundleService.batchUpdateBundles(companyId, resolveUserId(), request));
+    }
+
+    @PostMapping("/batch-delete")
+    @RequireAuth
+    public ResponseEntity<Void> batchDeleteBundles(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody BatchDeleteBundlesRequest request) {
+        bundleService.batchDeleteBundles(companyId, resolveUserId(), request);
         return ResponseEntity.noContent().build();
     }
 

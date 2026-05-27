@@ -1,5 +1,7 @@
 package backend.services.impl.products;
 
+import backend.dtos.requests.product.BatchDeleteBundlesRequest;
+import backend.dtos.requests.product.BatchUpdateBundlesRequest;
 import backend.dtos.requests.product.BundleItemRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
 import backend.dtos.requests.product.UpdateBundleRequest;
@@ -443,6 +445,91 @@ class BundleServiceImplTest {
         List<BundleResponse> result = service.compareBundles(COMPANY_ID, ids);
 
         assertEquals(4, result.size());
+    }
+
+    // ─── batchUpdateBundles ───────────────────────────────────────────────────
+
+    @Test
+    void batchUpdateBundles_validRequest_updatesAll() {
+        UUID bid1 = TestIds.uuid(10);
+        UUID bid2 = TestIds.uuid(11);
+        ProductBundle b1 = makeBundle(bid1, new BigDecimal("20.00"));
+        ProductBundle b2 = makeBundle(bid2, new BigDecimal("30.00"));
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(b1, b2));
+
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(bid1, bid2));
+        req.setStatus(ProductStatus.INACTIVE);
+
+        List<BundleResponse> results = service.batchUpdateBundles(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(2, results.size());
+        verify(bundleRepository, times(2)).save(any(ProductBundle.class));
+        verify(eventPublisher, times(2)).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void batchUpdateBundles_scheduledStatus_throwsBadRequest() {
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID));
+        req.setStatus(ProductStatus.SCHEDULED);
+
+        assertThrows(BadRequestException.class,
+                () -> service.batchUpdateBundles(COMPANY_ID, OWNER_ID, req));
+
+        verify(bundleRepository, never()).save(any(ProductBundle.class));
+    }
+
+    @Test
+    void batchUpdateBundles_countMismatch_throwsNotFound() {
+        UUID bid1 = TestIds.uuid(10);
+        UUID bid2 = TestIds.uuid(11);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(makeBundle(bid1, new BigDecimal("20.00"))));
+
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(bid1, bid2));
+        req.setListed(false);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.batchUpdateBundles(COMPANY_ID, OWNER_ID, req));
+    }
+
+    // ─── batchDeleteBundles ───────────────────────────────────────────────────
+
+    @Test
+    void batchDeleteBundles_validIds_deletesAllAndPublishesEvents() {
+        UUID bid1 = TestIds.uuid(10);
+        UUID bid2 = TestIds.uuid(11);
+        ProductBundle b1 = makeBundle(bid1, new BigDecimal("20.00"));
+        ProductBundle b2 = makeBundle(bid2, new BigDecimal("30.00"));
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(b1, b2));
+
+        BatchDeleteBundlesRequest req = new BatchDeleteBundlesRequest();
+        req.setIds(List.of(bid1, bid2));
+
+        service.batchDeleteBundles(COMPANY_ID, OWNER_ID, req);
+
+        verify(bundleRepository).deleteAll(List.of(b1, b2));
+        verify(eventPublisher, times(2)).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void batchDeleteBundles_countMismatch_throwsNotFound() {
+        UUID bid1 = TestIds.uuid(10);
+        UUID bid2 = TestIds.uuid(11);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(makeBundle(bid1, new BigDecimal("20.00"))));
+
+        BatchDeleteBundlesRequest req = new BatchDeleteBundlesRequest();
+        req.setIds(List.of(bid1, bid2));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.batchDeleteBundles(COMPANY_ID, OWNER_ID, req));
+
+        verify(bundleRepository, never()).deleteAll(anyList());
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────

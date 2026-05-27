@@ -93,7 +93,7 @@ export interface CatalogSearchParams {
   direction?: "asc" | "desc";
 }
 
-export type AdminProductStatus = "DRAFT" | "ACTIVE" | "SCHEDULED" | "ARCHIVED";
+export type AdminProductStatus = "DRAFT" | "ACTIVE" | "SCHEDULED" | "INACTIVE" | "DISCONTINUED" | "ARCHIVED";
 
 /**
  * Admin/vendor view of a product. Shape mirrors backend ProductResponse, which is a
@@ -233,6 +233,104 @@ export interface RevertProductChangesPayload {
   expectedVersion?: number | null;
 }
 
+export interface AdminProductImage {
+  id: string;
+  imageUrl: string;
+  displayOrder: number;
+  createdAt: string;
+}
+
+export interface AdminProductVariant {
+  id: string;
+  sku: string | null;
+  price: number;
+  compareAtPrice: number | null;
+  stock: number | null;
+  purchasable: boolean;
+  option1: string | null;
+  option2: string | null;
+  option3: string | null;
+  displayOrder: number;
+  preorderEnabled: boolean;
+  preorderExpectedDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminProductAttribute {
+  id: string;
+  name: string;
+  value: string;
+  displayOrder: number;
+}
+
+export interface CreateVariantPayload {
+  sku?: string | null;
+  price: number;
+  compareAtPrice?: number | null;
+  stock?: number | null;
+  purchasable?: boolean;
+  option1?: string | null;
+  option2?: string | null;
+  option3?: string | null;
+  displayOrder?: number;
+}
+
+export type UpdateVariantPayload = Partial<CreateVariantPayload>;
+
+export interface BatchUpdateProductsPayload {
+  ids: string[];
+  status?: Exclude<AdminProductStatus, "SCHEDULED">;
+  featured?: boolean;
+  listed?: boolean;
+  category?: string;
+  brand?: string;
+}
+
+export interface AdminBundleItem {
+  id: string;
+  productId: string;
+  productName: string;
+  variantId: string | null;
+  variantSku: string | null;
+  variantTitle: string | null;
+  quantity: number;
+  displayOrder: number;
+}
+
+export interface AdminBundle {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  price: number;
+  compareAtPrice: number | null;
+  currency: string;
+  status: AdminProductStatus;
+  listed: boolean;
+  preorderEnabled: boolean;
+  preorderExpectedDate: string | null;
+  items: AdminBundleItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminBundlesPage {
+  items: AdminBundle[];
+  page: number;
+  totalPages: number;
+  totalElements: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface BatchUpdateBundlesPayload {
+  ids: string[];
+  status?: Exclude<AdminProductStatus, "SCHEDULED">;
+  listed?: boolean;
+}
+
 export const adminProductsApi = {
   list: (companyId: string, params: AdminListParams = {}) =>
     api.get<AdminProductsPage>(`/companies/${companyId}/products`, { params }),
@@ -261,6 +359,59 @@ export const adminProductsApi = {
 
   revertChanges: (companyId: string, productId: string, payload: RevertProductChangesPayload) =>
     api.post<AdminProduct>(`/companies/${companyId}/products/${productId}/revert`, payload),
+
+  duplicate: (companyId: string, productId: string) =>
+    api.post<AdminProduct>(`/companies/${companyId}/products/${productId}/duplicate`),
+
+  batchDelete: (companyId: string, ids: string[]) =>
+    api.post<void>(`/companies/${companyId}/products/batch-delete`, { ids }),
+
+  batchUpdate: (companyId: string, payload: BatchUpdateProductsPayload) =>
+    api.post<AdminProduct[]>(`/companies/${companyId}/products/batch-update`, payload),
+
+  getImages: (companyId: string, productId: string) =>
+    api.get<AdminProductImage[]>(`/companies/${companyId}/products/${productId}/images`),
+
+  addImage: (companyId: string, productId: string, imageUrl: string) =>
+    api.post<AdminProductImage>(`/companies/${companyId}/products/${productId}/images`, { imageUrl }),
+
+  deleteImage: (companyId: string, productId: string, imageId: string) =>
+    api.delete<void>(`/companies/${companyId}/products/${productId}/images/${imageId}`),
+
+  reorderImages: (companyId: string, productId: string, imageIds: string[]) =>
+    api.patch<AdminProductImage[]>(`/companies/${companyId}/products/${productId}/images/reorder`, { imageIds }),
+
+  getVariants: (companyId: string, productId: string) =>
+    api.get<AdminProductVariant[]>(`/companies/${companyId}/products/${productId}/variants`),
+
+  createVariant: (companyId: string, productId: string, payload: CreateVariantPayload) =>
+    api.post<AdminProductVariant>(`/companies/${companyId}/products/${productId}/variants`, payload),
+
+  updateVariant: (companyId: string, productId: string, variantId: string, payload: UpdateVariantPayload) =>
+    api.patch<AdminProductVariant>(`/companies/${companyId}/products/${productId}/variants/${variantId}`, payload),
+
+  deleteVariant: (companyId: string, productId: string, variantId: string) =>
+    api.delete<void>(`/companies/${companyId}/products/${productId}/variants/${variantId}`),
+
+  getAttributes: (companyId: string, productId: string) =>
+    api.get<AdminProductAttribute[]>(`/companies/${companyId}/products/${productId}/attributes`),
+
+  setAttributes: (companyId: string, productId: string, attributes: { name: string; value: string }[]) =>
+    api.put<AdminProductAttribute[]>(`/companies/${companyId}/products/${productId}/attributes`, { attributes }),
+};
+
+export const adminBundlesApi = {
+  list: (companyId: string, params: AdminListParams = {}) =>
+    api.get<AdminBundlesPage>(`/companies/${companyId}/bundles`, { params }),
+
+  remove: (companyId: string, bundleId: string) =>
+    api.delete<void>(`/companies/${companyId}/bundles/${bundleId}`),
+
+  batchDelete: (companyId: string, ids: string[]) =>
+    api.post<void>(`/companies/${companyId}/bundles/batch-delete`, { ids }),
+
+  batchUpdate: (companyId: string, payload: BatchUpdateBundlesPayload) =>
+    api.post<AdminBundle[]>(`/companies/${companyId}/bundles/batch-update`, payload),
 };
 
 export const adminMerchandisingApi = {

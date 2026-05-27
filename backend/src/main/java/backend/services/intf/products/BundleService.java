@@ -1,6 +1,8 @@
 package backend.services.intf.products;
 
 import java.util.UUID;
+import backend.dtos.requests.product.BatchDeleteBundlesRequest;
+import backend.dtos.requests.product.BatchUpdateBundlesRequest;
 import backend.dtos.requests.product.CreateBundleRequest;
 import backend.dtos.requests.product.UpdateBundleRequest;
 import backend.dtos.responses.general.PagedResponse;
@@ -16,6 +18,8 @@ public interface BundleService {
     BundleResponse getBundle(UUID companyId, UUID bundleId, UUID ownerId);
     BundleResponse updateBundle(UUID companyId, UUID bundleId, UUID ownerId, UpdateBundleRequest request);
     void deleteBundle(UUID companyId, UUID bundleId, UUID ownerId);
+    List<BundleResponse> batchUpdateBundles(UUID companyId, UUID ownerId, BatchUpdateBundlesRequest request);
+    void batchDeleteBundles(UUID companyId, UUID ownerId, BatchDeleteBundlesRequest request);
 
     // Public read (no ownership check — for product-route discoverability)
     PagedResponse<BundleResponse> listBundles(UUID companyId, ProductStatus status, int page, int size);

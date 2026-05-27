@@ -168,6 +168,11 @@ export default function Navbar() {
                   Admin
                 </NavLink>
               )}
+              {accessToken && companyId && canManageProducts && (
+                <NavLink to="/admin/bundles" className={navLinkClass}>
+                  Bundles
+                </NavLink>
+              )}
               {accessToken && companyId && canManageCompany && (
                 <NavLink to="/admin/team" className={navLinkClass}>
                   Team

@@ -1,16 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil, Eye } from "lucide-react";
+import {
+  ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil, Eye,
+  Image as ImageIcon, Layers, Tag, Plus, Trash2, ArrowUp, ArrowDown,
+} from "lucide-react";
 import { useCompanyCapabilities } from "../../hooks/useCompanyRole";
 import {
   adminProductsApi,
   type AdminProduct,
+  type AdminProductImage,
+  type AdminProductVariant,
+  type AdminProductAttribute,
   type AdminProductWritePayload,
+  type CreateVariantPayload,
+  type UpdateVariantPayload,
 } from "../../api/catalog";
 import ProductHistoryTimeline from "../../components/product/ProductHistoryTimeline";
 import {
@@ -144,7 +152,7 @@ export default function AdminProductEditor() {
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();
-  const [tab, setTab] = useState<"edit" | "history">("edit");
+  const [tab, setTab] = useState<"edit" | "images" | "variants" | "attributes" | "history">("edit");
   const { can } = useCompanyCapabilities(companyId);
   const canEdit = can("MANAGE_PRODUCTS");
 
@@ -251,27 +259,30 @@ export default function AdminProductEditor() {
         </motion.header>
 
         {isEdit && (
-          <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] backdrop-blur p-1">
-            <button
-              type="button"
-              onClick={() => setTab("edit")}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                tab === "edit" ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
-              }`}
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("history")}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                tab === "history" ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
-              }`}
-            >
-              <HistoryIcon className="w-3.5 h-3.5" />
-              History
-            </button>
+          <div className="mb-6 flex flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur p-1 w-fit">
+            {(["edit", "images", "variants", "attributes", "history"] as const).map(t => {
+              const icon = {
+                edit: <Pencil className="w-3.5 h-3.5" />,
+                images: <ImageIcon className="w-3.5 h-3.5" />,
+                variants: <Layers className="w-3.5 h-3.5" />,
+                attributes: <Tag className="w-3.5 h-3.5" />,
+                history: <HistoryIcon className="w-3.5 h-3.5" />,
+              }[t];
+              const label = t.charAt(0).toUpperCase() + t.slice(1);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    tab === t ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
+                  }`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -283,6 +294,18 @@ export default function AdminProductEditor() {
               queryClient.invalidateQueries({ queryKey });
             }}
           />
+        )}
+
+        {isEdit && tab === "images" && productId !== null && (
+          <ImagesTab companyId={companyId} productId={productId} canEdit={canEdit} />
+        )}
+
+        {isEdit && tab === "variants" && productId !== null && (
+          <VariantsTab companyId={companyId} productId={productId} canEdit={canEdit} />
+        )}
+
+        {isEdit && tab === "attributes" && productId !== null && (
+          <AttributesTab companyId={companyId} productId={productId} canEdit={canEdit} />
         )}
 
         {(!isEdit || tab === "edit") && (
@@ -380,6 +403,8 @@ export default function AdminProductEditor() {
                 <option value="DRAFT">Draft — invisible to customers</option>
                 <option value="SCHEDULED">Scheduled — auto-publish at a future time</option>
                 <option value="ACTIVE">Active — live in the catalogue</option>
+                <option value="INACTIVE">Inactive — temporarily hidden</option>
+                <option value="DISCONTINUED">Discontinued — permanently retired</option>
                 <option value="ARCHIVED">Archived — hidden, not deleted</option>
               </select>
             </Field>
@@ -523,6 +548,272 @@ export default function AdminProductEditor() {
         </motion.form>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Images Tab ──────────────────────────────────────────────────────────────
+
+function ImagesTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const [newUrl, setNewUrl] = useState("");
+  const qk = ["product-images", productId];
+
+  const { data: images = [], isLoading } = useQuery({
+    queryKey: qk,
+    queryFn: () => adminProductsApi.getImages(companyId, productId).then(r => r.data),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: qk });
+
+  const addMutation = useMutation({
+    mutationFn: () => adminProductsApi.addImage(companyId, productId, newUrl.trim()),
+    onSuccess: () => { invalidate(); setNewUrl(""); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (imageId: string) => adminProductsApi.deleteImage(companyId, productId, imageId),
+    onSuccess: invalidate,
+  });
+
+  function move(index: number, direction: -1 | 1) {
+    const reordered = [...images];
+    const swap = index + direction;
+    if (swap < 0 || swap >= reordered.length) return;
+    [reordered[index], reordered[swap]] = [reordered[swap], reordered[index]];
+    adminProductsApi.reorderImages(companyId, productId, reordered.map(i => i.id)).then(invalidate);
+  }
+
+  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
+  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
+
+  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading images…</p></div>;
+
+  return (
+    <div className={panelCls}>
+      <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Images ({images.length}/5)</p>
+      {images.length === 0 && <p className="text-sm text-white/50">No images yet.</p>}
+      <div className="space-y-2">
+        {images.map((img, i) => (
+          <div key={img.id} className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.04]">
+            <img src={img.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover border border-white/10 bg-white/5" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            <span className="flex-1 text-xs text-white/60 truncate">{img.imageUrl}</span>
+            {canEdit && (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 rounded text-white/40 hover:text-white disabled:opacity-20"><ArrowUp className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === images.length - 1} className="p-1.5 rounded text-white/40 hover:text-white disabled:opacity-20"><ArrowDown className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => deleteMutation.mutate(img.id)} className="p-1.5 rounded text-white/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {canEdit && images.length < 5 && (
+        <div className="flex gap-2 pt-2">
+          <input
+            type="url"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && newUrl.trim() && addMutation.mutate()}
+            placeholder="https://… image URL"
+            className={`flex-1 ${inputBase}`}
+          />
+          <button
+            type="button"
+            onClick={() => addMutation.mutate()}
+            disabled={!newUrl.trim() || addMutation.isPending}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" /> Add
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Variants Tab ─────────────────────────────────────────────────────────────
+
+function VariantsTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState<CreateVariantPayload>({ price: 0 });
+  const [editForms, setEditForms] = useState<Record<string, UpdateVariantPayload>>({});
+  const qk = ["product-variants", productId];
+
+  const { data: variants = [], isLoading } = useQuery({
+    queryKey: qk,
+    queryFn: () => adminProductsApi.getVariants(companyId, productId).then(r => r.data),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: qk });
+
+  const createMutation = useMutation({
+    mutationFn: () => adminProductsApi.createVariant(companyId, productId, addForm),
+    onSuccess: () => { invalidate(); setAddOpen(false); setAddForm({ price: 0 }); },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateVariantPayload }) =>
+      adminProductsApi.updateVariant(companyId, productId, id, payload),
+    onSuccess: (_, { id }) => { invalidate(); setExpandedId(null); setEditForms(f => { const n = { ...f }; delete n[id]; return n; }); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminProductsApi.deleteVariant(companyId, productId, id),
+    onSuccess: invalidate,
+  });
+
+  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
+  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
+
+  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading variants…</p></div>;
+
+  return (
+    <div className={panelCls}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Variants ({variants.length})</p>
+        {canEdit && (
+          <button type="button" onClick={() => setAddOpen(o => !o)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/10 text-xs font-semibold text-white transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Add variant
+          </button>
+        )}
+      </div>
+
+      {addOpen && canEdit && (
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 space-y-3">
+          <p className="text-xs font-semibold text-sky-200/80">New variant</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {(["option1", "option2", "option3"] as const).map(k => (
+              <input key={k} type="text" placeholder={k} value={addForm[k] ?? ""} onChange={e => setAddForm(f => ({ ...f, [k]: e.target.value || null }))} className={inputBase} />
+            ))}
+            <input type="number" step="0.01" min="0" placeholder="Price *" value={addForm.price ?? ""} onChange={e => setAddForm(f => ({ ...f, price: Number(e.target.value) }))} className={inputBase} />
+            <input type="text" placeholder="SKU (optional)" value={addForm.sku ?? ""} onChange={e => setAddForm(f => ({ ...f, sku: e.target.value || null }))} className={inputBase} />
+            <input type="number" step="1" min="0" placeholder="Stock" value={addForm.stock ?? ""} onChange={e => setAddForm(f => ({ ...f, stock: e.target.value ? Number(e.target.value) : null }))} className={inputBase} />
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => createMutation.mutate()} disabled={!addForm.price || createMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">Save</button>
+            <button type="button" onClick={() => setAddOpen(false)} className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 text-sm text-white/70">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {variants.length === 0 && !addOpen && <p className="text-sm text-white/50">No variants yet.</p>}
+
+      <div className="space-y-2">
+        {variants.map(v => {
+          const label = [v.option1, v.option2, v.option3].filter(Boolean).join(" / ") || "Default";
+          const isExpanded = expandedId === v.id;
+          const ef = editForms[v.id] ?? {};
+          return (
+            <div key={v.id} className="rounded-xl border border-white/10 bg-white/[0.04]">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-white">{label}</span>
+                  <span className="text-xs text-white/50">{v.sku ?? "no SKU"}</span>
+                  <span className="text-xs text-white/70">${v.price.toFixed(2)}</span>
+                  {v.stock != null && <span className="text-xs text-white/50">stock: {v.stock}</span>}
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => { setExpandedId(isExpanded ? null : v.id); setEditForms(f => ({ ...f, [v.id]: { sku: v.sku, price: v.price, stock: v.stock, option1: v.option1, option2: v.option2, option3: v.option3 } })); }} className="p-1.5 rounded text-white/50 hover:text-sky-200"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => confirm(`Delete this variant?`) && deleteMutation.mutate(v.id)} className="p-1.5 rounded text-white/50 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                )}
+              </div>
+              {isExpanded && canEdit && (
+                <div className="px-4 pb-4 space-y-3 border-t border-white/10 pt-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {(["option1", "option2", "option3"] as const).map(k => (
+                      <input key={k} type="text" placeholder={k} value={(ef[k] as string | null) ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], [k]: e.target.value || null } }))} className={inputBase} />
+                    ))}
+                    <input type="number" step="0.01" min="0" placeholder="Price" value={ef.price ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], price: Number(e.target.value) } }))} className={inputBase} />
+                    <input type="text" placeholder="SKU" value={ef.sku ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], sku: e.target.value || null } }))} className={inputBase} />
+                    <input type="number" step="1" min="0" placeholder="Stock" value={ef.stock ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], stock: e.target.value ? Number(e.target.value) : null } }))} className={inputBase} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => updateMutation.mutate({ id: v.id, payload: ef })} disabled={updateMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">Save</button>
+                    <button type="button" onClick={() => setExpandedId(null)} className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 text-sm text-white/70">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Attributes Tab ───────────────────────────────────────────────────────────
+
+function AttributesTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const qk = ["product-attributes", productId];
+  const [localAttrs, setLocalAttrs] = useState<{ name: string; value: string }[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  const { data: attrs = [], isLoading } = useQuery({
+    queryKey: qk,
+    queryFn: () => adminProductsApi.getAttributes(companyId, productId).then(r => r.data),
+  });
+
+  useEffect(() => {
+    setLocalAttrs(attrs.map(a => ({ name: a.name, value: a.value })));
+    setDirty(false);
+  }, [attrs]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => adminProductsApi.setAttributes(companyId, productId, localAttrs.filter(a => a.name.trim())),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk }); setDirty(false); },
+  });
+
+  function update(i: number, field: "name" | "value", val: string) {
+    setLocalAttrs(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: val } : a));
+    setDirty(true);
+  }
+
+  function removeRow(i: number) {
+    setLocalAttrs(prev => prev.filter((_, idx) => idx !== i));
+    setDirty(true);
+  }
+
+  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
+  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
+
+  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading attributes…</p></div>;
+
+  return (
+    <div className={panelCls}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Attributes</p>
+        {canEdit && (
+          <button type="button" onClick={() => { setLocalAttrs(p => [...p, { name: "", value: "" }]); setDirty(true); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/10 text-xs font-semibold text-white transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        )}
+      </div>
+
+      {localAttrs.length === 0 && <p className="text-sm text-white/50">No attributes yet.</p>}
+
+      <div className="space-y-2">
+        {localAttrs.map((a, i) => (
+          <div key={i} className="flex gap-2 items-center">
+            <input type="text" value={a.name} onChange={e => update(i, "name", e.target.value)} placeholder="Key" className={`flex-1 ${inputBase}`} readOnly={!canEdit} />
+            <input type="text" value={a.value} onChange={e => update(i, "value", e.target.value)} placeholder="Value" className={`flex-1 ${inputBase}`} readOnly={!canEdit} />
+            {canEdit && <button type="button" onClick={() => removeRow(i)} className="p-1.5 rounded text-white/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>}
+          </div>
+        ))}
+      </div>
+
+      {canEdit && dirty && (
+        <div className="flex justify-end pt-2 border-t border-white/10">
+          <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">
+            {saveMutation.isPending ? "Saving…" : "Save attributes"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

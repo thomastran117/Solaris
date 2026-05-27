@@ -11,6 +11,7 @@ import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
+import backend.dtos.requests.product.BatchUpdateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
@@ -144,6 +145,36 @@ public class ProductController {
             UUID userId = resolveUserId();
             productService.batchDeleteProducts(companyId, userId, request);
             return ResponseEntity.noContent().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/batch-update")
+    @RequireAuth
+    public ResponseEntity<List<ProductResponse>> batchUpdateProducts(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody BatchUpdateProductsRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(productService.batchUpdateProducts(companyId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{productId}/duplicate")
+    @RequireAuth
+    public ResponseEntity<ProductResponse> duplicateProduct(
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.status(HttpStatus.CREATED).body(productService.duplicateProduct(companyId, productId, userId));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

@@ -4,6 +4,7 @@ import java.util.UUID;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
+import backend.dtos.requests.product.BatchUpdateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
@@ -39,6 +40,8 @@ public interface ProductService {
     void deleteProduct(UUID companyId, UUID productId, UUID ownerId);
     List<ProductResponse> batchCreateProducts(UUID companyId, UUID ownerId, BatchCreateProductsRequest request);
     void batchDeleteProducts(UUID companyId, UUID ownerId, BatchDeleteProductsRequest request);
+    List<ProductResponse> batchUpdateProducts(UUID companyId, UUID ownerId, BatchUpdateProductsRequest request);
+    ProductResponse duplicateProduct(UUID companyId, UUID productId, UUID ownerId);
 
     // Images
     List<ProductImageResponse> getProductImages(UUID companyId, UUID productId);
