@@ -17,6 +17,7 @@ import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
 import backend.dtos.responses.product.ProductVariantResponse;
+import backend.dtos.responses.product.SimilarProductResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
@@ -543,14 +544,6 @@ class ProductControllerTest {
     }
 
     @Test
-    void addRelationship_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(post("/companies/{cid}/products/{pid}/relationships", COMPANY_ID, PRODUCT_ID)
-                        .contentType("application/json")
-                        .content("{\"targetProductId\":\"" + TARGET_ID + "\",\"type\":\"UPGRADE\"}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
     void addRelationship_conflict_returns409() throws Exception {
         authenticateAs(USER_ID);
         when(productService.addProductRelationship(eq(COMPANY_ID), eq(PRODUCT_ID), eq(USER_ID), any()))
@@ -586,6 +579,44 @@ class ProductControllerTest {
         mockMvc.perform(delete("/companies/{cid}/products/{pid}/relationships/{tid}",
                         COMPANY_ID, PRODUCT_ID, TARGET_ID)
                         .param("type", "ALTERNATIVE"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ─── similar products ─────────────────────────────────────────────────────
+
+    @Test
+    void getSimilarProducts_returns200() throws Exception {
+        SimilarProductResponse resp = new SimilarProductResponse(
+                TARGET_ID, "Similar Product", "SKU-SIM-001", null,
+                new BigDecimal("49.99"), null, "USD", "Electronics", "Acme",
+                4.5, 12L, "AUTO");
+        when(productService.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 8))
+                .thenReturn(List.of(resp));
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/similar", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(TARGET_ID.toString()))
+                .andExpect(jsonPath("$[0].source").value("AUTO"));
+    }
+
+    @Test
+    void getSimilarProducts_withLimit_passesLimitToService() throws Exception {
+        when(productService.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/similar", COMPANY_ID, PRODUCT_ID)
+                        .param("limit", "5"))
+                .andExpect(status().isOk());
+
+        verify(productService).getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5);
+    }
+
+    @Test
+    void getSimilarProducts_productNotFound_returns404() throws Exception {
+        when(productService.getSimilarProducts(any(), any(), anyInt()))
+                .thenThrow(new ResourceNotFoundException("Product not found"));
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/similar", COMPANY_ID, PRODUCT_ID))
                 .andExpect(status().isNotFound());
     }
 

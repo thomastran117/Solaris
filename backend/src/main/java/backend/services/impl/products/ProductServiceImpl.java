@@ -77,6 +77,7 @@ import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.models.core.MarketplaceVendor;
 import backend.dtos.requests.product.AddProductRelationshipRequest;
 import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.dtos.responses.product.SimilarProductResponse;
 import backend.models.core.ProductRelationship;
 import backend.models.enums.ProductRelationshipType;
 import backend.repositories.BundleRepository;
@@ -112,6 +113,7 @@ import backend.services.impl.SingleFlightCache;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -1543,6 +1545,130 @@ public class ProductServiceImpl implements ProductService {
                 rel.getType(),
                 rel.getNote(),
                 rel.getDisplayOrder()
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Similar products
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SimilarProductResponse> getSimilarProducts(UUID companyId, UUID productId, int limit) {
+        assertCompanyExists(companyId);
+        int clampedLimit = Math.max(1, Math.min(limit, 20));
+        String cacheKey = "products:similar:" + companyId + ":" + productId + ":" + clampedLimit;
+        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
+            Product source = productRepository.findByIdAndCompanyId(productId, companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+            Set<UUID> excludeIds = new HashSet<>();
+            excludeIds.add(productId);
+            List<SimilarProductResponse> results = new ArrayList<>();
+
+            // 1. Explicit SIMILAR relationships
+            List<ProductRelationship> manualRels = productRelationshipRepository
+                    .findAllBySourceProductIdAndTypeAndSourceProductCompanyId(
+                            productId, ProductRelationshipType.SIMILAR, companyId);
+
+            if (!manualRels.isEmpty()) {
+                List<UUID> manualTargetIds = manualRels.stream()
+                        .map(r -> r.getTargetProduct().getId())
+                        .toList();
+                Map<UUID, Product> manualProductMap = productRepository
+                        .findAllByIdInAndCompanyId(manualTargetIds, companyId)
+                        .stream().collect(Collectors.toMap(Product::getId, p -> p));
+                Map<UUID, double[]> manualRatings = buildRatingMap(manualTargetIds);
+
+                for (ProductRelationship rel : manualRels) {
+                    UUID tid = rel.getTargetProduct().getId();
+                    if (manualProductMap.containsKey(tid)) {
+                        results.add(toSimilarResponse(manualProductMap.get(tid), "MANUAL", manualRatings));
+                        excludeIds.add(tid);
+                    }
+                    if (results.size() >= clampedLimit) break;
+                }
+            }
+
+            // 2. Auto-fill remaining slots from Elasticsearch
+            int remaining = clampedLimit - results.size();
+            if (remaining > 0) {
+                List<UUID> autoIds = findAutoSimilarIds(source, remaining, excludeIds);
+                if (!autoIds.isEmpty()) {
+                    List<Product> autoProducts = productRepository.findAllByIdInAndCompanyId(autoIds, companyId);
+                    Map<UUID, double[]> autoRatings = buildRatingMap(autoIds);
+                    for (Product p : autoProducts) {
+                        results.add(toSimilarResponse(p, "AUTO", autoRatings));
+                    }
+                }
+            }
+
+            return results;
+        }, new TypeReference<List<SimilarProductResponse>>() {});
+    }
+
+    private List<UUID> findAutoSimilarIds(Product source, int remaining, Set<UUID> excludeIds) {
+        String companyIdStr = source.getCompany().getId().toString();
+        BoolQuery.Builder bq = new BoolQuery.Builder()
+                .filter(TermQuery.of(t -> t.field("companyId").value(companyIdStr))._toQuery())
+                .filter(TermQuery.of(t -> t.field("status").value(ProductStatus.ACTIVE.name()))._toQuery());
+
+        if (source.getCategory() != null) {
+            final String cat = source.getCategory();
+            bq.filter(TermQuery.of(t -> t.field("category").value(cat))._toQuery());
+        }
+        if (source.getPrice() != null) {
+            final double minP = source.getPrice().multiply(new BigDecimal("0.5")).doubleValue();
+            final double maxP = source.getPrice().multiply(new BigDecimal("2.0")).doubleValue();
+            bq.filter(RangeQuery.of(r -> r.number(n -> n.field("price").gte(minP).lte(maxP)))._toQuery());
+        }
+
+        int fetchSize = Math.min(remaining + excludeIds.size(), 50);
+        NativeQuery esQuery = NativeQuery.builder()
+                .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
+                .withPageable(PageRequest.of(0, fetchSize))
+                .build();
+
+        try {
+            SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
+            return hits.stream()
+                    .map(h -> h.getContent().getId())
+                    .filter(id -> !excludeIds.contains(id))
+                    .limit(remaining)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("[SIMILAR] Elasticsearch unavailable, falling back to database: {}", e.getMessage());
+            Pageable pageable = PageRequest.of(0, fetchSize);
+            return productRepository.findAll(
+                    ProductSpecification.withFilters(
+                            source.getCompany().getId(), null, source.getCategory(), source.getBrand(),
+                            null, null, null, ProductStatus.ACTIVE, true, null, null),
+                    pageable)
+                    .stream()
+                    .map(Product::getId)
+                    .filter(id -> !excludeIds.contains(id))
+                    .limit(remaining)
+                    .toList();
+        }
+    }
+
+    private SimilarProductResponse toSimilarResponse(Product p, String source, Map<UUID, double[]> ratingMap) {
+        double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
+        Double avgRating = stats[1] > 0 ? stats[0] : null;
+        Long reviewCount = (long) stats[1];
+        return new SimilarProductResponse(
+                p.getId(),
+                p.getName(),
+                p.getSku(),
+                p.getThumbnailUrl(),
+                p.getPrice(),
+                p.getCompareAtPrice(),
+                p.getCurrency(),
+                p.getCategory(),
+                p.getBrand(),
+                avgRating,
+                reviewCount,
+                source
         );
     }
 

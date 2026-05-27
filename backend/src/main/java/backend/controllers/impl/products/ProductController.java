@@ -20,6 +20,7 @@ import backend.dtos.requests.product.RevertProductChangesRequest;
 import backend.dtos.requests.product.AddProductRelationshipRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
 import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.dtos.responses.product.SimilarProductResponse;
 import backend.models.enums.ProductRelationshipType;
 import backend.dtos.requests.product.UpdateProductOptionRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
@@ -538,6 +539,20 @@ public class ProductController {
             UUID userId = resolveUserId();
             productService.removeProductRelationship(companyId, productId, targetProductId, type, userId);
             return ResponseEntity.noContent().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/{productId}/similar")
+    public ResponseEntity<List<SimilarProductResponse>> getSimilarProducts(
+            @PathVariable UUID companyId,
+            @PathVariable UUID productId,
+            @RequestParam(defaultValue = "8") @Min(1) @Max(20) int limit) {
+        try {
+            return ResponseEntity.ok(productService.getSimilarProducts(companyId, productId, limit));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

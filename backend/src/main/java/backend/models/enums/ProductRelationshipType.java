@@ -4,5 +4,6 @@ public enum ProductRelationshipType {
     ACCESSORY,
     REPLACEMENT,
     UPGRADE,
-    ALTERNATIVE
+    ALTERNATIVE,
+    SIMILAR
 }

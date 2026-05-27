@@ -45,6 +45,10 @@ public class ProductRelationshipSeeder {
         link(co, "TECH-WNC-HDR-001", "TECH-PBS-001", ProductRelationshipType.ALTERNATIVE, null);
         // Smart Watch → VR Headset (ALTERNATIVE: both are immersive wearables)
         link(co, "TECH-SWX-001", "TECH-VRS-001", ProductRelationshipType.ALTERNATIVE, null);
+        // Smart Watch → Wireless Headphones (SIMILAR: both premium personal-tech wearables)
+        link(co, "TECH-SWX-001", "TECH-WNC-HDR-001", ProductRelationshipType.SIMILAR, null);
+        // Mechanical Keyboard → Webcam (SIMILAR: both desk productivity peripherals)
+        link(co, "TECH-MKB-001", "TECH-WEB-001", ProductRelationshipType.SIMILAR, null);
     }
 
     private void seedWellness(SeededCompanies companies) {
@@ -55,6 +59,8 @@ public class ProductRelationshipSeeder {
         link(co, "WELL-WPP-001", "WELL-COL-001", ProductRelationshipType.ALTERNATIVE, null);
         // Essential Oil Diffuser → Soy Wax Candles (ALTERNATIVE: both deliver ambient scent)
         link(co, "WELL-EOD-001", "WELL-SWC-001", ProductRelationshipType.ALTERNATIVE, null);
+        // Yoga Mat → Resistance Bands (SIMILAR: both bodyweight fitness gear)
+        link(co, "WELL-YGM-001", "WELL-RBS-001", ProductRelationshipType.SIMILAR, null);
     }
 
     private void seedHome(SeededCompanies companies) {
@@ -65,6 +71,8 @@ public class ProductRelationshipSeeder {
         link(co, "HOME-CAM-001", "HOME-SVD-001", ProductRelationshipType.REPLACEMENT, "Better solution for entry monitoring");
         // Weighted Blanket → Organic Duvet Cover (ACCESSORY: blanket layers over the duvet system)
         link(co, "HOME-WBL-001", "HOME-DVC-001", ProductRelationshipType.ACCESSORY, "Layers over the duvet for added warmth");
+        // Indoor Camera → Water Leak Sensor (SIMILAR: both smart home sensors)
+        link(co, "HOME-CAM-001", "HOME-WLS-001", ProductRelationshipType.SIMILAR, null);
     }
 
     private void link(backend.models.core.Company company, String sourceSku, String targetSku,

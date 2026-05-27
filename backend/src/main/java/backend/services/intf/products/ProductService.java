@@ -22,6 +22,7 @@ import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.ProductAttributeResponse;
 import backend.dtos.responses.product.ProductRelationshipResponse;
+import backend.dtos.responses.product.SimilarProductResponse;
 import backend.models.enums.ProductRelationshipType;
 import backend.dtos.responses.product.ProductHistoryEntryResponse;
 import backend.dtos.responses.product.ProductImageResponse;
@@ -73,6 +74,7 @@ public interface ProductService {
     List<ProductRelationshipResponse> getProductRelationships(UUID companyId, UUID productId, ProductRelationshipType type);
     ProductRelationshipResponse addProductRelationship(UUID companyId, UUID productId, UUID ownerId, AddProductRelationshipRequest request);
     void removeProductRelationship(UUID companyId, UUID productId, UUID targetProductId, ProductRelationshipType type, UUID ownerId);
+    List<SimilarProductResponse> getSimilarProducts(UUID companyId, UUID productId, int limit);
 
     // -------------------------------------------------------------------------
     // Marketplace catalog
