@@ -151,4 +151,53 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
            "AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)")
     boolean existsDeliveredOrShippedOrderForProduct(@Param("userId") UUID userId,
                                                     @Param("productId") java.util.UUID productId);
+
+    @Query("""
+            SELECT oi.product.category, COUNT(oi)
+            FROM Order o JOIN o.items oi
+            WHERE o.user.id = :userId
+              AND o.status IN (
+                backend.models.enums.OrderStatus.PAID,
+                backend.models.enums.OrderStatus.PACKED,
+                backend.models.enums.OrderStatus.PARTIALLY_FULFILLED,
+                backend.models.enums.OrderStatus.SHIPPED,
+                backend.models.enums.OrderStatus.DELIVERED
+              )
+              AND oi.product.category IS NOT NULL
+            GROUP BY oi.product.category
+            ORDER BY COUNT(oi) DESC
+            """)
+    List<Object[]> findTopPurchasedCategoriesByUserId(@Param("userId") UUID userId);
+
+    @Query("""
+            SELECT oi.product.brand, COUNT(oi)
+            FROM Order o JOIN o.items oi
+            WHERE o.user.id = :userId
+              AND o.status IN (
+                backend.models.enums.OrderStatus.PAID,
+                backend.models.enums.OrderStatus.PACKED,
+                backend.models.enums.OrderStatus.PARTIALLY_FULFILLED,
+                backend.models.enums.OrderStatus.SHIPPED,
+                backend.models.enums.OrderStatus.DELIVERED
+              )
+              AND oi.product.brand IS NOT NULL
+            GROUP BY oi.product.brand
+            ORDER BY COUNT(oi) DESC
+            """)
+    List<Object[]> findTopPurchasedBrandsByUserId(@Param("userId") UUID userId);
+
+    @Query("""
+            SELECT DISTINCT oi.product.id
+            FROM Order o JOIN o.items oi
+            WHERE o.user.id = :userId
+              AND o.status IN (
+                backend.models.enums.OrderStatus.PAID,
+                backend.models.enums.OrderStatus.PACKED,
+                backend.models.enums.OrderStatus.PARTIALLY_FULFILLED,
+                backend.models.enums.OrderStatus.SHIPPED,
+                backend.models.enums.OrderStatus.DELIVERED
+              )
+            ORDER BY o.createdAt DESC
+            """)
+    List<UUID> findPurchasedProductIdsByUserId(@Param("userId") UUID userId, Pageable pageable);
 }

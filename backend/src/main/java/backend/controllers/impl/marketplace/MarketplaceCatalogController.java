@@ -1,6 +1,8 @@
 package backend.controllers.impl.marketplace;
 
 import java.util.UUID;
+import backend.annotations.requireAuth.RequireAuth;
+import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
@@ -9,6 +11,7 @@ import backend.events.activity.UserActivityEvent;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.products.ProductFeedService;
 import backend.services.intf.products.ProductService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,10 +34,15 @@ import java.time.Instant;
 public class MarketplaceCatalogController {
 
     private final ProductService productService;
+    private final ProductFeedService productFeedService;
     private final ActivityEventPublisher activityEventPublisher;
 
-    public MarketplaceCatalogController(ProductService productService, ActivityEventPublisher activityEventPublisher) {
+    public MarketplaceCatalogController(
+            ProductService productService,
+            ProductFeedService productFeedService,
+            ActivityEventPublisher activityEventPublisher) {
         this.productService = productService;
+        this.productFeedService = productFeedService;
         this.activityEventPublisher = activityEventPublisher;
     }
 
@@ -54,6 +62,28 @@ public class MarketplaceCatalogController {
         activityEventPublisher.publish(new UserActivityEvent(
                 userId, sessionId, productId, null, ActivityType.VIEW, Instant.now()));
         return ResponseEntity.noContent().build();
+    }
+
+    @RequireAuth
+    @GetMapping("/feed")
+    public ResponseEntity<PagedResponse<MarketplaceCatalogProductResponse>> getFeed(
+            @PathVariable UUID marketplaceId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        try {
+            return ResponseEntity.ok(productFeedService.getFeed(marketplaceId, resolveUserId(), page, size));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    private UUID resolveUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof UUID uuid))
+            throw new org.springframework.security.access.AccessDeniedException("Authentication required");
+        return uuid;
     }
 
     private UUID resolveUserIdOrNull() {

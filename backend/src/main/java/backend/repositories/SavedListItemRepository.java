@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -26,4 +27,12 @@ public interface SavedListItemRepository extends JpaRepository<SavedListItem, ja
     boolean existsBySavedListIdAndProductIdAndVariantIsNull(
             @Param("savedListId") java.util.UUID savedListId,
             @Param("productId") java.util.UUID productId);
+
+    @Query("""
+            SELECT sli.product.id
+            FROM SavedListItem sli
+            WHERE sli.savedList.user.id = :userId
+              AND sli.purchased = false
+            """)
+    List<java.util.UUID> findActiveWishlistProductIdsByUserId(@Param("userId") java.util.UUID userId);
 }

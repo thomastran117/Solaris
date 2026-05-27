@@ -6,7 +6,9 @@ import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
+import backend.dtos.responses.general.PagedResponse;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.products.ProductFeedService;
 import backend.services.intf.products.ProductService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.AfterEach;
@@ -30,7 +32,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,16 +49,18 @@ class MarketplaceCatalogControllerTest {
     private static final UUID VENDOR_ID = TestIds.uuid(4);
 
     private ProductService productService;
+    private ProductFeedService productFeedService;
     private ActivityEventPublisher activityEventPublisher;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         productService = mock(ProductService.class);
+        productFeedService = mock(ProductFeedService.class);
         activityEventPublisher = mock(ActivityEventPublisher.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new MarketplaceCatalogController(productService, activityEventPublisher))
+                        new MarketplaceCatalogController(productService, productFeedService, activityEventPublisher))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .build();
@@ -195,6 +198,54 @@ class MarketplaceCatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.vendorId").value(VENDOR_ID.toString()))
                 .andExpect(jsonPath("$.featuredProducts[0].id").value(PRODUCT_ID.toString()));
+    }
+
+    // --- /feed ---
+
+    @Test
+    void getFeed_unauthenticated_returns401() throws Exception {
+        // No auth set in SecurityContextHolder
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getFeed_authenticated_returns200WithItems() throws Exception {
+        authenticateAs(USER_ID);
+        PagedResponse<MarketplaceCatalogProductResponse> response =
+                new PagedResponse<>(new PageImpl<>(List.of(product()), PageRequest.of(0, 20), 1));
+        when(productFeedService.getFeed(MARKETPLACE_ID, USER_ID, 0, 20)).thenReturn(response);
+
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(PRODUCT_ID.toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void getFeed_invalidPage_returns400() throws Exception {
+        authenticateAs(USER_ID);
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed")
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getFeed_invalidSize_returns400() throws Exception {
+        authenticateAs(USER_ID);
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getFeed_serviceThrowsRuntimeException_returns500() throws Exception {
+        authenticateAs(USER_ID);
+        when(productFeedService.getFeed(any(), any(), any(int.class), any(int.class)))
+                .thenThrow(new RuntimeException("unexpected"));
+
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed"))
+                .andExpect(status().isInternalServerError());
     }
 
     private static final class NoOpValidator implements Validator {

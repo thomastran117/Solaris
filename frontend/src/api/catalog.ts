@@ -455,4 +455,7 @@ export const catalogApi = {
       `/companies/${companyId}/catalog/search/suggestions`,
       { params: { q, limit } }
     ),
+
+  getFeed: (marketplaceId: string, params: { page?: number; size?: number } = {}) =>
+    api.get<CatalogPagedResponse>(`/marketplaces/${marketplaceId}/catalog/feed`, { params }),
 };

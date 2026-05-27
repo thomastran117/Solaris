@@ -34,6 +34,7 @@ import OrdersPage from "./pages/OrdersPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import CompanyOrdersPage from "./pages/admin/CompanyOrdersPage";
 import CompanyOrderDetailPage from "./pages/admin/CompanyOrderDetailPage";
+import FeedPage from "./pages/FeedPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -81,6 +82,7 @@ function App() {
 
             {/* Protected routes — redirect to /login if unauthenticated */}
             <Route element={<ProtectedRoute />}>
+              <Route path="/feed" element={<FeedPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/lists" element={<SavedListsPage />} />
               <Route path="/lists/:id" element={<SavedListDetailPage />} />

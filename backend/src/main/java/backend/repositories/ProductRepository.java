@@ -312,4 +312,47 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
             @Param("status") ProductStatus status,
             @Param("now") Instant now,
             Pageable pageable);
+
+    @Query(value = """
+            SELECT p FROM Product p JOIN FETCH p.company
+            WHERE p.marketplaceId = :marketplaceId
+              AND p.status = backend.models.enums.ProductStatus.ACTIVE
+              AND p.marketplaceListed = true
+              AND (p.category IN :categories OR p.brand IN :brands)
+              AND p.id NOT IN :excludedIds
+            ORDER BY p.featured DESC, p.boostWeight DESC NULLS LAST, p.publishedAt DESC
+            """,
+           countQuery = """
+            SELECT COUNT(p) FROM Product p
+            WHERE p.marketplaceId = :marketplaceId
+              AND p.status = backend.models.enums.ProductStatus.ACTIVE
+              AND p.marketplaceListed = true
+              AND (p.category IN :categories OR p.brand IN :brands)
+              AND p.id NOT IN :excludedIds
+            """)
+    Page<Product> findPersonalizedFeed(
+            @Param("marketplaceId") java.util.UUID marketplaceId,
+            @Param("categories") Collection<String> categories,
+            @Param("brands") Collection<String> brands,
+            @Param("excludedIds") Collection<java.util.UUID> excludedIds,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT p FROM Product p JOIN FETCH p.company
+            WHERE p.marketplaceId = :marketplaceId
+              AND p.status = backend.models.enums.ProductStatus.ACTIVE
+              AND p.marketplaceListed = true
+              AND p.featured = true
+            ORDER BY p.boostWeight DESC NULLS LAST, p.publishedAt DESC
+            """,
+           countQuery = """
+            SELECT COUNT(p) FROM Product p
+            WHERE p.marketplaceId = :marketplaceId
+              AND p.status = backend.models.enums.ProductStatus.ACTIVE
+              AND p.marketplaceListed = true
+              AND p.featured = true
+            """)
+    Page<Product> findFeaturedFeed(
+            @Param("marketplaceId") java.util.UUID marketplaceId,
+            Pageable pageable);
 }
