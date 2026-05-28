@@ -29,4 +29,7 @@ export const companyOrdersApi = {
 
   cancel: (companyId: string, orderId: string) =>
     api.post<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/cancel`),
+
+  assignDriver: (companyId: string, orderId: string, driverUserId: string) =>
+    api.post<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/assign-driver`, { driverUserId }),
 };

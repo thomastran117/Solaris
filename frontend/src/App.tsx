@@ -37,6 +37,7 @@ import OrdersPage from "./pages/OrdersPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import CompanyOrdersPage from "./pages/admin/CompanyOrdersPage";
 import CompanyOrderDetailPage from "./pages/admin/CompanyOrderDetailPage";
+import DriverDispatchPage from "./pages/admin/DriverDispatchPage";
 import FeedPage from "./pages/FeedPage";
 import FollowingPage from "./pages/FollowingPage";
 import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
@@ -117,6 +118,7 @@ function App() {
               <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
               <Route path="/admin/orders" element={<CompanyOrdersPage />} />
               <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
+              <Route path="/admin/drivers" element={<DriverDispatchPage />} />
             </Route>
           </Routes>
         </div>

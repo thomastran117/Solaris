@@ -75,6 +75,9 @@ public interface OrderService {
     /** Called by the Aftership webhook when tag == "Delivered". Looks up order by tracking number and transitions to DELIVERED. No-ops if not found or already delivered. */
     void autoMarkDeliveredByTracking(String trackingNumber);
 
+    /** Records a TRACKING_CHECKPOINT history entry and publishes a tracking_checkpoint SSE event. Idempotent via Redis dedup. No-op if no order matches the tracking number. */
+    void publishTrackingCheckpoint(String trackingNumber, String tag, java.time.Instant checkpointTime);
+
     /** Returns the full status/event history for an order, ordered by occurredAt ASC. Validates that userId owns the order. */
     List<OrderStatusHistoryResponse> getOrderHistory(UUID orderId, UUID userId);
 

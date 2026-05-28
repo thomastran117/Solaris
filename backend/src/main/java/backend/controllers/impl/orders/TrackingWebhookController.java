@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.HexFormat;
 
 @RestController
@@ -49,9 +50,16 @@ public class TrackingWebhookController {
             String trackingNumber = tracking.path("tracking_number").asText(null);
             String tag = tracking.path("tag").asText(null);
 
-            if ("Delivered".equals(tag) && trackingNumber != null) {
+            if (trackingNumber == null || tag == null) {
+                return ResponseEntity.ok().build();
+            }
+
+            Instant checkpointTime = extractCheckpointTime(tracking);
+
+            if ("Delivered".equals(tag)) {
                 autoMarkDelivered(trackingNumber);
             }
+            publishCheckpoint(trackingNumber, tag, checkpointTime);
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
@@ -66,6 +74,25 @@ public class TrackingWebhookController {
         } catch (Exception e) {
             log.warn("Auto-deliver by tracking {} failed: {}", trackingNumber, e.getMessage());
         }
+    }
+
+    private void publishCheckpoint(String trackingNumber, String tag, Instant checkpointTime) {
+        try {
+            orderService.publishTrackingCheckpoint(trackingNumber, tag, checkpointTime);
+        } catch (Exception e) {
+            log.warn("Tracking checkpoint publish failed for {}/{}: {}", trackingNumber, tag, e.getMessage());
+        }
+    }
+
+    private Instant extractCheckpointTime(JsonNode tracking) {
+        JsonNode checkpoints = tracking.path("checkpoints");
+        if (checkpoints.isArray() && !checkpoints.isEmpty()) {
+            String ts = checkpoints.get(checkpoints.size() - 1).path("checkpoint_time").asText(null);
+            if (ts != null) {
+                try { return Instant.parse(ts); } catch (Exception ignored) {}
+            }
+        }
+        return Instant.now();
     }
 
     private boolean isValidSignature(byte[] body, String signature) {

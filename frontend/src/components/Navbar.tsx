@@ -163,6 +163,11 @@ export default function Navbar() {
                   Fulfillment
                 </NavLink>
               )}
+              {accessToken && companyId && canFulfillOrders && (
+                <NavLink to="/admin/drivers" className={navLinkClass}>
+                  Drivers
+                </NavLink>
+              )}
               {accessToken && companyId && (canManageProducts || canFulfillOrders) && (
                 <NavLink to="/admin/products" className={navLinkClass}>
                   Admin

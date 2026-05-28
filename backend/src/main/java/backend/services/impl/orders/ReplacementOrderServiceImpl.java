@@ -156,6 +156,7 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                 order.getReturnedAt(),
                 order.getFulfillmentNote(),
                 order.getRefundedAmountCents(),
+                order.getAssignedDriverId(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
         );

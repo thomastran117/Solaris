@@ -2302,6 +2302,7 @@ public class OrderServiceImpl implements OrderService {
                 order.getReturnedAt(),
                 order.getFulfillmentNote(),
                 order.getRefundedAmountCents(),
+                order.getAssignedDriverId(),
                 order.getCreatedAt());
     }
 
@@ -2601,6 +2602,21 @@ public class OrderServiceImpl implements OrderService {
                 .orElse(null);
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+    }
+
+    @Override
+    @Transactional
+    public void publishTrackingCheckpoint(String trackingNumber, String tag, Instant checkpointTime) {
+        Order order = orderRepository.findByTrackingNumber(trackingNumber).orElse(null);
+        if (order == null) return;
+        if (stringRedisTemplate != null) {
+            String dedupKey = "tracking:seen:" + trackingNumber + ":" + tag + ":" + checkpointTime;
+            Boolean isNew = stringRedisTemplate.opsForValue()
+                    .setIfAbsent(dedupKey, "1", java.time.Duration.ofHours(24));
+            if (Boolean.FALSE.equals(isNew)) return;
+        }
+        recordHistory(order, OrderHistoryEventType.TRACKING_CHECKPOINT, null, tag);
+        publishSseEvent(order, tag, "tracking_checkpoint");
     }
 
     @Override

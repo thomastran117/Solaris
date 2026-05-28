@@ -35,5 +35,6 @@ public record CompanyOrderResponse(
         Instant returnedAt,
         String fulfillmentNote,
         long refundedAmountCents,
+        UUID assignedDriverId,
         Instant createdAt
 ) {}

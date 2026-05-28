@@ -124,6 +124,7 @@ export interface CompanyOrder {
   shipState: string | null;
   shipPostalCode: string | null;
   shipCountry: string | null;
+  assignedDriverId: string | null;
   createdAt: string;
 }
 
