@@ -137,8 +137,12 @@ import backend.services.pricing.CartContext;
 import backend.services.pricing.CartLine;
 import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
+import backend.events.order.SseStatusUpdateEvent;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -302,10 +306,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderStatusHistoryRepository orderStatusHistoryRepository;
+    private StringRedisTemplate stringRedisTemplate;
 
     @org.springframework.beans.factory.annotation.Autowired
     public void setOrderStatusHistoryRepository(OrderStatusHistoryRepository repo) {
         this.orderStatusHistoryRepository = repo;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setStringRedisTemplate(StringRedisTemplate template) {
+        this.stringRedisTemplate = template;
     }
 
     @Override
@@ -1102,6 +1112,7 @@ public class OrderServiceImpl implements OrderService {
                 // stale-order scheduler auto-releases if no decision within the TTL.
                 Order savedForReview = orderRepository.save(order);
                 recordHistory(savedForReview, OrderHistoryEventType.STATUS_CHANGED, null, "Order held for review");
+                publishSseEvent(savedForReview, "Order held for review", "status_update");
                 OrderResponse response = toResponse(savedForReview);
                 emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
                 return response;
@@ -1352,6 +1363,7 @@ public class OrderServiceImpl implements OrderService {
                 order.getId(), order.getUser().getId(), reason, order.getCancelledAt()));
 
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, actorId, reason.name());
+        publishSseEvent(order, reason.name(), "status_update");
     }
 
     @Override
@@ -1389,6 +1401,7 @@ public class OrderServiceImpl implements OrderService {
             order.setPaidAt(Instant.now());
             orderRepository.save(order);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment confirmed");
+            publishSseEvent(order, "Payment confirmed", "status_update");
             releaseReservation(order.getId());
             if (order.isMarketplaceOrder()) {
                 recordSubOrderCommission(order);
@@ -1440,6 +1453,7 @@ public class OrderServiceImpl implements OrderService {
             releaseCouponUsage(order);
             orderRepository.save(order);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment failed");
+            publishSseEvent(order, "Payment failed", "status_update");
         });
     }
 
@@ -1847,6 +1861,41 @@ public class OrderServiceImpl implements OrderService {
         if (drift.compareTo(scaledTolerance) > 0) {
             log.warn("[TOTALS] Mismatch beyond {} tolerance — engine finalTotal={} expected={} drift={} (lineSum={}, coupon={}, loyalty={}, lines={})",
                     scaledTolerance, finalTotal, expected, drift, lineSum, couponDiscountAmount, loyaltyDiscount, items.size());
+        }
+    }
+
+    private void publishSseEvent(Order order, String note, String eventType) {
+        if (stringRedisTemplate == null) return;
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    doPublishSseEvent(order, note, eventType);
+                }
+            });
+        } else {
+            doPublishSseEvent(order, note, eventType);
+        }
+    }
+
+    private void doPublishSseEvent(Order order, String note, String eventType) {
+        try {
+            SseStatusUpdateEvent event = new SseStatusUpdateEvent(
+                    UUID.randomUUID(),
+                    order.getId(),
+                    order.getStatus().name(),
+                    order.getTrackingNumber(),
+                    order.getCarrier(),
+                    null,
+                    null,
+                    note,
+                    Instant.now(),
+                    eventType);
+            stringRedisTemplate.convertAndSend(
+                    "order:stream:" + order.getId(),
+                    objectMapper.writeValueAsString(event));
+        } catch (Exception e) {
+            log.warn("[SSE] Failed to publish SSE event for order {}: {}", order.getId(), e.getMessage());
         }
     }
 
@@ -2395,6 +2444,7 @@ public class OrderServiceImpl implements OrderService {
         order.setPackedAt(Instant.now());
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, null);
+        publishSseEvent(saved, null, "status_update");
         return toCompanyOrderResponse(saved, companyId);
     }
 
@@ -2423,8 +2473,9 @@ public class OrderServiceImpl implements OrderService {
         order.setPickupReadyAt(Instant.now());
         Order saved = orderRepository.save(order);
         String locationName = saved.getPickupLocationName() != null ? saved.getPickupLocationName() : "store";
-        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId,
-                "Items ready for pickup at " + locationName);
+        String pickupNote = "Items ready for pickup at " + locationName;
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, pickupNote);
+        publishSseEvent(saved, pickupNote, "status_update");
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.PickupReady(
                 saved.getId(), saved.getUser().getId(), companyId,
                 saved.getPickupLocationName(), saved.getPickupReadyAt()));
@@ -2480,6 +2531,7 @@ public class OrderServiceImpl implements OrderService {
 
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, request.note());
+        publishSseEvent(saved, request.note(), "status_update");
         String tn = saved.getTrackingNumber();
         String carrier = saved.getCarrier();
         if (tn != null) {
@@ -2521,6 +2573,7 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.DELIVERED);
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, null);
+        publishSseEvent(saved, null, "status_update");
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
         return toCompanyOrderResponse(saved, companyId);
@@ -2540,6 +2593,7 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.DELIVERED);
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, null, "Delivery confirmed by carrier");
+        publishSseEvent(saved, "Delivery confirmed by carrier", "status_update");
         UUID companyId = saved.getItems().stream()
                 .findFirst()
                 .map(i -> i.getProduct().getCompany().getId())
@@ -2798,6 +2852,7 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.RESERVED);
         orderRepository.save(order);
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, ownerId, "Risk review approved");
+        publishSseEvent(order, "Risk review approved", "status_update");
 
         review.setStatus(RiskReviewStatus.APPROVED);
         review.setDecidedByUserId(ownerId);

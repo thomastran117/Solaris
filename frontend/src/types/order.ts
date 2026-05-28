@@ -154,3 +154,23 @@ export interface OrderStatusHistoryEntry {
   actorId: string | null;
   note: string | null;
 }
+
+export interface DriverLocation {
+  driverId: string;
+  lat: number;
+  lng: number;
+  timestamp: string;
+}
+
+export interface SseStatusUpdateEvent {
+  eventId: string;
+  orderId: string;
+  status: string;
+  trackingNumber: string | null;
+  carrier: string | null;
+  driverLat: number | null;
+  driverLng: number | null;
+  note: string | null;
+  occurredAt: string;
+  eventType: string;
+}

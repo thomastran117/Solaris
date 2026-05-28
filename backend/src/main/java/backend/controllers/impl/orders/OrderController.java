@@ -21,6 +21,7 @@ import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.enums.OrderStatus;
+import backend.services.impl.orders.OrderSseService;
 import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
@@ -33,6 +34,8 @@ import backend.services.intf.returns.ReturnService;
 import backend.services.intf.subscriptions.SubscriptionService;
 import backend.services.intf.vendors.VendorOnboardingService;
 import backend.services.intf.payments.VendorPayoutService;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import org.springframework.web.bind.annotation.RequestHeader;
 
@@ -67,6 +70,7 @@ public class OrderController {
     private final IdempotencyService idempotencyService;
     private final CacheService cacheService;
     private final TrackingService trackingService;
+    private final OrderSseService orderSseService;
     private final ObjectMapper objectMapper;
 
     private static final long TRACKING_CACHE_TTL_SECONDS = 60;
@@ -79,6 +83,7 @@ public class OrderController {
                            IdempotencyService idempotencyService,
                            CacheService cacheService,
                            TrackingService trackingService,
+                           OrderSseService orderSseService,
                            ObjectMapper objectMapper) {
         this.orderService = orderService;
         this.paymentService = paymentService;
@@ -90,6 +95,7 @@ public class OrderController {
         this.idempotencyService = idempotencyService;
         this.cacheService = cacheService;
         this.trackingService = trackingService;
+        this.orderSseService = orderSseService;
         this.objectMapper = objectMapper;
     }
 
@@ -327,6 +333,46 @@ public class OrderController {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(replacementOrderService.createReplacement(orderId, request, resolveUserId()));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping(value = "/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequireAuth
+    public SseEmitter streamOrder(@PathVariable UUID id) {
+        UUID userId = resolveUserId();
+        OrderResponse order = orderService.getOrder(id, userId);
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+        orderSseService.register(id, emitter);
+        emitter.onCompletion(() -> orderSseService.deregister(id, emitter));
+        emitter.onTimeout(() -> orderSseService.deregister(id, emitter));
+        emitter.onError(t -> orderSseService.deregister(id, emitter));
+
+        try {
+            emitter.send(SseEmitter.event().name("snapshot").data(objectMapper.writeValueAsString(order)));
+        } catch (Exception e) {
+            orderSseService.deregister(id, emitter);
+            emitter.completeWithError(e);
+        }
+
+        return emitter;
+    }
+
+    @GetMapping("/{id}/driver-location")
+    @RequireAuth
+    public ResponseEntity<Object> getDriverLocation(@PathVariable UUID id) {
+        try {
+            UUID userId = resolveUserId();
+            orderService.getOrder(id, userId);
+            String cached = cacheService.get("delivery:location:" + id);
+            if (cached == null) {
+                return ResponseEntity.ok().build();
+            }
+            return ResponseEntity.ok(objectMapper.readValue(cached, Object.class));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

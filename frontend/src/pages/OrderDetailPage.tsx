@@ -12,6 +12,7 @@ import TrackingPanel from "../components/order/TrackingPanel";
 import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import { ordersApi } from "../api/orders";
+import { useOrderStream } from "../hooks/useOrderStream";
 
 const CANCELLABLE = new Set(["RESERVED", "PAID", "PACKED"]);
 
@@ -48,6 +49,8 @@ export default function OrderDetailPage() {
     },
     onError: () => setCancelError("Failed to cancel order. Please try again."),
   });
+
+  const { connected } = useOrderStream(id);
 
   const hasPickupReady = order?.items.some((i) => i.fulfillmentStatus === "PICKUP_READY") ?? false;
 
@@ -93,6 +96,15 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
                 <div className="text-right">
+                  {connected && (
+                    <div className="flex items-center justify-end gap-1.5 mb-1">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                      </span>
+                      <span className="text-xs text-blue-400 font-medium">Live</span>
+                    </div>
+                  )}
                   <p className="text-xl font-extrabold text-white">{order.currency} {order.totalAmount.toFixed(2)}</p>
                   <p className="text-xs text-white/50 capitalize">{order.status.toLowerCase().replace(/_/g, " ")}</p>
                   {CANCELLABLE.has(order.status) && (

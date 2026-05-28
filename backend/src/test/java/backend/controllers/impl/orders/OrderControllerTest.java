@@ -9,6 +9,7 @@ import backend.exceptions.http.ConflictException;
 import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
+import backend.services.impl.orders.OrderSseService;
 import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
@@ -95,6 +96,7 @@ class OrderControllerTest {
                         idempotencyService,
                         cacheService,
                         mock(TrackingService.class),
+                        mock(OrderSseService.class),
                         new ObjectMapper().findAndRegisterModules()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
