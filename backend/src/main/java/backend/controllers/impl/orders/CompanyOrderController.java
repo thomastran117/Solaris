@@ -21,6 +21,8 @@ import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskReviewStatus;
+import backend.dtos.requests.order.AssignDriverRequest;
+import backend.services.intf.orders.DeliveryService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.returns.ReturnService;
 
@@ -37,10 +39,13 @@ public class CompanyOrderController {
 
     private final OrderService orderService;
     private final ReturnService returnService;
+    private final DeliveryService deliveryService;
 
-    public CompanyOrderController(OrderService orderService, ReturnService returnService) {
+    public CompanyOrderController(OrderService orderService, ReturnService returnService,
+                                  DeliveryService deliveryService) {
         this.orderService = orderService;
         this.returnService = returnService;
+        this.deliveryService = deliveryService;
     }
 
     @GetMapping
@@ -245,6 +250,22 @@ public class CompanyOrderController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.rejectRiskReview(companyId, orderId, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PostMapping("/{orderId}/assign-driver")
+    public ResponseEntity<Void> assignDriver(
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody AssignDriverRequest request) {
+        try {
+            UUID ownerId = resolveUserId();
+            deliveryService.assignDriver(companyId, orderId, request.driverUserId(), ownerId);
+            return ResponseEntity.ok().build();
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

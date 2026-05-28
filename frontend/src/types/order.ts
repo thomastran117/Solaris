@@ -97,6 +97,7 @@ export interface Order {
   couponCode: string | null;
   couponDiscountAmount: number;
   refundedAmountCents: number;
+  assignedDriverId: string | null;
   createdAt: string;
   updatedAt: string;
 }

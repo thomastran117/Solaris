@@ -79,6 +79,19 @@ public interface OrderService {
     List<OrderStatusHistoryResponse> getOrderHistory(UUID orderId, UUID userId);
 
     // -------------------------------------------------------------------------
+    // Driver transitions (called by DeliveryService)
+    // -------------------------------------------------------------------------
+
+    /** Records a DRIVER_PICKED_UP history event; order status remains SHIPPED. */
+    void markPickedUpByDriver(UUID orderId, UUID driverId);
+
+    /** Records a DRIVER_ARRIVED history event; order status remains SHIPPED. */
+    void markArrivedByDriver(UUID orderId, UUID driverId);
+
+    /** Transitions SHIPPED order to DELIVERED, recorded as a driver delivery. */
+    void markDeliveredByDriver(UUID orderId, UUID driverId);
+
+    // -------------------------------------------------------------------------
     // Subscription renewals
     // -------------------------------------------------------------------------
 

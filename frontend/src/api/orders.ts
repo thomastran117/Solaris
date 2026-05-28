@@ -1,5 +1,5 @@
 import api from "../api";
-import type { Order, OrderStatusHistoryEntry, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
+import type { DriverLocation, Order, OrderStatusHistoryEntry, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
 
 export interface ShipOrderRequest {
   trackingNumber: string;
@@ -29,4 +29,7 @@ export const ordersApi = {
 
   getHistory: (orderId: string) =>
     api.get<OrderStatusHistoryEntry[]>(`/orders/${orderId}/history`),
+
+  getDriverLocation: (orderId: string) =>
+    api.get<DriverLocation | null>(`/orders/${orderId}/driver-location`),
 };

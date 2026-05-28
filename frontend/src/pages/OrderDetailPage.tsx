@@ -13,6 +13,7 @@ import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import { ordersApi } from "../api/orders";
 import { useOrderStream } from "../hooks/useOrderStream";
+import DriverLocationIndicator from "../components/order/DriverLocationIndicator";
 
 const CANCELLABLE = new Set(["RESERVED", "PAID", "PACKED"]);
 
@@ -50,7 +51,7 @@ export default function OrderDetailPage() {
     onError: () => setCancelError("Failed to cancel order. Please try again."),
   });
 
-  const { connected } = useOrderStream(id);
+  const { connected, driverLocation } = useOrderStream(id);
 
   const hasPickupReady = order?.items.some((i) => i.fulfillmentStatus === "PICKUP_READY") ?? false;
 
@@ -128,6 +129,13 @@ export default function OrderDetailPage() {
                 hasPickupReady={hasPickupReady}
               />
             </motion.div>
+
+            {/* Driver location */}
+            {order.assignedDriverId && (
+              <motion.div variants={fadeInUp}>
+                <DriverLocationIndicator location={driverLocation} />
+              </motion.div>
+            )}
 
             {/* Tracking / Pickup */}
             {order.fulfillmentMethod === "DELIVERY" && order.trackingNumber && (

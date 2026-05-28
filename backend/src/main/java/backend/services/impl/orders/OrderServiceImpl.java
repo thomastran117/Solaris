@@ -2339,6 +2339,7 @@ public class OrderServiceImpl implements OrderService {
                 order.getReturnedAt(),
                 order.getFulfillmentNote(),
                 order.getRefundedAmountCents(),
+                order.getAssignedDriverId(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
         );
@@ -2594,6 +2595,48 @@ public class OrderServiceImpl implements OrderService {
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, null, "Delivery confirmed by carrier");
         publishSseEvent(saved, "Delivery confirmed by carrier", "status_update");
+        UUID companyId = saved.getItems().stream()
+                .findFirst()
+                .map(i -> i.getProduct().getCompany().getId())
+                .orElse(null);
+        fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
+                saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+    }
+
+    @Override
+    @Transactional
+    public void markPickedUpByDriver(UUID orderId, UUID driverId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        recordHistory(order, OrderHistoryEventType.DRIVER_PICKED_UP, driverId, "Driver picked up the order");
+        publishSseEvent(order, "Driver picked up the order", "driver_checkpoint");
+    }
+
+    @Override
+    @Transactional
+    public void markArrivedByDriver(UUID orderId, UUID driverId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        recordHistory(order, OrderHistoryEventType.DRIVER_ARRIVED, driverId, "Driver arrived at delivery address");
+        publishSseEvent(order, "Driver arrived at delivery address", "driver_checkpoint");
+    }
+
+    @Override
+    @Transactional
+    public void markDeliveredByDriver(UUID orderId, UUID driverId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        validateTransition(order, OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.PARTIALLY_FULFILLED);
+        for (OrderItem item : order.getItems()) {
+            if (item.getFulfillmentStatus() == FulfillmentStatus.SHIPPED) {
+                item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+            }
+        }
+        order.setDeliveredAt(Instant.now());
+        order.setStatus(OrderStatus.DELIVERED);
+        Order saved = orderRepository.save(order);
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, driverId, "Delivered by driver");
+        publishSseEvent(saved, "Delivered by driver", "status_update");
         UUID companyId = saved.getItems().stream()
                 .findFirst()
                 .map(i -> i.getProduct().getCompany().getId())

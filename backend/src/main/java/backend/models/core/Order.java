@@ -17,6 +17,7 @@ import backend.models.enums.RiskAction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.List;
 
 @Entity
@@ -281,6 +282,9 @@ public class Order {
     /** Stripe invoice ID that paid for this order (subscription renewals only). Used for idempotency. */
     @Column(name = "stripe_invoice_id", nullable = true, length = 100)
     private String stripeInvoiceId;
+
+    @Column(name = "assigned_driver_id", nullable = true, columnDefinition = "BINARY(16)")
+    private UUID assignedDriverId;
 
     // -------------------------------------------------------------------------
     // Audit

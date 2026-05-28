@@ -4,6 +4,7 @@ interface EnvironmentConfig {
   msal_authority: string;
   RECAPTCHA_SITE_KEY: string;
   backend_url: string;
+  backend_url_ws: string;
   frontend_url: string;
 }
 
@@ -20,6 +21,12 @@ const Environment: EnvironmentConfig = {
   msal_authority: readEnv(import.meta.env.VITE_MSAL_AUTHORITY),
   RECAPTCHA_SITE_KEY: readEnv(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
   backend_url: normalizeUrl(readEnv(import.meta.env.VITE_BACKEND_URL, "/api")),
+  backend_url_ws: readEnv(
+    import.meta.env.VITE_BACKEND_WS_URL,
+    typeof window !== "undefined"
+      ? window.location.origin.replace(/^http/, "ws")
+      : "ws://localhost:8080"
+  ),
   frontend_url: normalizeUrl(
     readEnv(import.meta.env.VITE_FRONTEND_URL, defaultFrontendUrl)
   ),

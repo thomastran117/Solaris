@@ -65,7 +65,7 @@ class CompanyOrderControllerTest {
         orderService = mock(OrderService.class);
         returnService = mock(ReturnService.class);
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new CompanyOrderController(orderService, returnService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new CompanyOrderController(orderService, returnService, mock(backend.services.intf.orders.DeliveryService.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .build();
@@ -326,6 +326,7 @@ class CompanyOrderControllerTest {
                 null,
                 null,
                 0L,
+                null,
                 Instant.parse("2026-05-19T00:00:00Z"),
                 Instant.parse("2026-05-19T00:00:00Z")
         );

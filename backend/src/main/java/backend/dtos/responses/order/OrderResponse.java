@@ -44,6 +44,7 @@ public class OrderResponse {
     private String fulfillmentNote;
     // Refund tracking
     private long refundedAmountCents;
+    private UUID assignedDriverId;
     private Instant createdAt;
     private Instant updatedAt;
 }
