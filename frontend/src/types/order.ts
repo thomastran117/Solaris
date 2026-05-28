@@ -145,3 +145,12 @@ export interface PagedCompanyOrders {
   hasNext: boolean;
   hasPrevious: boolean;
 }
+
+export interface OrderStatusHistoryEntry {
+  id: string;
+  eventType: string;
+  status: string | null;
+  occurredAt: string;
+  actorId: string | null;
+  note: string | null;
+}

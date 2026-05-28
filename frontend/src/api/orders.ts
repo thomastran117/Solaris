@@ -1,5 +1,5 @@
 import api from "../api";
-import type { Order, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
+import type { Order, OrderStatusHistoryEntry, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
 
 export interface ShipOrderRequest {
   trackingNumber: string;
@@ -26,4 +26,7 @@ export const ordersApi = {
 
   getTracking: (orderId: string) =>
     api.get<TrackingEvent[]>(`/orders/${orderId}/tracking`),
+
+  getHistory: (orderId: string) =>
+    api.get<OrderStatusHistoryEntry[]>(`/orders/${orderId}/history`),
 };

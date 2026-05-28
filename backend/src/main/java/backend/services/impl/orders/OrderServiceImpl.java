@@ -105,7 +105,11 @@ import backend.models.enums.AllocationStrategy;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.services.impl.inventory.StockAlertService;
+import backend.dtos.responses.order.OrderStatusHistoryResponse;
 import backend.events.order.OrderFulfillmentEvent;
+import backend.models.core.OrderStatusHistory;
+import backend.models.enums.OrderHistoryEventType;
+import backend.repositories.OrderStatusHistoryRepository;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.orders.OrderFulfillmentEventPublisher;
@@ -295,6 +299,13 @@ public class OrderServiceImpl implements OrderService {
     @org.springframework.beans.factory.annotation.Autowired
     public void setPromotionPerUserCountRepository(PromotionPerUserCountRepository repo) {
         this.promotionPerUserCountRepository = repo;
+    }
+
+    private OrderStatusHistoryRepository orderStatusHistoryRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrderStatusHistoryRepository(OrderStatusHistoryRepository repo) {
+        this.orderStatusHistoryRepository = repo;
     }
 
     @Override
@@ -1089,7 +1100,9 @@ public class OrderServiceImpl implements OrderService {
             if (order.getStatus() == OrderStatus.UNDER_REVIEW) {
                 // Block path: order is parked for merchant review. Stock stays reserved;
                 // stale-order scheduler auto-releases if no decision within the TTL.
-                OrderResponse response = toResponse(orderRepository.save(order));
+                Order savedForReview = orderRepository.save(order);
+                recordHistory(savedForReview, OrderHistoryEventType.STATUS_CHANGED, null, "Order held for review");
+                OrderResponse response = toResponse(savedForReview);
                 emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
                 return response;
             }
@@ -1212,6 +1225,23 @@ public class OrderServiceImpl implements OrderService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderStatusHistoryResponse> getOrderHistory(UUID orderId, UUID userId) {
+        orderRepository.findByIdAndUserId(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        return orderStatusHistoryRepository.findAllByOrderIdOrderByOccurredAtAsc(orderId)
+                .stream()
+                .map(h -> new OrderStatusHistoryResponse(
+                        h.getId(),
+                        h.getEventType().name(),
+                        h.getStatus() != null ? h.getStatus().name() : null,
+                        h.getOccurredAt(),
+                        h.getActorId(),
+                        h.getNote()))
+                .toList();
+    }
+
     /**
      * Customer-initiated cancellation. The {@code findByIdAndUserId} lookup below
      * already enforces ownership (a user cannot cancel another user's order) and
@@ -1237,7 +1267,7 @@ public class OrderServiceImpl implements OrderService {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
-        doCancelOrder(order, backend.models.enums.CancellationReason.MERCHANT_CANCELLED);
+        doCancelOrder(order, backend.models.enums.CancellationReason.MERCHANT_CANCELLED, ownerId);
         return toCompanyOrderResponse(orderRepository.save(order), companyId);
     }
 
@@ -1249,7 +1279,7 @@ public class OrderServiceImpl implements OrderService {
     OrderResponse cancelOrderInternal(UUID orderId, UUID userId, backend.models.enums.CancellationReason reason) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
-        doCancelOrder(order, reason);
+        doCancelOrder(order, reason, userId);
         return toResponse(orderRepository.save(order));
     }
 
@@ -1259,7 +1289,7 @@ public class OrderServiceImpl implements OrderService {
      * Does NOT call {@link backend.repositories.orders.OrderRepository#save} — callers are
      * responsible for persisting and mapping to their response type.
      */
-    private void doCancelOrder(Order order, backend.models.enums.CancellationReason reason) {
+    private void doCancelOrder(Order order, backend.models.enums.CancellationReason reason, UUID actorId) {
         // Explicit positive list — we never want to silently start accepting cancellation
         // for a newly added intermediate status (PARTIALLY_FULFILLED, UNDER_REVIEW, etc).
         // Anything not in this set must throw, even if it gets added later.
@@ -1320,6 +1350,8 @@ public class OrderServiceImpl implements OrderService {
         // Publish after the enclosing @Transactional commits — publisher registers an afterCommit hook
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Cancelled(
                 order.getId(), order.getUser().getId(), reason, order.getCancelledAt()));
+
+        recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, actorId, reason.name());
     }
 
     @Override
@@ -1356,6 +1388,7 @@ public class OrderServiceImpl implements OrderService {
             Order order = orderRepository.findById(initialOrder.getId()).orElse(initialOrder);
             order.setPaidAt(Instant.now());
             orderRepository.save(order);
+            recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment confirmed");
             releaseReservation(order.getId());
             if (order.isMarketplaceOrder()) {
                 recordSubOrderCommission(order);
@@ -1406,6 +1439,7 @@ public class OrderServiceImpl implements OrderService {
 
             releaseCouponUsage(order);
             orderRepository.save(order);
+            recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment failed");
         });
     }
 
@@ -1814,6 +1848,17 @@ public class OrderServiceImpl implements OrderService {
             log.warn("[TOTALS] Mismatch beyond {} tolerance — engine finalTotal={} expected={} drift={} (lineSum={}, coupon={}, loyalty={}, lines={})",
                     scaledTolerance, finalTotal, expected, drift, lineSum, couponDiscountAmount, loyaltyDiscount, items.size());
         }
+    }
+
+    private void recordHistory(Order order, OrderHistoryEventType eventType, UUID actorId, String note) {
+        OrderStatusHistory h = new OrderStatusHistory();
+        h.setOrderId(order.getId());
+        h.setEventType(eventType);
+        h.setStatus(eventType == OrderHistoryEventType.STATUS_CHANGED ? order.getStatus() : null);
+        h.setOccurredAt(Instant.now());
+        h.setActorId(actorId);
+        h.setNote(note);
+        orderStatusHistoryRepository.save(h);
     }
 
     private void recordCompensation(Order order, CompensationType type, String detail, CompensationStatus status) {
@@ -2348,7 +2393,9 @@ public class OrderServiceImpl implements OrderService {
         }
         order.setStatus(OrderStatus.PACKED);
         order.setPackedAt(Instant.now());
-        return toCompanyOrderResponse(orderRepository.save(order), companyId);
+        Order saved = orderRepository.save(order);
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, null);
+        return toCompanyOrderResponse(saved, companyId);
     }
 
     @Override
@@ -2375,6 +2422,9 @@ public class OrderServiceImpl implements OrderService {
         // Order-level status intentionally stays PACKED — PICKUP_READY is item-level only.
         order.setPickupReadyAt(Instant.now());
         Order saved = orderRepository.save(order);
+        String locationName = saved.getPickupLocationName() != null ? saved.getPickupLocationName() : "store";
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId,
+                "Items ready for pickup at " + locationName);
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.PickupReady(
                 saved.getId(), saved.getUser().getId(), companyId,
                 saved.getPickupLocationName(), saved.getPickupReadyAt()));
@@ -2429,6 +2479,7 @@ public class OrderServiceImpl implements OrderService {
         // else: remains PARTIALLY_FULFILLED if called again for remaining items
 
         Order saved = orderRepository.save(order);
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, request.note());
         String tn = saved.getTrackingNumber();
         String carrier = saved.getCarrier();
         if (tn != null) {
@@ -2469,6 +2520,7 @@ public class OrderServiceImpl implements OrderService {
         order.setDeliveredAt(Instant.now());
         order.setStatus(OrderStatus.DELIVERED);
         Order saved = orderRepository.save(order);
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, ownerId, null);
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
         return toCompanyOrderResponse(saved, companyId);
@@ -2487,6 +2539,7 @@ public class OrderServiceImpl implements OrderService {
         order.setDeliveredAt(Instant.now());
         order.setStatus(OrderStatus.DELIVERED);
         Order saved = orderRepository.save(order);
+        recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, null, "Delivery confirmed by carrier");
         UUID companyId = saved.getItems().stream()
                 .findFirst()
                 .map(i -> i.getProduct().getCompany().getId())
@@ -2744,6 +2797,7 @@ public class OrderServiceImpl implements OrderService {
         order.setPaymentClientSecret(paymentIntent.clientSecret());
         order.setStatus(OrderStatus.RESERVED);
         orderRepository.save(order);
+        recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, ownerId, "Risk review approved");
 
         review.setStatus(RiskReviewStatus.APPROVED);
         review.setDecidedByUserId(ownerId);

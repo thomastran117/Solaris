@@ -7,6 +7,7 @@ import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground"
 import SectionGlow from "../components/section/SectionGlow";
 import SectionFade from "../components/section/SectionFade";
 import OrderStatusTimeline from "../components/order/OrderStatusTimeline";
+import OrderStatusHistoryTimeline from "../components/order/OrderStatusHistoryTimeline";
 import TrackingPanel from "../components/order/TrackingPanel";
 import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
@@ -170,6 +171,11 @@ export default function OrderDetailPage() {
                 <span className="text-sm text-white/60">Total</span>
                 <span className="text-base font-extrabold text-white">{order.currency} {order.totalAmount.toFixed(2)}</span>
               </div>
+            </motion.div>
+
+            {/* History timeline */}
+            <motion.div variants={fadeInUp}>
+              <OrderStatusHistoryTimeline orderId={order.id} />
             </motion.div>
           </motion.div>
         )}

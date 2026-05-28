@@ -13,6 +13,7 @@ import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.requests.order.CreateOrderRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderResponse;
+import backend.dtos.responses.order.OrderStatusHistoryResponse;
 import backend.dtos.responses.order.TrackingEvent;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.AppHttpException;
@@ -168,6 +169,19 @@ public class OrderController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.getOrder(id, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/{id}/history")
+    @RequireAuth
+    public ResponseEntity<List<OrderStatusHistoryResponse>> getOrderHistory(@PathVariable UUID id) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.getOrderHistory(id, userId));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

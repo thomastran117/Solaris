@@ -8,12 +8,15 @@ import backend.dtos.requests.risk.RiskDecisionRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.CompanyOrderResponse;
 import backend.dtos.responses.order.OrderResponse;
+import backend.dtos.responses.order.OrderStatusHistoryResponse;
 import backend.dtos.responses.risk.RiskAssessmentResponse;
 import backend.dtos.responses.risk.RiskReviewResponse;
 import backend.models.core.Order;
 import backend.models.core.Subscription;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskReviewStatus;
+
+import java.util.List;
 
 public interface OrderService {
     OrderResponse createOrder(UUID userId, CreateOrderRequest request);
@@ -71,6 +74,9 @@ public interface OrderService {
 
     /** Called by the Aftership webhook when tag == "Delivered". Looks up order by tracking number and transitions to DELIVERED. No-ops if not found or already delivered. */
     void autoMarkDeliveredByTracking(String trackingNumber);
+
+    /** Returns the full status/event history for an order, ordered by occurredAt ASC. Validates that userId owns the order. */
+    List<OrderStatusHistoryResponse> getOrderHistory(UUID orderId, UUID userId);
 
     // -------------------------------------------------------------------------
     // Subscription renewals
