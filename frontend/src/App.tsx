@@ -38,6 +38,8 @@ import OrderDetailPage from "./pages/OrderDetailPage";
 import CompanyOrdersPage from "./pages/admin/CompanyOrdersPage";
 import CompanyOrderDetailPage from "./pages/admin/CompanyOrderDetailPage";
 import FeedPage from "./pages/FeedPage";
+import FollowingPage from "./pages/FollowingPage";
+import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -87,6 +89,7 @@ function App() {
             {/* Protected routes — redirect to /login if unauthenticated */}
             <Route element={<ProtectedRoute />}>
               <Route path="/feed" element={<FeedPage />} />
+              <Route path="/following" element={<FollowingPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/lists" element={<SavedListsPage />} />
               <Route path="/lists/:id" element={<SavedListDetailPage />} />
@@ -111,6 +114,7 @@ function App() {
               <Route path="/admin/reports" element={<AdminReportsPage />} />
               <Route path="/admin/loyalty" element={<AdminLoyaltyPage />} />
               <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+              <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
               <Route path="/admin/orders" element={<CompanyOrdersPage />} />
               <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
             </Route>

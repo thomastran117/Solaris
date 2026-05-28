@@ -3,6 +3,7 @@ package backend.events.email;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.support.TicketMessageResponse;
 import backend.dtos.responses.support.TicketResponse;
+import backend.models.enums.AnnouncementType;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
@@ -18,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = EmailEvent.ReplacementOrderEmail.class,   name = "REPLACEMENT_ORDER"),
     @JsonSubTypes.Type(value = EmailEvent.BackInStockEmail.class,        name = "BACK_IN_STOCK"),
     @JsonSubTypes.Type(value = EmailEvent.TeamInviteEmail.class,         name = "TEAM_INVITE"),
+    @JsonSubTypes.Type(value = EmailEvent.AnnouncementEmail.class,       name = "ANNOUNCEMENT"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -29,7 +31,8 @@ public sealed interface EmailEvent
                 EmailEvent.CreditIssuedEmail,
                 EmailEvent.ReplacementOrderEmail,
                 EmailEvent.BackInStockEmail,
-                EmailEvent.TeamInviteEmail {
+                EmailEvent.TeamInviteEmail,
+                EmailEvent.AnnouncementEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -104,5 +107,16 @@ public sealed interface EmailEvent
         String role,
         String inviterDisplayName,
         String acceptUrl
+    ) implements EmailEvent {}
+
+    record AnnouncementEmail(
+        String toEmail,
+        String firstName,
+        java.util.UUID companyId,
+        String companyName,
+        java.util.UUID announcementId,
+        String announcementTitle,
+        String announcementBody,
+        AnnouncementType announcementType
     ) implements EmailEvent {}
 }

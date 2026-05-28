@@ -11,19 +11,21 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
 
 /**
- * Configures a dedicated {@link ConcurrentKafkaListenerContainerFactory} for the email
- * consumer. After 3 delivery attempts the message is routed to {@code email-events.dlq}
- * via {@link DeadLetterPublishingRecoverer} so transient mail-service outages do not
- * permanently lose transactional email events.
+ * Configures dedicated {@link ConcurrentKafkaListenerContainerFactory} beans for the
+ * email and announcement consumers. After 3 delivery attempts each message is routed
+ * to its corresponding DLQ topic via {@link DeadLetterPublishingRecoverer}.
  */
 @Configuration
 public class KafkaConsumerConfig {
 
-    private static final int EMAIL_MAX_ATTEMPTS = 3;
-    private static final long EMAIL_RETRY_INTERVAL_MS = 2_000L;
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_INTERVAL_MS = 2_000L;
 
     @Value("${app.kafka.topics.email-events.dlq}")
     private String emailDlqTopic;
+
+    @Value("${app.kafka.topics.announcement-events.dlq}")
+    private String announcementDlqTopic;
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory(
@@ -34,7 +36,25 @@ public class KafkaConsumerConfig {
                 kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(emailDlqTopic, 0));
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
-                recoverer, new FixedBackOff(EMAIL_RETRY_INTERVAL_MS, EMAIL_MAX_ATTEMPTS - 1L));
+                recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));
+
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(errorHandler);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object> announcementKafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> consumerFactory,
+            KafkaTemplate<String, Object> kafkaTemplate) {
+
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(announcementDlqTopic, 0));
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));
 
         ConcurrentKafkaListenerContainerFactory<String, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();

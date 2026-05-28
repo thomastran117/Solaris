@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   User,
   Star,
@@ -12,9 +12,15 @@ import {
   CheckCircle2,
   XCircle,
   Crown,
+  Building2,
+  Bell,
+  BellOff,
+  UserMinus,
+  ArrowRight,
 } from "lucide-react";
 import api from "../api";
 import { getPremiumStatus, createCheckoutSession, createPortalSession } from "../api/premium";
+import { followApi } from "../api/follow";
 import type { RootState } from "../stores";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
 import SectionGlow from "../components/section/SectionGlow";
@@ -92,6 +98,8 @@ export default function AccountPage() {
     }
   }, [location.search, navigate]);
 
+  const queryClient = useQueryClient();
+
   const { data: profile } = useQuery({
     queryKey: ["profile"],
     queryFn: () => api.get<ProfileResponse>("/profile").then((r) => r.data),
@@ -101,6 +109,24 @@ export default function AccountPage() {
     queryKey: ["premium", "status"],
     queryFn: () => getPremiumStatus().then((r) => r.data),
   });
+
+  const followingQuery = useQuery({
+    queryKey: ["me", "following", 0],
+    queryFn: () => followApi.listFollowing(0, 5).then((r) => r.data),
+  });
+
+  const bellMutation = useMutation({
+    mutationFn: ({ companyId, enabled }: { companyId: string; enabled: boolean }) =>
+      followApi.setNotifications(companyId, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: (companyId: string) => followApi.unfollow(companyId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
+  });
+
+  const followedCompanies = followingQuery.data?.items ?? [];
 
   const isPremium = (premiumStatus?.tier ?? tier) === "PREMIUM";
 
@@ -264,6 +290,104 @@ export default function AccountPage() {
               )}
             </div>
           </motion.section>
+
+          {/* ── Following ────────────────────────────────────────────────── */}
+          {(followedCompanies.length > 0 || followingQuery.isLoading) && (
+            <motion.section
+              variants={fadeInUp}
+              className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+            >
+              <SectionGlow variant="c" />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Following</h3>
+                <Link
+                  to="/following"
+                  className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                >
+                  View full feed <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+
+              {followingQuery.isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-14 rounded-xl bg-white/[0.04] animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {followedCompanies.map((fc) => (
+                    <div
+                      key={fc.followId}
+                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5"
+                    >
+                      {fc.companyLogoUrl ? (
+                        <img
+                          src={fc.companyLogoUrl}
+                          alt={fc.companyName}
+                          className="w-8 h-8 rounded-lg object-cover border border-white/10 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-white/10 flex items-center justify-center shrink-0">
+                          <Building2 className="w-4 h-4 text-sky-300" />
+                        </div>
+                      )}
+                      <Link
+                        to={`/c/${fc.companyId}`}
+                        className="flex-1 min-w-0 text-sm font-medium text-white/80 hover:text-white transition-colors truncate"
+                      >
+                        {fc.companyName}
+                      </Link>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          title={fc.notificationsEnabled ? "Mute" : "Unmute"}
+                          onClick={() =>
+                            bellMutation.mutate({
+                              companyId: fc.companyId,
+                              enabled: !fc.notificationsEnabled,
+                            })
+                          }
+                          disabled={bellMutation.isPending}
+                          className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                            fc.notificationsEnabled
+                              ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
+                              : "border-white/10 text-white/35 hover:text-white/60"
+                          }`}
+                        >
+                          {fc.notificationsEnabled ? (
+                            <Bell className="w-3 h-3" />
+                          ) : (
+                            <BellOff className="w-3 h-3" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="Unfollow"
+                          onClick={() => unfollowMutation.mutate(fc.companyId)}
+                          disabled={unfollowMutation.isPending}
+                          className="p-1.5 rounded-lg border border-white/10 text-white/35 hover:text-red-400 hover:border-red-400/30 transition-colors disabled:opacity-50"
+                        >
+                          <UserMinus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(followingQuery.data?.totalElements ?? 0) > 5 && (
+                <div className="mt-3 text-center">
+                  <Link
+                    to="/following"
+                    className="text-xs text-white/45 hover:text-white/70 transition-colors"
+                  >
+                    +{(followingQuery.data!.totalElements) - followedCompanies.length} more — view all
+                  </Link>
+                </div>
+              )}
+            </motion.section>
+          )}
 
           {/* ── Benefits comparison ───────────────────────────────────────── */}
           <motion.section

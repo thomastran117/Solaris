@@ -6,6 +6,7 @@ import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.support.TicketMessageResponse;
 import backend.dtos.responses.support.TicketResponse;
 import backend.events.email.EmailEvent;
+import backend.models.enums.AnnouncementType;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -60,6 +61,10 @@ public class EmailSender {
             case EmailEvent.TeamInviteEmail e ->
                 sendTeamInviteEmail(e.toEmail(), e.companyName(), e.role(),
                         e.inviterDisplayName(), e.acceptUrl());
+            case EmailEvent.AnnouncementEmail e ->
+                sendAnnouncementEmail(e.toEmail(), e.firstName(), e.companyId(),
+                        e.companyName(), e.announcementId(), e.announcementTitle(),
+                        e.announcementBody(), e.announcementType());
         }
     }
 
@@ -520,6 +525,39 @@ public class EmailSender {
             </body>
             </html>
             """.formatted(badgeColor, badgeText, greeting, itemLine, productId, stockLine);
+    }
+
+    private void sendAnnouncementEmail(String toEmail, String firstName,
+                                       java.util.UUID companyId, String companyName,
+                                       java.util.UUID announcementId, String announcementTitle,
+                                       String announcementBody, AnnouncementType announcementType) {
+        String greeting = firstName != null && !firstName.isBlank() ? "Hi " + HtmlUtils.htmlEscape(firstName) + "," : "Hi,";
+        String safeCompany = HtmlUtils.htmlEscape(companyName != null ? companyName : "");
+        String safeTitle   = HtmlUtils.htmlEscape(announcementTitle != null ? announcementTitle : "");
+        String safeBody    = HtmlUtils.htmlEscape(announcementBody != null ? announcementBody : "");
+        String typeLabel   = switch (announcementType) {
+            case NEW_PRODUCT    -> "New Product";
+            case SALE           -> "Sale";
+            case NEW_COLLECTION -> "New Collection";
+            default             -> "Announcement";
+        };
+        String storeUrl = env.getEmail().getVerificationBaseUrl() + "/c/" + companyId;
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              %s
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#93C5FD;">
+                %s &mdash; %s
+              </p>
+              <p style="margin:10px 0 0 0;font-size:15px;color:#1E293B;line-height:1.7;">%s</p>
+            </div>
+            %s
+            """.formatted(safeTitle, greeting, safeCompany, typeLabel, safeBody,
+                primaryButton(storeUrl, "Visit Store"));
+        sendMimeMessage(toEmail, "New from " + safeCompany + ": " + safeTitle + " — ShopWave",
+                wrapInShell("Announcement", body));
     }
 
     private String buildOrderReceiptHtml(String email, String firstName, OrderResponse order) {

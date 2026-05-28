@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag } from "lucide-react";
+import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag, Users, Bell, BellOff, Megaphone } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { companiesApi } from "../api/companies";
+import { followApi, announcementsApi } from "../api/follow";
 import SearchBar from "../components/search/SearchBar";
 import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel";
 import ProductCard from "../components/product/ProductCard";
 import CompanyHeader from "../components/company/CompanyHeader";
 import ReportModal from "../components/report/ReportModal";
 import type { SearchFacets } from "../types/search";
+import type { AnnouncementType } from "../types/company";
 import type { RootState } from "../stores";
 
 const useAnims = () => {
@@ -52,8 +54,11 @@ export default function CompanyPage() {
 
   const [mobileFacetsOpen, setMobileFacetsOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [announcementsPage, setAnnouncementsPage] = useState(0);
+  const [expandedAnnouncement, setExpandedAnnouncement] = useState<string | null>(null);
 
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
+  const queryClient = useQueryClient();
 
   const facetSelection: FacetSelection = {
     category: categoryParam,
@@ -139,6 +144,34 @@ export default function CompanyPage() {
     placeholderData: (prev) => prev,
   });
 
+  const followStatus = useQuery({
+    queryKey: ["follow", "status", companyId],
+    queryFn: () => followApi.getStatus(companyId!).then((r) => r.data),
+    enabled,
+  });
+
+  const announcementsResult = useQuery({
+    queryKey: ["announcements", companyId, announcementsPage],
+    queryFn: () =>
+      announcementsApi.listPublished(companyId!, announcementsPage).then((r) => r.data),
+    enabled: enabled && !!companyResult.data,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: () => followApi.follow(companyId!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: () => followApi.unfollow(companyId!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+  });
+
+  const bellMutation = useMutation({
+    mutationFn: (enabled: boolean) => followApi.setNotifications(companyId!, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+  });
+
   const data = searchResult.data;
   const facets = data?.facets ?? EMPTY_FACETS;
   const products = data?.items ?? [];
@@ -201,18 +234,64 @@ export default function CompanyPage() {
         {companyResult.data && (
           <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
             <CompanyHeader company={companyResult.data} />
-            {accessToken && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setReportOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
-                >
-                  <Flag className="w-3.5 h-3.5" />
-                  Report this company
-                </button>
+
+            {/* Follow bar */}
+            <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2 text-sm text-white/50">
+                <Users className="w-4 h-4" />
+                <span>
+                  {followStatus.data?.followerCount != null
+                    ? `${followStatus.data.followerCount.toLocaleString()} follower${followStatus.data.followerCount !== 1 ? "s" : ""}`
+                    : ""}
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                {accessToken && followStatus.data?.following && (
+                  <button
+                    type="button"
+                    title={followStatus.data.notificationsEnabled ? "Mute notifications" : "Unmute notifications"}
+                    onClick={() => bellMutation.mutate(!followStatus.data.notificationsEnabled)}
+                    disabled={bellMutation.isPending}
+                    className="p-1.5 rounded-full border border-white/10 text-white/40 hover:text-sky-300 hover:border-sky-400/30 transition-colors"
+                  >
+                    {followStatus.data.notificationsEnabled
+                      ? <Bell className="w-4 h-4" />
+                      : <BellOff className="w-4 h-4" />}
+                  </button>
+                )}
+                {accessToken && (
+                  followStatus.data?.following ? (
+                    <button
+                      type="button"
+                      onClick={() => unfollowMutation.mutate()}
+                      disabled={unfollowMutation.isPending}
+                      className="text-sm border border-white/20 rounded-full px-4 py-1.5 text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                    >
+                      Following
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => followMutation.mutate()}
+                      disabled={followMutation.isPending}
+                      className="text-sm bg-blue-600 hover:bg-blue-500 rounded-full px-4 py-1.5 text-white font-medium transition-colors disabled:opacity-50"
+                    >
+                      Follow
+                    </button>
+                  )
+                )}
+                {accessToken && (
+                  <button
+                    type="button"
+                    onClick={() => setReportOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
+                  >
+                    <Flag className="w-3.5 h-3.5" />
+                    Report
+                  </button>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -435,6 +514,93 @@ export default function CompanyPage() {
           </div>
         </div>
       </div>
+      {/* Announcements section */}
+      {announcementsResult.data && announcementsResult.data.items.length > 0 && (
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-white/10">
+          <div className="flex items-center gap-2 mb-6">
+            <Megaphone className="w-5 h-5 text-sky-400" />
+            <h2 className="text-lg font-semibold text-white">Announcements</h2>
+          </div>
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {announcementsResult.data.items.map((ann) => {
+              const isExpanded = expandedAnnouncement === ann.id;
+              const typeColors: Record<AnnouncementType, string> = {
+                GENERAL: "bg-white/10 text-white/60",
+                NEW_PRODUCT: "bg-blue-500/15 text-sky-300",
+                SALE: "bg-green-500/15 text-green-300",
+                NEW_COLLECTION: "bg-indigo-500/15 text-indigo-300",
+              };
+              const typeLabels: Record<AnnouncementType, string> = {
+                GENERAL: "Announcement",
+                NEW_PRODUCT: "New Product",
+                SALE: "Sale",
+                NEW_COLLECTION: "New Collection",
+              };
+              return (
+                <motion.div
+                  key={ann.id}
+                  variants={fadeInUp}
+                  whileHover={{ y: -4 }}
+                  className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${typeColors[ann.type]}`}>
+                      {typeLabels[ann.type]}
+                    </span>
+                    <span className="text-xs text-white/40">
+                      {ann.publishedAt
+                        ? new Date(ann.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                        : ""}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-white leading-snug">{ann.title}</h3>
+                  <p className={`text-sm text-white/65 leading-relaxed ${isExpanded ? "" : "line-clamp-3"}`}>
+                    {ann.body}
+                  </p>
+                  {ann.body.length > 160 && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedAnnouncement(isExpanded ? null : ann.id)}
+                      className="text-xs text-sky-400 hover:text-sky-300 transition-colors self-start"
+                    >
+                      {isExpanded ? "Show less" : "Read more"}
+                    </button>
+                  )}
+                </motion.div>
+              );
+            })}
+          </motion.div>
+
+          {/* Pagination */}
+          {(announcementsResult.data.hasNext || announcementsPage > 0) && (
+            <div className="flex items-center gap-2 mt-6 justify-center">
+              <button
+                type="button"
+                disabled={announcementsPage === 0}
+                onClick={() => setAnnouncementsPage((p) => p - 1)}
+                className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-white/50">Page {announcementsPage + 1}</span>
+              <button
+                type="button"
+                disabled={!announcementsResult.data.hasNext}
+                onClick={() => setAnnouncementsPage((p) => p + 1)}
+                className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {companyResult.data && (
         <ReportModal
           open={reportOpen}
