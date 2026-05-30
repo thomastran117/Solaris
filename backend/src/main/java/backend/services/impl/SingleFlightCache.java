@@ -69,11 +69,11 @@ public class SingleFlightCache {
     }
 
     public <T> T getOrLoad(String key, long ttlSeconds, Supplier<T> loader, Class<T> type) {
-        return getOrLoad(key, ttlSeconds, loader, raw -> fromJson(raw, type));
+        return getOrLoad(key, ttlSeconds, loader, raw -> fromJson(key, raw, type));
     }
 
     public <T> T getOrLoad(String key, long ttlSeconds, Supplier<T> loader, TypeReference<T> typeRef) {
-        return getOrLoad(key, ttlSeconds, loader, raw -> fromJson(raw, typeRef));
+        return getOrLoad(key, ttlSeconds, loader, raw -> fromJson(key, raw, typeRef));
     }
 
     public void evict(String key) {
@@ -226,20 +226,22 @@ public class SingleFlightCache {
         }
     }
 
-    private <T> T fromJson(String raw, Class<T> type) {
+    private <T> T fromJson(String key, String raw, Class<T> type) {
         try {
             return objectMapper.readValue(raw, type);
         } catch (Exception e) {
-            log.warn("[CACHE] Deserialize error: {}", e.getMessage());
+            log.warn("[CACHE] Deserialize error for key {}, evicting: {}", key, e.getMessage());
+            evict(key);
             return null;
         }
     }
 
-    private <T> T fromJson(String raw, TypeReference<T> typeRef) {
+    private <T> T fromJson(String key, String raw, TypeReference<T> typeRef) {
         try {
             return objectMapper.readValue(raw, typeRef);
         } catch (Exception e) {
-            log.warn("[CACHE] Deserialize error: {}", e.getMessage());
+            log.warn("[CACHE] Deserialize error for key {}, evicting: {}", key, e.getMessage());
+            evict(key);
             return null;
         }
     }

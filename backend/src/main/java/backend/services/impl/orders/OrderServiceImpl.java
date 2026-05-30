@@ -1492,6 +1492,8 @@ public class OrderServiceImpl implements OrderService {
             log.warn("compensateOrder: could not acquire all locks for order {} — proceeding without full lock coverage", order.getId());
         }
 
+        int itemsRestored = 0;
+        int itemsFailed = 0;
         try {
             for (OrderItem item : order.getItems()) {
                 try {
@@ -1499,7 +1501,9 @@ public class OrderServiceImpl implements OrderService {
                     recordCancelAdjustment(item, order.getId());
                     recordCompensation(order, CompensationType.STOCK_RESTORE,
                             buildRestoreDetail(item) + " restored by scheduler", CompensationStatus.COMPLETED);
+                    itemsRestored++;
                 } catch (Exception e) {
+                    itemsFailed++;
                     log.error("Scheduled compensation: failed to restore stock for item on order {}: {}", order.getId(), e.getMessage());
                     recordCompensation(order, CompensationType.STOCK_RESTORE,
                             buildRestoreDetail(item) + " failed in scheduler", CompensationStatus.FAILED, e.getMessage());
@@ -1507,6 +1511,12 @@ public class OrderServiceImpl implements OrderService {
             }
         } finally {
             releaseLocks(compensateLocks, compensateLockToken);
+        }
+        if (itemsFailed > 0) {
+            // FAILED compensation rows are retried by retryCompensation(). Log a prominent
+            // warning so operators can see partial failures via monitoring/alerting.
+            log.warn("compensateOrder: partial failure for order {} — {}/{} items restored; {} FAILED rows queued for retry",
+                    order.getId(), itemsRestored, itemsRestored + itemsFailed, itemsFailed);
         }
 
         if (order.getPaymentIntentId() != null && order.getStatus() != OrderStatus.CANCELLED) {
@@ -2909,7 +2919,15 @@ public class OrderServiceImpl implements OrderService {
         order.setPaymentIntentId(paymentIntent.id());
         order.setPaymentClientSecret(paymentIntent.clientSecret());
         order.setStatus(OrderStatus.RESERVED);
-        orderRepository.save(order);
+        try {
+            orderRepository.save(order);
+        } catch (Exception e) {
+            // Intent was created in Stripe; cancel it immediately so no orphaned hold remains.
+            try { paymentService.cancelPaymentIntent(paymentIntent.id()); } catch (Exception ce) {
+                log.error("approveRiskReview: failed to cancel orphaned intent {} after order save failure: {}", paymentIntent.id(), ce.getMessage());
+            }
+            throw e;
+        }
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, ownerId, "Risk review approved");
         publishSseEvent(order, "Risk review approved", "status_update");
 
@@ -3106,35 +3124,58 @@ public class OrderServiceImpl implements OrderService {
         order.setPaidAt(Instant.now());
         order.setCompensated(true); // No reservation lifecycle: this order is born paid.
 
+        // Collect and sort IDs to acquire locks in consistent order (prevents deadlock).
+        java.util.TreeSet<UUID> renewalProductIds = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> renewalVariantIds = new java.util.TreeSet<>();
         for (SubscriptionItem si : subscription.getItems()) {
-            Product product = si.getProduct();
-            int qty = si.getQuantity();
+            renewalProductIds.add(si.getProduct().getId());
+            if (si.getVariant() != null) renewalVariantIds.add(si.getVariant().getId());
+        }
+        String renewalLockToken = UUID.randomUUID().toString();
+        List<String> renewalLocks = new ArrayList<>();
+        try {
+            acquireLocks(new ArrayList<>(renewalProductIds), renewalLockToken, renewalLocks);
+            acquireVariantLocks(new ArrayList<>(renewalVariantIds), renewalLockToken, renewalLocks);
+        } catch (ConflictException e) {
+            // Best-effort: proceed without lock rather than failing the entire renewal.
+            // Concurrent renewals for the same subscription are rare; the BACKORDERED
+            // path handles the stock=0 case gracefully.
+            log.warn("createRenewalOrder: could not acquire all locks for invoice {} — proceeding without full lock coverage", stripeInvoiceId);
+        }
 
-            OrderItem item = new OrderItem();
-            item.setOrder(order);
-            item.setProduct(product);
-            item.setProductName(product.getName());
-            item.setQuantity(qty);
-            item.setUnitPrice(BigDecimal.valueOf(si.getUnitPriceCents()).movePointLeft(2));
+        try {
+            for (SubscriptionItem si : subscription.getItems()) {
+                Product product = si.getProduct();
+                int qty = si.getQuantity();
 
-            if (si.getVariant() != null) {
-                ProductVariant variant = si.getVariant();
-                item.setVariant(variant);
-                item.setVariantTitle(buildVariantTitle(variant));
-                item.setVariantSku(variant.getSku());
+                OrderItem item = new OrderItem();
+                item.setOrder(order);
+                item.setProduct(product);
+                item.setProductName(product.getName());
+                item.setQuantity(qty);
+                item.setUnitPrice(BigDecimal.valueOf(si.getUnitPriceCents()).movePointLeft(2));
 
-                int updated = variantRepository.decrementStock(variant.getId(), qty);
-                if (updated == 0) {
-                    item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                if (si.getVariant() != null) {
+                    ProductVariant variant = si.getVariant();
+                    item.setVariant(variant);
+                    item.setVariantTitle(buildVariantTitle(variant));
+                    item.setVariantSku(variant.getSku());
+
+                    int updated = variantRepository.decrementStock(variant.getId(), qty);
+                    if (updated == 0) {
+                        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                    }
+                } else {
+                    int updated = productRepository.decrementStock(product.getId(), qty);
+                    if (updated == 0) {
+                        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                    }
                 }
-            } else {
-                int updated = productRepository.decrementStock(product.getId(), qty);
-                if (updated == 0) {
-                    item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
-                }
+
+                order.getItems().add(item);
             }
-
-            order.getItems().add(item);
+        } finally {
+            releaseLocks(renewalLocks, renewalLockToken);
         }
 
         boolean hasMarketplaceItems = stampVendorIds(order.getItems());

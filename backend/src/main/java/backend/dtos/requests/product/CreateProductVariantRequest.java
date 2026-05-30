@@ -2,6 +2,7 @@ package backend.dtos.requests.product;
 
 import backend.annotations.safeIdentifier.SafeIdentifier;
 import backend.annotations.safeText.SafeText;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -43,4 +44,10 @@ public class CreateProductVariantRequest {
     private String option3;
 
     private int displayOrder = 0;
+
+    @AssertTrue(message = "compareAtPrice must be greater than price when both are provided")
+    public boolean isCompareAtPriceValid() {
+        if (price == null || compareAtPrice == null) return true;
+        return compareAtPrice.compareTo(price) > 0;
+    }
 }

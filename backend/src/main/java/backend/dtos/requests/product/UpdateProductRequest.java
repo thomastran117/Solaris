@@ -99,4 +99,16 @@ public class UpdateProductRequest {
 
     @Min(value = 0, message = "pinnedRank must be 0 or greater")
     private Integer pinnedRank;
+
+    @AssertTrue(message = "compareAtPrice must be greater than price when both are provided")
+    public boolean isCompareAtPriceValid() {
+        if (price == null || compareAtPrice == null) return true;
+        return compareAtPrice.compareTo(price) > 0;
+    }
+
+    @AssertTrue(message = "preorderExpectedDate is required and must be in the future when preorderEnabled is true")
+    public boolean isPreorderValid() {
+        if (!Boolean.TRUE.equals(preorderEnabled)) return true;
+        return preorderExpectedDate != null && preorderExpectedDate.isAfter(Instant.now());
+    }
 }

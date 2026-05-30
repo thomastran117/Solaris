@@ -50,8 +50,8 @@ import jakarta.validation.constraints.Min;
 @RequestMapping("/orders")
 public class OrderController {
 
-    /** Short window during which a concurrent retry with the same key is rejected as a duplicate. */
-    private static final long IDEMPOTENCY_CLAIM_TTL_SECONDS = 60;
+    /** Claim window for in-flight order creation — long enough to outlast slow payment/risk flows. */
+    private static final long IDEMPOTENCY_CLAIM_TTL_SECONDS = 600;
 
     /**
      * How long a successfully processed Stripe {@code event.id} remains in the dedup

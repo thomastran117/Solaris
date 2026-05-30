@@ -226,9 +226,23 @@ public class ProductServiceImpl implements ProductService {
 
         assertCompanyExists(companyId);
         final int clampedSize = Math.min(size, 50);
+        // Normalize nulls to "" so cache keys are canonical regardless of whether params
+        // are omitted vs. explicitly null (prevents duplicate entries for the same query).
         String cacheKey = String.format("products:search:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%d:%d:%s:%s",
-                companyId, q, category, brand, minPrice, maxPrice, featured,
-                status, listed, discountCategory, hasDiscount, page, clampedSize, sort, direction);
+                companyId,
+                q            != null ? q            : "",
+                category     != null ? category     : "",
+                brand        != null ? brand        : "",
+                minPrice     != null ? minPrice     : "",
+                maxPrice     != null ? maxPrice     : "",
+                featured     != null ? featured     : "",
+                status       != null ? status       : "",
+                listed       != null ? listed       : "",
+                discountCategory != null ? discountCategory : "",
+                hasDiscount  != null ? hasDiscount  : "",
+                page, clampedSize,
+                sort      != null ? sort      : "",
+                direction != null ? direction : "");
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
             Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
@@ -302,6 +316,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ProductResponse getProduct(UUID companyId, UUID productId) {
         assertCompanyExists(companyId);
         String cacheKey = "product:" + companyId + ":" + productId;
@@ -325,6 +340,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids) {
         assertCompanyExists(companyId);
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
@@ -751,6 +767,7 @@ public class ProductServiceImpl implements ProductService {
     // --- Images ---
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProductImageResponse> getProductImages(UUID companyId, UUID productId) {
         productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
@@ -788,6 +805,7 @@ public class ProductServiceImpl implements ProductService {
 
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return toImageResponse(saved);
@@ -811,6 +829,7 @@ public class ProductServiceImpl implements ProductService {
         productRepository.save(product);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
     }
@@ -860,6 +879,7 @@ public class ProductServiceImpl implements ProductService {
 
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return reordered.stream()
@@ -870,6 +890,7 @@ public class ProductServiceImpl implements ProductService {
     // --- Options ---
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProductOptionResponse> getProductOptions(UUID companyId, UUID productId) {
         assertProductBelongsToCompany(companyId, productId);
         return productOptionRepository.findAllByProductIdOrderByPositionAsc(productId)
@@ -901,6 +922,7 @@ public class ProductServiceImpl implements ProductService {
         ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return result;
@@ -921,6 +943,7 @@ public class ProductServiceImpl implements ProductService {
         ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return result;
@@ -939,6 +962,7 @@ public class ProductServiceImpl implements ProductService {
         productOptionRepository.delete(option);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
     }
@@ -946,6 +970,7 @@ public class ProductServiceImpl implements ProductService {
     // --- Variants ---
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProductVariantResponse> getProductVariants(UUID companyId, UUID productId) {
         assertProductBelongsToCompany(companyId, productId);
         return productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(productId)
@@ -955,6 +980,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ProductVariantResponse getProductVariant(UUID companyId, UUID productId, UUID variantId) {
         assertProductBelongsToCompany(companyId, productId);
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
@@ -993,6 +1019,7 @@ public class ProductServiceImpl implements ProductService {
         ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return result;
@@ -1034,6 +1061,7 @@ public class ProductServiceImpl implements ProductService {
         ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return result;
@@ -1053,6 +1081,7 @@ public class ProductServiceImpl implements ProductService {
         productVariantRepository.delete(variant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
     }
@@ -1060,6 +1089,7 @@ public class ProductServiceImpl implements ProductService {
     // --- Attributes ---
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProductAttributeResponse> getProductAttributes(UUID companyId, UUID productId) {
         assertProductBelongsToCompany(companyId, productId);
         return productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(productId)
@@ -1095,6 +1125,7 @@ public class ProductServiceImpl implements ProductService {
                 .toList();
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
             singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
         });
         return result;
@@ -1379,9 +1410,16 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
         boolean listing = Boolean.TRUE.equals(request.getListed());
-        UUID marketplaceToCheck = listing
-                ? request.getMarketplaceId()
-                : (product.getMarketplaceId() != null ? product.getMarketplaceId() : request.getMarketplaceId());
+
+        // Early exit: unlisting something that is already not listed is a no-op.
+        if (!listing && product.getMarketplaceId() == null) {
+            return toResponse(product);
+        }
+
+        UUID marketplaceToCheck = listing ? request.getMarketplaceId() : product.getMarketplaceId();
+        if (marketplaceToCheck == null) {
+            throw new BadRequestException("marketplaceId is required when listing a product");
+        }
         if (!marketplaceVendorRepository.existsByMarketplaceIdAndVendorCompanyId(marketplaceToCheck, companyId)) {
             throw new ForbiddenException("Your company is not an approved vendor in this marketplace");
         }

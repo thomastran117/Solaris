@@ -81,4 +81,10 @@ public class CreateProductRequest {
 
     /** Required (and must be in the future) when {@link #status} is {@link ProductStatus#SCHEDULED}. */
     private Instant scheduledPublishAt;
+
+    @AssertTrue(message = "compareAtPrice must be greater than price when both are provided")
+    public boolean isCompareAtPriceValid() {
+        if (price == null || compareAtPrice == null) return true;
+        return compareAtPrice.compareTo(price) > 0;
+    }
 }
