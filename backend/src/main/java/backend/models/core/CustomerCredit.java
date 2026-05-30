@@ -60,8 +60,8 @@ public class CustomerCredit {
     private UUID sourceOrderIssueId;
 
     /** Loose FK to orders.id — set on REDEEMED entries. */
-    @Column(nullable = true)
-    private Long redeemedOnOrderId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private UUID redeemedOnOrderId;
 
     @Column(nullable = true)
     private Instant expiresAt;

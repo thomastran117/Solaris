@@ -136,7 +136,8 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     public LoyaltyReferralResponse getReferralInfo(UUID userId, UUID companyId) {
         LoyaltyAccount account = getOrCreateAccount(userId, companyId);
         String code = ensureReferralCode(account, companyId);
-        long total = referralConversionRepository.countByReferrerAccountIdAndCompanyId(account.getId(), companyId);
+        // total = people who applied the code; converted = those who completed a first purchase
+        long total = accountRepository.countByReferredByCodeAndCompanyId(code, companyId);
         long converted = referralConversionRepository.countByReferrerAccountIdAndCompanyId(account.getId(), companyId);
         long pointsEarned = referralConversionRepository.sumPointsAwardedByReferrerAccountId(account.getId(), companyId);
         return new LoyaltyReferralResponse(code, total, converted, pointsEarned);
@@ -392,12 +393,12 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         long earnedPoints = earnTx.getPointsDelta();
         if (earnedPoints <= 0) return;
 
-        // Proportional target: earnedPoints * refunded/total, floored. Cap refund at 100%
+        // Proportional target: earnedPoints * refunded/total. Cap refund at 100%
         // of the order to guard against odd partial-refund-exceeds-total inputs.
         long effectiveRefund = Math.min(refundedAmountCents, orderTotalCents);
         long shouldHaveReversed = BigDecimal.valueOf(earnedPoints)
                 .multiply(BigDecimal.valueOf(effectiveRefund))
-                .divide(BigDecimal.valueOf(orderTotalCents), 0, RoundingMode.FLOOR)
+                .divide(BigDecimal.valueOf(orderTotalCents), 0, RoundingMode.HALF_UP)
                 .longValue();
 
         long alreadyReversed = transactionRepository.sumAbsPointsForOrderAndType(

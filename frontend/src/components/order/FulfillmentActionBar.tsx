@@ -4,6 +4,14 @@ import { Loader2, Truck, Package, CheckCircle, MapPin, X } from "lucide-react";
 import { companyOrdersApi } from "../../api/companyOrders";
 import type { CompanyOrder } from "../../types/order";
 
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "apiMessage" in err) {
+    const msg = (err as { apiMessage?: string }).apiMessage;
+    if (msg) return msg;
+  }
+  return fallback;
+}
+
 interface Props {
   order: CompanyOrder;
   companyId: string;
@@ -29,31 +37,31 @@ export default function FulfillmentActionBar({ order, companyId, onRefresh }: Pr
   const pack = useMutation({
     mutationFn: () => companyOrdersApi.pack(companyId, order.orderId),
     onSuccess: invalidate,
-    onError: () => setError("Failed to mark as packed"),
+    onError: (err) => setError(extractErrorMessage(err, "Failed to mark as packed")),
   });
 
   const ship = useMutation({
     mutationFn: () => companyOrdersApi.ship(companyId, order.orderId, { trackingNumber, carrier }),
     onSuccess: () => { setShowShipModal(false); invalidate(); },
-    onError: () => setError("Failed to mark as shipped"),
+    onError: (err) => setError(extractErrorMessage(err, "Failed to mark as shipped")),
   });
 
   const pickupReady = useMutation({
     mutationFn: () => companyOrdersApi.markPickupReady(companyId, order.orderId),
     onSuccess: invalidate,
-    onError: () => setError("Failed to mark pickup ready"),
+    onError: (err) => setError(extractErrorMessage(err, "Failed to mark pickup ready")),
   });
 
   const deliver = useMutation({
     mutationFn: () => companyOrdersApi.deliver(companyId, order.orderId),
     onSuccess: invalidate,
-    onError: () => setError("Failed to mark as delivered"),
+    onError: (err) => setError(extractErrorMessage(err, "Failed to mark as delivered")),
   });
 
   const cancel = useMutation({
     mutationFn: () => companyOrdersApi.cancel(companyId, order.orderId),
     onSuccess: () => { setShowCancelModal(false); invalidate(); },
-    onError: () => setError("Failed to cancel order"),
+    onError: (err) => setError(extractErrorMessage(err, "Failed to cancel order")),
   });
 
   const isLoading = pack.isPending || ship.isPending || pickupReady.isPending || deliver.isPending || cancel.isPending;

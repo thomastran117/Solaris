@@ -106,8 +106,7 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
         entry.setUser(customer);
         entry.setAmountCents(-amountCents);
         entry.setType(CreditEntryType.REDEEMED);
-        // redeemedOnOrderId is a loose FK still typed Long in the entity — stored as null until entity migrates
-        // entry.setRedeemedOnOrderId(orderId);
+        entry.setRedeemedOnOrderId(orderId);
 
         creditRepository.save(entry);
         log.info("User {} redeemed {} cents credit on order {}", userId, amountCents, orderId);
@@ -174,7 +173,7 @@ public class CustomerCreditServiceImpl implements CustomerCreditService {
                 c.getIssuedBy() != null ? c.getIssuedBy().getId() : null,
                 c.getSourceTicketId(),
                 c.getSourceOrderIssueId(),
-                null, // redeemedOnOrderId is a loose FK still typed Long in entity — null until entity migrates
+                c.getRedeemedOnOrderId(),
                 c.getExpiresAt(),
                 c.getCreatedAt()
         );

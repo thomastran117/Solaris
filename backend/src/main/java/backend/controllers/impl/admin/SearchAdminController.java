@@ -1,12 +1,12 @@
 package backend.controllers.impl.admin;
 
+import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.responses.general.MessageResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.kafka.workers.IndexVersionManager;
 import backend.kafka.workers.ProductIndexingService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,7 +30,7 @@ public class SearchAdminController {
      * mapping changes.
      */
     @PostMapping("/reindex")
-    @PreAuthorize("hasRole('ADMIN')")
+    @RequireAuth(roles = {"ADMIN"})
     public ResponseEntity<MessageResponse> reindex() {
         try {
             indexVersionManager.rolloverIndex("products");

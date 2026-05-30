@@ -28,7 +28,8 @@ public class ProductIndexingKafkaConsumer {
         this.bundleRepository = bundleRepository;
     }
 
-    @KafkaListener(topics = "${app.kafka.topics.product-events}", groupId = "indexer")
+    @KafkaListener(topics = "${app.kafka.topics.product-events}", groupId = "indexer",
+                   containerFactory = "indexerKafkaListenerContainerFactory")
     public void onProductEvent(ProductChangedEvent event) {
         switch (event.changeType()) {
             case UPDATED, CREATED -> productRepository.findByIdWithCompanyOwner(event.productId())
@@ -40,7 +41,8 @@ public class ProductIndexingKafkaConsumer {
         }
     }
 
-    @KafkaListener(topics = "${app.kafka.topics.bundle-events}", groupId = "indexer")
+    @KafkaListener(topics = "${app.kafka.topics.bundle-events}", groupId = "indexer",
+                   containerFactory = "indexerKafkaListenerContainerFactory")
     public void onBundleEvent(BundleChangedEvent event) {
         switch (event.changeType()) {
             case UPDATED, CREATED -> bundleRepository.findById(event.bundleId())

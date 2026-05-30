@@ -4,6 +4,8 @@ import backend.models.core.LocationStock;
 import backend.models.enums.AllocationStrategy;
 import backend.repositories.LocationStockRepository;
 import backend.services.intf.inventory.AllocationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +16,7 @@ import java.util.UUID;
 @Service
 public class AllocationServiceImpl implements AllocationService {
 
-    // Cap the candidate scan per allocation call to avoid unbounded queries.
+    private static final Logger log = LoggerFactory.getLogger(AllocationServiceImpl.class);
     private static final int MAX_CANDIDATES = 50;
 
     private final LocationStockRepository locationStockRepository;
@@ -115,8 +117,11 @@ public class AllocationServiceImpl implements AllocationService {
             for (AllocationResult r : results) {
                 try {
                     locationStockRepository.restoreStock(r.locationStockId(), r.allocatedQty());
-                } catch (Exception ignored) {
-                    // Best-effort within the same transaction; outer rollback is the safety net.
+                } catch (Exception e) {
+                    // Outer transaction rollback is the safety net, but log explicitly so
+                    // a rollback failure doesn't leave an invisible stock leak.
+                    log.error("[ALLOC] Failed to restore {} units for locationStock {} during partial-fill rollback: {}",
+                            r.allocatedQty(), r.locationStockId(), e.getMessage());
                 }
             }
             return List.of();

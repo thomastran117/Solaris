@@ -88,4 +88,7 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
     @Modifying
     @Query("UPDATE LoyaltyAccount a SET a.referredByCode = :code WHERE a.id = :id AND a.referredByCode IS NULL")
     int setReferredByCodeIfAbsent(@Param("id") UUID id, @Param("code") String code);
+
+    /** Counts how many accounts have applied the given referral code (regardless of conversion). */
+    long countByReferredByCodeAndCompanyId(String referredByCode, UUID companyId);
 }

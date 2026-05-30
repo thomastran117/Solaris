@@ -25,11 +25,11 @@ public class CouponPerUserCount {
     @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "coupon_id", nullable = false)
-    private long couponId;
+    @Column(name = "coupon_id", nullable = false, columnDefinition = "BINARY(16)")
+    private java.util.UUID couponId;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    private java.util.UUID userId;
 
     @Column(nullable = false)
     private int count;

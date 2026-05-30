@@ -17,7 +17,6 @@ import backend.dtos.responses.return_.ReturnItemResponse;
 import backend.dtos.responses.return_.ReturnResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
-import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.BundleItem;
 import backend.models.core.Company;
@@ -181,6 +180,15 @@ public class ReturnServiceImpl implements ReturnService {
 
         if (order.getStatus() != OrderStatus.DELIVERED) {
             throw new ConflictException("Return requests can only be submitted for DELIVERED orders");
+        }
+
+        int windowDays = riskProperties.getReturnPolicy().getWindowDays();
+        if (order.getDeliveredAt() != null) {
+            Instant deadline = order.getDeliveredAt().plus(windowDays, java.time.temporal.ChronoUnit.DAYS);
+            if (Instant.now().isAfter(deadline)) {
+                throw new ConflictException(
+                        "Return window of " + windowDays + " days has expired for this order");
+            }
         }
 
         if (EVIDENCE_REQUIRED_REASONS.contains(request.reason()) &&
@@ -771,6 +779,18 @@ public class ReturnServiceImpl implements ReturnService {
      */
     private long resolveRefundAmount(Return ret, Long refundAmountOverrideCents) {
         if (refundAmountOverrideCents != null) {
+            if (refundAmountOverrideCents < 0) {
+                throw new BadRequestException("Refund override amount cannot be negative");
+            }
+            Order order = ret.getOrder();
+            long orderTotal = orderTotalCents(order);
+            long alreadyRefunded = java.util.Objects.requireNonNullElse(order.getRefundedAmountCents(), 0L);
+            long maxRefundable = Math.max(0L, orderTotal - alreadyRefunded);
+            if (refundAmountOverrideCents > maxRefundable) {
+                throw new BadRequestException(
+                        "Refund override (" + refundAmountOverrideCents + " cents) exceeds the remaining refundable amount ("
+                                + maxRefundable + " cents)");
+            }
             return refundAmountOverrideCents;
         }
         BigDecimal total = BigDecimal.ZERO;
@@ -778,7 +798,7 @@ public class ReturnServiceImpl implements ReturnService {
             total = total.add(ri.getOrderItem().getUnitPrice()
                     .multiply(BigDecimal.valueOf(ri.getQuantityReturned())));
         }
-        return total.multiply(BigDecimal.valueOf(100)).longValue();
+        return total.multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
     }
 
     /**
@@ -818,13 +838,22 @@ public class ReturnServiceImpl implements ReturnService {
                                 item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
                         .ifPresent(ls -> locationStockRepository.restoreStock(ls.getId(), qty));
             }
-        } catch (Exception e) {
-            if (item.getVariant() != null) {
-                variantRepository.decrementStock(item.getVariant().getId(), qty);
-            } else if (item.getProduct() != null) {
-                productRepository.decrementStock(item.getProduct().getId(), qty);
+        } catch (Exception locationEx) {
+            // Location restore failed — attempt to roll back the product/variant restore so
+            // both levels stay consistent. If the compensating decrement also fails, log
+            // prominently so an operator can reconcile the stock drift manually.
+            try {
+                if (item.getVariant() != null) {
+                    variantRepository.decrementStock(item.getVariant().getId(), qty);
+                } else if (item.getProduct() != null) {
+                    productRepository.decrementStock(item.getProduct().getId(), qty);
+                }
+            } catch (Exception rollbackEx) {
+                log.error("[STOCK-DRIFT] Location restore AND rollback both failed for order item {} qty={}: "
+                        + "location_error={} rollback_error={}",
+                        item.getId(), qty, locationEx.getMessage(), rollbackEx.getMessage());
             }
-            throw e;
+            throw locationEx;
         }
 
         recordReturnAdjustment(item, ri.getReturnRequest().getOrder().getId(), qty);
@@ -862,7 +891,7 @@ public class ReturnServiceImpl implements ReturnService {
                         || i.getFulfillmentStatus() == FulfillmentStatus.CANCELLED);
 
         long orderTotalCents = order.getTotalAmount()
-                .multiply(BigDecimal.valueOf(100)).longValue();
+                .multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
 
         boolean fullyRefunded = order.getRefundedAmountCents() >= orderTotalCents;
 

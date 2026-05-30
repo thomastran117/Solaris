@@ -207,7 +207,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         sub.setCurrentPeriodEnd(stripeSub.currentPeriodEnd());
         sub.setNextBillingAt(stripeSub.currentPeriodEnd());
         sub.setCurrency(req.getCurrency());
-        sub.setUnitAmountCents(unitAmountCents * req.getQuantity());
+        sub.setUnitAmountCents(Math.multiplyExact(unitAmountCents, req.getQuantity()));
         sub.setShippingAddress(toShippingAddress(req.getShippingAddress()));
 
         SubscriptionItem item = new SubscriptionItem();
@@ -310,7 +310,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             sub.setCurrentPeriodStart(result.currentPeriodStart());
             sub.setCurrentPeriodEnd(result.currentPeriodEnd());
             sub.setNextBillingAt(result.currentPeriodEnd());
-            sub.setUnitAmountCents(unitCents * quantity);
+            sub.setUnitAmountCents(Math.multiplyExact(unitCents, (long) quantity));
             sub.setCompany(product.getCompany());
 
             item.setProduct(product);
@@ -326,7 +326,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     item.getStripeSubscriptionItemId(),
                     quantity);
             item.setQuantity(quantity);
-            sub.setUnitAmountCents(item.getUnitPriceCents() * quantity);
+            sub.setUnitAmountCents(Math.multiplyExact(item.getUnitPriceCents(), (long) quantity));
             sub.setCurrentPeriodEnd(result.currentPeriodEnd());
             sub.setNextBillingAt(result.currentPeriodEnd());
         }

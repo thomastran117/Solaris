@@ -25,11 +25,11 @@ public class PromotionPerUserCount {
     @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "rule_id", nullable = false)
-    private long ruleId;
+    @Column(name = "rule_id", nullable = false, columnDefinition = "BINARY(16)")
+    private java.util.UUID ruleId;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    private java.util.UUID userId;
 
     @Column(nullable = false)
     private int count;
