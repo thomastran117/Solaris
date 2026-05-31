@@ -10,6 +10,7 @@ import { loyaltyApi } from "../api/loyalty";
 import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
 import ReviewsSection from "../components/reviews/ReviewsSection";
+import QASection from "../components/qa/QASection";
 import ReportModal from "../components/report/ReportModal";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
@@ -450,6 +451,8 @@ export default function ProductPage() {
       <div className="relative z-10 mx-auto max-w-6xl">
         <ReviewsSection companyId={product.companyId} productId={product.id} />
       </div>
+
+      <QASection productId={product.id} />
 
       <SaveToListModal
         open={saveOpen}

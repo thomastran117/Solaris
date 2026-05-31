@@ -95,6 +95,14 @@ public class EmailServiceImpl implements EmailService {
         publish(new EmailEvent.AbandonedCartEmail(toEmail, firstName, userId, orderId, items));
     }
 
+    @Override
+    public void sendQuestionPostedEmail(java.util.UUID vendorUserId, String toEmail,
+                                        String vendorFirstName, String productName,
+                                        String questionText, java.util.UUID questionId) {
+        publish(new EmailEvent.QuestionPostedEmail(vendorUserId, toEmail, vendorFirstName,
+                productName, questionText, questionId));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

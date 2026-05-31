@@ -67,6 +67,8 @@ public class EmailSender {
                         e.announcementBody(), e.announcementType());
             case EmailEvent.AbandonedCartEmail e ->
                 sendAbandonedCartEmail(e.toEmail(), e.firstName(), e.orderId(), e.items());
+            case EmailEvent.QuestionPostedEmail e ->
+                sendQuestionPostedEmail(e.toEmail(), e.vendorFirstName(), e.productName(), e.questionText(), e.questionId());
         }
     }
 
@@ -681,6 +683,31 @@ public class EmailSender {
             );
 
         return wrapInShell("Order Receipt", body);
+    }
+
+    private void sendQuestionPostedEmail(String toEmail, String firstName,
+                                         String productName, String questionText,
+                                         java.util.UUID questionId) {
+        String greeting = firstName != null && !firstName.isBlank() ? "Hi " + HtmlUtils.htmlEscape(firstName) + "," : "Hi,";
+        String safeProduct = HtmlUtils.htmlEscape(productName != null ? productName : "");
+        String safeQuestion = HtmlUtils.htmlEscape(questionText != null ? questionText : "");
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              A customer asked a question about your product
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#93C5FD;">
+                %s
+              </p>
+              <p style="margin:10px 0 0 0;font-size:15px;color:#1E293B;line-height:1.7;">"%s"</p>
+            </div>
+            <p style="margin:16px 0 0 0;font-size:14px;color:#475569;line-height:1.7;">
+              Head to your vendor dashboard to answer this question and build purchase confidence with your customers.
+            </p>
+            """.formatted(greeting, safeProduct, safeQuestion);
+        sendMimeMessage(toEmail, "New question on " + safeProduct + " — ShopWave",
+                wrapInShell("New Question", body));
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

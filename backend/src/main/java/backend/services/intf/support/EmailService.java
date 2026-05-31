@@ -122,4 +122,7 @@ public interface EmailService {
     void sendAbandonedCartEmail(String toEmail, String firstName,
                                 UUID userId, UUID orderId,
                                 java.util.List<backend.events.email.EmailEvent.AbandonedItem> items);
+
+    void sendQuestionPostedEmail(UUID vendorUserId, String toEmail, String vendorFirstName,
+                                 String productName, String questionText, UUID questionId);
 }
