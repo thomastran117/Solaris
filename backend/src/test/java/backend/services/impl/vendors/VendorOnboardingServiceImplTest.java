@@ -23,6 +23,8 @@ import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.VendorAuditLogRepository;
 import backend.repositories.VendorOnboardingDocumentRepository;
+import backend.exceptions.http.TooManyRequestException;
+import backend.services.intf.CacheService;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.payments.PaymentService;
 import backend.testutil.TestIds;
@@ -50,6 +52,7 @@ class VendorOnboardingServiceImplTest {
     private CompanyAccessService companyAccessService;
     private UserRepository userRepository;
     private PaymentService paymentService;
+    private CacheService cacheService;
     private VendorOnboardingServiceImpl service;
 
     @BeforeEach
@@ -61,6 +64,9 @@ class VendorOnboardingServiceImplTest {
         companyAccessService         = mock(CompanyAccessService.class);
         userRepository               = mock(UserRepository.class);
         paymentService               = mock(PaymentService.class);
+        cacheService                 = mock(CacheService.class);
+        // Rate-limit counter returns 0 by default so existing tests are not blocked.
+        when(cacheService.get(anyString())).thenReturn(null);
 
         service = new VendorOnboardingServiceImpl(
                 marketplaceProfileRepository,
@@ -69,7 +75,8 @@ class VendorOnboardingServiceImplTest {
                 auditLogRepository,
                 companyAccessService,
                 userRepository,
-                paymentService);
+                paymentService,
+                cacheService);
     }
 
     // ─── applyToMarketplace ───────────────────────────────────────────────────
@@ -259,6 +266,46 @@ class VendorOnboardingServiceImplTest {
         assertNull(existing.getVerifiedAt());
         assertNull(existing.getRejectionNote());
         assertEquals("s3://new-key", existing.getS3Key());
+    }
+
+    @Test
+    void recordDocumentUpload_rateLimitExceeded_throwsTooManyRequests() {
+        // L4: once the per-vendor hourly counter reaches the limit, further uploads are rejected.
+        MarketplaceVendor vendor = makeVendor(VendorStatus.DRAFT, OnboardingStep.DOCUMENTS);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(VENDOR_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(vendor));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(vendor.getVendorCompany());
+        // Simulate counter already at the limit (10).
+        when(cacheService.get("vendor:doc:uploads:" + VENDOR_ID)).thenReturn("10");
+
+        assertThrows(TooManyRequestException.class,
+                () -> service.recordDocumentUpload(
+                        MARKETPLACE_ID, VENDOR_ID, USER_ID,
+                        VendorDocumentType.IDENTITY, "s3://bucket/doc.pdf"));
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void recordDocumentUpload_underRateLimit_incrementsCounter() {
+        MarketplaceVendor vendor = makeVendor(VendorStatus.DRAFT, OnboardingStep.DOCUMENTS);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(VENDOR_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(vendor));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(vendor.getVendorCompany());
+        when(cacheService.get("vendor:doc:uploads:" + VENDOR_ID)).thenReturn("3");
+        when(documentRepository.findByMarketplaceVendorIdAndDocumentType(VENDOR_ID, VendorDocumentType.IDENTITY))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(inv -> {
+            VendorOnboardingDocument d = inv.getArgument(0);
+            d.setMarketplaceVendor(vendor);
+            d.setDocumentType(VendorDocumentType.IDENTITY);
+            return d;
+        });
+
+        service.recordDocumentUpload(MARKETPLACE_ID, VENDOR_ID, USER_ID,
+                VendorDocumentType.IDENTITY, "s3://bucket/doc.pdf");
+
+        verify(cacheService).set(eq("vendor:doc:uploads:" + VENDOR_ID), eq("4"), anyLong());
+        verify(documentRepository).save(any());
     }
 
     // ─── submitForReview ──────────────────────────────────────────────────────

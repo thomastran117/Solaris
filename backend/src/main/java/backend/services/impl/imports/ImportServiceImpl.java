@@ -28,6 +28,7 @@ import backend.models.enums.ImportJobType;
 import backend.models.enums.ImportMode;
 import backend.models.enums.ProductStatus;
 import backend.models.enums.UploadFolder;
+import backend.repositories.CompanyRepository;
 import backend.repositories.ImportJobRepository;
 import backend.repositories.ImportJobRowRepository;
 import backend.repositories.ProductRepository;
@@ -70,7 +71,10 @@ public class ImportServiceImpl implements ImportService {
     private static final int BATCH_SIZE = 50;
     private static final int DOWNLOAD_EXPIRY_SECONDS = 600;
     private static final int EXPORT_MAX_PRODUCTS = 50_000;
+    /** Mirrors the export cap — prevents a malicious or accidental oversized upload from OOM-ing the worker. */
+    private static final int IMPORT_MAX_ROWS = 50_000;
 
+    private final CompanyRepository companyRepository;
     private final ImportJobRepository jobRepository;
     private final ImportJobRowRepository rowRepository;
     private final ProductRepository productRepository;
@@ -82,6 +86,7 @@ public class ImportServiceImpl implements ImportService {
     private final ApplicationEventPublisher eventPublisher;
 
     public ImportServiceImpl(
+            CompanyRepository companyRepository,
             ImportJobRepository jobRepository,
             ImportJobRowRepository rowRepository,
             ProductRepository productRepository,
@@ -91,6 +96,7 @@ public class ImportServiceImpl implements ImportService {
             SanitizationService sanitizationService,
             StorageService storageService,
             ApplicationEventPublisher eventPublisher) {
+        this.companyRepository = companyRepository;
         this.jobRepository = jobRepository;
         this.rowRepository = rowRepository;
         this.productRepository = productRepository;
@@ -269,6 +275,13 @@ public class ImportServiceImpl implements ImportService {
             log.warn("[IMPORT] worker received unknown jobId={} after claim", jobId);
             return;
         }
+        // Re-validate the company is still active; it may have been deleted or suspended
+        // between job submission and async processing.
+        if (!companyRepository.existsById(job.getCompanyId())) {
+            log.warn("[IMPORT] jobId={} skipped — company {} no longer exists", jobId, job.getCompanyId());
+            markStatus(job, ImportJobStatus.FAILED, "Company no longer exists");
+            return;
+        }
 
         List<ParsedRow> rows;
         try {
@@ -356,6 +369,11 @@ public class ImportServiceImpl implements ImportService {
             int rowNumber = 0;
             for (CSVRecord rec : parser) {
                 rowNumber++;
+                if (rowNumber > IMPORT_MAX_ROWS) {
+                    String msg = "Import file exceeds the maximum of " + IMPORT_MAX_ROWS
+                            + " rows. Split the file into smaller batches and re-upload.";
+                    throw new BadRequestException(msg, msg);
+                }
                 ParsedRow row = new ParsedRow();
                 row.rowNumber = rowNumber;
 

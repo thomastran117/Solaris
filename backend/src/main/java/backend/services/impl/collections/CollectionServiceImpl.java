@@ -464,20 +464,26 @@ public class CollectionServiceImpl implements CollectionService {
         DynamicCollectionRules rules = DynamicCollectionRules.parse(collection.getRulesJson(), objectMapper);
         UUID companyId = collection.getCompany().getId();
 
-        // Use ProductSpecification.withFilters for the company-scope + status filter and apply
-        // the rule's any-of lists in memory. Volumes per company are small enough that loading
-        // the active set and filtering with predicates beats hand-building a Specification per
-        // axis. We can swap to a dedicated query if a tenant's catalog ever gets uncomfortably
-        // large.
-        List<Product> candidates = productRepository.findAll(
-                ProductSpecification.withFilters(
-                        companyId, null, null, null, null, null, null,
-                        ProductStatus.ACTIVE, null, null, null));
-
-        Set<UUID> matched = candidates.stream()
-                .filter(p -> matchesRule(p, rules))
-                .map(Product::getId)
-                .collect(Collectors.toSet());
+        // Paginate the active-product scan to avoid loading the entire catalog into heap
+        // for companies with large catalogs. Each page is filtered in memory and diffed
+        // against the existing AUTO members.
+        final int PAGE_SIZE = 500;
+        Set<UUID> matched = new HashSet<>();
+        int pageIdx = 0;
+        org.springframework.data.domain.Page<Product> page;
+        do {
+            org.springframework.data.domain.Pageable pageable =
+                    PageRequest.of(pageIdx++, PAGE_SIZE);
+            page = productRepository.findAll(
+                    ProductSpecification.withFilters(
+                            companyId, null, null, null, null, null, null,
+                            ProductStatus.ACTIVE, null, null, null),
+                    pageable);
+            page.getContent().stream()
+                    .filter(p -> matchesRule(p, rules))
+                    .map(Product::getId)
+                    .forEach(matched::add);
+        } while (page.hasNext());
 
         Set<UUID> existingAuto = collectionProductRepository
                 .findAllByCollectionIdAndSource(collection.getId(), CollectionMembershipSource.AUTO)
@@ -501,15 +507,12 @@ public class CollectionServiceImpl implements CollectionService {
             }
         }
         if (!toAdd.isEmpty()) {
-            Map<UUID, Product> productMap = candidates.stream()
-                    .collect(Collectors.toMap(Product::getId, p -> p));
             for (UUID productId : toAdd) {
-                Product p = productMap.get(productId);
-                if (p == null) continue;
                 if (collectionProductRepository.existsByCollectionIdAndProductId(collection.getId(), productId)) {
                     // A MANUAL row already exists — don't shadow it with an AUTO row.
                     continue;
                 }
+                Product p = productRepository.getReferenceById(productId);
                 CollectionProduct cp = new CollectionProduct();
                 cp.setCollection(collection);
                 cp.setProduct(p);

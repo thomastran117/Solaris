@@ -20,6 +20,7 @@ import backend.models.core.ProductVariant;
 import backend.models.enums.CompanyCapability;
 import backend.models.enums.ProductStatus;
 import backend.repositories.CollectionProductRepository;
+import backend.repositories.OrderRepository;
 import backend.repositories.ProductKitRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
@@ -50,6 +51,7 @@ public class KitServiceImpl implements KitService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final CollectionProductRepository collectionProductRepository;
+    private final OrderRepository orderRepository;
     private final CompanyAccessService companyAccessService;
     private final SingleFlightCache singleFlightCache;
     private final long cacheTtl;
@@ -59,6 +61,7 @@ public class KitServiceImpl implements KitService {
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
             CollectionProductRepository collectionProductRepository,
+            OrderRepository orderRepository,
             CompanyAccessService companyAccessService,
             SingleFlightCache singleFlightCache,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl) {
@@ -66,6 +69,7 @@ public class KitServiceImpl implements KitService {
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.collectionProductRepository = collectionProductRepository;
+        this.orderRepository = orderRepository;
         this.companyAccessService = companyAccessService;
         this.singleFlightCache = singleFlightCache;
         this.cacheTtl = cacheTtl;
@@ -152,6 +156,11 @@ public class KitServiceImpl implements KitService {
 
         ProductKit kit = kitRepository.findByIdAndCompanyId(kitId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Kit not found with id: " + kitId));
+
+        if (orderRepository.existsActiveOrderWithKit(kitId)) {
+            throw new backend.exceptions.http.ConflictException(
+                    "Kit cannot be deleted while it is referenced by active orders");
+        }
 
         kitRepository.delete(kit);
         evictAfterCommit(() -> {

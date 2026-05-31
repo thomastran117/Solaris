@@ -9,6 +9,13 @@ export interface ShipOrderRequest {
 }
 
 export const ordersApi = {
+  create: (body: Record<string, unknown>) =>
+    // A per-request UUID prevents the backend creating a duplicate order if the
+    // user double-submits or the client retries after a network timeout.
+    api.post<Order>("/orders", body, {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }),
+
   list: (params?: { status?: OrderStatus; page?: number; size?: number }) =>
     api.get<PagedOrders>("/orders", { params }),
 

@@ -29,6 +29,7 @@ import backend.models.core.ProductBundle;
 import backend.models.core.ProductVariant;
 import backend.models.enums.ProductStatus;
 import backend.repositories.BundleRepository;
+import backend.repositories.OrderRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.events.BundleIndexEvent;
@@ -51,6 +52,7 @@ public class BundleServiceImpl implements BundleService {
     private final BundleRepository bundleRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
+    private final OrderRepository orderRepository;
     private final CompanyAccessService companyAccessService;
     private final ApplicationEventPublisher eventPublisher;
     private final SingleFlightCache singleFlightCache;
@@ -60,6 +62,7 @@ public class BundleServiceImpl implements BundleService {
             BundleRepository bundleRepository,
             ProductRepository productRepository,
             ProductVariantRepository variantRepository,
+            OrderRepository orderRepository,
             CompanyAccessService companyAccessService,
             ApplicationEventPublisher eventPublisher,
             SingleFlightCache singleFlightCache,
@@ -67,6 +70,7 @@ public class BundleServiceImpl implements BundleService {
         this.bundleRepository = bundleRepository;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
+        this.orderRepository = orderRepository;
         this.companyAccessService = companyAccessService;
         this.eventPublisher = eventPublisher;
         this.singleFlightCache = singleFlightCache;
@@ -169,6 +173,16 @@ public class BundleServiceImpl implements BundleService {
                         "Bundle price must be between 0 and the component total (" + currentComponentTotal + ")");
             }
             bundle.setPrice(request.getPrice());
+        } else {
+            // Neither items nor price were changed, but component prices may have drifted
+            // since the bundle was created (e.g., a constituent product was discounted).
+            // Re-validate the stored price to ensure it still satisfies bundle invariants.
+            BigDecimal currentComponentTotal = computePrice(bundle.getItems());
+            if (bundle.getPrice().compareTo(currentComponentTotal) > 0) {
+                // Silently cap to the new component total so the bundle is always a
+                // valid deal, rather than blocking the update entirely.
+                bundle.setPrice(currentComponentTotal);
+            }
         }
 
         ProductBundle saved = bundleRepository.save(bundle);
@@ -187,6 +201,11 @@ public class BundleServiceImpl implements BundleService {
 
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
+
+        if (orderRepository.existsActiveOrderWithBundle(bundleId)) {
+            throw new backend.exceptions.http.ConflictException(
+                    "Bundle cannot be deleted while it is referenced by active orders");
+        }
 
         bundleRepository.delete(bundle);
         eventPublisher.publishEvent(new BundleRemoveEvent(bundleId));

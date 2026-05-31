@@ -50,6 +50,7 @@ export default function SearchBar({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setValue(initialValue);
@@ -67,11 +68,19 @@ export default function SearchBar({
 
   const fetchSuggestions = useCallback(
     (q: string) => {
+      // Cancel any in-flight request so a fast typer never sees stale results
+      // overwrite the current ones.
+      abortRef.current?.abort();
+
       if (q.length < 2) {
         setSuggestions(null);
         setOpen(false);
         return;
       }
+
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
       const fetcher = suggestionsFetcher
         ? suggestionsFetcher(q)
         : marketplaceId
@@ -85,6 +94,7 @@ export default function SearchBar({
       setLoading(true);
       fetcher
         .then((data) => {
+          if (ctrl.signal.aborted) return; // a newer request already won
           setSuggestions(data);
           const hasAny =
             data.products.length > 0 ||
@@ -92,11 +102,14 @@ export default function SearchBar({
             data.brands.length > 0;
           setOpen(hasAny);
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err?.name === "AbortError" || (err instanceof DOMException && err.name === "AbortError")) return;
           setSuggestions(null);
           setOpen(false);
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (!ctrl.signal.aborted) setLoading(false);
+        });
     },
     [marketplaceId, suggestionsFetcher]
   );

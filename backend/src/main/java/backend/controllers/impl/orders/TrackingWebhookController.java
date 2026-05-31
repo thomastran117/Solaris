@@ -39,10 +39,14 @@ public class TrackingWebhookController {
     public ResponseEntity<Void> handleWebhook(
             @RequestBody byte[] rawBody,
             @RequestHeader(value = "aftership-hmac-sha256", required = false) String signature) {
-        if (webhookSecret != null && !webhookSecret.isBlank()) {
-            if (!isValidSignature(rawBody, signature)) {
-                throw new BadRequestException("Invalid Aftership webhook signature");
-            }
+        // Signature verification is mandatory — reject all requests if the secret is
+        // not configured rather than silently accepting unauthenticated webhooks.
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            log.error("[Aftership] AFTERSHIP_WEBHOOK_SECRET is not configured — rejecting webhook to prevent unauthenticated abuse");
+            throw new BadRequestException("Webhook signature verification not configured");
+        }
+        if (!isValidSignature(rawBody, signature)) {
+            throw new BadRequestException("Invalid Aftership webhook signature");
         }
         try {
             JsonNode root = objectMapper.readTree(rawBody);

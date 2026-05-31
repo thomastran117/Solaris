@@ -56,6 +56,8 @@ class DeliveryServiceImplTest {
         order.setAssignedDriverId(driverId);
 
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        // Rate-limit gate passes by default so other tests don't need to stub it.
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
     }
 
     private DeliveryLocationEvent freshEvent() {
@@ -110,7 +112,7 @@ class DeliveryServiceImplTest {
         Instant base = Instant.now();
         ObjectNode cached = objectMapper.createObjectNode();
         cached.put("clientTimestamp", base.toString());
-        cached.put("serverReceivedAt", base.minusSeconds(10).toString());
+        cached.put("serverReceivedAt", base.toString());
         when(cacheService.get("delivery:location:" + orderId)).thenReturn(cached.toString());
 
         DeliveryLocationEvent stale = new DeliveryLocationEvent(1.0, 1.0, base.minusSeconds(5));
@@ -120,31 +122,26 @@ class DeliveryServiceImplTest {
     }
 
     @Test
-    void processLocationUpdate_ignoresBelowRateLimit() throws Exception {
-        Instant now = Instant.now();
-        ObjectNode cached = objectMapper.createObjectNode();
-        cached.put("clientTimestamp", now.minusSeconds(5).toString());
-        cached.put("serverReceivedAt", now.minusSeconds(1).toString()); // only 1s ago
-        when(cacheService.get("delivery:location:" + orderId)).thenReturn(cached.toString());
+    void processLocationUpdate_rateLimitedWhenLockAlreadyHeld() {
+        // H17: tryLock returns false → too soon since last accepted update, skip entirely.
+        when(cacheService.tryLock(eq("delivery:ratelimit:" + orderId), anyString(), anyLong()))
+                .thenReturn(false);
 
-        DeliveryLocationEvent recent = new DeliveryLocationEvent(1.0, 1.0, now);
-        service.processLocationUpdate(orderId, recent, driverId);
+        service.processLocationUpdate(orderId, freshEvent(), driverId);
 
-        verify(cacheService, never()).set(anyString(), anyString(), anyLong());
+        verify(cacheService, never()).set(eq("delivery:location:" + orderId), anyString(), anyLong());
+        verify(stringRedisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
     @Test
-    void processLocationUpdate_acceptsAfterRateLimitWindow() throws Exception {
-        Instant now = Instant.now();
-        ObjectNode cached = objectMapper.createObjectNode();
-        cached.put("clientTimestamp", now.minusSeconds(10).toString());
-        cached.put("serverReceivedAt", now.minusSeconds(4).toString()); // 4s > 3s threshold
-        when(cacheService.get("delivery:location:" + orderId)).thenReturn(cached.toString());
+    void processLocationUpdate_passesRateLimitWhenLockAcquired() {
+        // H17: tryLock returns true → window has elapsed, update proceeds.
+        when(cacheService.tryLock(eq("delivery:ratelimit:" + orderId), anyString(), anyLong()))
+                .thenReturn(true);
 
-        DeliveryLocationEvent fresh = new DeliveryLocationEvent(1.0, 1.0, now);
-        service.processLocationUpdate(orderId, fresh, driverId);
+        service.processLocationUpdate(orderId, freshEvent(), driverId);
 
-        verify(cacheService, times(1)).set(anyString(), anyString(), anyLong());
+        verify(cacheService, times(1)).set(eq("delivery:location:" + orderId), anyString(), anyLong());
         verify(stringRedisTemplate, times(1)).convertAndSend(anyString(), anyString());
     }
 

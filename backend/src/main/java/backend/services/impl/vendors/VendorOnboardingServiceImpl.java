@@ -13,6 +13,7 @@ import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.*;
 import backend.models.enums.*;
 import backend.repositories.*;
+import backend.services.intf.CacheService;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.vendors.VendorOnboardingService;
@@ -43,6 +44,11 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
     private final CompanyAccessService companyAccessService;
     private final UserRepository userRepository;
     private final PaymentService paymentService;
+    private final CacheService cacheService;
+
+    /** Max document uploads per vendor per hour to prevent S3 exhaustion. */
+    private static final int  DOC_UPLOAD_RATE_LIMIT   = 10;
+    private static final long DOC_UPLOAD_WINDOW_S     = 3600L;
 
     public VendorOnboardingServiceImpl(
             MarketplaceProfileRepository marketplaceProfileRepository,
@@ -51,7 +57,8 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
             VendorAuditLogRepository auditLogRepository,
             CompanyAccessService companyAccessService,
             UserRepository userRepository,
-            PaymentService paymentService) {
+            PaymentService paymentService,
+            CacheService cacheService) {
         this.marketplaceProfileRepository = marketplaceProfileRepository;
         this.marketplaceVendorRepository = marketplaceVendorRepository;
         this.documentRepository = documentRepository;
@@ -59,6 +66,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         this.companyAccessService = companyAccessService;
         this.userRepository = userRepository;
         this.paymentService = paymentService;
+        this.cacheService = cacheService;
     }
 
     @Override
@@ -168,6 +176,22 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
                                                         VendorDocumentType documentType, String s3Key) {
         MarketplaceVendor vendor = resolveVendorAsOwner(marketplaceId, vendorId, requestingUserId);
         requireOnboardingNotComplete(vendor);
+
+        // Rate-limit document uploads per vendor per hour to prevent S3 exhaustion.
+        String countKey = "vendor:doc:uploads:" + vendorId;
+        try {
+            String raw = cacheService.get(countKey);
+            int count = raw != null ? Integer.parseInt(raw) : 0;
+            if (count >= DOC_UPLOAD_RATE_LIMIT) {
+                throw new backend.exceptions.http.TooManyRequestException(
+                        "Document upload limit (" + DOC_UPLOAD_RATE_LIMIT + "/hour) reached. Try again later.");
+            }
+            cacheService.set(countKey, String.valueOf(count + 1), DOC_UPLOAD_WINDOW_S);
+        } catch (backend.exceptions.http.TooManyRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[Vendor] Rate-limit check failed for vendor {}: {}", vendorId, e.getMessage());
+        }
 
         VendorOnboardingDocument doc = documentRepository
                 .findByMarketplaceVendorIdAndDocumentType(vendorId, documentType)

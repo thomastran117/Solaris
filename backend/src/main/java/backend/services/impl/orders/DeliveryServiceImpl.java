@@ -61,17 +61,28 @@ public class DeliveryServiceImpl implements DeliveryService {
         }
 
         Instant serverNow = Instant.now();
+
+        // Atomic rate-limit gate: tryLock is a Redis SET NX EX, so two concurrent
+        // calls from the same driver cannot both pass — the second sees the key present
+        // and returns early. This replaces the previous read-then-set pattern which had
+        // a race window where both calls could sneak through simultaneously.
+        String rateLimitKey = "delivery:ratelimit:" + orderId;
+        try {
+            if (!cacheService.tryLock(rateLimitKey, driverId.toString(), RATE_LIMIT_SECONDS)) {
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("[Delivery] Rate-limit check failed for order {}, proceeding: {}", orderId, e.getMessage());
+        }
+
+        // Still honour client-timestamp ordering to discard buffered stale updates.
         String cacheKey = "delivery:location:" + orderId;
         String existing = cacheService.get(cacheKey);
-
         if (existing != null) {
             try {
                 ObjectNode cached = (ObjectNode) objectMapper.readTree(existing);
                 Instant cachedClientTs = Instant.parse(cached.get("clientTimestamp").asText());
                 if (!event.timestamp().isAfter(cachedClientTs)) return;
-
-                Instant cachedServerTs = Instant.parse(cached.get("serverReceivedAt").asText());
-                if (serverNow.getEpochSecond() - cachedServerTs.getEpochSecond() < RATE_LIMIT_SECONDS) return;
             } catch (Exception e) {
                 log.warn("[Delivery] Failed to parse cached location for order {}: {}", orderId, e.getMessage());
             }

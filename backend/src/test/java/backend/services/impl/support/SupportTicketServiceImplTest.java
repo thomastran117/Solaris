@@ -392,6 +392,67 @@ class SupportTicketServiceImplTest {
         assertNull(resp.getResolvedAt());
     }
 
+    @Test
+    void addMessage_customerPostingToPendingInternalDoesNotAdvanceStatus() {
+        // C15: before the fix, the || without parentheses caused any post to a
+        // PENDING_INTERNAL ticket to advance status regardless of the poster's role.
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.PENDING_INTERNAL);
+
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(ticketRepository.findByIdForUpdate(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(messageRepository.save(any())).thenAnswer(inv -> {
+            SupportTicketMessage m = inv.getArgument(0);
+            m.setAuthor(customer);
+            return m;
+        });
+
+        service.addMessage(TestIds.uuid(10), TestIds.uuid(1), new TicketMessageRequest("Any update?"));
+
+        // Customer posting to PENDING_INTERNAL should NOT advance to PENDING_CUSTOMER;
+        // the branch !isStaff && PENDING_CUSTOMER doesn't fire either, so status is unchanged.
+        assertEquals(TicketStatus.PENDING_INTERNAL, ticket.getStatus());
+    }
+
+    @Test
+    void updateStatus_closedTicketCannotBeModified() {
+        // C16: CLOSED tickets must be immutable.
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.CLOSED);
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+
+        assertThrows(backend.exceptions.http.ConflictException.class,
+                () -> service.updateStatus(TestIds.uuid(10), TestIds.uuid(2),
+                        new UpdateTicketStatusRequest(TicketStatus.OPEN)));
+    }
+
+    @Test
+    void updateStatus_revertToOpenClearsTerminalTimestamps() {
+        // M11: closedAt/resolvedAt must be nulled when reverting to a non-terminal status.
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.RESOLVED);
+        ticket.setResolvedAt(java.time.Instant.now());
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        service.updateStatus(TestIds.uuid(10), TestIds.uuid(2),
+                new UpdateTicketStatusRequest(TicketStatus.OPEN));
+
+        assertNull(ticket.getResolvedAt());
+        assertNull(ticket.getClosedAt());
+    }
+
     // ─── assignTicket ─────────────────────────────────────────────────────────
 
     @Test

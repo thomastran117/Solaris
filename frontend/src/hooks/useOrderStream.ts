@@ -28,7 +28,13 @@ export function useOrderStream(orderId: string | undefined): {
       headers: { Authorization: `Bearer ${token}` },
       signal: ctrl.signal,
       onopen: async (res) => {
-        if (res.ok) setConnected(true);
+        if (res.ok) {
+          setConnected(true);
+        } else if (res.status === 401 || res.status === 403) {
+          // Token expired or revoked — abort immediately to avoid an infinite
+          // reconnect loop. The user will need to re-authenticate.
+          ctrl.abort();
+        }
       },
       onmessage: (msg) => {
         if (msg.event === "heartbeat") return;
@@ -79,9 +85,15 @@ export function useOrderStream(orderId: string | undefined): {
           return;
         }
       },
-      onerror: () => {
+      onerror: (err) => {
         setConnected(false);
-        return undefined;
+        // fetchEventSource passes the Response as the error when the server returns
+        // a non-2xx status on open. Stop retrying on auth failures.
+        if (err instanceof Response && (err.status === 401 || err.status === 403)) {
+          ctrl.abort();
+          return; // returning undefined would trigger a retry; void stops it
+        }
+        return undefined; // allow library to retry for transient errors
       },
       onclose: () => {
         setConnected(false);

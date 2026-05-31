@@ -200,4 +200,30 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
             ORDER BY o.createdAt DESC
             """)
     List<UUID> findPurchasedProductIdsByUserId(@Param("userId") UUID userId, Pageable pageable);
+
+    /** True if any non-terminal order contains at least one item with this bundle. */
+    @Query("""
+            SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi
+            WHERE oi.bundle.id = :bundleId
+              AND o.status NOT IN (
+                backend.models.enums.OrderStatus.DELIVERED,
+                backend.models.enums.OrderStatus.CANCELLED,
+                backend.models.enums.OrderStatus.REFUNDED,
+                backend.models.enums.OrderStatus.FAILED
+              )
+            """)
+    boolean existsActiveOrderWithBundle(@Param("bundleId") java.util.UUID bundleId);
+
+    /** True if any non-terminal order contains at least one item with this kit. */
+    @Query("""
+            SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi
+            WHERE oi.kit.id = :kitId
+              AND o.status NOT IN (
+                backend.models.enums.OrderStatus.DELIVERED,
+                backend.models.enums.OrderStatus.CANCELLED,
+                backend.models.enums.OrderStatus.REFUNDED,
+                backend.models.enums.OrderStatus.FAILED
+              )
+            """)
+    boolean existsActiveOrderWithKit(@Param("kitId") java.util.UUID kitId);
 }

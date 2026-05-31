@@ -16,6 +16,7 @@ import backend.models.core.ProductVariant;
 import backend.models.enums.CompanyCapability;
 import backend.models.enums.ProductStatus;
 import backend.repositories.BundleRepository;
+import backend.repositories.OrderRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.services.impl.SingleFlightCache;
@@ -50,6 +51,7 @@ class BundleServiceImplTest {
     private BundleRepository bundleRepository;
     private ProductRepository productRepository;
     private ProductVariantRepository variantRepository;
+    private OrderRepository orderRepository;
     private CompanyAccessService companyAccessService;
     private ApplicationEventPublisher eventPublisher;
     private SingleFlightCache singleFlightCache;
@@ -61,12 +63,13 @@ class BundleServiceImplTest {
         bundleRepository     = mock(BundleRepository.class);
         productRepository    = mock(ProductRepository.class);
         variantRepository    = mock(ProductVariantRepository.class);
+        orderRepository      = mock(OrderRepository.class);
         companyAccessService = mock(CompanyAccessService.class);
         eventPublisher       = mock(ApplicationEventPublisher.class);
         singleFlightCache    = mock(SingleFlightCache.class);
 
         service = new BundleServiceImpl(
-                bundleRepository, productRepository, variantRepository,
+                bundleRepository, productRepository, variantRepository, orderRepository,
                 companyAccessService, eventPublisher, singleFlightCache, 300L);
 
         // Common stubs
@@ -315,6 +318,25 @@ class BundleServiceImplTest {
                 () -> service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, new UpdateBundleRequest()));
     }
 
+    @Test
+    void updateBundle_noChangesButComponentPriceDrifted_capsStoredPriceToCurrentTotal() {
+        // M14: if a component product's price was lowered after the bundle was created,
+        // the stored bundle price may now exceed the new component total. An update with
+        // neither items nor price should silently cap it to the new total.
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("25.00"));
+        // Component is now only worth $20 (price drifted down from original $30)
+        bundle.getItems().get(0).getProduct().setPrice(new BigDecimal("10.00")); // component total = $20
+        bundle.getItems().get(0).setQuantity(2); // 2 × $10 = $20, but bundle.price = $25 > $20
+
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, new UpdateBundleRequest());
+
+        // Price should be capped down to the new component total
+        assertTrue(bundle.getPrice().compareTo(new BigDecimal("20.00")) <= 0);
+        verify(bundleRepository).save(bundle);
+    }
+
     // ─── deleteBundle ─────────────────────────────────────────────────────────
 
     @Test
@@ -334,6 +356,29 @@ class BundleServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteBundle_activeOrderExists_throwsConflict() {
+        // H15: deletion must be blocked while active orders reference the bundle.
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+        when(orderRepository.existsActiveOrderWithBundle(BUNDLE_ID)).thenReturn(true);
+
+        assertThrows(backend.exceptions.http.ConflictException.class,
+                () -> service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID));
+        verify(bundleRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteBundle_noActiveOrders_proceeds() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+        when(orderRepository.existsActiveOrderWithBundle(BUNDLE_ID)).thenReturn(false);
+
+        service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID);
+
+        verify(bundleRepository).delete(bundle);
     }
 
     // ─── getBundle (public) ───────────────────────────────────────────────────

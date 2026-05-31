@@ -20,6 +20,7 @@ import backend.models.core.ProductVariant;
 import backend.models.enums.CompanyCapability;
 import backend.models.enums.ProductStatus;
 import backend.repositories.CollectionProductRepository;
+import backend.repositories.OrderRepository;
 import backend.repositories.ProductKitRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
@@ -58,6 +59,7 @@ class KitServiceImplTest {
     private ProductRepository productRepository;
     private ProductVariantRepository variantRepository;
     private CollectionProductRepository collectionProductRepository;
+    private OrderRepository orderRepository;
     private CompanyAccessService companyAccessService;
     private SingleFlightCache singleFlightCache;
 
@@ -69,12 +71,13 @@ class KitServiceImplTest {
         productRepository            = mock(ProductRepository.class);
         variantRepository            = mock(ProductVariantRepository.class);
         collectionProductRepository  = mock(CollectionProductRepository.class);
+        orderRepository              = mock(OrderRepository.class);
         companyAccessService         = mock(CompanyAccessService.class);
         singleFlightCache            = mock(SingleFlightCache.class);
 
         service = new KitServiceImpl(
                 kitRepository, productRepository, variantRepository,
-                collectionProductRepository, companyAccessService, singleFlightCache, 300L);
+                collectionProductRepository, orderRepository, companyAccessService, singleFlightCache, 300L);
 
         when(companyAccessService.require(eq(COMPANY_ID), eq(OWNER_ID), any(CompanyCapability.class)))
                 .thenReturn(makeCompany());
@@ -312,6 +315,29 @@ class KitServiceImplTest {
         when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteKit(COMPANY_ID, KIT_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteKit_activeOrderExists_throwsConflict() {
+        // H15: deletion must be blocked while active orders reference the kit.
+        ProductKit kit = makeKit(KIT_ID);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+        when(orderRepository.existsActiveOrderWithKit(KIT_ID)).thenReturn(true);
+
+        assertThrows(backend.exceptions.http.ConflictException.class,
+                () -> service.deleteKit(COMPANY_ID, KIT_ID, OWNER_ID));
+        verify(kitRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteKit_noActiveOrders_proceeds() {
+        ProductKit kit = makeKit(KIT_ID);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+        when(orderRepository.existsActiveOrderWithKit(KIT_ID)).thenReturn(false);
+
+        service.deleteKit(COMPANY_ID, KIT_ID, OWNER_ID);
+
+        verify(kitRepository).delete(kit);
     }
 
     // ─── getKit (public) ──────────────────────────────────────────────────────

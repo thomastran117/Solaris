@@ -26,6 +26,7 @@ import backend.models.enums.ImportJobType;
 import backend.models.enums.ImportMode;
 import backend.models.enums.ProductStatus;
 import backend.models.enums.UploadFolder;
+import backend.repositories.CompanyRepository;
 import backend.repositories.ImportJobRepository;
 import backend.repositories.ImportJobRowRepository;
 import backend.repositories.ProductRepository;
@@ -80,6 +81,7 @@ class ImportServiceImplTest {
     private static final UUID CREATE_PRODUCT_ID = TestIds.uuid(4);
     private static final UUID UPDATE_PRODUCT_ID = TestIds.uuid(5);
 
+    private CompanyRepository companyRepository;
     private ImportJobRepository jobRepository;
     private ImportJobRowRepository rowRepository;
     private ProductRepository productRepository;
@@ -93,6 +95,7 @@ class ImportServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        companyRepository = mock(CompanyRepository.class);
         jobRepository = mock(ImportJobRepository.class);
         rowRepository = mock(ImportJobRowRepository.class);
         productRepository = mock(ProductRepository.class);
@@ -103,7 +106,10 @@ class ImportServiceImplTest {
         storageService = mock(StorageService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
 
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(true);
+
         service = new ImportServiceImpl(
+                companyRepository,
                 jobRepository,
                 rowRepository,
                 productRepository,
@@ -391,6 +397,39 @@ class ImportServiceImplTest {
         assertEquals(2, savedRows.size());
         assertTrue(savedRows.stream().anyMatch(row -> row.getErrorMessage().contains("SKU not found")));
         assertTrue(savedRows.stream().anyMatch(row -> row.getErrorMessage().contains("Stock tracking is disabled")));
+    }
+
+    @Test
+    void processJob_skipsWhenCompanyNoLongerExists() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+
+        service.processJob(JOB_ID);
+
+        assertEquals(ImportJobStatus.FAILED, job.getStatus());
+        assertTrue(job.getFailureReason().contains("Company no longer exists"));
+        verify(storageService, never()).openObject(anyString());
+    }
+
+    @Test
+    void processJob_throwsWhenCsvExceedsRowLimit() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+
+        // Build a CSV with 50,001 data rows (exceeds IMPORT_MAX_ROWS = 50,000)
+        StringBuilder sb = new StringBuilder("SKU,NAME,PRICE\n");
+        for (int i = 0; i <= 50_000; i++) {
+            sb.append("sku-").append(i).append(",Product ").append(i).append(",9.99\n");
+        }
+        when(storageService.openObject("imports/products.csv")).thenReturn(csvStream(sb.toString()));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(ImportJobStatus.FAILED, job.getStatus());
+        assertTrue(job.getFailureReason().contains("50000 rows"));
     }
 
     @Test

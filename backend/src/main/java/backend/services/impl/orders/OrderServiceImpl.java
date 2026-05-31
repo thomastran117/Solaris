@@ -708,6 +708,13 @@ public class OrderServiceImpl implements OrderService {
                                     "Invalid choice for slot '" + slot.getName() + "'"));
 
                     Product selProd    = choice.getProduct();
+                    // Defensive: the choice's product must belong to the same company as the kit.
+                    // This should always hold if kit setup is correct, but an explicit check
+                    // prevents a misconfigured kit from letting an order reference a foreign product.
+                    if (!selProd.getCompany().getId().equals(kit.getCompany().getId())) {
+                        throw new BadRequestException("Kit configuration error: product '"
+                                + selProd.getName() + "' does not belong to the kit's company");
+                    }
                     ProductVariant selVar = choice.getVariant();
 
                     if (selProd.getStatus() != backend.models.enums.ProductStatus.ACTIVE || !selProd.isPurchasable()) {

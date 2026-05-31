@@ -157,8 +157,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         msg.setAuthorRole(role);
         messageRepository.save(msg);
 
-        // Auto-advance status
-        if (isStaff && ticket.getStatus() == TicketStatus.OPEN || ticket.getStatus() == TicketStatus.PENDING_INTERNAL) {
+        // Auto-advance status — parentheses are required: && binds tighter than ||
+        if (isStaff && (ticket.getStatus() == TicketStatus.OPEN || ticket.getStatus() == TicketStatus.PENDING_INTERNAL)) {
             ticket.setStatus(TicketStatus.PENDING_CUSTOMER);
         } else if (!isStaff && ticket.getStatus() == TicketStatus.PENDING_CUSTOMER) {
             ticket.setStatus(TicketStatus.PENDING_INTERNAL);
@@ -200,12 +200,28 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found: " + ticketId));
 
         TicketStatus previous = ticket.getStatus();
-        ticket.setStatus(request.status());
+        TicketStatus next = request.status();
 
-        if (request.status() == TicketStatus.RESOLVED) {
+        if (previous == TicketStatus.CLOSED) {
+            throw new backend.exceptions.http.ConflictException("A closed ticket cannot be modified");
+        }
+        if (previous == next) {
+            return toResponse(ticket); // no-op
+        }
+
+        ticket.setStatus(next);
+
+        // Set or clear terminal timestamps to keep audit fields consistent with status.
+        if (next == TicketStatus.RESOLVED) {
             ticket.setResolvedAt(Instant.now());
-        } else if (request.status() == TicketStatus.CLOSED) {
+            ticket.setClosedAt(null);
+        } else if (next == TicketStatus.CLOSED) {
             ticket.setClosedAt(Instant.now());
+        } else {
+            // Reverting to a non-terminal status (e.g., OPEN, PENDING_*) — clear any
+            // stale terminal timestamps so reports aren't misled.
+            ticket.setResolvedAt(null);
+            ticket.setClosedAt(null);
         }
 
         ticketRepository.save(ticket);
