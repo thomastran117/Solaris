@@ -65,6 +65,8 @@ public class EmailSender {
                 sendAnnouncementEmail(e.toEmail(), e.firstName(), e.companyId(),
                         e.companyName(), e.announcementId(), e.announcementTitle(),
                         e.announcementBody(), e.announcementType());
+            case EmailEvent.AbandonedCartEmail e ->
+                sendAbandonedCartEmail(e.toEmail(), e.firstName(), e.orderId(), e.items());
         }
     }
 
@@ -679,5 +681,78 @@ public class EmailSender {
             );
 
         return wrapInShell("Order Receipt", body);
+    }
+
+    private void sendAbandonedCartEmail(String toEmail, String firstName,
+                                        java.util.UUID orderId,
+                                        java.util.List<EmailEvent.AbandonedItem> items) {
+        String htmlBody = buildAbandonedCartHtml(firstName, orderId, items);
+        sendMimeMessage(toEmail, "You left something behind — ShopWave", htmlBody);
+    }
+
+    private String buildAbandonedCartHtml(String firstName,
+                                          java.util.UUID orderId,
+                                          java.util.List<EmailEvent.AbandonedItem> items) {
+        String greeting = (firstName != null && !firstName.isBlank())
+                ? "Hi " + HtmlUtils.htmlEscape(firstName) + ","
+                : "Hi there,";
+
+        StringBuilder itemRows = new StringBuilder();
+        for (EmailEvent.AbandonedItem item : items) {
+            String name = HtmlUtils.htmlEscape(item.name());
+            String productUrl = env.getEmail().getVerificationBaseUrl()
+                    + "/products/" + item.productId();
+            BigDecimal price = BigDecimal.valueOf(item.priceCents(), 2);
+            itemRows.append("""
+                <tr style="border-bottom:1px solid #DBEAFE;">
+                  <td style="padding:12px 0;font-size:14px;color:#0F172A;font-weight:600;">
+                    <a href="%s" style="color:#1D4ED8;text-decoration:none;">%s</a>
+                  </td>
+                  <td style="padding:12px 0;font-size:14px;color:#1D4ED8;
+                             font-weight:700;text-align:right;">
+                    $%.2f
+                  </td>
+                </tr>
+                """.formatted(productUrl, name, price));
+        }
+
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;
+                        color:#0F172A;letter-spacing:-0.5px;">
+              Still thinking it over?
+            </h1>
+            <p style="margin:0 0 24px 0;font-size:15px;color:#475569;line-height:1.7;">
+              %s You left some items in your cart. They are still available — head back and
+              complete your purchase before they sell out.
+            </p>
+
+            <!-- Items table -->
+            <table width="100%%" cellpadding="0" cellspacing="0" role="presentation"
+                   style="border-collapse:collapse;width:100%%;">
+              <thead>
+                <tr>
+                  <th style="font-size:11px;font-weight:700;letter-spacing:0.08em;
+                             text-transform:uppercase;color:#94A3B8;text-align:left;
+                             padding-bottom:10px;border-bottom:2px solid #DBEAFE;">Item</th>
+                  <th style="font-size:11px;font-weight:700;letter-spacing:0.08em;
+                             text-transform:uppercase;color:#94A3B8;text-align:right;
+                             padding-bottom:10px;border-bottom:2px solid #DBEAFE;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                %s
+              </tbody>
+            </table>
+
+            %s
+            %s
+            """.formatted(
+                greeting,
+                itemRows,
+                primaryButton(env.getEmail().getVerificationBaseUrl() + "/checkout", "Complete My Order"),
+                expiryNote("This is a one-time reminder. You will not receive further emails about this cart.")
+            );
+
+        return wrapInShell("Abandoned Cart", body);
     }
 }

@@ -138,8 +138,10 @@ import backend.services.pricing.CartContext;
 import backend.services.pricing.CartLine;
 import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
+import backend.events.order.OrderReservationExpiredEvent;
 import backend.events.order.SseStatusUpdateEvent;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -312,6 +314,12 @@ public class OrderServiceImpl implements OrderService {
         this.promotionPerUserCountRepository = repo;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    private ApplicationEventPublisher eventPublisher;
     private OrderStatusHistoryRepository orderStatusHistoryRepository;
     private StringRedisTemplate stringRedisTemplate;
 
@@ -1554,6 +1562,22 @@ public class OrderServiceImpl implements OrderService {
         }
         releaseCouponUsage(order);
         orderRepository.save(order);
+
+        if (order.getCancellationReason() == backend.models.enums.CancellationReason.STALE_TIMEOUT
+                && eventPublisher != null) {
+            User user = order.getUser();
+            if (user != null) {
+                List<OrderReservationExpiredEvent.AbandonedItemData> itemData = order.getItems().stream()
+                        .map(i -> new OrderReservationExpiredEvent.AbandonedItemData(
+                                i.getProduct() != null ? i.getProduct().getId() : null,
+                                i.getProductName(),
+                                i.getProduct() != null ? i.getProduct().getThumbnailUrl() : null,
+                                i.getUnitPrice()))
+                        .toList();
+                eventPublisher.publishEvent(new OrderReservationExpiredEvent(
+                        order.getId(), user.getId(), user.getEmail(), user.getFirstName(), itemData));
+            }
+        }
 
         try {
             loyaltyService.restoreRedeemedPoints(order.getId());

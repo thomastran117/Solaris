@@ -15,6 +15,8 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import org.mockito.ArgumentCaptor;
+
 import static org.mockito.Mockito.*;
 
 @SuppressWarnings("unchecked")
@@ -121,6 +123,52 @@ class EmailServiceImplTest {
                 TestIds.uuid(1), "Widget", null, null, "https://app/products/1");
 
         verify(kafkaTemplate).send(eq(TOPIC), any(EmailEvent.BackInStockEmail.class));
+    }
+
+    // ─── sendAbandonedCartEmail ───────────────────────────────────────────────
+
+    @Test
+    void sendAbandonedCartEmail_publishesToTopic() {
+        List<EmailEvent.AbandonedItem> items = List.of(
+                new EmailEvent.AbandonedItem(TestIds.uuid(5), "Widget", null, 1999L));
+
+        service.sendAbandonedCartEmail("user@example.com", "Alice",
+                TestIds.uuid(1), TestIds.uuid(2), items);
+
+        verify(kafkaTemplate).send(eq(TOPIC), any(EmailEvent.AbandonedCartEmail.class));
+    }
+
+    @Test
+    void sendAbandonedCartEmail_publishesCorrectPayload() {
+        List<EmailEvent.AbandonedItem> items = List.of(
+                new EmailEvent.AbandonedItem(TestIds.uuid(5), "Widget", "https://cdn/img.png", 1999L));
+
+        service.sendAbandonedCartEmail("user@example.com", "Alice",
+                TestIds.uuid(1), TestIds.uuid(2), items);
+
+        ArgumentCaptor<EmailEvent> captor = ArgumentCaptor.forClass(EmailEvent.class);
+        verify(kafkaTemplate).send(eq(TOPIC), captor.capture());
+
+        EmailEvent.AbandonedCartEmail event = (EmailEvent.AbandonedCartEmail) captor.getValue();
+        assertEquals("user@example.com", event.toEmail());
+        assertEquals("Alice", event.firstName());
+        assertEquals(TestIds.uuid(1), event.userId());
+        assertEquals(TestIds.uuid(2), event.orderId());
+        assertEquals(1, event.items().size());
+        assertEquals(1999L, event.items().get(0).priceCents());
+    }
+
+    @Test
+    void sendAbandonedCartEmail_kafkaFailure_doesNotThrow() {
+        CompletableFuture<SendResult<String, EmailEvent>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new RuntimeException("Kafka unavailable"));
+        when(kafkaTemplate.send(anyString(), any(EmailEvent.class))).thenReturn(failed);
+
+        List<EmailEvent.AbandonedItem> items = List.of(
+                new EmailEvent.AbandonedItem(TestIds.uuid(5), "Widget", null, 999L));
+
+        assertDoesNotThrow(() -> service.sendAbandonedCartEmail(
+                "user@example.com", "Alice", TestIds.uuid(1), TestIds.uuid(2), items));
     }
 
     // ─── Kafka failure is swallowed ───────────────────────────────────────────

@@ -118,4 +118,8 @@ public interface EmailService {
      */
     void sendTeamInviteEmail(String toEmail, String companyName, String role,
                              String inviterDisplayName, String acceptUrl);
+
+    void sendAbandonedCartEmail(String toEmail, String firstName,
+                                UUID userId, UUID orderId,
+                                java.util.List<backend.events.email.EmailEvent.AbandonedItem> items);
 }

@@ -7,6 +7,8 @@ import backend.models.enums.AnnouncementType;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
+import java.util.List;
+
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
     @JsonSubTypes.Type(value = EmailEvent.VerificationEmail.class,       name = "VERIFICATION"),
@@ -20,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = EmailEvent.BackInStockEmail.class,        name = "BACK_IN_STOCK"),
     @JsonSubTypes.Type(value = EmailEvent.TeamInviteEmail.class,         name = "TEAM_INVITE"),
     @JsonSubTypes.Type(value = EmailEvent.AnnouncementEmail.class,       name = "ANNOUNCEMENT"),
+    @JsonSubTypes.Type(value = EmailEvent.AbandonedCartEmail.class,      name = "ABANDONED_CART"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -32,7 +35,8 @@ public sealed interface EmailEvent
                 EmailEvent.ReplacementOrderEmail,
                 EmailEvent.BackInStockEmail,
                 EmailEvent.TeamInviteEmail,
-                EmailEvent.AnnouncementEmail {
+                EmailEvent.AnnouncementEmail,
+                EmailEvent.AbandonedCartEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -118,5 +122,20 @@ public sealed interface EmailEvent
         String announcementTitle,
         String announcementBody,
         AnnouncementType announcementType
+    ) implements EmailEvent {}
+
+    record AbandonedItem(
+        java.util.UUID productId,
+        String name,
+        String imageUrl,
+        long priceCents
+    ) {}
+
+    record AbandonedCartEmail(
+        String toEmail,
+        String firstName,
+        java.util.UUID userId,
+        java.util.UUID orderId,
+        List<AbandonedItem> items
     ) implements EmailEvent {}
 }
