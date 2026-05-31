@@ -125,4 +125,7 @@ public interface EmailService {
 
     void sendQuestionPostedEmail(UUID vendorUserId, String toEmail, String vendorFirstName,
                                  String productName, String questionText, UUID questionId);
+
+    void sendGiftCardIssuedEmail(String toEmail, String firstName,
+                                 String giftCardCode, int originalValueCents, String companyName);
 }

@@ -103,6 +103,14 @@ public class EmailServiceImpl implements EmailService {
                 productName, questionText, questionId));
     }
 
+    @Override
+    public void sendGiftCardIssuedEmail(String toEmail, String firstName,
+                                        String giftCardCode, int originalValueCents,
+                                        String companyName) {
+        publish(new EmailEvent.GiftCardIssuedEmail(toEmail, firstName, giftCardCode,
+                originalValueCents, companyName));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

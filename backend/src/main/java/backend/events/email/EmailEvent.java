@@ -24,6 +24,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.AnnouncementEmail.class,       name = "ANNOUNCEMENT"),
     @JsonSubTypes.Type(value = EmailEvent.AbandonedCartEmail.class,      name = "ABANDONED_CART"),
     @JsonSubTypes.Type(value = EmailEvent.QuestionPostedEmail.class,     name = "QUESTION_POSTED"),
+    @JsonSubTypes.Type(value = EmailEvent.GiftCardIssuedEmail.class,    name = "GIFT_CARD_ISSUED"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -38,7 +39,8 @@ public sealed interface EmailEvent
                 EmailEvent.TeamInviteEmail,
                 EmailEvent.AnnouncementEmail,
                 EmailEvent.AbandonedCartEmail,
-                EmailEvent.QuestionPostedEmail {
+                EmailEvent.QuestionPostedEmail,
+                EmailEvent.GiftCardIssuedEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -148,5 +150,13 @@ public sealed interface EmailEvent
         String productName,
         String questionText,
         java.util.UUID questionId
+    ) implements EmailEvent {}
+
+    record GiftCardIssuedEmail(
+        String toEmail,
+        String firstName,
+        String giftCardCode,
+        int originalValueCents,
+        String companyName
     ) implements EmailEvent {}
 }

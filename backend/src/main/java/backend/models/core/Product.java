@@ -14,6 +14,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.hibernate.annotations.BatchSize;
 
 import backend.models.enums.ProductStatus;
+import backend.models.enums.ProductType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -133,6 +134,10 @@ public class Product {
 
     @Column(nullable = true, length = 10)
     private String weightUnit;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ProductType productType = ProductType.STANDARD;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -41,6 +41,7 @@ import DriverDispatchPage from "./pages/admin/DriverDispatchPage";
 import FeedPage from "./pages/FeedPage";
 import FollowingPage from "./pages/FollowingPage";
 import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
+import GiftCardsPage from "./pages/GiftCardsPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -83,6 +84,7 @@ function App() {
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/kits/:companyId/:kitId" element={<KitPage />} />
+            <Route path="/gift-cards" element={<GiftCardsPage />} />
             <Route path="/invite/accept/:token" element={<InviteAcceptPage />} />
             <Route path="/hello" element={<HelloTestPage />} />
             <Route path="/auth/google" element={<AuthCallback />} />

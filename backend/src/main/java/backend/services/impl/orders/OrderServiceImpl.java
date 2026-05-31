@@ -63,6 +63,8 @@ import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.LocationType;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.ProductStatus;
+import backend.models.enums.ProductType;
+import backend.events.order.GiftCardIssueRequestedEvent;
 import backend.models.enums.RiskAction;
 import backend.models.enums.RiskAssessmentKind;
 import backend.models.enums.RiskMode;
@@ -525,6 +527,13 @@ public class OrderServiceImpl implements OrderService {
                 item.setProduct(product);
                 item.setProductName(product.getName());
                 item.setQuantity(qty);
+
+                // Gift card products have no stock — skip all inventory reservation
+                if (product.getProductType() == ProductType.GIFT_CARD) {
+                    item.setUnitPrice(product.getPrice());
+                    orderItems.add(item);
+                    continue;
+                }
 
                 if (variantId != null) {
                     ProductVariant variant = variantRepository.findByIdAndProductId(variantId, productId)
@@ -1424,6 +1433,7 @@ public class OrderServiceImpl implements OrderService {
             orderRepository.save(order);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment confirmed");
             publishSseEvent(order, "Payment confirmed", "status_update");
+            eventPublisher.publishEvent(new GiftCardIssueRequestedEvent(order.getId()));
             releaseReservation(order.getId());
             if (order.isMarketplaceOrder()) {
                 recordSubOrderCommission(order);

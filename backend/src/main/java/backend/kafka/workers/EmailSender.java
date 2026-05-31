@@ -69,6 +69,8 @@ public class EmailSender {
                 sendAbandonedCartEmail(e.toEmail(), e.firstName(), e.orderId(), e.items());
             case EmailEvent.QuestionPostedEmail e ->
                 sendQuestionPostedEmail(e.toEmail(), e.vendorFirstName(), e.productName(), e.questionText(), e.questionId());
+            case EmailEvent.GiftCardIssuedEmail e ->
+                sendGiftCardIssuedEmail(e.toEmail(), e.firstName(), e.giftCardCode(), e.originalValueCents(), e.companyName());
         }
     }
 
@@ -708,6 +710,38 @@ public class EmailSender {
             """.formatted(greeting, safeProduct, safeQuestion);
         sendMimeMessage(toEmail, "New question on " + safeProduct + " — ShopWave",
                 wrapInShell("New Question", body));
+    }
+
+    private void sendGiftCardIssuedEmail(String toEmail, String firstName,
+                                          String giftCardCode, int originalValueCents,
+                                          String companyName) {
+        String greeting = firstName != null ? "Hi " + HtmlUtils.htmlEscape(firstName) + "," : "Hi,";
+        String formatted = String.format("$%.2f", originalValueCents / 100.0);
+        String safeCompany = HtmlUtils.htmlEscape(companyName != null ? companyName : "ShopWave");
+        String safeCode = HtmlUtils.htmlEscape(giftCardCode);
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Your gift card is ready!
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              You purchased a <strong>%s</strong> gift card from <strong>%s</strong>.
+              Share the code below with the recipient so they can redeem it at checkout.
+            </p>
+            <div style="background:#EFF6FF;border:2px dashed #BFDBFE;border-radius:10px;
+                         padding:24px;margin:16px 0;text-align:center;">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.12em;
+                         text-transform:uppercase;color:#93C5FD;">Gift Card Code</p>
+              <p style="margin:10px 0 0 0;font-size:28px;font-weight:800;color:#1D4ED8;
+                         letter-spacing:0.18em;font-family:monospace;">%s</p>
+              <p style="margin:8px 0 0 0;font-size:13px;color:#64748B;">Value: <strong>%s</strong></p>
+            </div>
+            <p style="margin:16px 0 0 0;font-size:13px;color:#94A3B8;line-height:1.6;">
+              The recipient can redeem this code at <strong>%s</strong>. Gift cards do not expire.
+            </p>
+            """.formatted(greeting, formatted, safeCompany, safeCode, formatted, safeCompany);
+        sendMimeMessage(toEmail, "Your " + formatted + " gift card from " + safeCompany + " — ShopWave",
+                wrapInShell("Gift Card", body));
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

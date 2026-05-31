@@ -6,5 +6,6 @@ public enum CreditEntryType {
     REDEEMED,
     EXPIRED,
     REVERSED,
-    LOYALTY_CASHBACK
+    LOYALTY_CASHBACK,
+    GIFT_CARD_CREDIT
 }
