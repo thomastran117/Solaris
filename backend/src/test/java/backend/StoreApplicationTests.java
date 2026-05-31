@@ -1,9 +1,10 @@
 package backend;
 
-import backend.integration.AbstractIntegrationIT;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
-class StoreApplicationTests extends AbstractIntegrationIT {
+@SpringBootTest
+class StoreApplicationTests {
 
 	@Test
 	void contextLoads() {

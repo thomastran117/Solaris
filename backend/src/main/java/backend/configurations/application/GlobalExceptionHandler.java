@@ -1,9 +1,7 @@
 package backend.configurations.application;
 
-import backend.dtos.responses.general.ApiError;
-import backend.dtos.responses.general.ApiResponse;
+import backend.dtos.responses.general.ErrorResponse;
 import backend.exceptions.http.AppHttpException;
-import backend.exceptions.http.RiskStepUpRequiredException;
 import backend.security.oauth.InvalidOAuthTokenException;
 import backend.security.oauth.OAuthProviderTransientException;
 import backend.security.oauth.OAuthVerificationError;
@@ -16,24 +14,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
-import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * Returns a consistent API contract: all error responses use {@link ApiResponse}
- * (success=false with {@link ApiError} payload) as JSON.
+ * Returns a consistent API contract: all error responses use {@link ErrorResponse}
+ * (status, message, detail, optional details) as JSON.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -41,119 +34,124 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, Object> details = new LinkedHashMap<>();
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> fields = new LinkedHashMap<>();
         ex.getBindingResult().getAllErrors().forEach(err -> {
             String fieldName = err instanceof FieldError fe ? fe.getField() : err.getObjectName();
-            String message = err.getDefaultMessage();
-            @SuppressWarnings("unchecked")
-            List<String> messages = (List<String>) details.computeIfAbsent(fieldName, k -> new ArrayList<String>());
-            messages.add(message);
+            fields.put(fieldName, err.getDefaultMessage());
         });
-        return build(HttpStatus.BAD_REQUEST, "Validation failed", "VALIDATION_ERROR", details);
-    }
-
-    @ExceptionHandler(HandlerMethodValidationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Validation failed", "VALIDATION_ERROR", null);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("errors", fields);
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Validation failed",
+                "One or more fields are invalid.",
+                details
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNotFound(NoHandlerFoundException ex) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("path", ex.getRequestURL());
-        details.put("method", ex.getHttpMethod());
-        return build(HttpStatus.NOT_FOUND, "Not found", "NOT_FOUND", details);
+    public ResponseEntity<ErrorResponse> handleNotFound(NoHandlerFoundException ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.NOT_FOUND.value(),
+                "Not found",
+                "No handler for " + ex.getHttpMethod() + " " + ex.getRequestURL()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ErrorResponse> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
         var methods = ex.getSupportedHttpMethods();
         var supported = methods == null
-                ? List.<String>of()
+                ? java.util.List.<String>of()
                 : methods.stream().map(HttpMethod::name).toList();
+        String allowed = String.join(", ", supported);
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("allowedMethods", supported);
-        return build(
-                HttpStatus.METHOD_NOT_ALLOWED,
-                "HTTP " + ex.getMethod() + " is not allowed",
-                "METHOD_NOT_ALLOWED",
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.METHOD_NOT_ALLOWED.value(),
+                "Method not allowed",
+                "HTTP " + ex.getMethod() + " is not allowed. Supported method(s): " + allowed,
                 details
         );
-    }
-
-    @ExceptionHandler(MissingServletRequestParameterException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Missing required parameter: " + ex.getParameterName(), "MISSING_PARAM", null);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(body);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean unauthenticated = auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken;
+        boolean unauthenticated = auth == null || !auth.isAuthenticated();
         if (unauthenticated) {
-            return build(HttpStatus.UNAUTHORIZED, "Authentication required", "UNAUTHORIZED", null);
+            ErrorResponse body = new ErrorResponse(
+                    HttpStatus.UNAUTHORIZED.value(),
+                    "Unauthorized",
+                    "Authentication required. Provide a valid Bearer token."
+            );
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
         }
-        String message = ex.getMessage() != null ? ex.getMessage() : "You do not have permission to access this resource.";
-        return build(HttpStatus.FORBIDDEN, message, "FORBIDDEN", null);
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                "Forbidden",
+                ex.getMessage() != null ? ex.getMessage() : "You do not have permission to access this resource."
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
     @ExceptionHandler(InvalidOAuthTokenException.class)
-    public ResponseEntity<ApiResponse<Void>> handleInvalidOAuthToken(InvalidOAuthTokenException ex) {
-        return build(HttpStatus.UNAUTHORIZED, "Invalid or expired token", "INVALID_TOKEN", null);
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthToken(InvalidOAuthTokenException ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                "Invalid or expired token."
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(OAuthProviderTransientException.class)
-    public ResponseEntity<ApiResponse<Void>> handleOAuthProviderTransient(OAuthProviderTransientException ex) {
+    public ResponseEntity<ErrorResponse> handleOAuthProviderTransient(OAuthProviderTransientException ex) {
         log.warn("OAuth provider transient failure: {}", ex.getMessage());
-        return build(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "OAuth provider temporarily unavailable. Please try again.",
-                "OAUTH_PROVIDER_UNAVAILABLE",
-                null
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                "Service Unavailable",
+                "OAuth provider temporarily unavailable. Please try again."
         );
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 
     @ExceptionHandler(OAuthVerificationError.class)
-    public ResponseEntity<ApiResponse<Void>> handleOAuthVerificationError(OAuthVerificationError ex) {
+    public ResponseEntity<ErrorResponse> handleOAuthVerificationError(OAuthVerificationError ex) {
         // Do not log ex, ex.getMessage(), or ex.getCause() — they may contain tokens or provider details
         log.error("OAuth verification failed (details redacted to avoid leakage)");
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.", "INTERNAL_ERROR", null);
-    }
-
-    @ExceptionHandler(RiskStepUpRequiredException.class)
-    public ResponseEntity<ApiResponse<Void>> handleRiskStepUp(RiskStepUpRequiredException ex) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        if (ex.getOrderId() != null) {
-            details.put("orderId", ex.getOrderId());
-        }
-        details.put("verificationChannel", ex.getVerificationChannel());
-        return build(ex.getStatus(), ex.getMessage(), ex.errorCode(), details);
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Internal server error",
+                "An unexpected error occurred."
+        );
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
     @ExceptionHandler(AppHttpException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAppHttpError(AppHttpException ex) {
-        Map<String, Object> details = null;
-        if (ex.getDetail() != null) {
-            details = new LinkedHashMap<>();
-            details.put("detail", ex.getDetail());
-        }
-        return build(ex.getStatus(), ex.getMessage(), ex.errorCode(), details);
+    public ResponseEntity<ErrorResponse> handleAppHttpError(AppHttpException ex) {
+        ErrorResponse body = new ErrorResponse(
+                ex.getStatus().value(),
+                ex.getMessage(),
+                ex.getDetail()
+        );
+        return ResponseEntity.status(ex.getStatus()).body(body);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex) {
+    public ResponseEntity<ErrorResponse> handleUnknown(Exception ex) {
         log.error("Unhandled exception", ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.", "INTERNAL_ERROR", null);
-    }
 
-    private static ResponseEntity<ApiResponse<Void>> build(
-            HttpStatus status,
-            String message,
-            String code,
-            Map<String, Object> details
-    ) {
-        ApiError error = new ApiError(code, details);
-        return ResponseEntity.status(status).body(ApiResponse.error(message, error));
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Internal server error",
+                "An unexpected error occurred."
+        );
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 }

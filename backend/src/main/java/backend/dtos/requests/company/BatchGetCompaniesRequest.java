@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -14,5 +13,5 @@ public class BatchGetCompaniesRequest {
 
     @NotEmpty(message = "At least one company ID is required")
     @Size(max = 100, message = "Cannot request more than 100 companies at once")
-    private List<UUID> ids;
+    private List<Long> ids;
 }

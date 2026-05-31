@@ -7,9 +7,5 @@ public enum UserRole {
     USER,
     MERCHANT,
     ADMIN,
-    MODERATOR,
-    SUPPORT,
-    VENDOR_OWNER,
-    VENDOR_STAFF,
-    MARKETPLACE_OPERATOR
+    MODERATOR
 }

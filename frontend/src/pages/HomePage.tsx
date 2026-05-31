@@ -7,11 +7,6 @@ import {
   useTransform,
   useInView,
 } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { useSelector } from "react-redux";
-import { marketplaceCollectionsApi } from "../api/merchandising";
-import CollectionCard from "../components/collection/CollectionCard";
-import type { RootState } from "../stores";
 import {
   Truck,
   Headset,
@@ -574,16 +569,6 @@ export default function Home() {
 
   const [query, setQuery] = useState("");
 
-  // Featured collections — driven by the new merchandising backend. When no marketplace is
-  // selected (e.g. unauthenticated landing) the section silently hides; same when the API
-  // returns an empty list. No CTA fallback because the Home shell already has plenty.
-  const marketplaceId = useSelector((s: RootState) => s.marketplace?.currentMarketplace?.id);
-  const { data: featuredCollections } = useQuery({
-    queryKey: ["home", "featured-collections", marketplaceId],
-    queryFn: () => marketplaceCollectionsApi.listFeatured(marketplaceId!).then(r => r.data),
-    enabled: !!marketplaceId,
-  });
-
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return featuredProducts;
@@ -777,37 +762,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* FEATURED COLLECTIONS — only rendered when the merchant has flagged at least one */}
-      {featuredCollections && featuredCollections.length > 0 && (
-        <section
-          aria-label="Featured collections"
-          className="relative py-20 px-6 border-y border-white/10 bg-white/[0.04] backdrop-blur"
-        >
-          <SectionFade />
-          <SectionGlow variant="a" />
-          <div className="max-w-6xl mx-auto">
-            <SectionTitle
-              theme="dark"
-              kicker="Collections"
-              title="Curated for you"
-              subtitle="Hand-picked groupings and dynamic edits from our vendors."
-              align="left"
-            />
-            <motion.div
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              variants={stagger}
-              className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"
-            >
-              {featuredCollections.slice(0, 8).map(c => (
-                <CollectionCard key={c.id} collection={c} variants={fadeInUp} />
-              ))}
-            </motion.div>
-          </div>
-        </section>
-      )}
 
       {/* SERVICES */}
       <section

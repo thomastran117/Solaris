@@ -1,154 +1,37 @@
+version: "3.9"
+
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: shopwave-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-shopwave}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password123}
-    ports:
-      - "${MYSQL_PORT:-3307}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  redis:
-    image: redis:7-alpine
-    container_name: shopwave-redis
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6380}:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: shopwave-elasticsearch
-    restart: unless-stopped
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
-    ports:
-      - "${ES_PORT:-9201}:9200"
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 40s
-
-  kafka:
-    image: apache/kafka:4.1.2
-    container_name: shopwave-kafka
-    restart: unless-stopped
-    environment:
-      KAFKA_CFG_NODE_ID: "0"
-      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CFG_NUM_PARTITIONS: "3"
-      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "1"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-    ports:
-      - "${KAFKA_PORT:-9093}:9092"
-    volumes:
-      - kafka-data:/bitnami/kafka
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 30s
-
-  backend:
+  spring-boot-app:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: shopwave-backend
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+    ports:
+      - "7000:7000"  
+    networks:
+      - app-network
     environment:
-      SERVER_PORT: 8090
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
-      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-shopwave}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-      DB_USERNAME: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password123}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      ES_HOST: elasticsearch
-      ES_PORT: 9200
-      ES_SCHEME: http
-      OAUTH_VALIDATE_CONFIG_AT_STARTUP: ${OAUTH_VALIDATE_CONFIG_AT_STARTUP:-false}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3090}
-      EMAIL_VERIFICATION_BASE_URL: ${EMAIL_VERIFICATION_BASE_URL:-http://localhost:3000}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-docker}
-      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
-      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-604800}
-      JWT_ISSUER: ${JWT_ISSUER:-shopwave-api}
-      BCRYPT_STRENGTH: ${BCRYPT_STRENGTH:-10}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
-      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      MAIL_USERNAME: ${MAIL_USERNAME:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-noreply@shopwave.com}
-      AWS_S3_REGION: ${AWS_S3_REGION:-us-east-1}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_S3_PUBLIC_URL_BASE: ${AWS_S3_PUBLIC_URL_BASE:-}
-    ports:
-      - "${BACKEND_PORT:-8090}:8090"
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-/api}
-        VITE_FRONTEND_URL: ${VITE_FRONTEND_URL:-http://localhost:3000}
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-        VITE_MSAL_CLIENT_ID: ${VITE_MSAL_CLIENT_ID:-}
-        VITE_MSAL_AUTHORITY: ${VITE_MSAL_AUTHORITY:-}
-        VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:-}
-    container_name: shopwave-frontend
-    restart: unless-stopped
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:1234/mydb  
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=rootpassword
     depends_on:
-      - backend
+      - mysql
+  react-app:
+    build:
+      context: ./frontend 
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "2000:80"
+    restart: always
+    depends_on:
+      - spring-boot-app
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: Password123
+      MYSQL_DATABASE: hotel-db
+    ports:
+      - "1234:3306"  
+    networks:
+      - app-network
 
-volumes:
-  mysql-data:
-  redis-data:
-  elasticsearch-data:
-  kafka-data:
+networks:
+  app-network:
+    driver: bridge
