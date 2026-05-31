@@ -12,6 +12,7 @@ import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.StockNotificationRepository;
 import backend.repositories.UserRepository;
+import backend.kafka.producers.NotificationEventPublisher;
 import backend.services.intf.support.EmailService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,7 @@ class StockNotificationServiceImplTest {
     private ProductVariantRepository variantRepository;
     private UserRepository userRepository;
     private EmailService emailService;
+    private NotificationEventPublisher notificationEventPublisher;
     private StockNotificationServiceImpl service;
 
     @BeforeEach
@@ -54,8 +56,10 @@ class StockNotificationServiceImplTest {
         variantRepository = mock(ProductVariantRepository.class);
         userRepository = mock(UserRepository.class);
         emailService = mock(EmailService.class);
+        notificationEventPublisher = mock(NotificationEventPublisher.class);
         service = new StockNotificationServiceImpl(
-                notificationRepository, productRepository, variantRepository, userRepository, emailService, "https://shopwave.test");
+                notificationRepository, productRepository, variantRepository, userRepository,
+                emailService, notificationEventPublisher, "https://shopwave.test");
         when(notificationRepository.save(any(StockNotification.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 

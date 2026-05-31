@@ -12,8 +12,8 @@ import org.springframework.util.backoff.FixedBackOff;
 
 /**
  * Configures dedicated {@link ConcurrentKafkaListenerContainerFactory} beans for the
- * email and announcement consumers. After 3 delivery attempts each message is routed
- * to its corresponding DLQ topic via {@link DeadLetterPublishingRecoverer}.
+ * email, announcement, and notification consumers. After 3 delivery attempts each
+ * message is routed to its corresponding DLQ topic via {@link DeadLetterPublishingRecoverer}.
  */
 @Configuration
 public class KafkaConsumerConfig {
@@ -29,6 +29,9 @@ public class KafkaConsumerConfig {
 
     @Value("${app.kafka.topics.product-events.dlq}")
     private String productIndexerDlqTopic;
+
+    @Value("${app.kafka.topics.notification-events.dlq}")
+    private String notificationDlqTopic;
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory(
@@ -73,6 +76,24 @@ public class KafkaConsumerConfig {
 
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(announcementDlqTopic, 0));
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));
+
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(errorHandler);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object> notificationKafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> consumerFactory,
+            KafkaTemplate<String, Object> kafkaTemplate) {
+
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(notificationDlqTopic, 0));
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
                 recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));

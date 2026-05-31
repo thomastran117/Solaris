@@ -4,6 +4,7 @@ import java.util.UUID;
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
 import backend.events.inventory.StockRestoredEvent;
+import backend.events.notification.NotificationEvent;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Product;
@@ -14,6 +15,7 @@ import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.StockNotificationRepository;
 import backend.repositories.UserRepository;
+import backend.kafka.producers.NotificationEventPublisher;
 import backend.services.intf.inventory.StockNotificationService;
 import backend.services.intf.support.EmailService;
 import org.slf4j.Logger;
@@ -40,6 +42,7 @@ public class StockNotificationServiceImpl implements StockNotificationService {
     private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final NotificationEventPublisher notificationEventPublisher;
     private final String frontendBaseUrl;
 
     public StockNotificationServiceImpl(
@@ -48,12 +51,14 @@ public class StockNotificationServiceImpl implements StockNotificationService {
             ProductVariantRepository variantRepository,
             UserRepository userRepository,
             EmailService emailService,
+            NotificationEventPublisher notificationEventPublisher,
             @Value("${app.email.verification-base-url}") String frontendBaseUrl) {
         this.notificationRepository = notificationRepository;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.notificationEventPublisher = notificationEventPublisher;
         this.frontendBaseUrl = frontendBaseUrl;
     }
 
@@ -138,6 +143,10 @@ public class StockNotificationServiceImpl implements StockNotificationService {
 
                 emailService.sendBackInStockEmail(toEmail, firstName, productId, productName,
                         variantId, variantTitle, productUrl);
+
+                notificationEventPublisher.publish(new NotificationEvent.BackInStock(
+                        notification.getUser().getId(), productId, productName,
+                        variantId, variantTitle, productUrl));
 
                 notification.setStatus(NotificationStatus.NOTIFIED);
                 notification.setNotifiedAt(Instant.now());

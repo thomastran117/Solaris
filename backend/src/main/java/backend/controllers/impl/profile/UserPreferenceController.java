@@ -2,7 +2,9 @@ package backend.controllers.impl.profile;
 
 import java.util.UUID;
 import backend.annotations.requireAuth.RequireAuth;
+import backend.dtos.requests.notification.UpdateNotificationPreferencesRequest;
 import backend.dtos.requests.preference.SetTrackingOptOutRequest;
+import backend.dtos.responses.notification.NotificationPreferencesResponse;
 import backend.dtos.responses.preference.UserPreferenceResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
@@ -42,6 +44,29 @@ public class UserPreferenceController {
         try {
             userPreferenceService.setTrackingOptOut(resolveUserId(), request.getOptOut());
             return ResponseEntity.noContent().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/notifications")
+    public ResponseEntity<NotificationPreferencesResponse> getNotificationPreferences() {
+        try {
+            return ResponseEntity.ok(userPreferenceService.getNotificationPreferences(resolveUserId()));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/notifications")
+    public ResponseEntity<NotificationPreferencesResponse> updateNotificationPreferences(
+            @Valid @RequestBody UpdateNotificationPreferencesRequest request) {
+        try {
+            return ResponseEntity.ok(userPreferenceService.updateNotificationPreferences(resolveUserId(), request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

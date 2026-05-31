@@ -63,4 +63,12 @@ public class UserDevice {
 
     @Column(nullable = false)
     private Instant lastSeenAt;
+
+    @Column(length = 512)
+    private String fcmToken;
+
+    @Column(length = 512)
+    private String apnsToken;
+
+    private Instant tokenUpdatedAt;
 }

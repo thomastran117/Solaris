@@ -106,6 +106,7 @@ import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.services.impl.inventory.StockAlertService;
 import backend.dtos.responses.order.OrderStatusHistoryResponse;
+import backend.events.notification.NotificationEvent;
 import backend.events.order.OrderFulfillmentEvent;
 import backend.models.core.OrderStatusHistory;
 import backend.models.enums.OrderHistoryEventType;
@@ -207,6 +208,7 @@ public class OrderServiceImpl implements OrderService {
     private final CompanyAccessService companyAccessService;
     private final OrderFulfillmentEventPublisher fulfillmentEventPublisher;
     private final TrackingService trackingService;
+    private backend.kafka.producers.NotificationEventPublisher notificationEventPublisher;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
@@ -292,6 +294,11 @@ public class OrderServiceImpl implements OrderService {
         this.companyAccessService = companyAccessService;
         this.fulfillmentEventPublisher = fulfillmentEventPublisher;
         this.trackingService = trackingService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setNotificationEventPublisher(backend.kafka.producers.NotificationEventPublisher publisher) {
+        this.notificationEventPublisher = publisher;
     }
 
     /** Setter injection breaks the circular dependency: ReturnService → OrderServiceImpl → ReturnService. */
@@ -2558,6 +2565,11 @@ public class OrderServiceImpl implements OrderService {
                     saved.getId(), saved.getUser().getId(), companyId,
                     tn, carrier, saved.getShippedAt()));
             trackingService.registerTracking(saved.getId(), tn, carrier);
+            if (notificationEventPublisher != null) {
+                String firstName = saved.getUser().getFirstName();
+                notificationEventPublisher.publish(new NotificationEvent.OrderShipped(
+                        saved.getUser().getId(), saved.getId(), firstName, tn, carrier));
+            }
         }
         return toCompanyOrderResponse(saved, companyId);
     }
@@ -2595,6 +2607,10 @@ public class OrderServiceImpl implements OrderService {
         publishSseEvent(saved, null, "status_update");
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+        if (notificationEventPublisher != null) {
+            notificationEventPublisher.publish(new NotificationEvent.OrderDelivered(
+                    saved.getUser().getId(), saved.getId(), saved.getUser().getFirstName()));
+        }
         return toCompanyOrderResponse(saved, companyId);
     }
 

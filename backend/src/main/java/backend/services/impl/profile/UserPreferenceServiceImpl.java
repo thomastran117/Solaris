@@ -1,6 +1,8 @@
 package backend.services.impl.profile;
 
 import java.util.UUID;
+import backend.dtos.requests.notification.UpdateNotificationPreferencesRequest;
+import backend.dtos.responses.notification.NotificationPreferencesResponse;
 import backend.models.core.UserPreference;
 import backend.repositories.UserPreferenceRepository;
 import backend.services.intf.profile.UserPreferenceService;
@@ -37,5 +39,23 @@ public class UserPreferenceServiceImpl implements UserPreferenceService {
         pref.setTrackingOptOut(optOut);
         repo.save(pref);
         cache.put(userId, optOut);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationPreferencesResponse getNotificationPreferences(UUID userId) {
+        UserPreference pref = repo.findById(userId).orElseGet(() -> new UserPreference(userId));
+        return new NotificationPreferencesResponse(pref.isPushEnabled(), pref.isSmsEnabled(), pref.getSmsPhoneNumber());
+    }
+
+    @Override
+    @Transactional
+    public NotificationPreferencesResponse updateNotificationPreferences(UUID userId, UpdateNotificationPreferencesRequest request) {
+        UserPreference pref = repo.findById(userId).orElseGet(() -> new UserPreference(userId));
+        if (request.pushEnabled() != null) pref.setPushEnabled(request.pushEnabled());
+        if (request.smsEnabled() != null) pref.setSmsEnabled(request.smsEnabled());
+        if (request.smsPhoneNumber() != null) pref.setSmsPhoneNumber(request.smsPhoneNumber().isBlank() ? null : request.smsPhoneNumber());
+        repo.save(pref);
+        return new NotificationPreferencesResponse(pref.isPushEnabled(), pref.isSmsEnabled(), pref.getSmsPhoneNumber());
     }
 }

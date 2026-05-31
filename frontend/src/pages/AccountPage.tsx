@@ -21,6 +21,8 @@ import {
 import api from "../api";
 import { getPremiumStatus, createCheckoutSession, createPortalSession } from "../api/premium";
 import { followApi } from "../api/follow";
+import { notificationPreferencesApi } from "../api/notificationPreferences";
+import type { NotificationPreferences } from "../types/notificationPreferences";
 import type { RootState } from "../stores";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
 import SectionGlow from "../components/section/SectionGlow";
@@ -127,6 +129,19 @@ export default function AccountPage() {
   });
 
   const followedCompanies = followingQuery.data?.items ?? [];
+
+  const notifPrefsQuery = useQuery({
+    queryKey: ["userPreferences", "notifications"],
+    queryFn: () => notificationPreferencesApi.getPreferences().then((r) => r.data),
+  });
+
+  const [smsPhone, setSmsPhone] = useState("");
+
+  const notifPrefsMutation = useMutation({
+    mutationFn: (data: Partial<NotificationPreferences>) =>
+      notificationPreferencesApi.updatePreferences(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["userPreferences", "notifications"] }),
+  });
 
   const isPremium = (premiumStatus?.tier ?? tier) === "PREMIUM";
 
@@ -388,6 +403,106 @@ export default function AccountPage() {
               )}
             </motion.section>
           )}
+
+          {/* ── Notification preferences ─────────────────────────────────── */}
+          <motion.section
+            variants={fadeInUp}
+            className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+          >
+            <SectionFade />
+            <SectionGlow variant="b" />
+            <h3 className="text-lg font-semibold text-white mb-5">Notification Preferences</h3>
+
+            <div className="space-y-4">
+              {/* Push toggle */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-white">Push notifications</p>
+                  <p className="text-xs text-white/50 mt-0.5">Order updates delivered to your device</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={notifPrefsMutation.isPending}
+                  onClick={() =>
+                    notifPrefsMutation.mutate({ pushEnabled: !notifPrefsQuery.data?.pushEnabled })
+                  }
+                  className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                    notifPrefsQuery.data?.pushEnabled
+                      ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                  title={notifPrefsQuery.data?.pushEnabled ? "Disable push" : "Enable push"}
+                >
+                  {notifPrefsQuery.data?.pushEnabled ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+
+              {/* SMS toggle */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-white">SMS notifications</p>
+                  <p className="text-xs text-white/50 mt-0.5">Shipped and delivered alerts via text</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={notifPrefsMutation.isPending}
+                  onClick={() =>
+                    notifPrefsMutation.mutate({ smsEnabled: !notifPrefsQuery.data?.smsEnabled })
+                  }
+                  className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                    notifPrefsQuery.data?.smsEnabled
+                      ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                  title={notifPrefsQuery.data?.smsEnabled ? "Disable SMS" : "Enable SMS"}
+                >
+                  {notifPrefsQuery.data?.smsEnabled ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+
+              {/* Phone number input — shown when SMS is enabled */}
+              {notifPrefsQuery.data?.smsEnabled && (
+                <div className="pt-1">
+                  <label className="block text-xs font-medium text-white/60 mb-1">
+                    Mobile number
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      placeholder="+1 555 000 0000"
+                      value={smsPhone || notifPrefsQuery.data?.smsPhoneNumber || ""}
+                      onChange={(e) => setSmsPhone(e.target.value)}
+                      className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      disabled={notifPrefsMutation.isPending || !smsPhone.trim()}
+                      onClick={() => {
+                        notifPrefsMutation.mutate({ smsPhoneNumber: smsPhone.trim() });
+                        setSmsPhone("");
+                      }}
+                      className="rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {notifPrefsQuery.data?.smsPhoneNumber && !smsPhone && (
+                    <p className="mt-1.5 text-xs text-white/45">
+                      Current: {notifPrefsQuery.data.smsPhoneNumber}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.section>
 
           {/* ── Benefits comparison ───────────────────────────────────────── */}
           <motion.section

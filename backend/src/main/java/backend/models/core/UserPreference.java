@@ -26,6 +26,15 @@ public class UserPreference {
     @Column(nullable = false)
     private boolean trackingOptOut = false;
 
+    @Column(nullable = false)
+    private boolean pushEnabled = false;
+
+    @Column(nullable = false)
+    private boolean smsEnabled = false;
+
+    @Column(length = 30)
+    private String smsPhoneNumber;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
