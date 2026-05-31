@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import javax.sql.DataSource;
 
 @Configuration
-@EnableJpaAuditing
+@EnableJpaAuditing(auditorAwareRef = "springSecurityAuditorAware")
 public class AppDatabase {
 
     private final EnvironmentSetting env;

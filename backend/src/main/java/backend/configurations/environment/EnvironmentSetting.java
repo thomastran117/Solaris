@@ -22,6 +22,7 @@ public class EnvironmentSetting {
     private final S3 s3 = new S3();
     private final Stripe stripe = new Stripe();
     private final Email email = new Email();
+    private final Elasticsearch elasticsearch = new Elasticsearch();
 
     public Cors getCors() {
         return cors;
@@ -67,12 +68,22 @@ public class EnvironmentSetting {
         return email;
     }
 
+    public Elasticsearch getElasticsearch() {
+        return elasticsearch;
+    }
+
     public static class Cors {
         private String allowedOrigins = "";
 
+        /**
+         * Returns the configured allowed origins, or an empty list when nothing is set.
+         * We intentionally do NOT fall back to {@code "*"} — wildcard + credentials is
+         * unsafe and modern browsers reject the combination anyway. An empty list lets
+         * {@link backend.configurations.security.CorsConfiguration} fail closed.
+         */
         public List<String> getAllowedOrigins() {
             if (allowedOrigins == null || allowedOrigins.isBlank()) {
-                return List.of("*");
+                return List.of();
             }
             return Arrays.stream(allowedOrigins.split(","))
                     .map(String::trim)
@@ -91,6 +102,8 @@ public class EnvironmentSetting {
 
         private final Jwt jwt = new Jwt();
         private final Jwks jwks = new Jwks();
+        private final Cookie cookie = new Cookie();
+        private final RateLimits rateLimits = new RateLimits();
 
         private String googleClientId = "";
         private String microsoftClientId = "";
@@ -119,6 +132,14 @@ public class EnvironmentSetting {
 
         public Jwt getJwt() {
             return jwt;
+        }
+
+        public Cookie getCookie() {
+            return cookie;
+        }
+
+        public RateLimits getRateLimits() {
+            return rateLimits;
         }
 
         public String getGoogleClientId() {
@@ -269,7 +290,7 @@ public class EnvironmentSetting {
         }
 
         public static class Jwt {
-            private String secret = "change-me-in-env";
+            private String secret = "";
             private long accessTokenTtlSeconds = 900;
             private long refreshTokenTtlSeconds = 604800;
             private String issuer = "shopwave-api";
@@ -305,6 +326,88 @@ public class EnvironmentSetting {
             public void setIssuer(String issuer) {
                 this.issuer = issuer != null ? issuer : "";
             }
+        }
+
+        /**
+         * Cookie attributes for session-bearing cookies (notably the refresh token).
+         * {@code secure} defaults to true so production deployments never accidentally
+         * ship cookies over plain HTTP; override via {@code app.security.cookie.secure=false}
+         * (or {@code COOKIE_SECURE=false}) only for local dev.
+         */
+        public static class Cookie {
+            private boolean secure = true;
+            private String sameSite = "Strict";
+
+            public boolean isSecure() {
+                return secure;
+            }
+
+            public void setSecure(boolean secure) {
+                this.secure = secure;
+            }
+
+            public String getSameSite() {
+                return sameSite != null && !sameSite.isBlank() ? sameSite : "Strict";
+            }
+
+            public void setSameSite(String sameSite) {
+                this.sameSite = sameSite;
+            }
+        }
+
+        /**
+         * Per-endpoint auth rate-limit buckets. Values map to {@code enforce()} calls in
+         * AuthController. All limits apply within {@code windowSeconds}. Lockout settings
+         * apply only to the credential-check (password) login path.
+         */
+        public static class RateLimits {
+            private int loginPerIpLimit = 10;
+            private int loginPerEmailLimit = 5;
+            private int signupPerIpLimit = 5;
+            private int oauthPerIpLimit = 10;
+            private int verifyPerIpLimit = 10;
+            private int verifyDevicePerIpLimit = 10;
+            private int refreshPerIpLimit = 30;
+            private int windowSeconds = 60;
+            /** Number of credential failures within lockoutWindowSeconds before the account is locked. */
+            private int lockoutThreshold = 10;
+            /** Rolling window (seconds) used to count credential failures per email. */
+            private int lockoutWindowSeconds = 600;
+            /** Duration (seconds) the lockout key survives after the threshold is crossed. */
+            private int lockoutDurationSeconds = 900;
+
+            public int getLoginPerIpLimit() { return loginPerIpLimit; }
+            public void setLoginPerIpLimit(int v) { loginPerIpLimit = Math.max(1, v); }
+
+            public int getLoginPerEmailLimit() { return loginPerEmailLimit; }
+            public void setLoginPerEmailLimit(int v) { loginPerEmailLimit = Math.max(1, v); }
+
+            public int getSignupPerIpLimit() { return signupPerIpLimit; }
+            public void setSignupPerIpLimit(int v) { signupPerIpLimit = Math.max(1, v); }
+
+            public int getOauthPerIpLimit() { return oauthPerIpLimit; }
+            public void setOauthPerIpLimit(int v) { oauthPerIpLimit = Math.max(1, v); }
+
+            public int getVerifyPerIpLimit() { return verifyPerIpLimit; }
+            public void setVerifyPerIpLimit(int v) { verifyPerIpLimit = Math.max(1, v); }
+
+            public int getVerifyDevicePerIpLimit() { return verifyDevicePerIpLimit; }
+            public void setVerifyDevicePerIpLimit(int v) { verifyDevicePerIpLimit = Math.max(1, v); }
+
+            public int getRefreshPerIpLimit() { return refreshPerIpLimit; }
+            public void setRefreshPerIpLimit(int v) { refreshPerIpLimit = Math.max(1, v); }
+
+            public int getWindowSeconds() { return windowSeconds; }
+            public void setWindowSeconds(int v) { windowSeconds = Math.max(1, v); }
+
+            public int getLockoutThreshold() { return lockoutThreshold; }
+            public void setLockoutThreshold(int v) { lockoutThreshold = Math.max(1, v); }
+
+            public int getLockoutWindowSeconds() { return lockoutWindowSeconds; }
+            public void setLockoutWindowSeconds(int v) { lockoutWindowSeconds = Math.max(60, v); }
+
+            public int getLockoutDurationSeconds() { return lockoutDurationSeconds; }
+            public void setLockoutDurationSeconds(int v) { lockoutDurationSeconds = Math.max(60, v); }
         }
     }
 
@@ -622,6 +725,7 @@ public class EnvironmentSetting {
         private String publishableKey = "";
         private String webhookSecret = "";
         private final Retry retry = new Retry();
+        private final Premium premium = new Premium();
 
         public String getSecretKey() {
             return secretKey != null ? secretKey : "";
@@ -649,6 +753,33 @@ public class EnvironmentSetting {
 
         public Retry getRetry() {
             return retry;
+        }
+
+        public Premium getPremium() {
+            return premium;
+        }
+
+        public static class Premium {
+            private String priceId = "";
+            private String webhookSecret = "";
+            private String checkoutSuccessUrl = "http://localhost:5173/account?upgrade=success";
+            private String checkoutCancelUrl = "http://localhost:5173/account";
+            private String portalReturnUrl = "http://localhost:5173/account";
+
+            public String getPriceId() { return priceId != null ? priceId : ""; }
+            public void setPriceId(String priceId) { this.priceId = priceId != null ? priceId : ""; }
+
+            public String getWebhookSecret() { return webhookSecret != null ? webhookSecret : ""; }
+            public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret != null ? webhookSecret : ""; }
+
+            public String getCheckoutSuccessUrl() { return checkoutSuccessUrl != null ? checkoutSuccessUrl : ""; }
+            public void setCheckoutSuccessUrl(String checkoutSuccessUrl) { this.checkoutSuccessUrl = checkoutSuccessUrl != null ? checkoutSuccessUrl : ""; }
+
+            public String getCheckoutCancelUrl() { return checkoutCancelUrl != null ? checkoutCancelUrl : ""; }
+            public void setCheckoutCancelUrl(String checkoutCancelUrl) { this.checkoutCancelUrl = checkoutCancelUrl != null ? checkoutCancelUrl : ""; }
+
+            public String getPortalReturnUrl() { return portalReturnUrl != null ? portalReturnUrl : ""; }
+            public void setPortalReturnUrl(String portalReturnUrl) { this.portalReturnUrl = portalReturnUrl != null ? portalReturnUrl : ""; }
         }
 
         public static class Retry {
@@ -889,6 +1020,102 @@ public class EnvironmentSetting {
 
             public void setMaxIntervalMs(long maxIntervalMs) {
                 this.maxIntervalMs = Math.max(1_000, Math.min(300_000, maxIntervalMs));
+            }
+        }
+    }
+
+    /**
+     * Elasticsearch connection and async-indexing executor settings.
+     * Supports no-auth, API key, or username/password authentication.
+     */
+    public static class Elasticsearch {
+        private String host = "localhost";
+        private int port = 9200;
+        private String scheme = "http";
+        private String apiKey = "";
+        private String username = "";
+        private String password = "";
+        private final Indexing indexing = new Indexing();
+
+        public String getHost() {
+            return host != null ? host : "localhost";
+        }
+
+        public void setHost(String host) {
+            this.host = host != null ? host : "localhost";
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public String getScheme() {
+            return scheme != null ? scheme : "http";
+        }
+
+        public void setScheme(String scheme) {
+            this.scheme = scheme != null ? scheme : "http";
+        }
+
+        public String getApiKey() {
+            return apiKey != null ? apiKey : "";
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey != null ? apiKey : "";
+        }
+
+        public String getUsername() {
+            return username != null ? username : "";
+        }
+
+        public void setUsername(String username) {
+            this.username = username != null ? username : "";
+        }
+
+        public String getPassword() {
+            return password != null ? password : "";
+        }
+
+        public void setPassword(String password) {
+            this.password = password != null ? password : "";
+        }
+
+        public Indexing getIndexing() {
+            return indexing;
+        }
+
+        public static class Indexing {
+            private int workerCount   = 2;
+            private int queueCapacity = 500;
+            private int batchSize     = 25;
+
+            public int getWorkerCount() {
+                return workerCount;
+            }
+
+            public void setWorkerCount(int workerCount) {
+                this.workerCount = Math.max(1, Math.min(32, workerCount));
+            }
+
+            public int getQueueCapacity() {
+                return queueCapacity;
+            }
+
+            public void setQueueCapacity(int queueCapacity) {
+                this.queueCapacity = Math.max(10, Math.min(10_000, queueCapacity));
+            }
+
+            public int getBatchSize() {
+                return batchSize;
+            }
+
+            public void setBatchSize(int batchSize) {
+                this.batchSize = Math.max(1, Math.min(500, batchSize));
             }
         }
     }

@@ -1,16 +1,24 @@
 import React, { useState } from "react";
-import { FaSearch, FaUserCircle } from "react-icons/fa";
+import { FaUserCircle } from "react-icons/fa";
 import { useNavigate, NavLink } from "react-router-dom";
+import SearchBar from "./search/SearchBar";
 import { useSelector, useDispatch } from "react-redux";
 import type { RootState, AppDispatch } from "../stores";
 import { clearCredentials } from "../stores/authSlice";
+import { useCompanyCapabilities } from "../hooks/useCompanyRole";
+import api from "../api";
 import "../styles/navbar.css";
 
 export default function Navbar() {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { accessToken, email } = useSelector((state: RootState) => state.auth);
+  const { accessToken, email, companyId, tier, role } = useSelector((state: RootState) => state.auth);
+  const { can } = useCompanyCapabilities(accessToken ? companyId : null);
+  const canManageCompany = can("MANAGE_COMPANY");
+  const canManageProducts = can("MANAGE_PRODUCTS");
+  const canFulfillOrders = can("FULFILL_ORDERS");
+  const canManagePromotions = can("MANAGE_PROMOTIONS");
 
   const username = email ?? null;
 
@@ -55,14 +63,15 @@ export default function Navbar() {
     setUserTimeoutId(timeout);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setUserDropdownOpen(false);
-
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Ignore errors — token may already be expired. Always clear local state.
+    }
     dispatch(clearCredentials());
-
-    // await api.post("/auth/logout");
-
-    navigate("/auth");
+    navigate("/login");
   };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -124,6 +133,61 @@ export default function Navbar() {
               <NavLink to="/browse" className={navLinkClass}>
                 Browse
               </NavLink>
+              {accessToken && (
+                <NavLink to="/dashboard" className={navLinkClass}>
+                  Dashboard
+                </NavLink>
+              )}
+              {accessToken && (
+                <NavLink to="/compare" className={navLinkClass}>
+                  Compare
+                </NavLink>
+              )}
+              {accessToken && (
+                <NavLink to="/lists" className={navLinkClass}>
+                  My Lists
+                </NavLink>
+              )}
+              {accessToken && (
+                <NavLink to="/feedback" className={navLinkClass}>
+                  Feedback
+                </NavLink>
+              )}
+              {accessToken && role === "ADMIN" && (
+                <NavLink to="/admin/feedback" className={navLinkClass}>
+                  Feedback Admin
+                </NavLink>
+              )}
+              {accessToken && companyId && canFulfillOrders && (
+                <NavLink to="/admin/orders" className={navLinkClass}>
+                  Fulfillment
+                </NavLink>
+              )}
+              {accessToken && companyId && canFulfillOrders && (
+                <NavLink to="/admin/drivers" className={navLinkClass}>
+                  Drivers
+                </NavLink>
+              )}
+              {accessToken && companyId && (canManageProducts || canFulfillOrders) && (
+                <NavLink to="/admin/products" className={navLinkClass}>
+                  Admin
+                </NavLink>
+              )}
+              {accessToken && companyId && canManageProducts && (
+                <NavLink to="/admin/bundles" className={navLinkClass}>
+                  Bundles
+                </NavLink>
+              )}
+              {accessToken && companyId && canManageCompany && (
+                <NavLink to="/admin/team" className={navLinkClass}>
+                  Team
+                </NavLink>
+              )}
+              {accessToken && companyId && canManagePromotions && (
+                <NavLink to="/admin/loyalty" className={navLinkClass}>
+                  Loyalty
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div
@@ -169,21 +233,12 @@ export default function Navbar() {
             </div>
 
             {/* Search bar */}
-            <form className="flex items-center mt-4 lg:mt-0 lg:ml-6">
-              <div className="relative flex rounded overflow-hidden border border-gray-600">
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="bg-gray-800 text-white px-3 py-1 focus:outline-none w-36 sm:w-48"
-                />
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 px-3 py-1"
-                >
-                  <FaSearch />
-                </button>
-              </div>
-            </form>
+            <div className="mt-4 lg:mt-0 lg:ml-6 w-48 sm:w-64">
+              <SearchBar
+                onSearch={(q) => navigate(`/browse?q=${encodeURIComponent(q)}`)}
+                placeholder="Search…"
+              />
+            </div>
 
             {/* User/Login */}
             <div className="relative mt-4 lg:mt-0 lg:ml-6">
@@ -196,6 +251,11 @@ export default function Navbar() {
                   <div className="flex items-center gap-1 text-gray-300 hover:text-blue-400">
                     <FaUserCircle />
                     <span>{username}</span>
+                    {tier === "PREMIUM" && (
+                      <span className="text-xs font-semibold text-transparent bg-clip-text bg-gradient-to-r from-sky-200 to-blue-400 border border-white/20 rounded-full px-2 py-0.5 leading-none">
+                        PREMIUM
+                      </span>
+                    )}
                     <svg
                       className={`w-4 h-4 ml-1 transition-transform duration-300 ${
                         userDropdownOpen ? "rotate-180" : ""
@@ -209,6 +269,18 @@ export default function Navbar() {
                   {userDropdownOpen && (
                     <div className="absolute right-0 mt-2 w-44 bg-white text-black rounded-lg shadow-xl z-20 border border-gray-200">
                       <NavLink
+                        to="/account"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        Account
+                      </NavLink>
+                      <NavLink
+                        to="/loyalty"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        My Rewards
+                      </NavLink>
+                      <NavLink
                         to="/profile"
                         className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
                       >
@@ -219,6 +291,18 @@ export default function Navbar() {
                         className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
                       >
                         My Orders
+                      </NavLink>
+                      <NavLink
+                        to="/gift-cards"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        Gift Cards
+                      </NavLink>
+                      <NavLink
+                        to="/price-watches"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        Price Alerts
                       </NavLink>
                       <hr className="my-1 border-gray-200" />
                       <button
