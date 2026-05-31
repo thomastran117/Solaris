@@ -1,0 +1,137 @@
+package backend.documents;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+@Document(indexName = "products")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProductDocument {
+
+    @Id
+    private UUID id;
+
+    @Field(type = FieldType.Keyword)
+    private UUID companyId;
+
+    /** Non-null when the product is listed on a marketplace. */
+    @Field(type = FieldType.Keyword)
+    private UUID marketplaceId;
+
+    /** The owning vendor's company ID — populated when marketplaceId is set. */
+    @Field(type = FieldType.Keyword)
+    private UUID vendorId;
+
+    @Field(type = FieldType.Keyword)
+    private String vendorName;
+
+    /** True when the vendor has enabled this product for marketplace display. */
+    private boolean marketplaceListed;
+
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String name;
+
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String description;
+
+    @Field(type = FieldType.Keyword)
+    private String sku;
+
+    @Field(type = FieldType.Keyword)
+    private String category;
+
+    @Field(type = FieldType.Keyword)
+    private String brand;
+
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String tags;
+
+    @Field(type = FieldType.Text, analyzer = "autocomplete_index", searchAnalyzer = "autocomplete_search")
+    private String nameCompletion;
+
+    @Field(type = FieldType.Keyword)
+    private String status;
+
+    /** Set on products with status SCHEDULED. Used by vendor admin filtering. */
+    @Field(type = FieldType.Date)
+    private Instant scheduledPublishAt;
+
+    /** Set the first time the product transitioned to ACTIVE. */
+    @Field(type = FieldType.Date)
+    private Instant publishedAt;
+
+    private boolean featured;
+
+    private boolean listed;
+
+    @Field(type = FieldType.Keyword)
+    private String thumbnailUrl;
+
+    @Field(type = FieldType.Double)
+    private BigDecimal price;
+
+    /**
+     * Thematic discount categories currently active for this product
+     * (e.g. "summer", "school", "weekly"). Populated from the discountCategory
+     * field of all ACTIVE, in-window discounts that include this product.
+     * Supports exact-match keyword filtering in product search.
+     */
+    @Field(type = FieldType.Keyword)
+    private List<String> discountCategories;
+
+    /** True when at least one ACTIVE, in-window discount covers this product. */
+    private boolean hasActiveDiscount;
+
+    /**
+     * The product's effective price after the largest active discount.
+     * Null when hasActiveDiscount is false (base price is authoritative).
+     */
+    @Field(type = FieldType.Double)
+    private BigDecimal discountedPrice;
+
+    // -------------------------------------------------------------------------
+    // Merchandising — consumed by function_score in product search.
+    // -------------------------------------------------------------------------
+
+    /** Manual relevance multiplier (1–10). Stored as Integer so missing -> default in scoring. */
+    @Field(type = FieldType.Integer)
+    private Integer boostWeight;
+
+    /**
+     * When set and in the future, the product gets a high weight via function_score so it
+     * surfaces at the top of search results. Range query against now is run at search time.
+     */
+    @Field(type = FieldType.Date)
+    private Instant pinnedUntil;
+
+    /** Tie-breaker among pinned products. Lower value surfaces first. */
+    @Field(type = FieldType.Integer)
+    private Integer pinnedRank;
+
+    /**
+     * IDs of {@code ACTIVE} collections this product belongs to. Lets the storefront filter
+     * search results by collection membership without a separate join.
+     */
+    @Field(type = FieldType.Keyword)
+    private List<UUID> collectionIds;
+
+    /**
+     * Space-separated "Name:Value" pairs from all product attributes (e.g. "Color:Blue Material:Cotton").
+     * Used for text-overlap matching in similarity scoring via multi_match should clauses.
+     */
+    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    private String attributeText;
+}

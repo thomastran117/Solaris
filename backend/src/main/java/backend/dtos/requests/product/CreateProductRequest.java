@@ -1,10 +1,15 @@
 package backend.dtos.requests.product;
 
+import backend.annotations.safeIdentifier.SafeIdentifier;
+import backend.annotations.safeRichText.SafeRichText;
+import backend.annotations.safeText.SafeText;
+import backend.models.enums.ProductStatus;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -12,11 +17,15 @@ public class CreateProductRequest {
 
     @NotBlank(message = "Product name is required")
     @Size(max = 255, message = "Product name must not exceed 255 characters")
+    @SafeText
     private String name;
 
+    @Size(max = 10000, message = "Description must not exceed 10000 characters")
+    @SafeRichText
     private String description;
 
     @Size(max = 100, message = "SKU must not exceed 100 characters")
+    @SafeIdentifier
     private String sku;
 
     @NotNull(message = "Price is required")
@@ -32,12 +41,15 @@ public class CreateProductRequest {
     private String currency;
 
     @Size(max = 100, message = "Category must not exceed 100 characters")
+    @SafeText
     private String category;
 
     @Size(max = 100, message = "Brand must not exceed 100 characters")
+    @SafeText
     private String brand;
 
     @Size(max = 500, message = "Tags must not exceed 500 characters")
+    @SafeRichText
     private String tags;
 
     @Size(max = 500, message = "Thumbnail URL must not exceed 500 characters")
@@ -51,7 +63,28 @@ public class CreateProductRequest {
     private BigDecimal weight;
 
     @Size(max = 10, message = "Weight unit must not exceed 10 characters")
+    @SafeText
     private String weightUnit;
 
     private boolean featured = false;
+
+    private boolean purchasable = true;
+
+    private boolean listed = true;
+
+    /**
+     * Optional initial lifecycle status. When omitted, the service defaults to {@link ProductStatus#DRAFT}.
+     * If set to {@link ProductStatus#SCHEDULED}, {@link #scheduledPublishAt} must also be supplied
+     * and be in the future.
+     */
+    private ProductStatus status;
+
+    /** Required (and must be in the future) when {@link #status} is {@link ProductStatus#SCHEDULED}. */
+    private Instant scheduledPublishAt;
+
+    @AssertTrue(message = "compareAtPrice must be greater than price when both are provided")
+    public boolean isCompareAtPriceValid() {
+        if (price == null || compareAtPrice == null) return true;
+        return compareAtPrice.compareTo(price) > 0;
+    }
 }

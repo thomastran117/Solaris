@@ -1,15 +1,20 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import type { UserTier } from "../types/user";
 
 interface AuthState {
   accessToken: string | null;
   email: string | null;
   role: string | null;
+  companyId: string | null;
+  tier: UserTier | null;
 }
 
 const initialState: AuthState = {
   accessToken: null,
   email: null,
   role: null,
+  companyId: null,
+  tier: null,
 };
 
 const authSlice = createSlice({
@@ -22,6 +27,8 @@ const authSlice = createSlice({
         accessToken?: string | null;
         email?: string | null;
         role?: string | null;
+        companyId?: string | null;
+        tier?: UserTier | null;
       }>
     ) => {
       if (action.payload.accessToken !== undefined) {
@@ -33,11 +40,19 @@ const authSlice = createSlice({
       if (action.payload.role !== undefined) {
         state.role = action.payload.role;
       }
+      if (action.payload.companyId !== undefined) {
+        state.companyId = action.payload.companyId;
+      }
+      if (action.payload.tier !== undefined) {
+        state.tier = action.payload.tier;
+      }
     },
     clearCredentials: (state) => {
       state.accessToken = null;
       state.email = null;
       state.role = null;
+      state.companyId = null;
+      state.tier = null;
     },
   },
 });

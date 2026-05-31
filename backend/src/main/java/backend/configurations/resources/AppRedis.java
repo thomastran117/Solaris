@@ -1,6 +1,7 @@
 package backend.configurations.resources;
 
 import backend.configurations.environment.EnvironmentSetting;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -10,8 +11,10 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Duration;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 public class AppRedis {
@@ -57,5 +60,20 @@ public class AppRedis {
         template.setHashValueSerializer(new StringRedisSerializer());
         template.afterPropertiesSet();
         return template;
+    }
+
+    @Bean("cacheRefreshExecutor")
+    public ThreadPoolTaskExecutor cacheRefreshExecutor(
+            @Value("${app.cache.early-refresh.executor.core-pool-size:2}") int coreSize,
+            @Value("${app.cache.early-refresh.executor.max-pool-size:4}") int maxSize,
+            @Value("${app.cache.early-refresh.executor.queue-capacity:20}") int queueCapacity) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(coreSize);
+        executor.setMaxPoolSize(maxSize);
+        executor.setQueueCapacity(queueCapacity);
+        executor.setThreadNamePrefix("cache-refresh-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.initialize();
+        return executor;
     }
 }

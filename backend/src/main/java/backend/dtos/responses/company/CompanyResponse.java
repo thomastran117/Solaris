@@ -1,5 +1,6 @@
 package backend.dtos.responses.company;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -8,8 +9,8 @@ import java.time.Instant;
 @Getter
 @AllArgsConstructor
 public class CompanyResponse {
-    private Long id;
-    private Long ownerId;
+    private UUID id;
+    private UUID ownerId;
     private String name;
     private String address;
     private String city;
@@ -26,6 +27,7 @@ public class CompanyResponse {
     private Integer foundedYear;
     private Integer employeeCount;
     private String status;
+    private boolean preordersEnabled;
     private Instant createdAt;
     private Instant updatedAt;
 }

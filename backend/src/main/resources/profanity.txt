@@ -1,0 +1,29 @@
+# Best-effort profanity / harassment word list.
+# This is NOT a content-moderation system. It catches obvious slurs and harassment
+# terms to keep them out of the catalog. Lines beginning with # are comments.
+# One word or phrase per line. Matching is case-insensitive, word-boundary based.
+# Keep the list small and curated; heavy moderation should live in a dedicated service.
+
+fuck
+fucker
+fucking
+shit
+bitch
+bastard
+asshole
+dickhead
+cunt
+whore
+slut
+retard
+retarded
+faggot
+nigger
+chink
+spic
+kike
+tranny
+dyke
+kill yourself
+go die
+i hate you
