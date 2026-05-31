@@ -1,5 +1,6 @@
 package backend.dtos.requests.auth;
 
+import backend.annotations.strongPassword.StrongPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
@@ -14,7 +15,7 @@ public class LoginRequest {
     @NotEmpty(message = "Email cannot be empty")
     private String email;
 
-    @NotEmpty(message = "Password cannot be empty")
+    @StrongPassword(minLength = 8)
     private String password;
 
     @NotEmpty(message = "Captcha cannot be empty")

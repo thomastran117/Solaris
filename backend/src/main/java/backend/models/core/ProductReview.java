@@ -33,9 +33,8 @@ import java.time.Instant;
 public class ProductReview {
 
     @Id
-    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
-    private java.util.UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
@@ -57,19 +56,6 @@ public class ProductReview {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ReviewStatus status = ReviewStatus.PUBLISHED;
-
-    @Column(name = "verified_purchase", nullable = false)
-    private boolean verifiedPurchase = false;
-
-    @Column(name = "helpful_count", nullable = false)
-    private int helpfulCount = 0;
-
-    @Column(name = "report_count", nullable = false)
-    private int reportCount = 0;
-
-    @Version
-    @Column(nullable = false)
-    private Long version;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

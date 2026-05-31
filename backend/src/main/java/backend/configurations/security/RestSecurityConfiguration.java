@@ -30,16 +30,6 @@ public class RestSecurityConfiguration {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtConfiguration jwtAuthFilter) throws Exception {
         http
-            // CSRF is intentionally disabled. This API uses two complementary mitigations that
-            // together neutralise CSRF for all cookie-backed endpoints:
-            //   1. Access tokens are short-lived JWTs returned as JSON and stored in memory by
-            //      the client — never in a cookie — so they cannot be sent by a cross-site form.
-            //   2. The refresh-token cookie is HttpOnly + SameSite=Strict, so browsers refuse to
-            //      attach it to any cross-origin request, including form POSTs and XHR from a
-            //      foreign origin. This makes /auth/refresh and /auth/logout CSRF-safe without
-            //      requiring a synchronizer token.
-            // If SameSite is ever relaxed to Lax or None, or if any additional cookies are
-            // introduced that carry authentication state, CSRF tokens MUST be re-enabled here.
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .formLogin(AbstractHttpConfigurer::disable)

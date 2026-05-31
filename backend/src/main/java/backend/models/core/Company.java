@@ -23,9 +23,8 @@ import java.time.Instant;
 public class Company {
 
     @Id
-    @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
-    private java.util.UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -75,9 +74,6 @@ public class Company {
 
     @Column(nullable = true)
     private Integer employeeCount;
-
-    @Column(nullable = false)
-    private boolean preordersEnabled = false;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
