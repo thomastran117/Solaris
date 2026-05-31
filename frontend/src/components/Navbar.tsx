@@ -298,6 +298,12 @@ export default function Navbar() {
                       >
                         Gift Cards
                       </NavLink>
+                      <NavLink
+                        to="/price-watches"
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        Price Alerts
+                      </NavLink>
                       <hr className="my-1 border-gray-200" />
                       <button
                         onClick={handleLogout}

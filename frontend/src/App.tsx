@@ -42,6 +42,7 @@ import FeedPage from "./pages/FeedPage";
 import FollowingPage from "./pages/FollowingPage";
 import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
 import GiftCardsPage from "./pages/GiftCardsPage";
+import PriceWatchesPage from "./pages/PriceWatchesPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
 import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
@@ -98,6 +99,7 @@ function App() {
               <Route path="/lists/:id" element={<SavedListDetailPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/loyalty" element={<LoyaltyPage />} />
+              <Route path="/price-watches" element={<PriceWatchesPage />} />
               <Route path="/feedback" element={<FeedbackPage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/:id" element={<OrderDetailPage />} />

@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.documents.ProductDocument;
 import backend.events.ProductIndexEvent;
 import backend.events.ProductRemoveEvent;
+import backend.events.products.PriceDropAlertEvent;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.BatchDeleteProductsRequest;
@@ -459,6 +460,10 @@ public class ProductServiceImpl implements ProductService {
 
         Product saved = productRepository.save(product);
         productChangeLogger.logUpdate(before, saved, ChangeSource.USER, null);
+        if (before.getPrice() != null && saved.getPrice() != null
+                && saved.getPrice().compareTo(before.getPrice()) < 0) {
+            eventPublisher.publishEvent(new PriceDropAlertEvent(productId, before.getPrice(), saved.getPrice()));
+        }
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
         final UUID marketplaceId = saved.getMarketplaceId();
         evictAfterCommit(() -> {

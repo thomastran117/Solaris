@@ -71,6 +71,9 @@ public class EmailSender {
                 sendQuestionPostedEmail(e.toEmail(), e.vendorFirstName(), e.productName(), e.questionText(), e.questionId());
             case EmailEvent.GiftCardIssuedEmail e ->
                 sendGiftCardIssuedEmail(e.toEmail(), e.firstName(), e.giftCardCode(), e.originalValueCents(), e.companyName());
+            case EmailEvent.PriceDropEmail e ->
+                sendPriceDropEmail(e.recipientEmail(), e.productName(), e.productUrl(), e.oldPriceCents(), e.newPriceCents());
+            default -> {}
         }
     }
 
@@ -742,6 +745,36 @@ public class EmailSender {
             """.formatted(greeting, formatted, safeCompany, safeCode, formatted, safeCompany);
         sendMimeMessage(toEmail, "Your " + formatted + " gift card from " + safeCompany + " — ShopWave",
                 wrapInShell("Gift Card", body));
+    }
+
+    private void sendPriceDropEmail(String toEmail, String productName,
+                                    String productUrl, int oldPriceCents, int newPriceCents) {
+        String oldFormatted = String.format("$%.2f", oldPriceCents / 100.0);
+        String newFormatted = String.format("$%.2f", newPriceCents / 100.0);
+        String safeProduct  = HtmlUtils.htmlEscape(productName != null ? productName : "");
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Price drop on %s!
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Good news — a product you're watching just dropped in price.
+            </p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.06em;
+                         text-transform:uppercase;color:#93C5FD;">Product</p>
+              <p style="margin:6px 0 16px 0;font-size:16px;color:#0F172A;font-weight:600;">%s</p>
+              <table cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="font-size:14px;color:#64748B;text-decoration:line-through;padding-right:16px;">%s</td>
+                  <td style="font-size:22px;font-weight:800;color:#1D4ED8;">%s</td>
+                </tr>
+              </table>
+            </div>
+            %s
+            """.formatted(safeProduct, safeProduct, oldFormatted, newFormatted,
+                primaryButton(productUrl, "Shop Now"));
+        sendMimeMessage(toEmail, "Price drop: " + safeProduct + " is now " + newFormatted + " — ShopWave",
+                wrapInShell("Price Drop", body));
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

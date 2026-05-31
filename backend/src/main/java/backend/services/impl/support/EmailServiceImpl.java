@@ -111,6 +111,13 @@ public class EmailServiceImpl implements EmailService {
                 originalValueCents, companyName));
     }
 
+    @Override
+    public void sendPriceDropEmail(String toEmail, java.util.UUID userId, String productName,
+                                   String productUrl, int oldPriceCents, int newPriceCents) {
+        publish(new EmailEvent.PriceDropEmail(userId, toEmail, productName, productUrl,
+                oldPriceCents, newPriceCents));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

@@ -128,4 +128,7 @@ public interface EmailService {
 
     void sendGiftCardIssuedEmail(String toEmail, String firstName,
                                  String giftCardCode, int originalValueCents, String companyName);
+
+    void sendPriceDropEmail(String toEmail, UUID userId, String productName,
+                            String productUrl, int oldPriceCents, int newPriceCents);
 }

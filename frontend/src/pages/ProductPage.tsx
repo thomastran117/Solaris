@@ -3,9 +3,10 @@ import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
-import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star, Flag } from "lucide-react";
+import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star, Flag, TrendingDown } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
+import { priceWatchersApi } from "../api/priceWatchers";
 import { loyaltyApi } from "../api/loyalty";
 import AvailabilityPanel from "../components/product/AvailabilityPanel";
 import SaveToListModal from "../components/savedlist/SaveToListModal";
@@ -14,6 +15,7 @@ import QASection from "../components/qa/QASection";
 import ReportModal from "../components/report/ReportModal";
 import type { RootState } from "../stores";
 import type { StockNotification } from "../types/notifications";
+import type { PriceWatcher } from "../types/priceWatchers";
 import { useNavigate } from "react-router-dom";
 
 const useAnims = () => {
@@ -74,6 +76,40 @@ export default function ProductPage() {
       queryClient.invalidateQueries({ queryKey: ["stock-notifications"] });
     },
   });
+
+  const { data: priceWatches } = useQuery({
+    queryKey: ["price-watches"],
+    queryFn: () => priceWatchersApi.list().then(r => r.data),
+    enabled: !!accessToken,
+  });
+
+  const activeWatch: PriceWatcher | undefined = priceWatches?.content.find(
+    w => w.productId === productId
+  );
+  const isWatching = !!activeWatch;
+
+  const watchMutation = useMutation({
+    mutationFn: () => priceWatchersApi.watch(productId!).then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["price-watches"] });
+    },
+  });
+
+  const unwatchMutation = useMutation({
+    mutationFn: () => priceWatchersApi.unwatch(productId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["price-watches"] });
+    },
+  });
+
+  function handleWatchToggle() {
+    if (!accessToken) return;
+    if (isWatching) {
+      unwatchMutation.mutate();
+    } else {
+      watchMutation.mutate();
+    }
+  }
 
   const { data: loyaltyPolicy } = useQuery({
     queryKey: ["loyalty", "policy", product?.companyId],
@@ -414,6 +450,15 @@ export default function ProductPage() {
               )}
             </div>
 
+            {/* Watch price */}
+            {accessToken && (
+              <WatchPriceButton
+                isWatching={isWatching}
+                isLoading={watchMutation.isPending || unwatchMutation.isPending}
+                onToggle={handleWatchToggle}
+              />
+            )}
+
             {/* Report link */}
             {accessToken && (
               <button
@@ -468,6 +513,47 @@ export default function ProductPage() {
         targetName={product.name}
       />
     </div>
+  );
+}
+
+interface WatchPriceButtonProps {
+  isWatching: boolean;
+  isLoading: boolean;
+  onToggle: () => void;
+}
+
+function WatchPriceButton({ isWatching, isLoading, onToggle }: WatchPriceButtonProps) {
+  if (isWatching) {
+    return (
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl border border-sky-400/20 bg-sky-400/[0.07]">
+        <div className="flex items-center gap-2 text-sky-200 text-sm">
+          <TrendingDown className="w-4 h-4" />
+          Watching for price drops
+        </div>
+        <button
+          onClick={onToggle}
+          disabled={isLoading}
+          className="text-xs text-white/45 hover:text-white/70 transition-colors disabled:opacity-40"
+        >
+          Unwatch
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={onToggle}
+      disabled={isLoading}
+      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-full border border-white/15 bg-transparent hover:bg-white/[0.06] text-white/65 hover:text-white/90 text-sm transition-all disabled:opacity-40"
+    >
+      {isLoading ? (
+        <div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white/80 animate-spin" />
+      ) : (
+        <TrendingDown className="w-3.5 h-3.5" />
+      )}
+      Watch for price drops
+    </button>
   );
 }
 
