@@ -38,6 +38,7 @@ import backend.repositories.PromotionRuleRepository;
 import backend.repositories.RiskAssessmentRepository;
 import backend.repositories.RiskReviewRepository;
 import backend.repositories.SubOrderRepository;
+import backend.repositories.OrderStatusHistoryRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.VendorBalanceRepository;
 import backend.services.impl.inventory.StockAlertService;
@@ -143,6 +144,8 @@ class OrderServiceImplTest {
                 companyAccessService,
                 fulfillmentEventPublisher,
                 mock(TrackingService.class));
+
+        service.setOrderStatusHistoryRepository(mock(OrderStatusHistoryRepository.class));
     }
 
     @Test

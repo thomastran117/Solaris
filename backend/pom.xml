@@ -293,6 +293,60 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.12</version>
+				<configuration>
+					<excludes>
+						<exclude>backend/models/**</exclude>
+						<exclude>backend/dtos/**</exclude>
+						<exclude>backend/exceptions/**</exclude>
+						<exclude>backend/configurations/**</exclude>
+						<exclude>backend/controllers/**</exclude>
+						<exclude>backend/**/*MapperImpl.class</exclude>
+						<exclude>backend/StoreApplication.class</exclude>
+						<exclude>backend/seeds/**</exclude>
+						<exclude>backend/services/impl/auth/OAuthServiceImpl.class</exclude>
+						<exclude>backend/services/impl/notification/FcmPushNotificationService.class</exclude>
+						<exclude>backend/services/impl/notification/TwilioSmsService.class</exclude>
+						<exclude>backend/services/impl/imports/CsvBooleans.class</exclude>
+						<exclude>backend/services/impl/imports/ImportCsvSchema.class</exclude>
+					</excludes>
+				</configuration>
+				<executions>
+					<execution>
+						<id>prepare-agent</id>
+						<phase>initialize</phase>
+						<goals><goal>prepare-agent</goal></goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>verify</phase>
+						<goals><goal>report</goal></goals>
+					</execution>
+					<execution>
+						<id>check</id>
+						<phase>verify</phase>
+						<goals><goal>check</goal></goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.65</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 

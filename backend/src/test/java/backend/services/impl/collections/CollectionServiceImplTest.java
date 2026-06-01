@@ -264,15 +264,15 @@ class CollectionServiceImplTest {
         when(collectionRepository.existsBySlugAndCompanyId(any(), any())).thenReturn(false);
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // No products match
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
         service.createCollection(COMPANY_ID, OWNER_ID, req);
 
         // Materialise was called — verify by the spec query being invoked
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -348,8 +348,8 @@ class CollectionServiceImplTest {
         existing.setRulesJson("{\"tagsAnyOf\":[\"old\"]}");
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -358,7 +358,7 @@ class CollectionServiceImplTest {
 
         service.updateCollection(COMPANY_ID, COLL_ID, OWNER_ID, req);
 
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -591,14 +591,14 @@ class CollectionServiceImplTest {
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), any()))
                 .thenReturn(List.of());
 
         service.refreshCollection(COMPANY_ID, COLL_ID, OWNER_ID);
 
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
         verify(collectionRepository).save(c);
     }
 
@@ -608,8 +608,8 @@ class CollectionServiceImplTest {
     void materialise_setsLastMaterialisedAt() {
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -625,8 +625,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), eq(PRODUCT_ID)))
@@ -651,8 +651,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(stale));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stale)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(COLL_ID, CollectionMembershipSource.AUTO))
                 .thenReturn(List.of(staleRow));
         when(collectionProductRepository.findByCollectionIdAndProductId(COLL_ID, PRODUCT_ID))
@@ -672,8 +672,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         // A MANUAL row already exists
@@ -692,8 +692,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"categoriesAnyOf\":[\"apparel\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), any())).thenReturn(false);
@@ -711,8 +711,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"brandsAnyOf\":[\"targetbrand\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -728,8 +728,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), any())).thenReturn(false);
