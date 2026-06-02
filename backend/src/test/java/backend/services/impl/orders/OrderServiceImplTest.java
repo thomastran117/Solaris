@@ -42,12 +42,20 @@ import backend.repositories.OrderStatusHistoryRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.VendorBalanceRepository;
 import backend.services.impl.inventory.StockAlertService;
+import backend.dtos.requests.order.ShipOrderRequest;
+import backend.models.core.OrderCompensation;
+import backend.models.core.RiskReview;
+import backend.models.enums.CompensationStatus;
+import backend.models.enums.CompensationType;
+import backend.models.enums.FulfillmentMethod;
+import backend.models.enums.RiskReviewStatus;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.CacheService;
 import backend.services.intf.auth.DeviceService;
 import backend.services.intf.auth.EmailVerificationService;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.inventory.AllocationService;
+import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.pricing.CommissionEngine;
 import backend.services.intf.pricing.PricingEngine;
@@ -74,6 +82,9 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -92,6 +103,11 @@ class OrderServiceImplTest {
     private CompanyAccessService companyAccessService;
     private PaymentService paymentService;
     private ProductRepository productRepository;
+    private ProductVariantRepository variantRepository;
+    private OrderCompensationRepository compensationRepository;
+    private CacheService cacheService;
+    private RiskReviewRepository riskReviewRepository;
+    private LoyaltyService loyaltyService;
     private OrderFulfillmentEventPublisher fulfillmentEventPublisher;
     private OrderServiceImpl service;
 
@@ -101,13 +117,18 @@ class OrderServiceImplTest {
         companyAccessService     = mock(CompanyAccessService.class);
         paymentService           = mock(PaymentService.class);
         productRepository        = mock(ProductRepository.class);
+        variantRepository        = mock(ProductVariantRepository.class);
+        compensationRepository   = mock(OrderCompensationRepository.class);
+        cacheService             = mock(CacheService.class);
+        riskReviewRepository     = mock(RiskReviewRepository.class);
+        loyaltyService           = mock(LoyaltyService.class);
         fulfillmentEventPublisher = mock(OrderFulfillmentEventPublisher.class);
 
         service = new OrderServiceImpl(
                 orderRepository,
-                mock(OrderCompensationRepository.class),
+                compensationRepository,
                 productRepository,
-                mock(ProductVariantRepository.class),
+                variantRepository,
                 mock(LocationStockRepository.class),
                 mock(InventoryAdjustmentRepository.class),
                 mock(InventoryLocationRepository.class),
@@ -122,13 +143,13 @@ class OrderServiceImplTest {
                 mock(PromotionRedemptionRepository.class),
                 mock(PricingEngine.class),
                 paymentService,
-                mock(CacheService.class),
+                cacheService,
                 mock(StockAlertService.class),
                 mock(EmailService.class),
                 mock(AllocationService.class),
                 mock(RiskEngine.class),
                 mock(RiskAssessmentRepository.class),
-                mock(RiskReviewRepository.class),
+                riskReviewRepository,
                 mock(FailedPaymentAttemptRepository.class),
                 mock(RiskProperties.class),
                 mock(DeviceService.class),
@@ -139,7 +160,7 @@ class OrderServiceImplTest {
                 mock(CommissionEngine.class),
                 mock(CommissionRecordRepository.class),
                 mock(VendorBalanceRepository.class),
-                mock(LoyaltyService.class),
+                loyaltyService,
                 mock(ActivityEventPublisher.class),
                 companyAccessService,
                 fulfillmentEventPublisher,
@@ -588,5 +609,361 @@ class OrderServiceImplTest {
         user.setRole(UserRole.USER);
         user.setEmail("user" + id + "@example.com");
         return user;
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsShipped — happy path
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsShipped_packedDeliveryOrder_setsShippedStatus() {
+        Order order = packedDeliveryOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsShipped(COMPANY_ID, ORDER_ID, USER_ID, new ShipOrderRequest("TRK-1", "UPS", null, null));
+
+        assertEquals(OrderStatus.SHIPPED, order.getStatus());
+        assertEquals("TRK-1", order.getTrackingNumber());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Shipped.class));
+    }
+
+    @Test
+    void markAsShipped_setsItemFulfillmentStatusToShipped() {
+        Order order = packedDeliveryOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsShipped(COMPANY_ID, ORDER_ID, USER_ID, new ShipOrderRequest("TRK-2", "FedEx", null, null));
+
+        assertEquals(FulfillmentStatus.SHIPPED, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // compensateOrder
+    // -------------------------------------------------------------------------
+
+    @Test
+    void compensateOrder_alreadyCompensated_returnsEarly() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(0); // 0 = already compensated
+
+        service.compensateOrder(order);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(compensationRepository, never()).save(any());
+    }
+
+    @Test
+    void compensateOrder_reservedOrder_cancelsPaymentAndSetsFailedStatus() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(paymentService).cancelPaymentIntent(PAYMENT_INTENT_ID);
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        assertEquals(CancellationReason.STALE_TIMEOUT, order.getCancellationReason());
+    }
+
+    @Test
+    void compensateOrder_restoresStockForEachItem() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 1);
+    }
+
+    @Test
+    void compensateOrder_restockFails_stillSavesOrderAndReleasesLocks() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(productRepository.restoreStock(any(), anyInt())).thenThrow(new RuntimeException("DB error"));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order); // must not throw
+
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void compensateOrder_callsLoyaltyClawback() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(loyaltyService).restoreRedeemedPoints(ORDER_ID);
+    }
+
+    // -------------------------------------------------------------------------
+    // retryCompensation
+    // -------------------------------------------------------------------------
+
+    @Test
+    void retryCompensation_alreadyClaimed_returnsEarly() {
+        OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE, "product:1234:qty:1");
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(0);
+
+        service.retryCompensation(comp);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(compensationRepository, never()).save(any());
+    }
+
+    @Test
+    void retryCompensation_stockRestore_productPath_restoresStock() {
+        UUID productId = TestIds.uuid(20);
+        String detail = "[PRODUCT]:" + productId + ":qty:2";
+        OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE, detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+
+        service.retryCompensation(comp);
+
+        verify(compensationRepository).save(comp);
+        assertEquals(CompensationStatus.COMPLETED, comp.getStatus());
+    }
+
+    @Test
+    void retryCompensation_paymentCancel_cancelsIntent() {
+        String detail = "pi_test_intent";
+        OrderCompensation comp = compensation(CompensationType.PAYMENT_CANCEL,
+                "Cancelled payment intent: " + detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+
+        service.retryCompensation(comp);
+
+        verify(paymentService).cancelPaymentIntent(detail);
+        verify(compensationRepository).save(comp);
+        assertEquals(CompensationStatus.COMPLETED, comp.getStatus());
+    }
+
+    @Test
+    void retryCompensation_paymentCancelThrows_setsErrorMessage() {
+        String detail = "pi_fail_intent";
+        OrderCompensation comp = compensation(CompensationType.PAYMENT_CANCEL,
+                "Cancelled payment intent: " + detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+        when(paymentService.cancelPaymentIntent(detail)).thenThrow(new RuntimeException("Stripe error"));
+
+        service.retryCompensation(comp);
+
+        verify(compensationRepository).save(comp);
+        assertEquals("Stripe error", comp.getErrorMessage());
+    }
+
+    // -------------------------------------------------------------------------
+    // fulfillPendingBackorders
+    // -------------------------------------------------------------------------
+
+    @Test
+    void fulfillPendingBackorders_lockNotAcquired_returnsEarly() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(orderRepository, never()).findPaidOrdersWithBackorderedProduct(any(), any());
+    }
+
+    @Test
+    void fulfillPendingBackorders_noBackorders_doesNotDecrementStock() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(orderRepository.findPaidOrdersWithBackorderedProduct(PRODUCT_ID, FulfillmentStatus.BACKORDERED))
+                .thenReturn(List.of());
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(productRepository, never()).decrementStock(any(), anyInt());
+    }
+
+    @Test
+    void fulfillPendingBackorders_backorderAvailable_decrementsStockAndTransitionsPending() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(company(COMPANY_ID));
+        product.setStock(10);
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(product);
+        item.setQuantity(2);
+        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+
+        Order order = cancellableOrder(OrderStatus.PAID);
+        order.setItems(List.of(item));
+
+        when(orderRepository.findPaidOrdersWithBackorderedProduct(PRODUCT_ID, FulfillmentStatus.BACKORDERED))
+                .thenReturn(List.of(order));
+        when(productRepository.decrementStock(PRODUCT_ID, 2)).thenReturn(1);
+        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(productRepository).decrementStock(PRODUCT_ID, 2);
+        assertEquals(FulfillmentStatus.PENDING, item.getFulfillmentStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // approveRiskReview
+    // -------------------------------------------------------------------------
+
+    @Test
+    void approveRiskReview_orderNotUnderReview_throwsConflict() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () ->
+                service.approveRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null));
+    }
+
+    @Test
+    void approveRiskReview_happyPath_createsPaymentIntentAndSetsReserved() {
+        Order order = cancellableOrder(OrderStatus.UNDER_REVIEW);
+        order.getItems().get(0).setProduct(productInCompany(COMPANY_ID));
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        RiskReview review = new RiskReview();
+        review.setStatus(RiskReviewStatus.PENDING);
+        when(riskReviewRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(review));
+
+        when(paymentService.createPaymentIntent(anyLong(), any(), any(), any()))
+                .thenReturn(new PaymentService.PaymentIntentResult("pi_new", "secret", 5000L, "usd", "requires_payment_method", null));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null);
+
+        assertEquals(OrderStatus.RESERVED, order.getStatus());
+        assertEquals(RiskReviewStatus.APPROVED, review.getStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // rejectRiskReview
+    // -------------------------------------------------------------------------
+
+    @Test
+    void rejectRiskReview_orderNotUnderReview_throwsConflict() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () ->
+                service.rejectRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null));
+    }
+
+    @Test
+    void rejectRiskReview_happyPath_cancelsOrderAndSetsRejected() {
+        Order order = cancellableOrder(OrderStatus.UNDER_REVIEW);
+        order.getItems().get(0).setProduct(productInCompany(COMPANY_ID));
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.findByIdAndUserId(eq(ORDER_ID), any(UUID.class))).thenReturn(Optional.of(order));
+
+        RiskReview review = new RiskReview();
+        review.setStatus(RiskReviewStatus.PENDING);
+        when(riskReviewRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(review));
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.rejectRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null);
+
+        assertEquals(RiskReviewStatus.REJECTED, review.getStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // markAsPacked
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsPacked_happyPath_setsOrderAndItemStatus() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsPacked(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.PACKED, order.getStatus());
+        assertEquals(FulfillmentStatus.PACKED, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    @Test
+    void markAsPacked_wrongStatus_throwsConflictOrBadRequest() {
+        Order order = cancellableOrder(OrderStatus.SHIPPED);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(Exception.class, () -> service.markAsPacked(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsDelivered — delivery (non-pickup) path
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsDelivered_deliveryOrder_setsDeliveredAndPublishesEvent() {
+        Order order = cancellableOrder(OrderStatus.SHIPPED);
+        order.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        order.getItems().get(0).setFulfillmentStatus(FulfillmentStatus.SHIPPED);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsDelivered(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.DELIVERED, order.getStatus());
+        assertEquals(FulfillmentStatus.DELIVERED, order.getItems().get(0).getFulfillmentStatus());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Delivered.class));
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional helpers
+    // -------------------------------------------------------------------------
+
+    private Order packedDeliveryOrder() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        order.setStatus(OrderStatus.PACKED);
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        order.setUpdatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        OrderItem item = orderItem(TestIds.uuid(11), company(COMPANY_ID), "Widget", new BigDecimal("50.00"));
+        item.setFulfillmentStatus(FulfillmentStatus.PACKED);
+        order.setItems(new java.util.ArrayList<>(List.of(item)));
+        return order;
+    }
+
+    private Product productInCompany(UUID companyId) {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(companyId));
+        return p;
+    }
+
+    private OrderCompensation compensation(CompensationType type, String detail) {
+        OrderCompensation c = new OrderCompensation();
+        c.setId(TestIds.uuid(99));
+        c.setType(type);
+        c.setDetail(detail);
+        c.setStatus(CompensationStatus.FAILED);
+        c.setAttempts(1);
+        return c;
     }
 }

@@ -1,6 +1,10 @@
 package backend.services.impl.inventory;
 
+import backend.dtos.requests.inventory.AdjustStockRequest;
+import backend.dtos.requests.inventory.CreateLocationRequest;
 import backend.dtos.requests.inventory.SetLocationStockRequest;
+import backend.dtos.requests.inventory.UpdateLocationRequest;
+import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
 import backend.exceptions.http.ConflictException;
 import backend.models.core.Company;
@@ -8,6 +12,10 @@ import backend.models.core.InventoryLocation;
 import backend.models.core.LocationStock;
 import backend.models.core.Product;
 import backend.models.core.User;
+import backend.exceptions.http.BadRequestException;
+import backend.exceptions.http.ResourceNotFoundException;
+import backend.models.enums.AdjustmentReason;
+import backend.models.enums.CompanyCapability;
 import backend.models.enums.LocationType;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.InventoryLocationRepository;
@@ -26,9 +34,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -173,5 +184,290 @@ class LocationInventoryServiceImplTest {
         ls.setStock(stock);
         ls.setLowStockThreshold(threshold);
         return ls;
+    }
+
+    // ─── getLocations ──────────────────────────────────────────────────────────
+
+    @Test
+    void getLocations_returnsAllForCompany() {
+        when(locationRepository.findAllByCompanyIdOrderByDisplayOrderAscNameAsc(COMPANY_ID))
+                .thenReturn(java.util.List.of(location()));
+
+        java.util.List<LocationResponse> result = service.getLocations(COMPANY_ID, OWNER_ID);
+
+        assertEquals(1, result.size());
+        verify(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_INVENTORY);
+    }
+
+    // ─── getLocation ──────────────────────────────────────────────────────────
+
+    @Test
+    void getLocation_found_returnsResponse() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID))
+                .thenReturn(Optional.of(location()));
+
+        LocationResponse resp = service.getLocation(COMPANY_ID, LOCATION_ID, OWNER_ID);
+
+        assertNotNull(resp);
+    }
+
+    @Test
+    void getLocation_notFound_throwsResourceNotFoundException() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getLocation(COMPANY_ID, LOCATION_ID, OWNER_ID));
+    }
+
+    // ─── createLocation happy path ────────────────────────────────────────────
+
+    @Test
+    void createLocation_happyPath_savesAndReturns() {
+        when(companyAccessService.require(any(), any(), any())).thenReturn(company());
+        when(locationRepository.existsByCodeAndCompanyId("WH02", COMPANY_ID)).thenReturn(false);
+        when(locationRepository.save(any(InventoryLocation.class))).thenAnswer(inv -> {
+            InventoryLocation loc = inv.getArgument(0);
+            loc.setId(TestIds.uuid(99));
+            return loc;
+        });
+
+        CreateLocationRequest req = new CreateLocationRequest();
+        req.setName("Vancouver");
+        req.setCode("WH02");
+        req.setType(LocationType.WAREHOUSE);
+
+        LocationResponse resp = service.createLocation(COMPANY_ID, OWNER_ID, req);
+
+        assertNotNull(resp);
+        verify(locationRepository).save(any(InventoryLocation.class));
+    }
+
+    @Test
+    void createLocation_storeWithPickupHours_allowed() {
+        when(companyAccessService.require(any(), any(), any())).thenReturn(company());
+        when(locationRepository.existsByCodeAndCompanyId("ST01", COMPANY_ID)).thenReturn(false);
+        when(locationRepository.save(any(InventoryLocation.class))).thenAnswer(inv -> {
+            InventoryLocation loc = inv.getArgument(0);
+            loc.setId(TestIds.uuid(99));
+            return loc;
+        });
+
+        CreateLocationRequest req = new CreateLocationRequest();
+        req.setName("Storefront");
+        req.setCode("ST01");
+        req.setType(LocationType.STORE);
+        req.setPickupReadyHours(4);
+
+        assertNotNull(service.createLocation(COMPANY_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void createLocation_warehouseWithPickupHours_throwsBadRequest() {
+        when(companyAccessService.require(any(), any(), any())).thenReturn(company());
+        when(locationRepository.existsByCodeAndCompanyId("WH03", COMPANY_ID)).thenReturn(false);
+
+        CreateLocationRequest req = new CreateLocationRequest();
+        req.setName("Bad");
+        req.setCode("WH03");
+        req.setType(LocationType.WAREHOUSE);
+        req.setPickupReadyHours(24); // not allowed for WAREHOUSE
+
+        assertThrows(BadRequestException.class, () -> service.createLocation(COMPANY_ID, OWNER_ID, req));
+    }
+
+    // ─── updateLocation ────────────────────────────────────────────────────────
+
+    @Test
+    void updateLocation_notFound_throwsResourceNotFoundException() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, new UpdateLocationRequest()));
+    }
+
+    @Test
+    void updateLocation_codeConflict_throwsConflict() {
+        InventoryLocation existing = location();
+        existing.setCode("TOR-1");
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+        when(locationRepository.existsByCodeAndCompanyIdAndIdNot("VAN-1", COMPANY_ID, LOCATION_ID)).thenReturn(true);
+
+        UpdateLocationRequest req = new UpdateLocationRequest();
+        req.setCode("VAN-1");
+
+        assertThrows(ConflictException.class, () ->
+                service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateLocation_happyPath_updatesFields() {
+        InventoryLocation existing = location();
+        existing.setCode("TOR-1");
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+        when(locationRepository.save(any(InventoryLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateLocationRequest req = new UpdateLocationRequest();
+        req.setName("Updated Name");
+
+        service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, req);
+
+        assertEquals("Updated Name", existing.getName());
+        verify(locationRepository).save(existing);
+    }
+
+    // ─── deleteLocation ────────────────────────────────────────────────────────
+
+    @Test
+    void deleteLocation_noStock_deletesLocation() {
+        InventoryLocation loc = location();
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(loc));
+        when(locationStockRepository.existsByLocationIdAndStockGreaterThan(LOCATION_ID, 0)).thenReturn(false);
+
+        service.deleteLocation(COMPANY_ID, LOCATION_ID, OWNER_ID);
+
+        verify(locationRepository).delete(loc);
+    }
+
+    @Test
+    void deleteLocation_locationNotFound_throwsResourceNotFoundException() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.deleteLocation(COMPANY_ID, LOCATION_ID, OWNER_ID));
+    }
+
+    // ─── getLocationStock ─────────────────────────────────────────────────────
+
+    @Test
+    void getLocationStock_locationNotFound_throwsResourceNotFoundException() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getLocationStock(COMPANY_ID, LOCATION_ID, OWNER_ID));
+    }
+
+    @Test
+    void getLocationStock_returnsStockEntries() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        LocationStock ls = locationStock(location(), product(), 8, null);
+        when(locationStockRepository.findAllByLocationId(LOCATION_ID)).thenReturn(java.util.List.of(ls));
+
+        java.util.List<LocationStockResponse> result = service.getLocationStock(COMPANY_ID, LOCATION_ID, OWNER_ID);
+
+        assertEquals(1, result.size());
+    }
+
+    // ─── setLocationStock — lock not acquired ─────────────────────────────────
+
+    @Test
+    void setLocationStock_lockNotAcquired_throwsConflict() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(false);
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(5);
+
+        assertThrows(ConflictException.class, () ->
+                service.setLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null));
+    }
+
+    @Test
+    void setLocationStock_newRecord_createsLocationStock() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product());
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+        when(locationStockRepository.save(any(LocationStock.class))).thenAnswer(inv -> {
+            LocationStock ls = inv.getArgument(0);
+            ls.setId(TestIds.uuid(60));
+            return ls;
+        });
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(20);
+
+        LocationStockResponse resp = service.setLocationStock(
+                COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        assertNotNull(resp);
+        verify(locationStockRepository).save(any(LocationStock.class));
+        verify(adjustmentRepository).save(any());
+    }
+
+    // ─── adjustLocationStock ──────────────────────────────────────────────────
+
+    @Test
+    void adjustLocationStock_stockRecordNotFound_throwsResourceNotFoundException() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(5);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null));
+    }
+
+    @Test
+    void adjustLocationStock_lockNotAcquired_throwsConflict() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        LocationStock ls = locationStock(location(), product(), 10, null);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(false);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(2);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertThrows(ConflictException.class, () ->
+                service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null));
+    }
+
+    @Test
+    void adjustLocationStock_negativeResult_throwsBadRequest() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        LocationStock ls = locationStock(location(), product(), 5, null);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), anyInt())).thenReturn(0);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-10);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertThrows(BadRequestException.class, () ->
+                service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null));
+    }
+
+    @Test
+    void adjustLocationStock_happyPath_recordsAdjustment() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location()));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        LocationStock ls = locationStock(location(), product(), 10, null);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(5))).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product());
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(5);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        verify(adjustmentRepository).save(any());
     }
 }

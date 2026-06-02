@@ -1337,7 +1337,7 @@ public class OrderServiceImpl implements OrderService {
         // Anything not in this set must throw, even if it gets added later.
         OrderStatus preStatus = order.getStatus();
         switch (preStatus) {
-            case RESERVED, PAID, PACKED -> { /* allowed */ }
+            case RESERVED, PAID, PACKED, UNDER_REVIEW -> { /* allowed */ }
             default -> throw new ConflictException(
                     "Orders can only be cancelled before they are shipped (status: " + preStatus + ")");
         }

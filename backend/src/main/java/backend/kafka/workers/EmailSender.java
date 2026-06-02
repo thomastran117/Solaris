@@ -205,7 +205,7 @@ public class EmailSender {
             </h1>
             <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
             <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
-              Ticket <strong>#%d</strong> — <em>%s</em><br>
+              Ticket <strong>#%s</strong> — <em>%s</em><br>
               Our team will review your request and respond shortly.
             </p>
             """.formatted(greeting, ticket.getId(), ticket.getSubject());
@@ -222,7 +222,7 @@ public class EmailSender {
             </h1>
             <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
             <p style="margin:0 0 8px 0;font-size:14px;color:#64748B;">
-              Ticket <strong>#%d</strong> — %s
+              Ticket <strong>#%s</strong> — %s
             </p>
             <div style="background:#F8FAFF;border-left:4px solid #3B82F6;border-radius:4px;padding:16px 20px;margin:16px 0;">
               <p style="margin:0;font-size:14px;color:#334155;line-height:1.7;">%s</p>
@@ -327,7 +327,7 @@ public class EmailSender {
             </h1>
             <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
             <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
-              We've created replacement order <strong>#%d</strong> for you at no charge.
+              We've created replacement order <strong>#%s</strong> for you at no charge.
               You'll receive a shipping confirmation once it has been dispatched.
             </p>
             """.formatted(greeting, replacementOrder.getId());
@@ -510,7 +510,7 @@ public class EmailSender {
                             </tr>
                             <tr>
                               <td style="padding:10px 16px; color:#999999; font-size:13px; font-weight:bold;">Product ID</td>
-                              <td style="padding:10px 16px; color:#333333; font-size:14px;">%d</td>
+                              <td style="padding:10px 16px; color:#333333; font-size:14px;">%s</td>
                             </tr>
                             <tr>
                               <td style="padding:10px 16px; color:#999999; font-size:13px; font-weight:bold;">Stock</td>
@@ -626,7 +626,7 @@ public class EmailSender {
                 <td style="font-size:12px;font-weight:700;letter-spacing:0.06em;
                            text-transform:uppercase;color:#94A3B8;padding-bottom:4px;">Order</td>
                 <td style="font-size:14px;color:#0F172A;font-weight:600;
-                           text-align:right;padding-bottom:4px;">#%d</td>
+                           text-align:right;padding-bottom:4px;">#%s</td>
               </tr>
               <tr>
                 <td style="font-size:12px;font-weight:700;letter-spacing:0.06em;

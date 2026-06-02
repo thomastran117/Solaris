@@ -1326,4 +1326,101 @@ class ProductServiceImplTest {
         req.setSku(sku);
         return req;
     }
+
+    // ─── getProductHistory ────────────────────────────────────────────────────
+
+    @Test
+    void getProductHistory_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20));
+    }
+
+    @Test
+    void getProductHistory_emptyHistory_returnsEmptyPage() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productChangeLogRepository.findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20);
+
+        assertEquals(0, result.getItems().size());
+    }
+
+    @Test
+    void getProductHistory_capsPageSizeAt100() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productChangeLogRepository.findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 9999); // should clamp to 100
+
+        verify(productChangeLogRepository).findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any());
+    }
+
+    // ─── updateProductMerchandising ───────────────────────────────────────────
+
+    @Test
+    void updateProductMerchandising_pinnedUntilInPast_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setPinnedUntil(Instant.now().minusSeconds(3600)); // in the past
+
+        assertThrows(BadRequestException.class, () ->
+                service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateProductMerchandising_happyPath_savesAndPublishesEvent() {
+        Product product = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setBoostWeight(5);
+        req.setPinnedUntil(null); // no pin
+
+        service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        verify(productRepository).save(product);
+        verify(eventPublisher).publishEvent(any(backend.events.ProductIndexEvent.class));
+    }
+
+    @Test
+    void updateProductMerchandising_pinnedUntilInFuture_setsRankAndPin() {
+        Product product = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setPinnedUntil(Instant.now().plusSeconds(86400));
+        req.setPinnedRank(2);
+
+        service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertEquals(2, product.getPinnedRank());
+        verify(productRepository).save(product);
+    }
+
+    private Product makeProduct() {
+        Company company = new Company();
+        company.setId(COMPANY_ID);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company);
+        p.setName("Widget");
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setPrice(new BigDecimal("9.99"));
+        return p;
+    }
 }
