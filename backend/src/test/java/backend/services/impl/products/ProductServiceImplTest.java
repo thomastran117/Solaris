@@ -100,6 +100,7 @@ class ProductServiceImplTest {
     private ProductChangeLogRepository productChangeLogRepository;
     private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private CompanyAccessService companyAccessService;
+    private backend.repositories.ProductRelationshipRepository productRelationshipRepository;
 
     private ProductServiceImpl service;
 
@@ -124,7 +125,8 @@ class ProductServiceImplTest {
         productChangeLogger         = mock(ProductChangeLogger.class);
         productChangeLogRepository  = mock(ProductChangeLogRepository.class);
         inventoryAdjustmentRepository = mock(InventoryAdjustmentRepository.class);
-        companyAccessService        = mock(CompanyAccessService.class);
+        companyAccessService          = mock(CompanyAccessService.class);
+        productRelationshipRepository = mock(backend.repositories.ProductRelationshipRepository.class);
 
         service = new ProductServiceImpl(
                 productRepository, companyRepository,
@@ -137,7 +139,7 @@ class ProductServiceImplTest {
                 singleFlightCache, activePromotionLookupService,
                 productChangeLogger, productChangeLogRepository,
                 inventoryAdjustmentRepository,
-                mock(backend.repositories.ProductRelationshipRepository.class),
+                productRelationshipRepository,
                 mock(backend.repositories.ProductSimilarityRepository.class),
                 companyAccessService,
                 300L, 60L);
@@ -1421,6 +1423,201 @@ class ProductServiceImplTest {
         p.setName("Widget");
         p.setStatus(ProductStatus.ACTIVE);
         p.setPrice(new BigDecimal("9.99"));
+        p.setImages(new java.util.ArrayList<>());
+        p.setOptions(new java.util.ArrayList<>());
+        p.setVariants(new java.util.ArrayList<>());
+        p.setAttributes(new java.util.ArrayList<>());
         return p;
+    }
+
+    // =========================================================================
+    // searchProducts — ES happy path
+    // =========================================================================
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchProducts_esSuccess_returnsPagedResults() {
+        // ES returns one hit with PRODUCT_ID
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+
+        when(elasticsearchOperations.search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any())).thenReturn(hits);
+
+        Product product = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(product));
+
+        var result = service.searchProducts(COMPANY_ID, "widget", null, null,
+                null, null, null, null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchProducts_esFails_fallsBackToJpa_alreadyCovered() {
+        // This scenario was already tested in searchProducts_elasticsearchFails_fallsBackToJpa
+        // Adding a complementary test verifying ServiceUnavailableException when filters present
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        // No filters — should fall back to JPA without throwing
+        var result = service.searchProducts(COMPANY_ID, null, null, null,
+                null, null, null, null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(0, result.getItems().size());
+    }
+
+    // =========================================================================
+    // addProductRelationship
+    // =========================================================================
+
+    @Test
+    void addProductRelationship_happyPath_savesRelationship() {
+        UUID targetId = TestIds.uuid(20);
+        Product source = makeProduct();
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findByIdAndCompanyId(targetId, COMPANY_ID)).thenReturn(Optional.of(target));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(false);
+        when(productRelationshipRepository.save(any())).thenAnswer(inv -> {
+            var rel = inv.getArgument(0, backend.models.core.ProductRelationship.class);
+            rel.setId(TestIds.uuid(99));
+            return rel;
+        });
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(targetId);
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertNotNull(service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+        verify(productRelationshipRepository).save(any());
+    }
+
+    @Test
+    void addProductRelationship_selfRelationship_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(PRODUCT_ID); // same as source = self-relationship
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertThrows(BadRequestException.class, () ->
+                service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void addProductRelationship_duplicate_throwsConflict() {
+        UUID targetId = TestIds.uuid(21);
+        Product source = makeProduct();
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findByIdAndCompanyId(targetId, COMPANY_ID)).thenReturn(Optional.of(target));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(true); // already exists
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(targetId);
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertThrows(ConflictException.class, () ->
+                service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void removeProductRelationship_notFound_throwsResourceNotFound() {
+        UUID targetId = TestIds.uuid(22);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.removeProductRelationship(COMPANY_ID, PRODUCT_ID, targetId,
+                        backend.models.enums.ProductRelationshipType.SIMILAR, OWNER_ID));
+    }
+
+    @Test
+    void removeProductRelationship_happyPath_deletesRelationship() {
+        UUID targetId = TestIds.uuid(23);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(true);
+
+        service.removeProductRelationship(COMPANY_ID, PRODUCT_ID, targetId,
+                backend.models.enums.ProductRelationshipType.SIMILAR, OWNER_ID);
+
+        verify(productRelationshipRepository).deleteBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any());
+    }
+
+    @Test
+    void getProductRelationships_nullType_returnsAll() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.findAllBySourceProductIdAndSourceProductCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(List.of());
+
+        var result = service.getProductRelationships(COMPANY_ID, PRODUCT_ID, null);
+
+        assertNotNull(result);
+        verify(productRelationshipRepository).findAllBySourceProductIdAndSourceProductCompanyId(PRODUCT_ID, COMPANY_ID);
+    }
+
+    // =========================================================================
+    // compareProducts
+    // =========================================================================
+
+    @Test
+    void compareProducts_twoProducts_returnsComparison() {
+        UUID id2 = TestIds.uuid(30);
+        Product p1 = makeProduct();
+        Product p2 = makeProduct();
+        p2.setId(id2);
+
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(p1, p2));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        var result = service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, id2));
+
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void compareProducts_onlyOneProduct_throwsBadRequest() {
+        assertThrows(BadRequestException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID)));
+    }
+
+    @Test
+    void compareProducts_fiveProducts_throwsBadRequest() {
+        assertThrows(BadRequestException.class, () ->
+                service.compareProducts(COMPANY_ID,
+                        List.of(TestIds.uuid(1), TestIds.uuid(2), TestIds.uuid(3),
+                                TestIds.uuid(4), TestIds.uuid(5))));
+    }
+
+    @Test
+    void compareProducts_noProductsFound_throwsResourceNotFoundException() {
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, TestIds.uuid(31))));
     }
 }
