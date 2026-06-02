@@ -1620,4 +1620,150 @@ class ProductServiceImplTest {
         assertThrows(ResourceNotFoundException.class, () ->
                 service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, TestIds.uuid(31))));
     }
+
+    // =========================================================================
+    // searchMarketplaceCatalog
+    // =========================================================================
+
+    @Test
+    void searchMarketplaceCatalog_marketplaceNotFound_throwsResourceNotFoundException() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                        null, null, null, null, 0, 10, null, null));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchMarketplaceCatalog_esSuccess_returnsProductList() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        Product product = makeProduct();
+        product.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findAllByIdInAndMarketplaceId(any(), eq(MARKETPLACE_ID)))
+                .thenReturn(List.of(product));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        var result = service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchMarketplaceCatalog_esFails_hasFilters_throwsServiceUnavailable() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, "widget", null, null,
+                        null, null, null, null, 0, 10, null, null)); // q != null = has filters
+    }
+
+    @Test
+    void searchMarketplaceCatalog_esFails_noFilters_fallsBackToJpa() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        Product product = makeProduct();
+        product.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findMarketplaceListedPaged(eq(MARKETPLACE_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product)));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        // No filters — should fall back to JPA without exception
+        var result = service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // searchCompanyCatalog
+    // =========================================================================
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchCompanyCatalog_esSuccess_returnsProductList() {
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        Product product = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(product));
+
+        var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchCompanyCatalog_esFails_hasFilters_throwsServiceUnavailable() {
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchCompanyCatalog(COMPANY_ID, "widget", null, null,
+                        null, null, 0, 10, null, null));
+    }
+
+    @Test
+    void searchCompanyCatalog_esFails_noFilters_fallsBackToJpa() {
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        Product product = makeProduct();
+        when(productRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product)));
+
+        var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+    }
+
+    private void assertNotNull(Object value) {
+        if (value == null) throw new AssertionError("Expected non-null value but was null");
+    }
 }

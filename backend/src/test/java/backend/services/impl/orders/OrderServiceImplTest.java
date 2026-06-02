@@ -66,9 +66,14 @@ import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.support.EmailService;
 import backend.models.enums.FulfillmentMethod;
 import backend.models.core.InventoryLocation;
+import backend.models.core.BundleItem;
+import backend.models.core.Coupon;
+import backend.models.core.ProductBundle;
+import backend.models.enums.DiscountStatus;
 import backend.models.enums.ProductStatus;
 import backend.models.enums.UserTier;
 import backend.dtos.requests.order.CreateOrderRequest;
+import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
 import backend.services.pricing.PricingResult;
 import backend.services.pricing.CartContext;
 import backend.services.risk.RiskAssessmentResult;
@@ -124,6 +129,8 @@ class OrderServiceImplTest {
     private RiskAssessmentRepository riskAssessmentRepository;
     private BundleRepository bundleRepository;
     private InventoryLocationRepository locationRepository;
+    private CouponRepository couponRepository;
+    private CouponPerUserCountRepository couponPerUserCountRepository;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -144,7 +151,10 @@ class OrderServiceImplTest {
         riskProperties           = mock(RiskProperties.class);
         riskAssessmentRepository = mock(RiskAssessmentRepository.class);
         when(riskAssessmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        bundleRepository         = mock(BundleRepository.class);
+        bundleRepository               = mock(BundleRepository.class);
+        couponRepository               = mock(CouponRepository.class);
+        couponPerUserCountRepository   = mock(CouponPerUserCountRepository.class);
+        when(couponPerUserCountRepository.tryIncrementUserCount(any(), any(), anyInt())).thenReturn(1);
         locationRepository       = mock(InventoryLocationRepository.class);
 
         service = new OrderServiceImpl(
@@ -159,9 +169,9 @@ class OrderServiceImplTest {
                 mock(backend.repositories.ProductKitRepository.class),
                 userRepository,
                 mock(CompanyRepository.class),
-                mock(CouponRepository.class),
+                couponRepository,
                 mock(CouponRedemptionRepository.class),
-                mock(CouponPerUserCountRepository.class),
+                couponPerUserCountRepository,
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 pricingEngine,
@@ -1296,7 +1306,258 @@ class OrderServiceImplTest {
         assertNotNull(result);
     }
 
+    // =========================================================================
+    // Bundle item tests
+    // =========================================================================
+
+    @Test
+    void createOrder_bundleItem_happyPath_decrementsConstituentStock() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(50);
+        UUID BUNDLE_ID         = TestIds.uuid(51);
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of()); // no standalone products
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID)));
+        when(productRepository.decrementStock(BUNDLE_PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1));
+
+        assertNotNull(resp);
+        verify(productRepository).decrementStock(BUNDLE_PRODUCT_ID, 1);
+        verify(orderRepository, atLeast(2)).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_bundleConstituent_notActive_throwsBadRequest() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(52);
+        UUID BUNDLE_ID         = TestIds.uuid(53);
+
+        ProductBundle bundle = activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID);
+        bundle.getItems().get(0).getProduct().setStatus(ProductStatus.DRAFT); // not active
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of());
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(bundle));
+        when(productRepository.decrementStock(any(), anyInt())).thenReturn(1);
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1)));
+    }
+
+    @Test
+    void createOrder_bundleInsufficientStock_throwsConflictException() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(54);
+        UUID BUNDLE_ID         = TestIds.uuid(55);
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of());
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID)));
+        when(productRepository.decrementStock(BUNDLE_PRODUCT_ID, 1)).thenReturn(0); // out of stock
+        stubLockSuccess();
+
+        assertThrows(ConflictException.class,
+                () -> service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1)));
+    }
+
+    // =========================================================================
+    // Coupon tests
+    // =========================================================================
+
+    @Test
+    void createOrder_couponNotFound_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SUMMER20")).thenReturn(Optional.empty());
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SUMMER20")));
+    }
+
+    @Test
+    void createOrder_couponDisabled_throwsBadRequestException() {
+        Coupon coupon = coupon("SUMMER20", DiscountStatus.DISABLED, null, null);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SUMMER20")).thenReturn(Optional.of(coupon));
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SUMMER20")));
+    }
+
+    @Test
+    void createOrder_couponPerUserExhausted_throwsBadRequestException() {
+        Coupon coupon = coupon("LIMIT1", DiscountStatus.ACTIVE, null, 1); // max 1 use per user
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("LIMIT1")).thenReturn(Optional.of(coupon));
+        when(couponPerUserCountRepository.tryIncrementUserCount(any(), eq(USER_ID), eq(1))).thenReturn(0); // exhausted
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "LIMIT1")));
+    }
+
+    @Test
+    void createOrder_couponValid_orderCreatedWithCouponCode() {
+        Coupon coupon = coupon("SAVE10", DiscountStatus.ACTIVE, null, null);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SAVE10")).thenReturn(Optional.of(coupon));
+        when(couponRepository.tryIncrementUsedCount(any(), any(), any())).thenReturn(1);
+        stubLockSuccess();
+        // Pricing returns the coupon code as applied
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, new BigDecimal("5.00"),
+                        "SAVE10", BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("45.00"),
+                        List.of()));
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SAVE10"));
+
+        assertNotNull(resp);
+        verify(orderRepository, atLeast(2)).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // Loyalty redemption tests
+    // =========================================================================
+
+    @Test
+    void createOrder_loyaltyPointsValid_deductsFromTotal() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess(); // finalTotal = 0 from pricing, loyalty would make it go to 0 too
+        // Override pricing to return non-zero so loyalty has something to deduct
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        List.of()));
+
+        LoyaltyRedemptionQuoteResponse quote = new LoyaltyRedemptionQuoteResponse(
+                USER_ID, COMPANY_ID, 100, 500L, 1000L, 900L, true, null);
+        when(loyaltyService.getRedemptionQuote(USER_ID, COMPANY_ID, 100)).thenReturn(quote);
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        req.setLoyaltyPointsToRedeem(100);
+
+        OrderResponse resp = service.createOrder(USER_ID, req);
+
+        assertNotNull(resp);
+        verify(loyaltyService).getRedemptionQuote(USER_ID, COMPANY_ID, 100);
+    }
+
+    @Test
+    void createOrder_loyaltyPointsInvalid_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        List.of()));
+
+        LoyaltyRedemptionQuoteResponse invalidQuote = new LoyaltyRedemptionQuoteResponse(
+                USER_ID, COMPANY_ID, 100, 0L, 50L, 50L, false, "Insufficient balance");
+        when(loyaltyService.getRedemptionQuote(USER_ID, COMPANY_ID, 100)).thenReturn(invalidQuote);
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        req.setLoyaltyPointsToRedeem(100);
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
     // ─── Additional helpers ───────────────────────────────────────────────────
+
+    /** Creates a delivery request with a bundle item (no standalone products). */
+    private CreateOrderRequest bundleRequest(UUID bundleId, int qty) {
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        item.setBundleId(bundleId);
+        item.setQuantity(qty);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        req.setShipRecipientName("Alice");
+        req.setShipStreet("123 Main St");
+        req.setShipCity("Toronto");
+        req.setShipPostalCode("M5V1A1");
+        req.setShipCountry("CA");
+        return req;
+    }
+
+    /** Creates a delivery request with a product item and a coupon code. */
+    private CreateOrderRequest deliveryRequestWithCoupon(UUID productId, int qty, String couponCode) {
+        CreateOrderRequest req = deliveryRequest(productId, qty);
+        req.setCouponCode(couponCode);
+        return req;
+    }
+
+    /** Creates an ACTIVE, listed bundle with one BundleItem pointing to a new Product. */
+    private ProductBundle activeBundle(UUID bundleId, UUID constituentProductId) {
+        Product constituentProduct = activeProduct();
+        constituentProduct.setId(constituentProductId);
+
+        BundleItem bi = new BundleItem();
+        bi.setId(TestIds.uuid(200));
+        bi.setProduct(constituentProduct);
+        bi.setQuantity(1);
+
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(bundleId);
+        bundle.setName("Test Bundle");
+        bundle.setPrice(new BigDecimal("99.00"));
+        bundle.setStatus(backend.models.enums.ProductStatus.ACTIVE);
+        bundle.setListed(true);
+        bundle.setItems(new java.util.ArrayList<>(List.of(bi)));
+        bundle.setCompany(company(COMPANY_ID));
+        return bundle;
+    }
+
+    /** Creates a Coupon with the given status, endDate, and maxUsesPerUser. */
+    private Coupon coupon(String code, DiscountStatus status, java.time.Instant endDate, Integer maxUsesPerUser) {
+        Coupon c = new Coupon();
+        c.setId(TestIds.uuid(300));
+        c.setCode(code);
+        c.setStatus(status);
+        c.setEndDate(endDate);
+        c.setMaxUsesPerUser(maxUsesPerUser);
+        return c;
+    }
 
     private static void assertNotNull(Object value) {
         if (value == null) throw new AssertionError("Expected non-null value but was null");
