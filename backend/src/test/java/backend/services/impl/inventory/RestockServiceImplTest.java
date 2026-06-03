@@ -30,6 +30,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -224,5 +225,85 @@ class RestockServiceImplTest {
         rr.setRequestedQty(requestedQty);
         rr.setExpectedArrivalDate(LocalDate.of(2026, 5, 25));
         return rr;
+    }
+
+    // ─── Additional tests for uncovered methods ───────────────────────────────
+
+    @Test
+    void createRestockRequest_productNotFound_throwsResourceNotFoundException() {
+        when(companyAccessService.require(any(), any(), any())).thenReturn(company());
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        CreateRestockRequest request = new CreateRestockRequest();
+        request.setProductId(PRODUCT_ID);
+        request.setRequestedQty(5);
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.createRestockRequest(COMPANY_ID, OWNER_ID, request));
+    }
+
+    @Test
+    void getRestockRequest_notFound_throwsResourceNotFoundException() {
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.getRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID));
+    }
+
+    @Test
+    void getRestockRequest_found_returnsResponse() {
+        RestockRequest rr = restockRequest(RestockStatus.PENDING, 10);
+        rr.setId(RESTOCK_ID);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        RestockRequestResponse response = service.getRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID);
+
+        assertEquals(RESTOCK_ID, response.getId());
+        assertEquals("PENDING", response.getStatus());
+    }
+
+    @Test
+    void listRestockRequests_noFilters_returnsAll() {
+        when(restockRepository.findAllByCompanyId(eq(COMPANY_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.listRestockRequests(COMPANY_ID, OWNER_ID, null, null, 0, 10);
+
+        assertNotNull(result);
+        verify(restockRepository).findAllByCompanyId(eq(COMPANY_ID), any());
+    }
+
+    @Test
+    void listRestockRequests_withStatusFilter_queriesByStatus() {
+        when(restockRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(RestockStatus.PENDING), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.listRestockRequests(COMPANY_ID, OWNER_ID, RestockStatus.PENDING, null, 0, 10);
+
+        assertNotNull(result);
+        verify(restockRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(RestockStatus.PENDING), any());
+    }
+
+    @Test
+    void deleteRestockRequest_pendingRequest_deletesSuccessfully() {
+        RestockRequest rr = restockRequest(RestockStatus.PENDING, 5);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        service.deleteRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID);
+
+        verify(restockRepository).delete(rr);
+    }
+
+    @Test
+    void deleteRestockRequest_receivedRequest_throwsConflict() {
+        RestockRequest rr = restockRequest(RestockStatus.RECEIVED, 5);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        assertThrows(backend.exceptions.http.BadRequestException.class, () ->
+                service.deleteRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID));
+    }
+
+    private static void assertNotNull(Object v) {
+        if (v == null) throw new AssertionError("Expected non-null");
     }
 }

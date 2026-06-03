@@ -200,6 +200,7 @@ class OrderServiceImplTest {
                 mock(TrackingService.class));
 
         service.setOrderStatusHistoryRepository(mock(OrderStatusHistoryRepository.class));
+        service.setEventPublisher(mock(org.springframework.context.ApplicationEventPublisher.class));
     }
 
     @Test
@@ -1557,6 +1558,91 @@ class OrderServiceImplTest {
         c.setEndDate(endDate);
         c.setMaxUsesPerUser(maxUsesPerUser);
         return c;
+    }
+
+    // =========================================================================
+    // handlePaymentSuccess
+    // =========================================================================
+
+    @Test
+    void handlePaymentSuccess_reservedOrder_transitionsToPayAndSaves() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.transitionStatus(ORDER_ID, OrderStatus.RESERVED, OrderStatus.PAID)).thenReturn(1);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handlePaymentSuccess(PAYMENT_INTENT_ID);
+
+        verify(orderRepository).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentSuccess_alreadyPaid_idempotentNoOp() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.transitionStatus(ORDER_ID, OrderStatus.RESERVED, OrderStatus.PAID)).thenReturn(0); // already done
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        service.handlePaymentSuccess(PAYMENT_INTENT_ID);
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentSuccess_noOrderFound_doesNothing() {
+        when(orderRepository.findByPaymentIntentId("pi_unknown")).thenReturn(Optional.empty());
+
+        service.handlePaymentSuccess("pi_unknown"); // must not throw
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // handlePaymentFailure
+    // =========================================================================
+
+    @Test
+    void handlePaymentFailure_reservedOrder_setsFailedAndRestoresStock() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID);
+
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        verify(productRepository).restoreStock(PRODUCT_ID, 1);
+    }
+
+    @Test
+    void handlePaymentFailure_alreadyPaid_skipsProcessing() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID); // must not throw
+
+        verify(orderRepository, never()).markCompensated(any());
+    }
+
+    @Test
+    void handlePaymentFailure_noOrderFound_doesNothing() {
+        when(orderRepository.findByPaymentIntentId("pi_unknown")).thenReturn(Optional.empty());
+
+        service.handlePaymentFailure("pi_unknown");
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentFailure_alreadyCompensated_skipsProcessing() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(0); // already compensated
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID);
+
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     private static void assertNotNull(Object value) {

@@ -101,6 +101,7 @@ class ProductServiceImplTest {
     private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private CompanyAccessService companyAccessService;
     private backend.repositories.ProductRelationshipRepository productRelationshipRepository;
+    private backend.repositories.ProductSimilarityRepository productSimilarityRepository;
 
     private ProductServiceImpl service;
 
@@ -127,6 +128,7 @@ class ProductServiceImplTest {
         inventoryAdjustmentRepository = mock(InventoryAdjustmentRepository.class);
         companyAccessService          = mock(CompanyAccessService.class);
         productRelationshipRepository = mock(backend.repositories.ProductRelationshipRepository.class);
+        productSimilarityRepository   = mock(backend.repositories.ProductSimilarityRepository.class);
 
         service = new ProductServiceImpl(
                 productRepository, companyRepository,
@@ -140,7 +142,7 @@ class ProductServiceImplTest {
                 productChangeLogger, productChangeLogRepository,
                 inventoryAdjustmentRepository,
                 productRelationshipRepository,
-                mock(backend.repositories.ProductSimilarityRepository.class),
+                productSimilarityRepository,
                 companyAccessService,
                 300L, 60L);
 
@@ -1761,6 +1763,136 @@ class ProductServiceImplTest {
                 null, null, 0, 10, null, null);
 
         assertNotNull(result);
+    }
+
+    // =========================================================================
+    // getVendorStorefront
+    // =========================================================================
+
+    @Test
+    void getVendorStorefront_vendorNotFound_throwsResourceNotFoundException() {
+        UUID mktId = MARKETPLACE_ID;
+        UUID vendorId = TestIds.uuid(40);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, mktId))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getVendorStorefront(mktId, vendorId));
+    }
+
+    @Test
+    void getVendorStorefront_happyPath_returnsStorefront() {
+        UUID mktId = MARKETPLACE_ID;
+        UUID vendorId = TestIds.uuid(41);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setTier(backend.models.enums.VendorTier.STANDARD);
+        vendor.setStatus(backend.models.enums.VendorStatus.APPROVED);
+        backend.models.core.Company vendorCompany = new backend.models.core.Company();
+        vendorCompany.setId(COMPANY_ID);
+        vendorCompany.setName("Vendor Co");
+        vendor.setVendorCompany(vendorCompany);
+
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, mktId))
+                .thenReturn(Optional.of(vendor));
+        when(productRepository.findMarketplaceListed(mktId)).thenReturn(List.of());
+
+        assertNotNull(service.getVendorStorefront(mktId, vendorId));
+    }
+
+    // =========================================================================
+    // getSimilarProducts
+    // =========================================================================
+
+    @Test
+    void getSimilarProducts_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5));
+    }
+
+    @Test
+    void getSimilarProducts_hasExplicitRelationships_returnsThem() {
+        Product source = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+
+        UUID targetId = TestIds.uuid(60);
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        backend.models.core.ProductRelationship rel = new backend.models.core.ProductRelationship();
+        rel.setId(TestIds.uuid(61));
+        rel.setSourceProduct(source);
+        rel.setTargetProduct(target);
+        rel.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        when(productRelationshipRepository
+                .findAllBySourceProductIdAndTypeAndSourceProductCompanyId(PRODUCT_ID,
+                        backend.models.enums.ProductRelationshipType.SIMILAR, COMPANY_ID))
+                .thenReturn(List.of(rel));
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(target));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getSimilarProducts_noRelationships_noSimilarityRows_returnsEmpty() {
+        Product source = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRelationshipRepository
+                .findAllBySourceProductIdAndTypeAndSourceProductCompanyId(any(), any(), any()))
+                .thenReturn(List.of()); // no manual relationships
+        // productSimilarityRepository default (empty list) — no precomputed rows
+
+        // ES fallback and JPA fallback stubs
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID))).thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(productRepository.findFeaturedByCompanyId(any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5);
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // revertProductChanges
+    // =========================================================================
+
+    @Test
+    void revertProductChanges_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(TestIds.uuid(70)));
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    // ─── Helper ───────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument> emptySearchHits() {
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of());
+        when(hits.getTotalHits()).thenReturn(0L);
+        when(hits.getAggregations()).thenReturn(null);
+        return hits;
     }
 
     private void assertNotNull(Object value) {

@@ -229,4 +229,75 @@ class OrderIssueServiceImplTest {
         return new CreditEntryResponse(id, 300L, "USD", CreditEntryType.COMPENSATION_ISSUED.name(),
                 "Sorry", null, null, null, null, null, Instant.now());
     }
+
+    // ─── Additional tests for uncovered methods ───────────────────────────────
+
+    @Test
+    void getIssuesByOrder_customerViewsOwnOrder_returnsIssues() {
+        UUID orderId = TestIds.uuid(91); UUID userId = TestIds.uuid(92);
+        User user = makeUser(userId, UserRole.USER);
+        Order order = makeOrder(orderId, user);
+        // Service calls userRepository.findById then orderRepository.findById
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(issueRepository.findAllByOrderId(orderId)).thenReturn(List.of());
+
+        List<OrderIssueResponse> result = service.getIssuesByOrder(orderId, userId);
+
+        assertNotNull(result);
+        verify(issueRepository).findAllByOrderId(orderId);
+    }
+
+    @Test
+    void listIssues_noStateFilter_returnsPagedResults() {
+        UUID staffId = TestIds.uuid(93);
+        User staff = makeUser(staffId, UserRole.SUPPORT);
+        when(userRepository.findById(staffId)).thenReturn(Optional.of(staff));
+        when(issueRepository.findAllByFilters(isNull(), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.listIssues(staffId, null, 0, 20);
+
+        assertNotNull(result);
+    }
+
+    @Test
+    void listIssues_withStateFilter_queriesByFilters() {
+        UUID staffId = TestIds.uuid(94);
+        User staff = makeUser(staffId, UserRole.SUPPORT);
+        when(userRepository.findById(staffId)).thenReturn(Optional.of(staff));
+        when(issueRepository.findAllByFilters(eq(OrderIssueState.REPORTED), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.listIssues(staffId, OrderIssueState.REPORTED, 0, 20);
+
+        assertNotNull(result);
+        verify(issueRepository).findAllByFilters(eq(OrderIssueState.REPORTED), any());
+    }
+
+    @Test
+    void resolveWithReplacement_setsTerminalState() {
+        UUID issueId = TestIds.uuid(95); UUID actorId = TestIds.uuid(96);
+        User staff = makeUser(actorId, UserRole.SUPPORT);
+        Order order = makeOrder(TestIds.uuid(97), staff);
+        OrderIssue issue = makeIssue(issueId, order, staff);
+        issue.setState(OrderIssueState.INVESTIGATING);
+
+        when(issueRepository.findById(issueId)).thenReturn(Optional.of(issue));
+        when(userRepository.findById(actorId)).thenReturn(Optional.of(staff));
+
+        var req = new backend.dtos.requests.issue.ResolveWithReplacementRequest(
+                List.of(new backend.dtos.requests.issue.ResolveWithReplacementRequest.ReplacementItem(null, 1)),
+                "123 Main St", "Toronto", "CA", "M5V1A1");
+
+        backend.dtos.responses.order.OrderResponse replacement =
+                mock(backend.dtos.responses.order.OrderResponse.class);
+        when(replacement.getId()).thenReturn(TestIds.uuid(99));
+        when(replacementOrderService.createReplacement(any(), any(), any())).thenReturn(replacement);
+        when(issueRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OrderIssueResponse response = service.resolveWithReplacement(issueId, actorId, req);
+
+        assertEquals(OrderIssueState.RESOLVED_REPLACEMENT.name(), response.getState());
+    }
 }

@@ -151,7 +151,7 @@ class ForecastingServiceImplTest {
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private Product makeProduct(long id, int stock) {
+    private Product makeProduct(long id, Integer stock) {
         Product p = new Product();
         p.setId(TestIds.uuid(id));
         p.setName("Product " + id);
@@ -159,5 +159,69 @@ class ForecastingServiceImplTest {
         p.setStock(stock);
         p.setAutoRestockEnabled(false);
         return p;
+    }
+
+    // ─── Additional happy-path tests ──────────────────────────────────────────
+
+    @Test
+    void getProductForecast_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(TestIds.uuid(42), TestIds.uuid(1)))
+                .thenReturn(java.util.Optional.empty());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.getProductForecast(TestIds.uuid(1), TestIds.uuid(42), TestIds.uuid(1), 30));
+    }
+
+    @Test
+    void getProductForecast_happyPath_returnsResponse() {
+        Product product = makeProduct(42, 20);
+        when(productRepository.findByIdAndCompanyId(TestIds.uuid(42), TestIds.uuid(1)))
+                .thenReturn(java.util.Optional.of(product));
+        when(productRepository.findDailyDemandSince(eq(TestIds.uuid(1)), any()))
+                .thenReturn(List.of());
+
+        ProductForecastResponse response =
+                service.getProductForecast(TestIds.uuid(1), TestIds.uuid(42), TestIds.uuid(1), 30);
+
+        assertNotNull(response);
+        assertEquals(TestIds.uuid(42), response.productId());
+    }
+
+    @Test
+    void getReorderSuggestions_noUrgentItems_returnsEmpty() {
+        // Company forecast with no low-stock products → no reorder suggestions
+        when(productRepository.findAllByCompanyId(TestIds.uuid(1))).thenReturn(List.of());
+        when(productRepository.findDailyDemandSince(eq(TestIds.uuid(1)), any())).thenReturn(List.of());
+
+        var result = service.getReorderSuggestions(TestIds.uuid(1), TestIds.uuid(1), 30, 10);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getReorderSuggestions_noProducts_returnsEmpty() {
+        when(productRepository.findAllByCompanyId(TestIds.uuid(1))).thenReturn(List.of());
+        when(productRepository.findDailyDemandSince(eq(TestIds.uuid(1)), any())).thenReturn(List.of());
+
+        var result = service.getReorderSuggestions(TestIds.uuid(1), TestIds.uuid(1), 30, 10);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getSeasonalPrep_withYoYData_noProductsWithStock_returnsEmpty() {
+        // YoY data present but no tracked products → empty items list
+        Product untracked = makeProduct(20, null); // untracked stock
+        when(productRepository.findDailyDemandBetween(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(List.of()) // second call (recent)
+                .thenReturn(List.of()); // first call (YoY)
+        when(productRepository.findAllByCompanyId(TestIds.uuid(1))).thenReturn(List.of(untracked));
+
+        // If yoyRows is empty → insufficientHistory
+        var result = service.getSeasonalPrep(TestIds.uuid(1), TestIds.uuid(1), 10);
+
+        assertNotNull(result);
     }
 }

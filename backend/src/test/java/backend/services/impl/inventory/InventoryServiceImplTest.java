@@ -384,4 +384,77 @@ class InventoryServiceImplTest {
             @Override public BigDecimal getTotalRevenue() { return totalRevenue; }
         };
     }
+
+    // ─── Additional tests for uncovered methods ───────────────────────────────
+
+    @Test
+    void getInventoryItem_notFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+    }
+
+    @Test
+    void getInventoryItem_found_returnsResponse() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(product(PRODUCT_ID, "Desk", "DESK-1", 10)));
+
+        InventoryItemResponse response = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertNotNull(response);
+        assertEquals(PRODUCT_ID, response.getProductId());
+    }
+
+    @Test
+    void getAdjustmentHistory_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.getAdjustmentHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20));
+    }
+
+    @Test
+    void getAdjustmentHistory_happyPath_returnsPage() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(product(PRODUCT_ID, "Desk", "DESK-1", 5)));
+        when(adjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.getAdjustmentHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20);
+
+        assertNotNull(result);
+    }
+
+    @Test
+    void getNeverSoldProducts_returnsResults() {
+        var p = salesProjection(PRODUCT_ID, "Desk", "DESK-1", 0, BigDecimal.TEN, "USD", 0L, BigDecimal.ZERO);
+        when(productRepository.findNeverSold(eq(COMPANY_ID), eq(10))).thenReturn(List.of(p));
+
+        var result = service.getNeverSoldProducts(COMPANY_ID, OWNER_ID, 10);
+
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getTopPurchasedProducts_returnsResults() {
+        var p = salesProjection(PRODUCT_ID, "Desk", "DESK-1", 5, BigDecimal.TEN, "USD", 20L, new BigDecimal("200"));
+        when(productRepository.findTopByUnitsSold(eq(COMPANY_ID), eq(5), any(), any())).thenReturn(List.of(p));
+
+        var result = service.getTopPurchasedProducts(COMPANY_ID, OWNER_ID, 5,
+                java.time.Instant.now().minusSeconds(86400), java.time.Instant.now());
+
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getTopRevenueProducts_returnsResults() {
+        var p = salesProjection(PRODUCT_ID, "Desk", "DESK-1", 5, BigDecimal.TEN, "USD", 10L, new BigDecimal("500"));
+        when(productRepository.findTopByRevenue(eq(COMPANY_ID), eq(5), any(), any())).thenReturn(List.of(p));
+
+        var result = service.getTopRevenueProducts(COMPANY_ID, OWNER_ID, 5,
+                java.time.Instant.now().minusSeconds(86400), java.time.Instant.now());
+
+        assertEquals(1, result.size());
+    }
 }

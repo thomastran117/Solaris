@@ -139,6 +139,92 @@ class VendorAnalyticsServiceImplTest {
                 () -> service.getTopProducts(TestIds.uuid(7), TestIds.uuid(20), 30, 10, TestIds.uuid(99)));
     }
 
+    // ─── Happy-path tests (cover uncovered analytics method bodies) ───────────
+
+    @Test
+    void getRevenue_happyPath_returnsResponse() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorRevenueSummaryProjection summary = mock(VendorRevenueSummaryProjection.class);
+        when(analyticsRepository.vendorRevenueSummary(any(), any(), any(), any())).thenReturn(summary);
+        when(analyticsRepository.vendorRevenueDaily(any(), any(), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getRevenue(vendorId, mktId, 30, ownerId));
+        verify(analyticsRepository).vendorRevenueDaily(eq(vendorId), eq(mktId), any(), any());
+    }
+
+    @Test
+    void getOrders_happyPath_returnsResponse() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(5L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(1L);
+        when(analyticsRepository.vendorOrdersDaily(any(), any(), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getOrders(vendorId, mktId, 30, ownerId));
+        verify(analyticsRepository).vendorTotalOrders(eq(vendorId), eq(mktId), any(), any());
+    }
+
+    @Test
+    void getRefunds_happyPath_returnsResponse() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(10L);
+        when(analyticsRepository.vendorReturnedCount(any(), any(), any(), any())).thenReturn(2L);
+        when(analyticsRepository.vendorRefundsDaily(any(), any(), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getRefunds(vendorId, mktId, 30, ownerId));
+    }
+
+    @Test
+    void getTopProducts_happyPath_returnsResponse() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+        when(analyticsRepository.vendorTopProducts(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getTopProducts(vendorId, mktId, 30, 10, ownerId));
+        verify(analyticsRepository).vendorTopProducts(eq(vendorId), eq(mktId), any(), any(), eq(10));
+    }
+
+    @Test
+    void getSummary_cacheMiss_queriesRepository() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+        when(cacheService.get(any())).thenReturn(null); // explicit cache miss
+
+        VendorRevenueSummaryProjection rev = mock(VendorRevenueSummaryProjection.class);
+        when(analyticsRepository.vendorRevenueSummary(any(), any(), any(), any())).thenReturn(rev);
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorReturnedCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorShipHours(any(), any(), any(), any(), anyDouble())).thenReturn(null);
+
+        assertDoesNotThrow(() -> service.getSummary(vendorId, mktId, 30, ownerId));
+        verify(analyticsRepository).vendorRevenueSummary(eq(vendorId), eq(mktId), any(), any());
+    }
+
+    @Test
+    void getMarketplaceSummary_operatorAccess_happyPath() {
+        UUID mktId = TestIds.uuid(20); UUID operatorId = TestIds.uuid(55);
+        MarketplaceProfile profile = makeMarketplaceProfile(mktId, operatorId);
+        when(marketplaceProfileRepository.findByCompanyId(mktId)).thenReturn(Optional.of(profile));
+
+        backend.repositories.projections.MarketplaceSummaryProjection summary =
+                mock(backend.repositories.projections.MarketplaceSummaryProjection.class);
+        when(analyticsRepository.marketplaceSummary(eq(mktId), any(), any())).thenReturn(summary);
+        when(analyticsRepository.marketplaceOrdersDaily(eq(mktId), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getMarketplaceSummary(mktId, operatorId, 30));
+    }
+
     private MarketplaceVendor makeVendor(UUID vendorId, UUID marketplaceId, UUID vendorOwnerId) {
         User owner = new User();
         owner.setId(vendorOwnerId);

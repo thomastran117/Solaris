@@ -476,6 +476,8 @@ public class OrderServiceImpl implements OrderService {
         List<Object[]> decrementedVariants = new ArrayList<>();     // [UUID id, int qty]
         List<Object[]> decrementedLocationStocks = new ArrayList<>(); // [UUID id, int qty]
         UUID savedOrderId = null; // set after order is persisted; used for loyalty point restore on failure
+        String appliedCouponCode = null;  // set after per-user count is incremented; must be visible in catch blocks
+        Coupon appliedCoupon = null;      // same — needed for count release on any failure path
         // [product, variant (null for product-level), prevStock, newStock]
         record PurchaseRecord(Product prod, ProductVariant var, int prevStock, int newStock) {}
         List<PurchaseRecord> purchaseRecords = new ArrayList<>();
@@ -852,8 +854,6 @@ public class OrderServiceImpl implements OrderService {
 
             // --- Coupon pre-validation: hard-fail on existence, status, window, per-user cap.
             //     minOrderAmount is enforced by the engine against the post-promotion subtotal.
-            String appliedCouponCode = null;
-            Coupon appliedCoupon = null;
             if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
                 String code = request.getCouponCode().trim().toUpperCase();
                 Coupon coupon = couponRepository.findByCodeIgnoreCase(code)
@@ -937,6 +937,10 @@ public class OrderServiceImpl implements OrderService {
             UUID loyaltyCompanyId = null;
             if (loyaltyPointsToRedeem > 0) {
                 loyaltyCompanyId = resolveOrderCompanyId(orderItems);
+                if (loyaltyCompanyId == null) {
+                    throw new BadRequestException(
+                            "Cannot redeem loyalty points: unable to identify the company for this order");
+                }
                 var quote = loyaltyService.getRedemptionQuote(userId, loyaltyCompanyId, loyaltyPointsToRedeem);
                 if (!quote.isValid()) {
                     throw new BadRequestException("Cannot redeem loyalty points: " + quote.getInvalidReason());
@@ -1173,8 +1177,17 @@ public class OrderServiceImpl implements OrderService {
             emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
             return response;
         } catch (ConflictException | ResourceNotFoundException | BadRequestException e) {
+            // appliedCoupon is set only after tryIncrementUserCount succeeds (claimed > 0).
+            // If it is non-null here, the per-user counter was incremented and must be undone.
+            if (appliedCoupon != null) {
+                releaseCouponCountIfNeeded(appliedCoupon, userId);
+            }
             throw e;
         } catch (Exception e) {
+            // Same guard for unexpected failures (payment error, DB error, etc.)
+            if (appliedCoupon != null) {
+                releaseCouponCountIfNeeded(appliedCoupon, userId);
+            }
             // Look up the persisted order so safeRestoreAll can attach compensation rows
             // (these become queryable retries instead of silent stock leaks). If the
             // order wasn't saved or the lookup itself fails, safeRestoreAll falls back
@@ -1743,6 +1756,25 @@ public class OrderServiceImpl implements OrderService {
                         order.getCoupon().getId(), order.getUser().getId());
             } catch (Exception e) {
                 log.error("Failed to release coupon usage for order {}: {}", order.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Decrements the per-user coupon usage counter that was incremented during
+     * order creation. Called in the {@code createOrder} catch blocks so a failed
+     * order does not permanently consume one of the user's allowed coupon uses.
+     *
+     * <p>Only acts when the coupon has a per-user cap ({@code maxUsesPerUser != null})
+     * — unlimited coupons don't have a counter to undo.
+     */
+    private void releaseCouponCountIfNeeded(Coupon coupon, UUID userId) {
+        if (coupon != null && coupon.getMaxUsesPerUser() != null) {
+            try {
+                couponPerUserCountRepository.decrementUserCount(coupon.getId(), userId);
+            } catch (Exception e) {
+                log.error("[COUPON] Failed to release per-user count for user {} coupon {}: {}",
+                        userId, coupon.getId(), e.getMessage());
             }
         }
     }
@@ -3332,6 +3364,16 @@ public class OrderServiceImpl implements OrderService {
                     return item.getProduct().getMarketplaceId();
                 }
                 return item.getProduct().getCompany().getId();
+            }
+        }
+        // Fallback for kit-only or bundle-only carts where item.getProduct() is null.
+        // Kit/bundle items set product = null explicitly during order item construction.
+        for (OrderItem item : items) {
+            if (item.getKit() != null && item.getKit().getCompany() != null) {
+                return item.getKit().getCompany().getId();
+            }
+            if (item.getBundle() != null && item.getBundle().getCompany() != null) {
+                return item.getBundle().getCompany().getId();
             }
         }
         return null;
