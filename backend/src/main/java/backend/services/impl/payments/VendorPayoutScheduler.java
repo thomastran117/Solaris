@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
@@ -84,7 +85,8 @@ public class VendorPayoutScheduler {
     // Pass 1: Release hold-period balances
     // -------------------------------------------------------------------------
 
-    private void releaseHeldBalances() {
+    @Transactional
+    void releaseHeldBalances() {
         // Collect all active marketplace hold periods keyed by marketplaceId
         Map<java.util.UUID, Integer> holdPeriodByMarketplace = marketplaceProfileRepository.findAll()
                 .stream()
@@ -99,11 +101,30 @@ public class VendorPayoutScheduler {
                 .mapToInt(Integer::intValue).min().orElse(7);
         Instant conservativeCutoff = Instant.now().minus(minHold, ChronoUnit.DAYS);
 
-        List<CommissionRecord> eligible = commissionRecordRepository.findEligibleForRelease(conservativeCutoff);
-        log.info("[PAYOUT SCHEDULER] Found {} commission records candidate for hold release", eligible.size());
+        // Process in pages to avoid loading the entire table into memory.
+        int holdReleasePage = 0;
+        org.springframework.data.domain.Page<CommissionRecord> eligiblePage;
+        do {
+            eligiblePage = commissionRecordRepository.findEligibleForReleasePaged(
+                    conservativeCutoff, PageRequest.of(holdReleasePage++, 500));
+            log.info("[PAYOUT SCHEDULER] Processing hold-release page {} ({} records)",
+                    holdReleasePage, eligiblePage.getNumberOfElements());
+            processHoldReleasePage(eligiblePage.getContent(), holdPeriodByMarketplace);
+        } while (eligiblePage.hasNext());
+    }
 
+    private void processHoldReleasePage(List<CommissionRecord> eligible,
+                                         Map<java.util.UUID, Integer> holdPeriodByMarketplace) {
         for (CommissionRecord record : eligible) {
             try {
+                // Only release funds for APPROVED vendors — suspended vendors stay in pending
+                MarketplaceVendor vendor = marketplaceVendorRepository.findById(record.getVendorId()).orElse(null);
+                if (vendor == null || vendor.getStatus() != VendorStatus.APPROVED) {
+                    log.debug("[PAYOUT SCHEDULER] Skipping hold release for vendor {} (status={})",
+                            record.getVendorId(), vendor != null ? vendor.getStatus() : "NOT_FOUND");
+                    continue;
+                }
+
                 int holdDays = holdPeriodByMarketplace.getOrDefault(record.getMarketplaceId(), 7);
                 Instant actualCutoff = Instant.now().minus(holdDays, ChronoUnit.DAYS);
 
@@ -135,7 +156,8 @@ public class VendorPayoutScheduler {
 
     private static final int PAYOUT_BATCH_PAGE_SIZE = 500;
 
-    private void createPayoutBatches() {
+    @Transactional
+    void createPayoutBatches() {
         log.info("[PAYOUT SCHEDULER] Building payout batches");
         int page = 0;
         Slice<VendorBalance> slice;
@@ -192,7 +214,8 @@ public class VendorPayoutScheduler {
     // Pass 3: Dispatch Stripe transfers for SCHEDULED payouts
     // -------------------------------------------------------------------------
 
-    private void dispatchScheduledPayouts() {
+    @Transactional
+    void dispatchScheduledPayouts() {
         List<VendorPayout> scheduled = vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED);
         log.info("[PAYOUT SCHEDULER] Dispatching {} scheduled payouts", scheduled.size());
 

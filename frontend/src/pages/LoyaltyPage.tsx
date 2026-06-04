@@ -123,6 +123,7 @@ export default function LoyaltyPage() {
       setReferralError(null);
       setReferralInput("");
       queryClient.invalidateQueries({ queryKey: ["loyalty", "account", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["loyalty", "referral", companyId] });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;

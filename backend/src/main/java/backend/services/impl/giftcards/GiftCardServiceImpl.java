@@ -125,11 +125,9 @@ public class GiftCardServiceImpl implements GiftCardService {
             throw new BadRequestException("Redemption amount must be greater than zero");
         }
 
-        GiftCard card = giftCardRepository.findByCode(code)
-                .orElseThrow(() -> new ResourceNotFoundException("Gift card not found: " + code));
-
-        // Load with pessimistic lock to prevent concurrent double-redemption
-        card = giftCardRepository.findByIdWithLock(card.getId())
+        // Acquire pessimistic lock on the code lookup in a single query to close the
+        // window between findByCode and findByIdWithLock that allowed concurrent redemptions.
+        GiftCard card = giftCardRepository.findByCodeWithLock(code)
                 .orElseThrow(() -> new ResourceNotFoundException("Gift card not found: " + code));
 
         if (card.getStatus() == GiftCardStatus.VOID) {
@@ -144,7 +142,9 @@ public class GiftCardServiceImpl implements GiftCardService {
                             + card.getRemainingBalanceCents() + " cents)");
         }
 
-        User redeemer = userRepository.getReferenceById(userId);
+        User redeemer = userRepository.findById(userId)
+                .orElseThrow(() -> new backend.exceptions.http.ResourceNotFoundException("User not found"));
+
 
         CustomerCredit credit = new CustomerCredit();
         credit.setUser(redeemer);

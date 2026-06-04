@@ -302,13 +302,15 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         accountRepository.updateStreak(account.getId(), streak, currentMonth);
 
         if (policy.getStreakBonusPoints() > 0 && policy.getStreakBonusThreshold() > 0
-                && streak % policy.getStreakBonusThreshold() == 0) {
+                && streak % policy.getStreakBonusThreshold() == 0
+                && !transactionRepository.existsBySourceOrderIdAndType(order.getId(), LoyaltyTransactionType.EARN_STREAK)) {
             accountRepository.addPoints(account.getId(), policy.getStreakBonusPoints());
             LoyaltyTransaction streakTx = new LoyaltyTransaction();
             streakTx.setAccount(account);
             streakTx.setUserId(userId);
             streakTx.setCompanyId(companyId);
             streakTx.setType(LoyaltyTransactionType.EARN_STREAK);
+            streakTx.setSourceOrderId(order.getId());
             streakTx.setPointsDelta(policy.getStreakBonusPoints());
             streakTx.setValueCents((long) policy.getStreakBonusPoints() * policy.getPointValueCents());
             streakTx.setReason(streak + "-month purchase streak bonus");
@@ -317,35 +319,39 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         }
 
         // ── Referral conversion (first order only) ───────────────────────────
+        // markReferralConverted is an atomic compare-and-set (returns 1 only if not yet converted).
+        // We claim the slot first to prevent two concurrent first-order events both awarding the bonus.
         final LoyaltyAccount finalAccount = account;
         long orderEarnCount = transactionRepository.countByAccountIdAndType(account.getId(), LoyaltyTransactionType.EARN_ORDER);
         if (orderEarnCount == 1 && account.getReferredByCode() != null && !account.isReferralConverted()) {
-            accountRepository.findByReferralCodeAndCompanyId(account.getReferredByCode(), companyId)
-                    .ifPresent(referrerAccount -> {
-                        int bonus = policy.getReferralBonusPoints();
-                        if (bonus > 0) {
-                            accountRepository.addPoints(referrerAccount.getId(), bonus);
-                            LoyaltyTransaction refTx = new LoyaltyTransaction();
-                            refTx.setAccount(referrerAccount);
-                            refTx.setUserId(referrerAccount.getUserId());
-                            refTx.setCompanyId(companyId);
-                            refTx.setType(LoyaltyTransactionType.EARN_REFERRAL);
-                            refTx.setPointsDelta(bonus);
-                            refTx.setValueCents((long) bonus * policy.getPointValueCents());
-                            refTx.setSourceOrderId(order.getId());
-                            refTx.setReason("Referral bonus — " + finalAccount.getUserId() + " completed first order");
-                            transactionRepository.save(refTx);
-                        }
-                        ReferralConversion conversion = new ReferralConversion();
-                        conversion.setReferrerAccountId(referrerAccount.getId());
-                        conversion.setReferredAccountId(finalAccount.getId());
-                        conversion.setCompanyId(companyId);
-                        conversion.setOrderId(order.getId());
-                        conversion.setPointsAwarded(bonus);
-                        referralConversionRepository.save(conversion);
-                        accountRepository.markReferralConverted(finalAccount.getId());
-                        log.info("[LOYALTY] Referral conversion: referrer={} referred={} bonus={}", referrerAccount.getId(), finalAccount.getId(), bonus);
-                    });
+            int claimed = accountRepository.markReferralConverted(finalAccount.getId());
+            if (claimed > 0) {
+                accountRepository.findByReferralCodeAndCompanyId(account.getReferredByCode(), companyId)
+                        .ifPresent(referrerAccount -> {
+                            int bonus = policy.getReferralBonusPoints();
+                            if (bonus > 0) {
+                                accountRepository.addPoints(referrerAccount.getId(), bonus);
+                                LoyaltyTransaction refTx = new LoyaltyTransaction();
+                                refTx.setAccount(referrerAccount);
+                                refTx.setUserId(referrerAccount.getUserId());
+                                refTx.setCompanyId(companyId);
+                                refTx.setType(LoyaltyTransactionType.EARN_REFERRAL);
+                                refTx.setPointsDelta(bonus);
+                                refTx.setValueCents((long) bonus * policy.getPointValueCents());
+                                refTx.setSourceOrderId(order.getId());
+                                refTx.setReason("Referral bonus — " + finalAccount.getUserId() + " completed first order");
+                                transactionRepository.save(refTx);
+                            }
+                            ReferralConversion conversion = new ReferralConversion();
+                            conversion.setReferrerAccountId(referrerAccount.getId());
+                            conversion.setReferredAccountId(finalAccount.getId());
+                            conversion.setCompanyId(companyId);
+                            conversion.setOrderId(order.getId());
+                            conversion.setPointsAwarded(bonus);
+                            referralConversionRepository.save(conversion);
+                            log.info("[LOYALTY] Referral conversion: referrer={} referred={} bonus={}", referrerAccount.getId(), finalAccount.getId(), bonus);
+                        });
+            }
         }
 
         // ── Kafka: publish PointsEarned ──────────────────────────────────────
@@ -744,7 +750,8 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     }
 
     private void evaluateTierPromotion(LoyaltyAccount account, UUID companyId) {
-        List<LoyaltyTier> tiers = tierRepository.findByCompanyIdOrderByMinPointsDesc(companyId);
+        List<LoyaltyTier> tiers = tierRepository.findByCompanyIdOrderByMinPointsDesc(
+                companyId, org.springframework.data.domain.PageRequest.of(0, 50)).getContent();
         UUID newTierId = null;
         String newTierName = null;
         for (LoyaltyTier tier : tiers) {

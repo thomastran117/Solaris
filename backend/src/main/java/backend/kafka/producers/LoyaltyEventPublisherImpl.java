@@ -57,6 +57,7 @@ public class LoyaltyEventPublisherImpl implements LoyaltyEventPublisher {
             case LoyaltyEvent.PointsEarned e       -> e.userId().toString();
             case LoyaltyEvent.TierUpgraded e       -> e.userId().toString();
             case LoyaltyEvent.PointsExpiringSoon e -> e.userId().toString();
+            default                                -> event.getClass().getSimpleName();
         };
     }
 }

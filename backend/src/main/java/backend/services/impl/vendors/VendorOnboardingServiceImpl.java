@@ -6,6 +6,7 @@ import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.vendor.MarketplaceVendorResponse;
 import backend.dtos.responses.vendor.StripeOnboardingLinkResponse;
 import backend.dtos.responses.vendor.VendorDocumentResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
@@ -92,7 +93,12 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         vendor.setOnboardingStep(OnboardingStep.PROFILE);
         vendor.setAppliedAt(Instant.now());
 
-        MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
+        MarketplaceVendor saved;
+        try {
+            saved = marketplaceVendorRepository.save(vendor);
+        } catch (DataIntegrityViolationException e) {
+            throw new ConflictException("This company already has an application for this marketplace");
+        }
         audit(saved, requestingUserId, VendorAuditAction.APPLIED, null);
 
         return toResponse(saved);
@@ -157,7 +163,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
             vendor.setPayoutsEnabled(account.payoutsEnabled());
             marketplaceVendorRepository.save(vendor);
             audit(vendor, requestingUserId, VendorAuditAction.STRIPE_ACCOUNT_CREATED,
-                    "{\"stripeAccountId\":\"" + connectAccountId + "\"}");
+                    jsonEntry("stripeAccountId", connectAccountId));
         }
 
         if (vendor.getOnboardingStep() == OnboardingStep.BANKING) {
@@ -189,6 +195,10 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
             cacheService.set(countKey, String.valueOf(count + 1), DOC_UPLOAD_WINDOW_S);
         } catch (backend.exceptions.http.TooManyRequestException e) {
             throw e;
+        } catch (org.springframework.dao.DataAccessException e) {
+            // Redis is unavailable — fail closed to prevent S3 exhaustion.
+            log.warn("[Vendor] Rate-limit check unavailable for vendor {} (Redis down), rejecting upload to protect S3", vendorId);
+            throw new backend.exceptions.http.ServiceUnavaliableException("Document upload service temporarily unavailable. Please try again shortly.");
         } catch (Exception e) {
             log.warn("[Vendor] Rate-limit check failed for vendor {}: {}", vendorId, e.getMessage());
         }
@@ -205,7 +215,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
         VendorOnboardingDocument saved = documentRepository.save(doc);
         audit(vendor, requestingUserId, VendorAuditAction.DOCUMENT_UPLOADED,
-                "{\"documentType\":\"" + documentType + "\"}");
+                jsonEntry("documentType", documentType));
         return toDocumentResponse(saved);
     }
 
@@ -245,7 +255,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
         MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
         audit(saved, operatorUserId, VendorAuditAction.APPROVED,
-                request.getReason() != null ? "{\"note\":\"" + request.getReason() + "\"}" : null);
+                request.getReason() != null ? jsonEntry("note", request.getReason()) : null);
         return toResponse(saved);
     }
 
@@ -263,7 +273,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         vendor.setRejectionReason(request.getReason());
         MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
         audit(saved, operatorUserId, VendorAuditAction.REJECTED,
-                "{\"reason\":\"" + request.getReason() + "\"}");
+                jsonEntry("reason", request.getReason()));
         return toResponse(saved);
     }
 
@@ -282,7 +292,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         vendor.setRejectionReason(request.getReason());
         MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
         audit(saved, operatorUserId, VendorAuditAction.SUSPENDED,
-                "{\"reason\":\"" + request.getReason() + "\"}");
+                jsonEntry("reason", request.getReason()));
         return toResponse(saved);
     }
 
@@ -317,7 +327,7 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
         vendor.setOnboardingStep(OnboardingStep.DOCUMENTS);
         MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
         audit(saved, operatorUserId, VendorAuditAction.NEEDS_INFO_REQUESTED,
-                "{\"note\":\"" + request.getReason() + "\"}");
+                jsonEntry("note", request.getReason()));
         return toResponse(saved);
     }
 
@@ -386,7 +396,8 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
 
         MarketplaceVendor saved = marketplaceVendorRepository.save(vendor);
         audit(saved, null, VendorAuditAction.STRIPE_ACCOUNT_UPDATED,
-                "{\"chargesEnabled\":" + status.chargesEnabled() + ",\"payoutsEnabled\":" + status.payoutsEnabled() + "}");
+                String.format("{\"chargesEnabled\":%b,\"payoutsEnabled\":%b}",
+                        status.chargesEnabled(), status.payoutsEnabled()));
         return toResponse(saved);
     }
 
@@ -420,6 +431,13 @@ public class VendorOnboardingServiceImpl implements VendorOnboardingService {
                 && vendor.getStatus() == VendorStatus.APPROVED) {
             throw new BadRequestException("Vendor onboarding is already complete");
         }
+    }
+
+    /** Builds a simple single-key JSON string with proper value escaping. */
+    private static String jsonEntry(String key, Object value) {
+        String safe = value == null ? "null"
+                : "\"" + value.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return "{\"" + key + "\":" + safe + "}";
     }
 
     private void audit(MarketplaceVendor vendor, UUID actorUserId, VendorAuditAction action, String metadataJson) {

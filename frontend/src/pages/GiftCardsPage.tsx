@@ -155,6 +155,7 @@ function RedeemSection() {
       queryClient.invalidateQueries({ queryKey: ["gift-cards", "purchased"] });
       reset();
     },
+    onError: () => reset(),
   });
 
   function extractErrorMessage(err: unknown): string {
