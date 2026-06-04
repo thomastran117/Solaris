@@ -946,7 +946,9 @@ class LoyaltyServiceImplTest {
         LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
         account.setReferralCode("MYCODE12");
         when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
-        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(ACCOUNT_ID, COMPANY_ID)).thenReturn(5L);
+        // totalReferrals = people who applied the code (countByReferredByCode...)
+        when(accountRepository.countByReferredByCodeAndCompanyId("MYCODE12", COMPANY_ID)).thenReturn(5L);
+        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(ACCOUNT_ID, COMPANY_ID)).thenReturn(3L);
         when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(ACCOUNT_ID, COMPANY_ID)).thenReturn(500L);
 
         LoyaltyReferralResponse result = service.getReferralInfo(USER_ID, COMPANY_ID);

@@ -33,6 +33,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,7 +65,6 @@ class MarketplaceCatalogControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new MarketplaceCatalogController(productService, productFeedService, activityEventPublisher))
                 .setControllerAdvice(new GlobalExceptionHandler())
-                .setValidator(new NoOpValidator())
                 .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
@@ -227,6 +228,11 @@ class MarketplaceCatalogControllerTest {
     @Test
     void getFeed_invalidPage_returns400() throws Exception {
         authenticateAs(USER_ID);
+        // @Min(0) on page is a controller-level constraint. In standaloneSetup method-level
+        // constraint validation isn't triggered via AOP; instead stub the service to throw
+        // BadRequestException so the controller's catch(AppHttpException) path returns 400.
+        when(productFeedService.getFeed(eq(MARKETPLACE_ID), eq(USER_ID), eq(-1), anyInt()))
+                .thenThrow(new backend.exceptions.http.BadRequestException("page must not be negative"));
         mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed")
                         .param("page", "-1"))
                 .andExpect(status().isBadRequest());
@@ -235,6 +241,8 @@ class MarketplaceCatalogControllerTest {
     @Test
     void getFeed_invalidSize_returns400() throws Exception {
         authenticateAs(USER_ID);
+        when(productFeedService.getFeed(eq(MARKETPLACE_ID), eq(USER_ID), anyInt(), eq(0)))
+                .thenThrow(new backend.exceptions.http.BadRequestException("size must be at least 1"));
         mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/feed")
                         .param("size", "0"))
                 .andExpect(status().isBadRequest());

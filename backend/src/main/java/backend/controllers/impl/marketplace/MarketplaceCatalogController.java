@@ -70,8 +70,11 @@ public class MarketplaceCatalogController {
             @PathVariable UUID marketplaceId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        // resolveUserId() throws AccessDeniedException when unauthenticated — must be called
+        // before the catch-all block so GlobalExceptionHandler can map it to 401.
+        UUID userId = resolveUserId();
         try {
-            return ResponseEntity.ok(productFeedService.getFeed(marketplaceId, resolveUserId(), page, size));
+            return ResponseEntity.ok(productFeedService.getFeed(marketplaceId, userId, page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

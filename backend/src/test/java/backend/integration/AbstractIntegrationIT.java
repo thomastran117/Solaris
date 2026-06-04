@@ -14,6 +14,7 @@ import backend.services.intf.auth.OAuthService;
 import backend.services.intf.auth.TokenService;
 import backend.repositories.search.BundleSearchRepository;
 import backend.repositories.search.ProductSearchRepository;
+import backend.repositories.search.ReportSearchRepository;
 import backend.repositories.search.ReviewSearchRepository;
 import backend.services.intf.support.EmailService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -97,6 +98,7 @@ public abstract class AbstractIntegrationIT {
     @MockitoBean protected BundleSearchRepository bundleSearchRepository;
     @MockitoBean protected ProductSearchRepository productSearchRepository;
     @MockitoBean protected ReviewSearchRepository reviewSearchRepository;
+    @MockitoBean protected ReportSearchRepository reportSearchRepository;
     @MockitoBean protected S3Client s3Client;
 
     // ── Known test User-Agent (produces a stable fingerprint across all tests) ─

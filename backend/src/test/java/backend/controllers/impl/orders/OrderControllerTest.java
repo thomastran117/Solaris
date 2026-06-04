@@ -114,7 +114,7 @@ class OrderControllerTest {
     void createOrder_createsNewOrderAndStoresIdempotencyRecord() throws Exception {
         authenticateAs(USER_ID);
         when(idempotencyService.lookup("order:create", USER_ID, "idem-1")).thenReturn(Optional.empty());
-        when(idempotencyService.claim("order:create", USER_ID, "idem-1", 60L)).thenReturn(true);
+        when(idempotencyService.claim("order:create", USER_ID, "idem-1", 600L)).thenReturn(true);
         when(orderService.createOrder(eq(USER_ID), any())).thenReturn(orderResponse(OrderStatus.RESERVED.name()));
 
         mockMvc.perform(post("/orders")
