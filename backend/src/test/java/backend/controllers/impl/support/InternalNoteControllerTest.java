@@ -46,6 +46,7 @@ class InternalNoteControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new InternalNoteController(noteService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         authenticateAs(USER_ID);

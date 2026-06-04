@@ -5,6 +5,7 @@ import backend.services.intf.orders.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -14,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class TrackingWebhookControllerTest {
@@ -43,13 +44,14 @@ class TrackingWebhookControllerTest {
 
     @Test
     void aftershipWebhook_autoMarksDelivered_whenTagIsDelivered() throws Exception {
-        String body = """
-                {"msg":{"tracking":{"tracking_number":"TRACK-123","tag":"Delivered"}}}
-                """;
+        byte[] bodyBytes = "{\"msg\":{\"tracking\":{\"tracking_number\":\"TRACK-123\",\"tag\":\"Delivered\"}}}"
+                .getBytes(StandardCharsets.UTF_8);
+        String sig = computeHmac(bodyBytes, WEBHOOK_SECRET);
 
-        mockMvc.perform(post("/webhooks/aftership")
+        mockMvcWithSecret.perform(post("/webhooks/aftership")
                         .contentType("application/json")
-                        .content(body))
+                        .header("aftership-hmac-sha256", sig)
+                        .content(bodyBytes))
                 .andExpect(status().isOk());
 
         verify(orderService).autoMarkDeliveredByTracking("TRACK-123");
@@ -57,13 +59,14 @@ class TrackingWebhookControllerTest {
 
     @Test
     void aftershipWebhook_doesNothing_whenTagIsInTransit() throws Exception {
-        String body = """
-                {"msg":{"tracking":{"tracking_number":"TRACK-123","tag":"InTransit"}}}
-                """;
+        byte[] bodyBytes = "{\"msg\":{\"tracking\":{\"tracking_number\":\"TRACK-123\",\"tag\":\"InTransit\"}}}"
+                .getBytes(StandardCharsets.UTF_8);
+        String sig = computeHmac(bodyBytes, WEBHOOK_SECRET);
 
-        mockMvc.perform(post("/webhooks/aftership")
+        mockMvcWithSecret.perform(post("/webhooks/aftership")
                         .contentType("application/json")
-                        .content(body))
+                        .header("aftership-hmac-sha256", sig)
+                        .content(bodyBytes))
                 .andExpect(status().isOk());
 
         verify(orderService, never()).autoMarkDeliveredByTracking(any());
@@ -86,15 +89,16 @@ class TrackingWebhookControllerTest {
 
     @Test
     void aftershipWebhook_returns200_whenTrackingNumberNotFound() throws Exception {
-        String body = """
-                {"msg":{"tracking":{"tracking_number":"MISSING-TRACK","tag":"Delivered"}}}
-                """;
+        byte[] bodyBytes = "{\"msg\":{\"tracking\":{\"tracking_number\":\"MISSING-TRACK\",\"tag\":\"Delivered\"}}}"
+                .getBytes(StandardCharsets.UTF_8);
+        String sig = computeHmac(bodyBytes, WEBHOOK_SECRET);
         doThrow(new RuntimeException("Order not found")).when(orderService)
                 .autoMarkDeliveredByTracking("MISSING-TRACK");
 
-        mockMvc.perform(post("/webhooks/aftership")
+        mockMvcWithSecret.perform(post("/webhooks/aftership")
                         .contentType("application/json")
-                        .content(body))
+                        .header("aftership-hmac-sha256", sig)
+                        .content(bodyBytes))
                 .andExpect(status().isOk());
     }
 

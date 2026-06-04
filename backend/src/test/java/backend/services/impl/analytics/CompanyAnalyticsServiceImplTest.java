@@ -154,7 +154,7 @@ class CompanyAnalyticsServiceImplTest {
     void getSlowMovers_zeroUnitsSold_velocityZeroAndNoSalesTrue() {
         when(cacheService.get(anyString())).thenReturn(null);
         SlowMoverProjection row = slowMoverRow(TestIds.uuid(10), "Widget", "SKU1", 10, BigDecimal.TEN, "USD", 0L, BigDecimal.ZERO);
-        when(analyticsRepository.getSlowMovers(eq(COMPANY_ID), any(), anyInt(), any(Double.class), anyInt()))
+        when(analyticsRepository.getSlowMovers(eq(COMPANY_ID), any(), anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(List.of(row));
 
         SlowMoversResponse resp = service.getSlowMovers(COMPANY_ID, OWNER_ID, 90);
@@ -218,7 +218,7 @@ class CompanyAnalyticsServiceImplTest {
         verify(analyticsRepository).getDailyRevenue(eq(COMPANY_ID), any(), any());
         verify(analyticsRepository).getCategorySales(eq(COMPANY_ID), any(), any());
         verify(analyticsRepository).getSlowMovers(eq(COMPANY_ID), any(), anyDouble(), anyDouble(), anyInt());
-        verify(productRepository).findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any());
+        verify(productRepository, org.mockito.Mockito.times(2)).findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any());
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

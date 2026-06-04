@@ -51,6 +51,7 @@ class SubscriptionControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new SubscriptionController(subscriptionService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         authenticateAs(USER_ID);

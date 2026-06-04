@@ -108,9 +108,8 @@ class LoyaltyServiceImplTest {
         when(tierRepository.findByCompanyIdOrderByMinPointsDesc(any())).thenReturn(List.of());
         when(tierRepository.findByCompanyIdOrderByMinPointsDesc(any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
-        // New dependency defaults — no referral conversions, no expiring points, no first order
-        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(any(), any())).thenReturn(0L);
-        when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(any(), any())).thenReturn(0L);
+        // New dependency defaults — no expiring points, no first order
+        // Note: referral repo methods are NOT defaulted here so test-level stubs take priority cleanly.
         when(transactionRepository.countByAccountIdAndType(any(), any())).thenReturn(0L);
     }
 

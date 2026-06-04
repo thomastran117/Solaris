@@ -70,6 +70,7 @@ class ReviewControllerTest {
                                 reviewMediaService, reviewSearchService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

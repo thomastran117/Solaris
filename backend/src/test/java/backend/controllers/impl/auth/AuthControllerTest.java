@@ -96,6 +96,7 @@ class AuthControllerTest {
         // GlobalExceptionHandler converts AppHttpExceptions to proper HTTP status codes
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         // Inject ClientInfo so ClientRequestContext.get() resolves a real IP

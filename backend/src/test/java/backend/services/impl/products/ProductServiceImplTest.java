@@ -1684,24 +1684,16 @@ class ProductServiceImplTest {
     }
 
     @Test
-    void searchMarketplaceCatalog_esFails_noFilters_fallsBackToJpa() {
+    void searchMarketplaceCatalog_esFails_noFilters_throwsServiceUnavailable() {
         when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
         doThrow(new RuntimeException("ES down"))
                 .when(elasticsearchOperations).search(
                         any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
 
-        Product product = makeProduct();
-        product.setMarketplaceId(MARKETPLACE_ID);
-        when(productRepository.findMarketplaceListedPaged(eq(MARKETPLACE_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(product)));
-        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
-                .thenReturn(List.of());
-
-        // No filters — should fall back to JPA without exception
-        var result = service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
-                null, null, null, null, 0, 10, null, null);
-
-        assertNotNull(result);
+        // ES unavailable — always throws ServiceUnavailableException regardless of filters.
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                        null, null, null, null, 0, 10, null, null));
     }
 
     // =========================================================================

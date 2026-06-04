@@ -50,6 +50,7 @@ class AdminFeedbackControllerTest {
                 .standaloneSetup(new AdminFeedbackController(feedbackService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

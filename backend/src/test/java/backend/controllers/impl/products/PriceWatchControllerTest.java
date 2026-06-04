@@ -45,6 +45,7 @@ class PriceWatchControllerTest {
                 .standaloneSetup(new PriceWatchController(priceWatchService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 
