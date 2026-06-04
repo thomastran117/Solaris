@@ -58,6 +58,7 @@ import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
 import backend.dtos.responses.product.ProductVariantResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
@@ -208,6 +209,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PagedResponse<ProductResponse> searchProducts(
             UUID companyId,
             String q,
@@ -343,6 +345,9 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids) {
+        if (ids.size() > 1000) {
+            throw new BadRequestException("Cannot fetch more than 1000 products at once");
+        }
         assertCompanyExists(companyId);
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "products:batch:" + companyId + ":" + sortedIds;
@@ -387,7 +392,12 @@ public class ProductServiceImpl implements ProductService {
         ProductStatus initialStatus = request.getStatus() != null ? request.getStatus() : ProductStatus.DRAFT;
         applyStatusTransition(product, initialStatus, request.getScheduledPublishAt(), true);
 
-        Product saved = productRepository.save(product);
+        Product saved;
+        try {
+            saved = productRepository.save(product);
+        } catch (DataIntegrityViolationException e) {
+            throw new ConflictException("A product with this SKU already exists in this company");
+        }
         productChangeLogger.logCreate(saved, ChangeSource.USER);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
         evictAfterCommit(() -> {

@@ -1,25 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { MessageCircleQuestion } from "lucide-react";
 import { qaApi } from "../../api/qa";
 import type { RootState } from "../../stores";
 import QuestionCard from "./QuestionCard";
 import AskQuestionForm from "./AskQuestionForm";
+import { useAnims } from "../../hooks/useAnims";
 
 interface Props {
   productId: string;
 }
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-  return { fadeInUp, stagger };
-};
 
 export default function QASection({ productId }: Props) {
   const { fadeInUp, stagger } = useAnims();

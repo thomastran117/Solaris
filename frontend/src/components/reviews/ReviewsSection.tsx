@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, MessageSquareText } from "lucide-react";
 import axios, { AxiosError } from "axios";
 import { reviewsApi, type ReviewListFilters } from "../../api/reviews";
@@ -12,20 +12,13 @@ import ReviewSearchBar from "./ReviewSearchBar";
 import ReviewFilters from "./ReviewFilters";
 import ReviewCard from "./ReviewCard";
 import ReviewForm from "./ReviewForm";
+import { useAnims } from "../../hooks/useAnims";
 
 interface Props {
   companyId: string;
   productId: string;
 }
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } };
-  return { fadeInUp, stagger };
-};
 
 const DEFAULT_FILTERS: ReviewListFilters = {
   page: 0,

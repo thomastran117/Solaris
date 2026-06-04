@@ -71,8 +71,8 @@ export function CustomerOrderCard({ order, onClick }: CustomerOrderCardProps) {
             <p className="text-xs text-white/60">{date}</p>
           </div>
         </div>
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status]}`}>
-          {STATUS_LABELS[status]}
+        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status] ?? "text-white/60 bg-white/10"}`}>
+          {STATUS_LABELS[status] ?? status}
         </span>
       </div>
       <div className="mt-4 flex items-center justify-between">
@@ -118,8 +118,8 @@ export function VendorOrderCard({ order, onClick }: VendorOrderCardProps) {
             <p className="text-xs text-white/60">Buyer: {buyerShort}… · {date}</p>
           </div>
         </div>
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status]}`}>
-          {STATUS_LABELS[status]}
+        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status] ?? "text-white/60 bg-white/10"}`}>
+          {STATUS_LABELS[status] ?? status}
         </span>
       </div>
       <div className="mt-4 flex items-center justify-between">

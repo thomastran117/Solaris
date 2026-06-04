@@ -1,22 +1,13 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { kitsApi } from "../api/kits";
 import KitSlotCard from "../components/kit/KitSlotCard";
 import KitPriceSummary from "../components/kit/KitPriceSummary";
 import type { SlotSelectionState } from "../types/kit";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
-  return { fadeInUp, stagger };
-};
 
 export default function KitPage() {
   const { companyId, kitId } = useParams<{ companyId: string; kitId: string }>();

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ChevronLeft, Save, Plus, Trash2, ChevronDown, ChevronRight, Download,
 } from "lucide-react";
@@ -10,14 +10,8 @@ import { kitsApi, type CreateKitPayload, type KitSlotPayload, type KitSlotChoice
 import { adminCollectionsApi } from "../../api/merchandising";
 import type { KitStatus } from "../../types/kit";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45 } } };
-  return { fadeInUp };
-};
 
 const inputCls = "w-full rounded-xl border border-white/10 bg-white/[0.06] backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/25";
 const labelCls = "text-xs font-semibold text-white/60 uppercase tracking-wide mb-1 block";

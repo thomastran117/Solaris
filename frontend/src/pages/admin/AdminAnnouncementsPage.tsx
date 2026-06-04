@@ -1,23 +1,13 @@
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Plus, Send, Trash2, Megaphone, X } from "lucide-react";
 import { announcementsApi, type CreateAnnouncementPayload } from "../../api/follow";
 import type { AnnouncementType, AnnouncementStatus } from "../../types/company";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.05 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 const STATUS_COLORS: Record<AnnouncementStatus, string> = {
   DRAFT: "bg-white/10 text-white/60 border-white/15",

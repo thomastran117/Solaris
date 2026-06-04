@@ -1,17 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  motion,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  useInView,
-} from "framer-motion";
+import { motion, useScroll, useSpring, useTransform, useInView } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { marketplaceCollectionsApi } from "../api/merchandising";
 import CollectionCard from "../components/collection/CollectionCard";
 import type { RootState } from "../stores";
+import { useAnims } from "../hooks/useAnims";
 import {
   Truck,
   Headset,
@@ -31,32 +25,6 @@ import {
 } from "lucide-react";
 
 // ---- Animation helpers (respect reduced motion) ----
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-
-  const fadeInUp = prefersReducedMotion
-    ? {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { duration: 0.35 } },
-      }
-    : {
-        hidden: { opacity: 0, y: 18 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.55 } },
-      };
-
-  const fadeIn = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { duration: 0.6 } },
-      };
-
-  const stagger = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.12 } } };
-
-  return { fadeInUp, fadeIn, stagger };
-};
 
 // ---- Data (commerce-oriented) ----
 const services = [

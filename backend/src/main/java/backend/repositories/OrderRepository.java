@@ -45,7 +45,10 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     Optional<Order> findByStripeInvoiceId(String stripeInvoiceId);
     Optional<Order> findByTrackingNumber(String trackingNumber);
     Page<Order> findAllByUserIdAndStatus(UUID userId, OrderStatus status, Pageable pageable);
+    /** Prefer the paginated overload for scheduled/batch callers to avoid unbounded result sets. */
     List<Order> findAllByStatusAndCompensatedFalseAndCreatedAtBefore(OrderStatus status, Instant before);
+
+    Page<Order> findAllByStatusAndCompensatedFalseAndCreatedAtBefore(OrderStatus status, Instant before, Pageable pageable);
 
     @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId")
     Page<Order> findAllByProductCompanyId(@Param("companyId") java.util.UUID companyId, Pageable pageable);

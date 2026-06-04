@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { ShoppingBag } from "lucide-react";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
@@ -10,6 +10,7 @@ import SectionTitle from "../components/section/SectionTitle";
 import { CustomerOrderCard } from "../components/order/OrderCard";
 import { ordersApi } from "../api/orders";
 import type { OrderStatus } from "../types/order";
+import { useAnims } from "../hooks/useAnims";
 
 const TABS: { label: string; value: OrderStatus | undefined }[] = [
   { label: "All", value: undefined },
@@ -19,16 +20,6 @@ const TABS: { label: string; value: OrderStatus | undefined }[] = [
   { label: "Cancelled", value: "CANCELLED" },
 ];
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.09 } } };
-  return { fadeInUp, stagger };
-};
 
 export default function OrdersPage() {
   const { fadeInUp, stagger } = useAnims();

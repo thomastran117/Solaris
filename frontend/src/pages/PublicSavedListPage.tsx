@@ -1,20 +1,10 @@
 import { Link, useParams } from "react-router-dom";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Bookmark, ShoppingBag, Check } from "lucide-react";
 import { usePublicSavedList } from "../hooks/useSavedLists";
 import { LIST_TYPE_META, showsProgress } from "../components/savedlist/listTypeMeta";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.05 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 export default function PublicSavedListPage() {
   const { slug } = useParams<{ slug: string }>();

@@ -4,7 +4,7 @@ import { useSelector } from "react-redux";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, Save, AlertCircle, Sparkles } from "lucide-react";
 import { adminCollectionsApi, type CollectionWritePayload } from "../../api/merchandising";
 import {
@@ -16,14 +16,8 @@ import {
 } from "../../schemas/collection";
 import type { Collection } from "../../types/collection";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  return { fadeInUp };
-};
 
 function buildPayload(values: CollectionFormValues): CollectionWritePayload {
   const blank = (s: string) => (s === "" ? null : s);

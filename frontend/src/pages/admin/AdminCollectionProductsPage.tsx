@@ -2,20 +2,14 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, Plus, Trash2, RefreshCw, Pin, Zap, Search } from "lucide-react";
 import { adminCollectionsApi } from "../../api/merchandising";
 import { adminProductsApi } from "../../api/catalog";
 import type { CollectionProductRow } from "../../types/collection";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  return { fadeInUp };
-};
 
 const inputBase =
   "w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 focus:bg-white/[0.06] transition-colors";

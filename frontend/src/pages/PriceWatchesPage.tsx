@@ -1,6 +1,6 @@
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { TrendingDown, X } from "lucide-react";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
@@ -10,17 +10,8 @@ import SectionTitle from "../components/section/SectionTitle";
 import { priceWatchersApi } from "../api/priceWatchers";
 import type { PriceWatcher } from "../types/priceWatchers";
 import type { RootState } from "../stores";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.09 } } };
-  return { fadeInUp, stagger };
-};
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;

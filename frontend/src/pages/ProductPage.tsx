@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star, Flag, TrendingDown } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
@@ -13,21 +13,12 @@ import SaveToListModal from "../components/savedlist/SaveToListModal";
 import ReviewsSection from "../components/reviews/ReviewsSection";
 import QASection from "../components/qa/QASection";
 import ReportModal from "../components/report/ReportModal";
-import type { RootState } from "../stores";
+import type { RootState, AppDispatch } from "../stores";
 import type { StockNotification } from "../types/notifications";
 import type { PriceWatcher } from "../types/priceWatchers";
+import { addItem } from "../stores/cartSlice";
+import { useAnims } from "../hooks/useAnims";
 import { useNavigate } from "react-router-dom";
-
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.25 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const fadeIn: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.5 } } };
-  return { fadeInUp, fadeIn };
-};
 
 function buildVariantLabel(
   v: { option1: string | null; option2: string | null; option3: string | null }
@@ -43,8 +34,10 @@ export default function ProductPage() {
 
   const marketplaceId = useSelector((s: RootState) => s.marketplace.currentMarketplace?.id);
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
+  const dispatch = useDispatch<AppDispatch>();
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [addedToCart, setAddedToCart] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const navigate = useNavigate();
@@ -125,8 +118,18 @@ export default function ProductPage() {
     retry: false,
   });
 
+  const { data: loyaltyTiers } = useQuery({
+    queryKey: ["loyalty", "tiers", product?.companyId],
+    queryFn: () => loyaltyApi.listTiers(product!.companyId).then((r) => r.data),
+    enabled: !!product?.companyId,
+    retry: false,
+  });
+
   const selectedVariant = product?.variants.find(v => v.id === selectedVariantId) ?? null;
-  const effectiveStock = selectedVariant?.stock ?? product?.stock ?? null;
+  // When a variant is selected, use its stock directly (null = unlimited, 0 = depleted).
+  // Only fall back to product-level stock when no variant is selected, to avoid a
+  // null-stock variant (unlimited) incorrectly inheriting a depleted product stock of 0.
+  const effectiveStock = selectedVariant ? selectedVariant.stock : (product?.stock ?? null);
   const isOutOfStock = effectiveStock === 0;
   const isPurchasable = selectedVariant?.purchasable ?? product?.purchasable ?? true;
   const unavailable = isOutOfStock || !isPurchasable;
@@ -149,6 +152,32 @@ export default function ProductPage() {
     } else {
       subscribeMutation.mutate(selectedVariantId ?? undefined);
     }
+  }
+
+  function handleAddToCart() {
+    if (!product || !marketplaceId) return;
+    const selectedVariant = product.variants.find((v) => v.id === selectedVariantId) ?? null;
+    const variantLabel = selectedVariant
+      ? [selectedVariant.option1, selectedVariant.option2, selectedVariant.option3]
+          .filter(Boolean)
+          .join(" / ") || null
+      : null;
+    dispatch(
+      addItem({
+        productId: product.id,
+        variantId: selectedVariantId,
+        name: product.name,
+        variantLabel,
+        price: selectedVariant?.price ?? product.price,
+        currency: product.currency?.toUpperCase() ?? "USD",
+        quantity: 1,
+        thumbnailUrl: product.thumbnailUrl ?? product.images?.[0]?.imageUrl ?? null,
+        marketplaceId,
+        companyId: product.companyId,
+      })
+    );
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 2000);
   }
 
   if (!marketplaceId) {
@@ -204,11 +233,10 @@ export default function ProductPage() {
   const earnablePts = useMemo(() => {
     if (!loyaltyPolicy || loyaltyPolicy.earnMode === "CASHBACK") return null;
     if (typeof price !== "number") return null;
-    const multiplier = loyaltyAccount?.currentTierId
-      ? 1  // multiplier from tier not fetched here; default to 1
-      : 1;
+    const currentTier = loyaltyTiers?.find((t) => t.id === loyaltyAccount?.currentTierId);
+    const multiplier = currentTier?.earnMultiplier ?? 1;
     return Math.floor(price * loyaltyPolicy.earnRatePerDollar * multiplier);
-  }, [loyaltyPolicy, loyaltyAccount, price]);
+  }, [loyaltyPolicy, loyaltyAccount, loyaltyTiers, price]);
 
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden">
@@ -393,11 +421,12 @@ export default function ProductPage() {
                 /* In stock → Add to Cart + Save to list */
                 <div className="flex gap-2">
                   <button
-                    disabled
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors"
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    Add to Cart
+                    {addedToCart ? "Added!" : "Add to Cart"}
                   </button>
                   <button
                     type="button"
@@ -413,11 +442,12 @@ export default function ProductPage() {
                 /* Preorder-eligible → Preorder button + Save */
                 <div className="flex gap-2">
                   <button
-                    disabled
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-sky-400/40 bg-sky-400/10 text-sky-200 font-semibold text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-sky-400/40 bg-sky-400/10 text-sky-200 font-semibold text-sm transition-colors hover:bg-sky-400/20"
                   >
                     <Package className="w-4 h-4" />
-                    Preorder
+                    {addedToCart ? "Added!" : "Preorder"}
                   </button>
                   <button
                     type="button"

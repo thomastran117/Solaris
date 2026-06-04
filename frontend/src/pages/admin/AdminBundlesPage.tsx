@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { CalendarClock, Eye, EyeOff, Trash2 } from "lucide-react";
 import {
   adminBundlesApi,
@@ -11,6 +11,7 @@ import {
   type BatchUpdateBundlesPayload,
 } from "../../api/catalog";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
 const STATUS_FILTERS: ReadonlyArray<{ value: AdminProductStatus | "ALL"; label: string }> = [
   { value: "ALL", label: "All" },
@@ -30,16 +31,6 @@ const BULK_STATUS_OPTIONS: ReadonlyArray<{ value: Exclude<AdminProductStatus, "S
   { value: "ARCHIVED", label: "Archived" },
 ];
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
-  return { fadeInUp, stagger };
-};
 
 function StatusBadge({ status }: { status: AdminProductStatus }) {
   const tone: Record<AdminProductStatus, string> = {

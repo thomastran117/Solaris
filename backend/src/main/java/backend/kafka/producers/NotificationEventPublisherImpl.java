@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class NotificationEventPublisherImpl implements NotificationEventPublisher {
@@ -24,10 +26,27 @@ public class NotificationEventPublisherImpl implements NotificationEventPublishe
 
     @Override
     public void publish(NotificationEvent event) {
-        kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
-            if (ex != null) {
-                log.warn("notification-events publish failed type={}", event.getClass().getSimpleName(), ex);
-            }
-        });
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    doSend(event);
+                }
+            });
+        } else {
+            doSend(event);
+        }
+    }
+
+    private void doSend(NotificationEvent event) {
+        try {
+            kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
+                if (ex != null) {
+                    log.warn("notification-events publish failed type={}", event.getClass().getSimpleName(), ex);
+                }
+            });
+        } catch (Throwable t) {
+            log.warn("notification-events publish error type={}", event.getClass().getSimpleName(), t);
+        }
     }
 }

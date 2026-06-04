@@ -9,11 +9,14 @@ export interface ShipOrderRequest {
 }
 
 export const ordersApi = {
-  create: (body: Record<string, unknown>) =>
-    // A per-request UUID prevents the backend creating a duplicate order if the
-    // user double-submits or the client retries after a network timeout.
+  /**
+   * @param idempotencyKey A UUID generated once per checkout intent and reused on retries.
+   *   Generate this with `crypto.randomUUID()` when the user first initiates checkout, store it
+   *   in a ref or state, and pass the same value on any retry so the backend deduplicates the request.
+   */
+  create: (body: Record<string, unknown>, idempotencyKey: string) =>
     api.post<Order>("/orders", body, {
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": idempotencyKey },
     }),
 
   list: (params?: { status?: OrderStatus; page?: number; size?: number }) =>

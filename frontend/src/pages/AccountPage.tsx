@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   User,
@@ -28,18 +28,9 @@ import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground"
 import SectionGlow from "../components/section/SectionGlow";
 import SectionFade from "../components/section/SectionFade";
 import SectionTitle from "../components/section/SectionTitle";
+import { useAnims } from "../hooks/useAnims";
 
 // ── Animation helpers ────────────────────────────────────────────────────────
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.1 } } };
-  return { fadeInUp, stagger };
-};
 
 // ── Benefit definitions ──────────────────────────────────────────────────────
 const BENEFITS = [

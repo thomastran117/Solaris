@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ChevronLeft,
   Globe,
@@ -20,14 +20,8 @@ import {
 } from "../hooks/useSavedLists";
 import SavedListItemRow from "../components/savedlist/SavedListItemRow";
 import { LIST_TYPE_META, showsProgress } from "../components/savedlist/listTypeMeta";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  return { fadeInUp };
-};
 
 export default function SavedListDetailPage() {
   const navigate = useNavigate();

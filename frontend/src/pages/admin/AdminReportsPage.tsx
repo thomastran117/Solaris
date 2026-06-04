@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Flag, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Search, RefreshCw,
@@ -10,15 +10,8 @@ import { adminReportsApi } from "../../api/reports";
 import { REPORT_REASON_LABELS } from "../../schemas/report";
 import { REPORT_STATUSES } from "../../types/report";
 import type { Report, ReportReason, ReportStatus, ReportTargetType } from "../../types/report";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } };
-  return { fadeInUp, stagger };
-};
 
 const TARGET_TYPE_TABS: { value: ReportTargetType | undefined; label: string }[] = [
   { value: undefined, label: "All" },
