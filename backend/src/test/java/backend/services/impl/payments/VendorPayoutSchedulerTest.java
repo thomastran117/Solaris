@@ -22,6 +22,7 @@ import backend.repositories.VendorPayoutRepository;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.SliceImpl;
 
@@ -76,8 +77,10 @@ class VendorPayoutSchedulerTest {
     @Test
     void runPayoutCycle_releasesEligibleBalances() {
         CommissionRecord record = commissionRecord(true);
+        MarketplaceVendor approvedVendor = vendor(true, true, VendorStatus.APPROVED);
         when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
-        when(commissionRecordRepository.findEligibleForRelease(any())).thenReturn(List.of(record));
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of(record)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(approvedVendor));
         when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
                 .thenReturn(new SliceImpl<>(List.of()));
         when(vendorBalanceRepository.releasePending(VENDOR_ID, 9000L)).thenReturn(1);
@@ -101,7 +104,7 @@ class VendorPayoutSchedulerTest {
         VendorPayout payout = payout();
 
         when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
-        when(commissionRecordRepository.findEligibleForRelease(any())).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
         when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
                 .thenReturn(new SliceImpl<>(List.of(balance)));
         when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
@@ -124,7 +127,7 @@ class VendorPayoutSchedulerTest {
         MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
 
         when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
-        when(commissionRecordRepository.findEligibleForRelease(any())).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
         when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
                 .thenReturn(new SliceImpl<>(List.of()));
         when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of(payout));
@@ -142,7 +145,7 @@ class VendorPayoutSchedulerTest {
         MarketplaceVendor vendor = vendor(true, false, VendorStatus.APPROVED);
 
         when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
-        when(commissionRecordRepository.findEligibleForRelease(any())).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
         when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
                 .thenReturn(new SliceImpl<>(List.of()));
         when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of(payout));

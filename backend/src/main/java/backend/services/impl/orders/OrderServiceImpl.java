@@ -2723,6 +2723,9 @@ public class OrderServiceImpl implements OrderService {
     public void markPickedUpByDriver(UUID orderId, UUID driverId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        if (!driverId.equals(order.getAssignedDriverId())) {
+            throw new backend.exceptions.http.ForbiddenException("Driver is not assigned to this order");
+        }
         recordHistory(order, OrderHistoryEventType.DRIVER_PICKED_UP, driverId, "Driver picked up the order");
         publishSseEvent(order, "Driver picked up the order", "driver_checkpoint");
     }
@@ -2732,6 +2735,9 @@ public class OrderServiceImpl implements OrderService {
     public void markArrivedByDriver(UUID orderId, UUID driverId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        if (!driverId.equals(order.getAssignedDriverId())) {
+            throw new backend.exceptions.http.ForbiddenException("Driver is not assigned to this order");
+        }
         recordHistory(order, OrderHistoryEventType.DRIVER_ARRIVED, driverId, "Driver arrived at delivery address");
         publishSseEvent(order, "Driver arrived at delivery address", "driver_checkpoint");
     }
@@ -2741,6 +2747,9 @@ public class OrderServiceImpl implements OrderService {
     public void markDeliveredByDriver(UUID orderId, UUID driverId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        if (!driverId.equals(order.getAssignedDriverId())) {
+            throw new backend.exceptions.http.ForbiddenException("Driver is not assigned to this order");
+        }
         validateTransition(order, OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.PARTIALLY_FULFILLED);
         for (OrderItem item : order.getItems()) {
             if (item.getFulfillmentStatus() == FulfillmentStatus.SHIPPED) {
@@ -2752,6 +2761,10 @@ public class OrderServiceImpl implements OrderService {
         Order saved = orderRepository.save(order);
         recordHistory(saved, OrderHistoryEventType.STATUS_CHANGED, driverId, "Delivered by driver");
         publishSseEvent(saved, "Delivered by driver", "status_update");
+        // Immediately clear driver location from cache — after delivery the driver's last
+        // known position (potentially their home) must not remain accessible to the customer.
+        cacheService.delete("delivery:location:" + orderId);
+        cacheService.delete("delivery:ratelimit:" + orderId);
         UUID companyId = saved.getItems().stream()
                 .findFirst()
                 .map(i -> i.getProduct().getCompany().getId())

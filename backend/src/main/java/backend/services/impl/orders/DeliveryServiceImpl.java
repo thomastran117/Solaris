@@ -2,19 +2,26 @@ package backend.services.impl.orders;
 
 import backend.events.order.DeliveryLocationEvent;
 import backend.events.order.SseStatusUpdateEvent;
+import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.exceptions.http.ServiceUnavaliableException;
 import backend.models.core.Order;
+import backend.models.enums.CompanyCapability;
 import backend.repositories.OrderRepository;
+import backend.repositories.UserRepository;
 import backend.services.intf.CacheService;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.orders.DeliveryService;
 import backend.services.intf.orders.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -24,26 +31,34 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     private static final Logger log = LoggerFactory.getLogger(DeliveryServiceImpl.class);
 
-    private static final long LOCATION_TTL_SECONDS = 600;
     private static final long RATE_LIMIT_SECONDS = 3;
+
+    @Value("${app.delivery.location-ttl-seconds:300}")
+    private long locationTtlSeconds;
 
     private final CacheService cacheService;
     private final StringRedisTemplate stringRedisTemplate;
     private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
     private final OrderService orderService;
+    private final CompanyAccessService companyAccessService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
 
     public DeliveryServiceImpl(CacheService cacheService,
                                StringRedisTemplate stringRedisTemplate,
                                OrderRepository orderRepository,
+                               UserRepository userRepository,
                                OrderService orderService,
+                               CompanyAccessService companyAccessService,
                                SimpMessagingTemplate messagingTemplate,
                                ObjectMapper objectMapper) {
         this.cacheService = cacheService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.orderRepository = orderRepository;
+        this.userRepository = userRepository;
         this.orderService = orderService;
+        this.companyAccessService = companyAccessService;
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
     }
@@ -72,7 +87,9 @@ public class DeliveryServiceImpl implements DeliveryService {
                 return;
             }
         } catch (Exception e) {
-            log.warn("[Delivery] Rate-limit check failed for order {}, proceeding: {}", orderId, e.getMessage());
+            // Redis failure — fail closed to prevent unbounded location spam.
+            log.warn("[Delivery] Rate-limit Redis failure for order {}, rejecting update: {}", orderId, e.getMessage());
+            throw new ServiceUnavaliableException("Location service temporarily unavailable");
         }
 
         // Still honour client-timestamp ordering to discard buffered stale updates.
@@ -95,7 +112,7 @@ public class DeliveryServiceImpl implements DeliveryService {
             payload.put("lng", event.lng());
             payload.put("clientTimestamp", event.timestamp().toString());
             payload.put("serverReceivedAt", serverNow.toString());
-            cacheService.set(cacheKey, payload.toString(), LOCATION_TTL_SECONDS);
+            cacheService.set(cacheKey, payload.toString(), locationTtlSeconds);
         } catch (Exception e) {
             log.warn("[Delivery] Failed to cache location for order {}: {}", orderId, e.getMessage());
             return;
@@ -125,7 +142,15 @@ public class DeliveryServiceImpl implements DeliveryService {
     }
 
     @Override
+    @Transactional
     public void assignDriver(UUID companyId, UUID orderId, UUID driverUserId, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
+
+        // Verify the driver user actually exists before assigning.
+        if (!userRepository.existsById(driverUserId)) {
+            throw new ResourceNotFoundException("Driver user not found: " + driverUserId);
+        }
+
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 

@@ -46,8 +46,14 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
         if (q == null || q.isBlank() || q.length() < 2) {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }
+        // Strip characters that could be interpreted as Lucene/ES boolean operators.
+        // MatchQuery is generally safe, but stripping these removes ambiguity entirely.
+        final String safeQ = q.replaceAll("[()\\[\\]{}\"\\\\^~*?:/]", " ").trim();
+        if (safeQ.isBlank()) {
+            return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
+        }
         int clampedLimit = Math.min(limit, 10);
-        String cacheKey = String.format("suggestions:%s:%s:%d", marketplaceId, q.toLowerCase(), clampedLimit);
+        String cacheKey = String.format("suggestions:%s:%s:%d", marketplaceId, safeQ.toLowerCase(), clampedLimit);
 
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
             try {
@@ -58,15 +64,15 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
                         .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery())
                         .must(co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery.of(m -> m
                                 .field("nameCompletion")
-                                .query(q))._toQuery());
+                                .query(safeQ))._toQuery());
 
                 NativeQuery query = NativeQuery.builder()
                         .withQuery(bq.build()._toQuery())
                         .withPageable(PageRequest.of(0, 3))
                         .withAggregation("categories",
-                                Aggregation.of(a -> a.terms(t -> t.field("category").size(5))))
+                                Aggregation.of(a -> a.terms(t -> t.field("category").size(5).minDocCount(1))))
                         .withAggregation("brands",
-                                Aggregation.of(a -> a.terms(t -> t.field("brand").size(5))))
+                                Aggregation.of(a -> a.terms(t -> t.field("brand").size(5).minDocCount(1))))
                         .build();
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(query, ProductDocument.class);
@@ -117,8 +123,13 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
         if (q == null || q.isBlank() || q.length() < 2) {
             return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
         }
+        // Strip Lucene boolean operator characters before querying.
+        final String safeQ = q.replaceAll("[()\\[\\]{}\"\\\\^~*?:/]", " ").trim();
+        if (safeQ.isBlank()) {
+            return new SearchSuggestionsResponse(List.of(), List.of(), List.of());
+        }
         int clampedLimit = Math.min(limit, 10);
-        String cacheKey = String.format("suggestions:company:%s:%s:%d", companyId, q.toLowerCase(), clampedLimit);
+        String cacheKey = String.format("suggestions:company:%s:%s:%d", companyId, safeQ.toLowerCase(), clampedLimit);
 
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
             try {
@@ -128,15 +139,15 @@ public class SearchSuggestionServiceImpl implements SearchSuggestionService {
                         .filter(TermQuery.of(t -> t.field("status").value("ACTIVE"))._toQuery())
                         .must(co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery.of(m -> m
                                 .field("nameCompletion")
-                                .query(q))._toQuery());
+                                .query(safeQ))._toQuery());
 
                 NativeQuery query = NativeQuery.builder()
                         .withQuery(bq.build()._toQuery())
                         .withPageable(PageRequest.of(0, 3))
                         .withAggregation("categories",
-                                Aggregation.of(a -> a.terms(t -> t.field("category").size(5))))
+                                Aggregation.of(a -> a.terms(t -> t.field("category").size(5).minDocCount(1))))
                         .withAggregation("brands",
-                                Aggregation.of(a -> a.terms(t -> t.field("brand").size(5))))
+                                Aggregation.of(a -> a.terms(t -> t.field("brand").size(5).minDocCount(1))))
                         .build();
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(query, ProductDocument.class);

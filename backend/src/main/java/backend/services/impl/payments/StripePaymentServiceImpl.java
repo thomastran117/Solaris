@@ -101,7 +101,19 @@ public class StripePaymentServiceImpl implements PaymentService {
                 params.putAllMetadata(metadata);
             }
 
-            return toPaymentIntentResult(PaymentIntent.create(params.build()));
+            // Idempotency key prevents double-charging when clients retry after a timeout.
+            // Keyed on order_id + amount so a retry for the same order always returns the
+            // same PaymentIntent rather than creating a new one.
+            String orderId = metadata != null ? metadata.get("order_id") : null;
+            String idempotencyKey = orderId != null
+                    ? "pi:create:" + orderId + ":" + amountInCents
+                    : null;
+
+            RequestOptions opts = idempotencyKey != null
+                    ? RequestOptions.builder().setIdempotencyKey(idempotencyKey).build()
+                    : RequestOptions.getDefault();
+
+            return toPaymentIntentResult(PaymentIntent.create(params.build(), opts));
         });
     }
 

@@ -30,6 +30,16 @@ public class RestSecurityConfiguration {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtConfiguration jwtAuthFilter) throws Exception {
         http
+            .headers(headers -> headers
+                // HSTS: instruct browsers to only connect via HTTPS for 1 year, including subdomains.
+                // Safe to set unconditionally here because the service is always deployed behind TLS.
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .maxAgeInSeconds(31_536_000)
+                    .includeSubDomains(true)
+                )
+                // Prevent MIME-type sniffing (defence against content-injection attacks).
+                .contentTypeOptions(c -> {})
+            )
             // CSRF is intentionally disabled. This API uses two complementary mitigations that
             // together neutralise CSRF for all cookie-backed endpoints:
             //   1. Access tokens are short-lived JWTs returned as JSON and stored in memory by

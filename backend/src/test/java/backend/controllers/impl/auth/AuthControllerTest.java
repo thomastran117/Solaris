@@ -54,6 +54,7 @@ class AuthControllerTest {
     private RateLimitService rateLimitService;
     private AuthAuditLogger audit;
     private CaptchaService captchaService;
+    private backend.services.intf.auth.TokenService tokenService;
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -79,6 +80,7 @@ class AuthControllerTest {
         rateLimitService = mock(RateLimitService.class);
         audit          = mock(AuthAuditLogger.class);
         captchaService = mock(CaptchaService.class);
+        tokenService   = mock(backend.services.intf.auth.TokenService.class);
 
         when(env.getSecurity()).thenReturn(security);
         when(security.getCookie()).thenReturn(cookieCfg);
@@ -89,7 +91,7 @@ class AuthControllerTest {
         when(captchaService.verify(anyString(), anyString())).thenReturn(true);
 
         AuthController controller = new AuthController(authService, deviceService,
-                logger, env, rateLimitService, audit, captchaService);
+                logger, env, rateLimitService, audit, captchaService, tokenService);
 
         // GlobalExceptionHandler converts AppHttpExceptions to proper HTTP status codes
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

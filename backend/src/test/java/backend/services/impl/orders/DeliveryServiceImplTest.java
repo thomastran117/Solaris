@@ -5,7 +5,9 @@ import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Order;
 import backend.models.enums.OrderStatus;
 import backend.repositories.OrderRepository;
+import backend.repositories.UserRepository;
 import backend.services.intf.CacheService;
+import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.orders.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -29,7 +31,9 @@ class DeliveryServiceImplTest {
     private CacheService cacheService;
     private StringRedisTemplate stringRedisTemplate;
     private OrderRepository orderRepository;
+    private UserRepository userRepository;
     private OrderService orderService;
+    private CompanyAccessService companyAccessService;
     private SimpMessagingTemplate messagingTemplate;
     private ObjectMapper objectMapper;
     private DeliveryServiceImpl service;
@@ -43,11 +47,13 @@ class DeliveryServiceImplTest {
         cacheService = mock(CacheService.class);
         stringRedisTemplate = mock(StringRedisTemplate.class);
         orderRepository = mock(OrderRepository.class);
+        userRepository = mock(UserRepository.class);
         orderService = mock(OrderService.class);
+        companyAccessService = mock(CompanyAccessService.class);
         messagingTemplate = mock(SimpMessagingTemplate.class);
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         service = new DeliveryServiceImpl(cacheService, stringRedisTemplate, orderRepository,
-                orderService, messagingTemplate, objectMapper);
+                userRepository, orderService, companyAccessService, messagingTemplate, objectMapper);
 
         orderId = UUID.randomUUID();
         driverId = UUID.randomUUID();
@@ -58,6 +64,8 @@ class DeliveryServiceImplTest {
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
         // Rate-limit gate passes by default so other tests don't need to stub it.
         when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        // Driver existence check passes by default.
+        when(userRepository.existsById(any())).thenReturn(true);
     }
 
     private DeliveryLocationEvent freshEvent() {
@@ -69,7 +77,7 @@ class DeliveryServiceImplTest {
     @Test
     void processLocationUpdate_storesInRedis() {
         service.processLocationUpdate(orderId, freshEvent(), driverId);
-        verify(cacheService, times(1)).set(eq("delivery:location:" + orderId), anyString(), eq(600L));
+        verify(cacheService, times(1)).set(eq("delivery:location:" + orderId), anyString(), anyLong());
     }
 
     @Test

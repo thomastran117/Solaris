@@ -61,11 +61,13 @@ public class AuthController {
     private final RateLimitService rateLimitService;
     private final AuthAuditLogger audit;
     private final CaptchaService captchaService;
+    private final backend.services.intf.auth.TokenService tokenService;
 
     public AuthController(AuthService authService,
                           DeviceService deviceService, Logger logger,
                           EnvironmentSetting env, RateLimitService rateLimitService,
-                          AuthAuditLogger audit, CaptchaService captchaService) {
+                          AuthAuditLogger audit, CaptchaService captchaService,
+                          backend.services.intf.auth.TokenService tokenService) {
         this.authService = authService;
         this.deviceService = deviceService;
         this.logger = logger;
@@ -73,6 +75,7 @@ public class AuthController {
         this.rateLimitService = rateLimitService;
         this.audit = audit;
         this.captchaService = captchaService;
+        this.tokenService = tokenService;
     }
 
     private String clientIp() {
@@ -251,6 +254,12 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        // Blacklist the current access token so it cannot be re-used within its remaining TTL.
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            tokenService.blacklistAccessToken(authHeader.substring(7));
+        }
+
         String refreshToken = null;
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {

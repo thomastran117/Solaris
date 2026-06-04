@@ -1,6 +1,15 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type { UserTier } from "../types/user";
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
 interface AuthState {
   accessToken: string | null;
   email: string | null;
@@ -32,7 +41,10 @@ const authSlice = createSlice({
       }>
     ) => {
       if (action.payload.accessToken !== undefined) {
-        state.accessToken = action.payload.accessToken;
+        const token = action.payload.accessToken;
+        // Discard already-expired tokens rather than storing them — prevents stale
+        // tokens from being sent until the axios interceptor catches the 401.
+        state.accessToken = token && !isTokenExpired(token) ? token : null;
       }
       if (action.payload.email !== undefined) {
         state.email = action.payload.email;

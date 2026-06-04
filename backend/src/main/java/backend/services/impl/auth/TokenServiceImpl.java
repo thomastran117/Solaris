@@ -264,6 +264,23 @@ public class TokenServiceImpl implements TokenService {
         cache.delete(REFRESH_USER_SET_PREFIX + userId);
     }
 
+    private static final String ACCESS_TOKEN_BLACKLIST_PREFIX = "auth:blacklist:access:";
+
+    @Override
+    public void blacklistAccessToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) return;
+        // Use the configured access-token TTL as the blacklist TTL — after this window
+        // the token would have been expired anyway, so the entry is no longer needed.
+        long ttl = env.getSecurity().getJwt().getAccessTokenTtlSeconds();
+        cache.set(ACCESS_TOKEN_BLACKLIST_PREFIX + rawToken, "1", ttl);
+    }
+
+    @Override
+    public boolean isAccessTokenBlacklisted(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) return false;
+        return cache.exists(ACCESS_TOKEN_BLACKLIST_PREFIX + rawToken);
+    }
+
     private String generateOpaqueToken() {
         byte[] bytes = new byte[REFRESH_TOKEN_BYTES];
         rng.nextBytes(bytes);

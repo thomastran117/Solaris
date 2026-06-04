@@ -14,6 +14,7 @@ import backend.dtos.responses.subscription.SetupIntentResponse;
 import backend.dtos.responses.subscription.ShippingAddressResponse;
 import backend.dtos.responses.subscription.SubscriptionItemResponse;
 import backend.dtos.responses.subscription.SubscriptionResponse;
+import backend.annotations.retry.RetryOnConcurrency;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
@@ -408,6 +409,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handleSubscriptionUpdated(String stripeSubscriptionId) {
         Subscription sub = subscriptionRepository.findByStripeSubscriptionIdForUpdate(stripeSubscriptionId).orElse(null);
         if (sub == null) return;
@@ -428,6 +430,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handleInvoicePaid(String stripeInvoiceId, String stripeSubscriptionId, long amountPaidCents) {
         if (stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) return;
 
@@ -475,6 +478,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handleInvoicePaymentFailed(String stripeInvoiceId, String stripeSubscriptionId) {
         if (stripeSubscriptionId == null) return;
         Subscription sub = subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId).orElse(null);
@@ -501,6 +505,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public void handleSetupIntentSucceeded(String stripeCustomerId, String stripePaymentMethodId) {
         if (stripePaymentMethodId == null || stripeCustomerId == null) return;
 
@@ -518,7 +523,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         try {
             pm = paymentService.retrievePaymentMethod(stripePaymentMethodId);
         } catch (Exception e) {
-            log.warn("Could not retrieve payment method {}: {}", stripePaymentMethodId, e.getMessage());
+            // Stripe payment method retrieval failed — the customer's card is NOT saved.
+            // This requires manual reconciliation: the setup_intent.succeeded webhook fired
+            // but we couldn't persist the method. Log at ERROR so on-call is paged, and
+            // include all context needed to replay via support tooling.
+            log.error("[RECONCILIATION REQUIRED] setup_intent.succeeded received but payment method " +
+                      "could not be retrieved. customerId={} paymentMethodId={} error={}. " +
+                      "Customer card was NOT saved — manual action required.",
+                    stripeCustomerId, stripePaymentMethodId, e.getMessage(), e);
             return;
         }
 

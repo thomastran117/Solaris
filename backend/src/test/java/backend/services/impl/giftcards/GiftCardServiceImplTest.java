@@ -148,9 +148,8 @@ class GiftCardServiceImplTest {
         GiftCard card = makeActiveCard(CARD_ID, 5000L, 5000L);
         User user = makeUser(USER_ID);
 
-        when(giftCardRepository.findByCode("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
-        when(giftCardRepository.findByIdWithLock(CARD_ID)).thenReturn(Optional.of(card));
-        when(userRepository.getReferenceById(USER_ID)).thenReturn(user);
+        when(giftCardRepository.findByCodeWithLock("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(creditRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -170,9 +169,8 @@ class GiftCardServiceImplTest {
         GiftCard card = makeActiveCard(CARD_ID, 5000L, 5000L);
         User user = makeUser(USER_ID);
 
-        when(giftCardRepository.findByCode("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
-        when(giftCardRepository.findByIdWithLock(CARD_ID)).thenReturn(Optional.of(card));
-        when(userRepository.getReferenceById(USER_ID)).thenReturn(user);
+        when(giftCardRepository.findByCodeWithLock("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(creditRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -186,8 +184,7 @@ class GiftCardServiceImplTest {
     void redeemCode_voidCard_throwsGone() {
         GiftCard card = makeCard(CARD_ID, GiftCardStatus.VOID, 5000L, 5000L);
 
-        when(giftCardRepository.findByCode("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
-        when(giftCardRepository.findByIdWithLock(CARD_ID)).thenReturn(Optional.of(card));
+        when(giftCardRepository.findByCodeWithLock("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
 
         assertThrows(GoneException.class,
                 () -> service.redeemCode("TESTCODE1234ABCD", USER_ID, 1000L));
@@ -197,8 +194,7 @@ class GiftCardServiceImplTest {
     void redeemCode_alreadyRedeemed_throwsConflict() {
         GiftCard card = makeCard(CARD_ID, GiftCardStatus.REDEEMED, 5000L, 0L);
 
-        when(giftCardRepository.findByCode("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
-        when(giftCardRepository.findByIdWithLock(CARD_ID)).thenReturn(Optional.of(card));
+        when(giftCardRepository.findByCodeWithLock("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
 
         assertThrows(ConflictException.class,
                 () -> service.redeemCode("TESTCODE1234ABCD", USER_ID, 1000L));
@@ -206,7 +202,7 @@ class GiftCardServiceImplTest {
 
     @Test
     void redeemCode_codeNotFound_throwsNotFound() {
-        when(giftCardRepository.findByCode("DOESNOTEXIST1234")).thenReturn(Optional.empty());
+        when(giftCardRepository.findByCodeWithLock("DOESNOTEXIST1234")).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.redeemCode("DOESNOTEXIST1234", USER_ID, 1000L));
@@ -216,8 +212,7 @@ class GiftCardServiceImplTest {
     void redeemCode_amountExceedsBalance_throwsBadRequest() {
         GiftCard card = makeActiveCard(CARD_ID, 5000L, 2000L);
 
-        when(giftCardRepository.findByCode("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
-        when(giftCardRepository.findByIdWithLock(CARD_ID)).thenReturn(Optional.of(card));
+        when(giftCardRepository.findByCodeWithLock("TESTCODE1234ABCD")).thenReturn(Optional.of(card));
 
         assertThrows(BadRequestException.class,
                 () -> service.redeemCode("TESTCODE1234ABCD", USER_ID, 3000L));

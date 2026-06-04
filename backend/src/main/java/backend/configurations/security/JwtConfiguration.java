@@ -31,8 +31,13 @@ public class JwtConfiguration extends OncePerRequestFilter {
 
             if (token != null && token.startsWith("Bearer ")) {
                 String tokenWithoutBearer = token.substring(7);
-                Authentication authentication = tokenService.getAuthentication(tokenWithoutBearer);
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                // Reject tokens that were explicitly revoked at logout.
+                if (tokenService.isAccessTokenBlacklisted(tokenWithoutBearer)) {
+                    SecurityContextHolder.clearContext();
+                } else {
+                    Authentication authentication = tokenService.getAuthentication(tokenWithoutBearer);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception e) {
             // Invalid/expired token: clear context and continue so public routes (e.g. login) are not blocked.

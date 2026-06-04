@@ -228,6 +228,9 @@ public class ProductServiceImpl implements ProductService {
             String direction) {
 
         assertCompanyExists(companyId);
+        if (page > 10_000) {
+            throw new BadRequestException("Page number too large. Maximum page is 10,000 (roughly 500,000 products at max page size).");
+        }
         final int clampedSize = Math.min(size, 50);
         // Normalize nulls to "" so cache keys are canonical regardless of whether params
         // are omitted vs. explicitly null (prevents duplicate entries for the same query).
@@ -1158,6 +1161,9 @@ public class ProductServiceImpl implements ProductService {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
+        if (page > 10_000) {
+            throw new BadRequestException("Page number too large. Maximum page is 10,000.");
+        }
         final int clampedSize = Math.min(size, 50);
         String cacheKey = String.format("marketplace:search:%s:%s:%s:%s:%s:%s:%s:%s:%d:%d:%s:%s",
                 marketplaceId, q, category, brand, minPrice, maxPrice, featured,
@@ -1207,8 +1213,8 @@ public class ProductServiceImpl implements ProductService {
             NativeQuery esQuery = NativeQuery.builder()
                     .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
                     .withPageable(esPageable)
-                    .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
-                    .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
+                    .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20).minDocCount(1))))
+                    .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20).minDocCount(1))))
                     .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
                             .field("price")
                             .ranges(rb -> rb.to(25.0))
@@ -1240,22 +1246,8 @@ public class ProductServiceImpl implements ProductService {
 
         } catch (Exception e) {
             log.warn("[CATALOG SEARCH] Elasticsearch unavailable: {}", e.getMessage());
-            boolean hasFilters = (q != null && !q.isBlank())
-                    || category != null || brand != null || vendorId != null
-                    || minPrice != null || maxPrice != null || featured != null;
-            if (hasFilters) {
-                throw new ServiceUnavaliableException("Search is temporarily unavailable. Please try again shortly.");
-            }
-            log.warn("[CATALOG SEARCH] Falling back to unfiltered database listing");
+            throw new ServiceUnavaliableException("Search is temporarily unavailable. Please try again shortly.");
         }
-
-        // --- JPA fallback (unfiltered, no active search filters) ---
-        Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
-        Map<UUID, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
-        Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
-        return new CatalogSearchResponse(
-                productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()), jpaPromoMap.get(p.getId()))),
-                new SearchFacets(List.of(), List.of(), List.of()));
         }, new TypeReference<CatalogSearchResponse>() {});
     }
 
