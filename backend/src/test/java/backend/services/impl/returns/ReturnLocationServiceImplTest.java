@@ -18,11 +18,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import backend.exceptions.http.ResourceNotFoundException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +117,82 @@ class ReturnLocationServiceImplTest {
         service.deleteReturnLocation(LOCATION_ID, COMPANY_ID, OWNER_ID);
 
         verify(locationRepository).delete(location);
+    }
+
+    @Test
+    void createReturnLocation_nonPrimary_doesNotClearExistingPrimary() {
+        when(companyAccessService.require(COMPANY_ID, OWNER_ID, CompanyCapability.FULFILL_ORDERS)).thenReturn(company());
+        when(locationRepository.save(any(CompanyReturnLocation.class))).thenAnswer(inv -> {
+            CompanyReturnLocation loc = inv.getArgument(0);
+            loc.setId(LOCATION_ID);
+            loc.setCreatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+            loc.setUpdatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+            return loc;
+        });
+
+        service.createReturnLocation(
+                COMPANY_ID,
+                OWNER_ID,
+                new CreateReturnLocationRequest("123 Warehouse Rd", "Toronto", "CA", "M5V1A1", "Secondary", false)
+        );
+
+        verify(locationRepository, never()).clearPrimaryForCompany(any());
+    }
+
+    @Test
+    void updateReturnLocation_notFound_throwsResourceNotFound() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.updateReturnLocation(LOCATION_ID, COMPANY_ID, OWNER_ID,
+                        new UpdateReturnLocationRequest(null, null, null, null, "Updated", null)));
+    }
+
+    @Test
+    void updateReturnLocation_setPrimaryFalse_unsetsPrimary() {
+        CompanyReturnLocation loc = location(true);
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(loc));
+        when(locationRepository.save(any(CompanyReturnLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnLocationResponse response = service.updateReturnLocation(
+                LOCATION_ID, COMPANY_ID, OWNER_ID,
+                new UpdateReturnLocationRequest(null, null, null, null, null, false));
+
+        assertFalse(response.primary());
+        verify(locationRepository, never()).clearPrimaryForCompany(any());
+    }
+
+    @Test
+    void updateReturnLocation_alreadyPrimary_settingPrimaryTrueDoesNotClear() {
+        CompanyReturnLocation loc = location(true); // already primary
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(loc));
+        when(locationRepository.save(any(CompanyReturnLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateReturnLocation(LOCATION_ID, COMPANY_ID, OWNER_ID,
+                new UpdateReturnLocationRequest(null, null, null, null, null, true));
+
+        verify(locationRepository, never()).clearPrimaryForCompany(any());
+    }
+
+    @Test
+    void updateReturnLocation_nullFields_onlyChangedFieldsUpdated() {
+        CompanyReturnLocation loc = location(false);
+        loc.setCity("OriginalCity");
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(loc));
+        when(locationRepository.save(any(CompanyReturnLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateReturnLocation(LOCATION_ID, COMPANY_ID, OWNER_ID,
+                new UpdateReturnLocationRequest(null, null, null, null, null, null));
+
+        assertEquals("OriginalCity", loc.getCity());
+    }
+
+    @Test
+    void deleteReturnLocation_notFound_throwsResourceNotFound() {
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.deleteReturnLocation(LOCATION_ID, COMPANY_ID, OWNER_ID));
     }
 
     private Company company() {

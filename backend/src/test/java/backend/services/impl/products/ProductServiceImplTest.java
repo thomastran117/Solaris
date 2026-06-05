@@ -21,12 +21,18 @@ import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
+import backend.dtos.responses.product.ProductAttributeResponse;
 import backend.models.core.Company;
 import backend.models.core.Product;
+import backend.models.core.ProductAttribute;
 import backend.models.core.ProductImage;
 import backend.models.core.ProductOption;
 import backend.models.core.ProductVariant;
+import backend.models.core.ProductChangeLog;
+import backend.models.enums.ChangeSource;
 import backend.models.enums.CompanyCapability;
+import backend.models.enums.ProductChangeType;
 import backend.models.enums.ProductStatus;
 import backend.repositories.BundleRepository;
 import backend.repositories.CollectionProductRepository;
@@ -1889,5 +1895,286 @@ class ProductServiceImplTest {
 
     private void assertNotNull(Object value) {
         if (value == null) throw new AssertionError("Expected non-null value but was null");
+    }
+
+    // =========================================================================
+    // getProductsByIds
+    // =========================================================================
+
+    @Test
+    void getProductsByIds_tooManyIds_throwsBadRequest() {
+        List<UUID> ids = new java.util.ArrayList<>();
+        for (int i = 0; i < 1001; i++) ids.add(UUID.randomUUID());
+        assertThrows(BadRequestException.class, () -> service.getProductsByIds(COMPANY_ID, ids));
+    }
+
+    @Test
+    void getProductsByIds_companyNotFound_throwsResourceNotFound() {
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class, () -> service.getProductsByIds(COMPANY_ID, List.of(PRODUCT_ID)));
+    }
+
+    @Test
+    void getProductsByIds_happyPath_returnsResponses() {
+        Product p = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(List.of(PRODUCT_ID), COMPANY_ID)).thenReturn(List.of(p));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        List<ProductResponse> result = service.getProductsByIds(COMPANY_ID, List.of(PRODUCT_ID));
+
+        assertEquals(1, result.size());
+        assertEquals(PRODUCT_ID, result.get(0).getId());
+    }
+
+    // =========================================================================
+    // getProductImages
+    // =========================================================================
+
+    @Test
+    void getProductImages_productNotFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.getProductImages(COMPANY_ID, PRODUCT_ID));
+    }
+
+    @Test
+    void getProductImages_happyPath_returnsImages() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductImage img = makeImage(IMAGE_ID, "http://img.example.com/1.jpg");
+        when(productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(img));
+
+        List<ProductImageResponse> result = service.getProductImages(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(IMAGE_ID, result.get(0).id());
+    }
+
+    // =========================================================================
+    // getProductOptions
+    // =========================================================================
+
+    @Test
+    void getProductOptions_happyPath_returnsOptions() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductOption opt = makeOption(OPTION_ID, "Size");
+        when(productOptionRepository.findAllByProductIdOrderByPositionAsc(PRODUCT_ID))
+                .thenReturn(List.of(opt));
+
+        List<ProductOptionResponse> result = service.getProductOptions(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(OPTION_ID, result.get(0).id());
+    }
+
+    // =========================================================================
+    // getProductVariants / getProductVariant
+    // =========================================================================
+
+    @Test
+    void getProductVariants_happyPath_returnsVariants() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductVariant v = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(v));
+
+        List<ProductVariantResponse> result = service.getProductVariants(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(VARIANT_ID, result.get(0).id());
+    }
+
+    @Test
+    void getProductVariant_happyPath_returnsVariant() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductVariant v = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.of(v));
+
+        ProductVariantResponse result = service.getProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID);
+
+        assertEquals(VARIANT_ID, result.id());
+    }
+
+    @Test
+    void getProductVariant_notFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID));
+    }
+
+    // =========================================================================
+    // getProductAttributes
+    // =========================================================================
+
+    @Test
+    void getProductAttributes_happyPath_returnsAttributes() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductAttribute attr = new ProductAttribute();
+        attr.setId(TestIds.uuid(90));
+        attr.setName("Material");
+        attr.setValue("Cotton");
+        attr.setDisplayOrder(0);
+        when(productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(attr));
+
+        List<ProductAttributeResponse> result =
+                service.getProductAttributes(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals("Material", result.get(0).name());
+    }
+
+    // =========================================================================
+    // getMarketplaceProduct
+    // =========================================================================
+
+    @Test
+    void getMarketplaceProduct_notFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID));
+    }
+
+    @Test
+    void getMarketplaceProduct_happyPath_returnsCatalogProduct() {
+        Product p = makeProduct();
+        p.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(p));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        MarketplaceCatalogProductResponse result =
+                service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID);
+
+        assertNotNull(result);
+        assertEquals(PRODUCT_ID, result.getId());
+    }
+
+    // =========================================================================
+    // revertProductChanges — additional paths
+    // =========================================================================
+
+    @Test
+    void revertProductChanges_versionConflict_throwsConflict() {
+        Product p = makeProduct();
+        p.setVersion(2L);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(TestIds.uuid(70)));
+        req.setExpectedVersion(1L);
+
+        assertThrows(ConflictException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_logEntryNotFound_throwsResourceNotFound() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(71);
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of()); // fewer than requested
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_stockField_throwsBadRequest() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(72);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setFieldName("stock");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(BadRequestException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_logEntryFromWrongProduct_throwsBadRequest() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(73);
+        Product otherProduct = makeProduct(TestIds.uuid(99));
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(otherProduct); // belongs to a different product
+        entry.setFieldName("name");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(BadRequestException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_happyPath_revertsProductNameField() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(74);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setFieldName("name");
+        entry.setOldValue("Old Name");
+        entry.setNewValue("New Name");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        ProductResponse result = service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        verify(productChangeLogger).logUpdate(any(), any(), eq(ChangeSource.REVERT), any());
     }
 }

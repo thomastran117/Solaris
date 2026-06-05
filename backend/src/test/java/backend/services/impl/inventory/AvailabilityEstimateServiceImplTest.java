@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -105,6 +106,132 @@ class AvailabilityEstimateServiceImplTest {
         assertNotNull(response.etaDaysMin());
         assertEquals(LocalDate.of(2026, 5, 19).plusDays(response.etaDaysMin()), response.etaDateMin());
         verify(cacheService).set(anyString(), anyString(), eq(300L));
+    }
+
+    @Test
+    void estimateForMarketplace_noStockedLocations_returnsOutOfStock() {
+        Product product = marketplaceProduct();
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(locationStockRepository.findStockedByProduct(PRODUCT_ID)).thenReturn(List.of());
+
+        AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
+                productRepository, locationStockRepository, cacheService, objectMapper)
+                .estimateForMarketplace(MARKETPLACE_ID, PRODUCT_ID, null, null, null);
+
+        assertEquals(false, response.inStock());
+        assertNull(response.nearestSource());
+    }
+
+    @Test
+    void estimateForMarketplace_noBuyerCoords_usesProductFallback() {
+        Product product = marketplaceProduct();
+        InventoryLocation warehouse = warehouseLocation();
+
+        LocationStock stock = new LocationStock();
+        stock.setLocation(warehouse);
+        stock.setProduct(product);
+        stock.setStock(10);
+
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(locationStockRepository.findStockedByProduct(PRODUCT_ID)).thenReturn(List.of(stock));
+
+        AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
+                productRepository, locationStockRepository, cacheService, objectMapper)
+                .estimateForMarketplace(MARKETPLACE_ID, PRODUCT_ID, null, null, null);
+
+        assertTrue(response.inStock());
+        assertNotNull(response.nearestSource());
+        // No buyer coords → no pickup
+        assertNull(response.pickup());
+    }
+
+    @Test
+    void estimateForMarketplace_locationNoCoords_usesFallbackShippingDays() {
+        Product product = marketplaceProduct();
+        InventoryLocation noCoordLoc = new InventoryLocation();
+        noCoordLoc.setId(TestIds.uuid(30));
+        noCoordLoc.setName("Mystery Warehouse");
+        noCoordLoc.setHandlingDays(0);
+        noCoordLoc.setType(LocationType.WAREHOUSE);
+        // latitude/longitude intentionally null
+
+        LocationStock stock = new LocationStock();
+        stock.setLocation(noCoordLoc);
+        stock.setProduct(product);
+        stock.setStock(3);
+
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
+                .thenReturn(List.of(stock));
+
+        AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
+                productRepository, locationStockRepository, cacheService, objectMapper)
+                .estimateForMarketplace(MARKETPLACE_ID, PRODUCT_ID, null, 43.0, -79.0);
+
+        assertTrue(response.inStock());
+        assertNotNull(response.etaDaysMin());
+    }
+
+    @Test
+    void estimateForMarketplace_byDistanceEmpty_fallsBackToFindStocked() {
+        Product product = marketplaceProduct();
+        InventoryLocation warehouse = warehouseLocation();
+        LocationStock stock = new LocationStock();
+        stock.setLocation(warehouse);
+        stock.setProduct(product);
+        stock.setStock(7);
+
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
+                .thenReturn(List.of()); // empty → falls back
+        when(locationStockRepository.findStockedByProduct(PRODUCT_ID)).thenReturn(List.of(stock));
+
+        AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
+                productRepository, locationStockRepository, cacheService, objectMapper)
+                .estimateForMarketplace(MARKETPLACE_ID, PRODUCT_ID, null, 43.0, -79.0);
+
+        assertTrue(response.inStock());
+    }
+
+    @Test
+    void estimateForMarketplace_warehouseLocationSkippedForPickup() {
+        Product product = marketplaceProduct();
+        // WAREHOUSE type → should not appear as pickup option
+        InventoryLocation warehouse = warehouseLocation();
+        warehouse.setLatitude(43.65);
+        warehouse.setLongitude(-79.38);
+
+        LocationStock stock = new LocationStock();
+        stock.setLocation(warehouse);
+        stock.setProduct(product);
+        stock.setStock(5);
+
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.65), eq(-79.38), any()))
+                .thenReturn(List.of(stock));
+
+        AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
+                productRepository, locationStockRepository, cacheService, objectMapper)
+                .estimateForMarketplace(MARKETPLACE_ID, PRODUCT_ID, null, 43.65, -79.38);
+
+        assertTrue(response.inStock());
+        assertNull(response.pickup());
+    }
+
+    private InventoryLocation warehouseLocation() {
+        InventoryLocation loc = new InventoryLocation();
+        loc.setId(TestIds.uuid(40));
+        loc.setName("Central Warehouse");
+        loc.setCity("Hamilton");
+        loc.setCountry("Canada");
+        loc.setHandlingDays(2);
+        loc.setType(LocationType.WAREHOUSE);
+        return loc;
     }
 
     private Product marketplaceProduct() {

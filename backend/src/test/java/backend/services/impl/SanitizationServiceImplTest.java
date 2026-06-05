@@ -1,10 +1,21 @@
 package backend.services.impl;
 
 import backend.dtos.requests.inventory.AdjustStockRequest;
+import backend.dtos.requests.inventory.BulkAdjustItem;
+import backend.dtos.requests.inventory.BulkAdjustRequest;
 import backend.dtos.requests.inventory.CreateLocationRequest;
 import backend.dtos.requests.inventory.CreateRestockRequest;
+import backend.dtos.requests.inventory.UpdateLocationRequest;
+import backend.dtos.requests.inventory.UpdateRestockRequest;
+import backend.dtos.requests.product.AddProductImageRequest;
+import backend.dtos.requests.product.BatchCreateProductsRequest;
+import backend.dtos.requests.product.CreateProductOptionRequest;
 import backend.dtos.requests.product.CreateProductRequest;
+import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.SetProductAttributesRequest;
+import backend.dtos.requests.product.UpdateProductOptionRequest;
+import backend.dtos.requests.product.UpdateProductRequest;
+import backend.dtos.requests.product.UpdateProductVariantRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -204,5 +215,264 @@ class SanitizationServiceImplTest {
         service.normalize((CreateProductRequest) null);
         service.normalize((CreateRestockRequest) null);
         service.normalize((CreateLocationRequest) null);
+    }
+
+    // ---- normalizeCode / normalizeCategory null pass-throughs ----
+
+    @Test
+    void normalizeCode_null_returnsNull() {
+        assertNull(service.normalizeCode(null));
+    }
+
+    @Test
+    void normalizeCategory_null_returnsNull() {
+        assertNull(service.normalizeCategory(null));
+    }
+
+    @Test
+    void normalizeText_emptyString_returnsEmpty() {
+        assertEquals("", service.normalizeText(""));
+    }
+
+    // ---- isSafeRichText null/blank pass-throughs ----
+
+    @Test
+    void isSafeRichText_null_returnsTrue() {
+        assertTrue(service.isSafeRichText(null));
+    }
+
+    @Test
+    void isSafeRichText_blank_returnsTrue() {
+        assertTrue(service.isSafeRichText("   "));
+    }
+
+    @Test
+    void isSafeRichText_controlCharsNotLineBreaks_returnsFalse() {
+        assertFalse(service.isSafeRichText("textcontrol"));
+    }
+
+    // ---- isSafeIdentifier null/blank ----
+
+    @Test
+    void isSafeIdentifier_null_returnsTrue() {
+        assertTrue(service.isSafeIdentifier(null));
+    }
+
+    @Test
+    void isSafeIdentifier_blank_returnsTrue() {
+        assertTrue(service.isSafeIdentifier("   "));
+    }
+
+    // ---- containsProfanity ----
+
+    @Test
+    void containsProfanity_null_returnsFalse() {
+        assertFalse(service.containsProfanity(null));
+    }
+
+    @Test
+    void containsProfanity_blank_returnsFalse() {
+        assertFalse(service.containsProfanity("  "));
+    }
+
+    @Test
+    void containsProfanity_clean_returnsFalse() {
+        assertFalse(service.containsProfanity("perfectly fine text"));
+    }
+
+    // ---- normalize overloads not yet covered ----
+
+    @Test
+    void normalize_UpdateProductRequest_normalizesAllFields() {
+        UpdateProductRequest r = new UpdateProductRequest();
+        r.setName("  Widget   ");
+        r.setSku(" sku-2 ");
+        r.setCurrency("eur");
+        r.setCategory(" Furniture ");
+        r.setBrand("  Ikea  ");
+        r.setTags(" tag1 ");
+        r.setWeightUnit(" lb ");
+
+        service.normalize(r);
+
+        assertEquals("Widget", r.getName());
+        assertEquals("SKU-2", r.getSku());
+        assertEquals("EUR", r.getCurrency());
+        assertEquals("furniture", r.getCategory());
+        assertEquals("Ikea", r.getBrand());
+    }
+
+    @Test
+    void normalize_UpdateProductRequest_null_isNoop() {
+        service.normalize((UpdateProductRequest) null);
+    }
+
+    @Test
+    void normalize_BatchCreateProductsRequest_normalizesEach() {
+        CreateProductRequest p1 = new CreateProductRequest();
+        p1.setName("  Chair   ");
+        BatchCreateProductsRequest r = new BatchCreateProductsRequest();
+        r.setProducts(List.of(p1));
+
+        service.normalize(r);
+
+        assertEquals("Chair", r.getProducts().get(0).getName());
+    }
+
+    @Test
+    void normalize_BatchCreateProductsRequest_nullProducts_isNoop() {
+        BatchCreateProductsRequest r = new BatchCreateProductsRequest();
+        r.setProducts(null);
+        service.normalize(r);
+    }
+
+    @Test
+    void normalize_BatchCreateProductsRequest_null_isNoop() {
+        service.normalize((BatchCreateProductsRequest) null);
+    }
+
+    @Test
+    void normalize_CreateProductVariantRequest_normalizesFields() {
+        CreateProductVariantRequest r = new CreateProductVariantRequest();
+        r.setSku(" var-sku ");
+        r.setOption1("  Red  ");
+        r.setOption2("  Large  ");
+        r.setOption3("  Cotton  ");
+
+        service.normalize(r);
+
+        assertEquals("VAR-SKU", r.getSku());
+        assertEquals("Red", r.getOption1());
+        assertEquals("Large", r.getOption2());
+        assertEquals("Cotton", r.getOption3());
+    }
+
+    @Test
+    void normalize_CreateProductVariantRequest_null_isNoop() {
+        service.normalize((CreateProductVariantRequest) null);
+    }
+
+    @Test
+    void normalize_UpdateProductVariantRequest_normalizesFields() {
+        UpdateProductVariantRequest r = new UpdateProductVariantRequest();
+        r.setSku(" upd-sku ");
+        r.setOption1("  Blue  ");
+
+        service.normalize(r);
+
+        assertEquals("UPD-SKU", r.getSku());
+        assertEquals("Blue", r.getOption1());
+    }
+
+    @Test
+    void normalize_UpdateProductVariantRequest_null_isNoop() {
+        service.normalize((UpdateProductVariantRequest) null);
+    }
+
+    @Test
+    void normalize_CreateProductOptionRequest_normalizesName() {
+        CreateProductOptionRequest r = new CreateProductOptionRequest();
+        r.setName("  Size  ");
+
+        service.normalize(r);
+
+        assertEquals("Size", r.getName());
+    }
+
+    @Test
+    void normalize_CreateProductOptionRequest_null_isNoop() {
+        service.normalize((CreateProductOptionRequest) null);
+    }
+
+    @Test
+    void normalize_UpdateProductOptionRequest_normalizesName() {
+        UpdateProductOptionRequest r = new UpdateProductOptionRequest();
+        r.setName("  Colour  ");
+
+        service.normalize(r);
+
+        assertEquals("Colour", r.getName());
+    }
+
+    @Test
+    void normalize_UpdateProductOptionRequest_null_isNoop() {
+        service.normalize((UpdateProductOptionRequest) null);
+    }
+
+    @Test
+    void normalize_AddProductImageRequest_normalizesUrl() {
+        AddProductImageRequest r = new AddProductImageRequest();
+        r.setImageUrl("  https://cdn/img.jpg  ");
+
+        service.normalize(r);
+
+        assertEquals("https://cdn/img.jpg", r.getImageUrl());
+    }
+
+    @Test
+    void normalize_AddProductImageRequest_null_isNoop() {
+        service.normalize((AddProductImageRequest) null);
+    }
+
+    @Test
+    void normalize_UpdateRestockRequest_trimsNote() {
+        UpdateRestockRequest r = new UpdateRestockRequest();
+        r.setSupplierNote("  updated note  ");
+
+        service.normalize(r);
+
+        assertEquals("updated note", r.getSupplierNote());
+    }
+
+    @Test
+    void normalize_UpdateRestockRequest_null_isNoop() {
+        service.normalize((UpdateRestockRequest) null);
+    }
+
+    @Test
+    void normalize_BulkAdjustRequest_normalizesEachItem() {
+        BulkAdjustItem item = new BulkAdjustItem();
+        item.setNote("  bulk note  ");
+        BulkAdjustRequest r = new BulkAdjustRequest();
+        r.setItems(List.of(item));
+
+        service.normalize(r);
+
+        assertEquals("bulk note", r.getItems().get(0).getNote());
+    }
+
+    @Test
+    void normalize_BulkAdjustRequest_nullItems_isNoop() {
+        BulkAdjustRequest r = new BulkAdjustRequest();
+        r.setItems(null);
+        service.normalize(r);
+    }
+
+    @Test
+    void normalize_BulkAdjustRequest_null_isNoop() {
+        service.normalize((BulkAdjustRequest) null);
+    }
+
+    @Test
+    void normalize_UpdateLocationRequest_normalizesFields() {
+        UpdateLocationRequest r = new UpdateLocationRequest();
+        r.setName("  Depot  ");
+        r.setCode(" dpt-2 ");
+        r.setCity(" Melbourne ");
+        r.setCountry(" Australia ");
+        r.setAddress("  5 Dock St  ");
+
+        service.normalize(r);
+
+        assertEquals("Depot", r.getName());
+        assertEquals("DPT-2", r.getCode());
+        assertEquals("Melbourne", r.getCity());
+        assertEquals("Australia", r.getCountry());
+        assertEquals("5 Dock St", r.getAddress());
+    }
+
+    @Test
+    void normalize_UpdateLocationRequest_null_isNoop() {
+        service.normalize((UpdateLocationRequest) null);
     }
 }

@@ -168,6 +168,77 @@ class IndexingRetrySchedulerTest {
         scheduler.surfaceExhaustedFailures(); // logs a warn, must not throw
     }
 
+    @Test
+    void retryFailedIndexing_bundleIndexSuccess_deletesFailureRecord() {
+        IndexingFailure f = failure("BUNDLE", "INDEX", 0);
+        when(failureRepository.findAllByStatusAndAttemptsLessThan(any(), anyInt())).thenReturn(List.of(f));
+
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(DOC_ID);
+        when(bundleRepository.findById(DOC_ID)).thenReturn(Optional.of(bundle));
+
+        scheduler.retryFailedIndexing();
+
+        verify(productIndexingService).indexBundle(bundle);
+        verify(failureRepository).delete(f);
+    }
+
+    @Test
+    void retryFailedIndexing_bundleDeleteSuccess_deletesFailureRecord() {
+        IndexingFailure f = failure("BUNDLE", "DELETE", 0);
+        when(failureRepository.findAllByStatusAndAttemptsLessThan(any(), anyInt())).thenReturn(List.of(f));
+
+        scheduler.retryFailedIndexing();
+
+        verify(productIndexingService).removeBundle(DOC_ID);
+        verify(failureRepository).delete(f);
+    }
+
+    @Test
+    void retryFailedIndexing_reviewDeleteSuccess_deletesFailureRecord() {
+        IndexingFailure f = failure("REVIEW", "DELETE", 0);
+        when(failureRepository.findAllByStatusAndAttemptsLessThan(any(), anyInt())).thenReturn(List.of(f));
+
+        scheduler.retryFailedIndexing();
+
+        verify(reviewIndexingService).removeReview(DOC_ID);
+        verify(failureRepository).delete(f);
+    }
+
+    @Test
+    void retryFailedIndexing_failureAfterMaxAttempts_setsExhaustedStatus() {
+        IndexingFailure f = failure("REVIEW", "INDEX", 4); // will become 5 = MAX_ATTEMPTS
+        when(failureRepository.findAllByStatusAndAttemptsLessThan(any(), anyInt())).thenReturn(List.of(f));
+        ProductReview review = new ProductReview();
+        review.setId(DOC_ID);
+        when(reviewRepository.findById(DOC_ID)).thenReturn(Optional.of(review));
+        when(mediaRepository.countByReviewId(DOC_ID)).thenReturn(0L);
+        // Throw so attempt() returns false
+        org.mockito.Mockito.doThrow(new RuntimeException("ES down"))
+                .when(reviewIndexingService).indexReview(any(), any(Boolean.class));
+
+        scheduler.retryFailedIndexing();
+
+        assertEquals(IndexingFailureStatus.EXHAUSTED, f.getStatus());
+        verify(failureRepository).save(f);
+        verify(failureRepository, never()).delete(any());
+    }
+
+    @Test
+    void retryFailedIndexing_reviewIndexWithMedia_passesHasMediaTrue() {
+        IndexingFailure f = failure("REVIEW", "INDEX", 0);
+        when(failureRepository.findAllByStatusAndAttemptsLessThan(any(), anyInt())).thenReturn(List.of(f));
+        ProductReview review = new ProductReview();
+        review.setId(DOC_ID);
+        when(reviewRepository.findById(DOC_ID)).thenReturn(Optional.of(review));
+        when(mediaRepository.countByReviewId(DOC_ID)).thenReturn(2L); // hasMedia = true
+
+        scheduler.retryFailedIndexing();
+
+        verify(reviewIndexingService).indexReview(eq(review), eq(true));
+        verify(failureRepository).delete(f);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private IndexingFailure failure(String documentType, String operation, int attempts) {

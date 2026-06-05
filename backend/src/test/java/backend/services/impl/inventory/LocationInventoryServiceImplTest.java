@@ -29,7 +29,9 @@ import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import backend.models.core.ProductVariant;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -469,5 +471,169 @@ class LocationInventoryServiceImplTest {
         service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
 
         verify(adjustmentRepository).save(any());
+    }
+
+    // ─── getProductLocationStocks ─────────────────────────────────────────────
+
+    @Test
+    void getProductLocationStocks_returnsAllEntriesForProduct() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product()));
+        LocationStock ls = locationStock(location(), product(), 5, null);
+        when(locationStockRepository.findAllByProductIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(List.of(ls));
+
+        List<LocationStockResponse> result = service.getProductLocationStocks(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(5, result.get(0).getStock());
+    }
+
+    @Test
+    void getProductLocationStocks_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getProductLocationStocks(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+    }
+
+    // ─── setLocationStock — stock increase (delta > 0, no alert) ─────────────
+
+    @Test
+    void setLocationStock_positiveIncrease_noAlert() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock existing = locationStock(location, product, 5, null);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(existing));
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(15);
+
+        LocationStockResponse resp = service.setLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        verify(locationStockRepository).setStock(LOCATION_STOCK_ID, 15, null);
+        verify(adjustmentRepository).save(any());
+        // no alert for positive delta
+        verify(stockAlertService, org.mockito.Mockito.never()).checkAndAlertLocation(
+                any(), any(), any(), any(), any(), anyInt(), any());
+        assertEquals(15, resp.getStock());
+    }
+
+    // ─── setLocationStock — no delta (same value) ─────────────────────────────
+
+    @Test
+    void setLocationStock_sameDelta_noAdjustmentSaved() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock existing = locationStock(location, product, 10, null);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(existing));
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(10); // same as current
+
+        service.setLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        verify(adjustmentRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    // ─── adjustLocationStock — negative delta triggers alert ─────────────────
+
+    @Test
+    void adjustLocationStock_negativeDelta_triggersAlert() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock ls = locationStock(location, product, 10, 3);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(-8))).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-8);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        verify(stockAlertService).checkAndAlertLocation(
+                LOCATION_STOCK_ID, "Toronto Warehouse", PRODUCT_ID, "Desk", null, 2, 3);
+    }
+
+    // ─── updateLocation — code change, no conflict ────────────────────────────
+
+    @Test
+    void updateLocation_codeChangeNoConflict_updatesCode() {
+        InventoryLocation existing = location();
+        existing.setCode("TOR-1");
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+        when(locationRepository.existsByCodeAndCompanyIdAndIdNot("VAN-2", COMPANY_ID, LOCATION_ID)).thenReturn(false);
+        when(locationRepository.save(any(InventoryLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateLocationRequest req = new UpdateLocationRequest();
+        req.setCode("VAN-2");
+
+        service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, req);
+
+        assertEquals("VAN-2", existing.getCode());
+    }
+
+    // ─── setLocationStock with variant ────────────────────────────────────────
+
+    private static final UUID VARIANT_ID = TestIds.uuid(10);
+
+    @Test
+    void setLocationStock_withVariant_createsVariantStock() {
+        InventoryLocation location = location();
+        Product product = product();
+        ProductVariant variant = variant();
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, VARIANT_ID))
+                .thenReturn(Optional.empty());
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(variantRepository.getReferenceById(VARIANT_ID)).thenReturn(variant);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+        when(locationStockRepository.save(any(LocationStock.class))).thenAnswer(inv -> {
+            LocationStock ls = inv.getArgument(0);
+            ls.setId(TestIds.uuid(99));
+            ls.setVariant(variant);
+            return ls;
+        });
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(7);
+
+        LocationStockResponse resp = service.setLocationStock(
+                COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, VARIANT_ID);
+
+        assertNotNull(resp);
+        verify(variantRepository).findByIdAndProductId(VARIANT_ID, PRODUCT_ID);
+        verify(locationStockRepository).save(any(LocationStock.class));
+    }
+
+    private ProductVariant variant() {
+        ProductVariant v = new ProductVariant();
+        v.setId(VARIANT_ID);
+        v.setProduct(product());
+        v.setSku("DESK-BLACK");
+        return v;
     }
 }

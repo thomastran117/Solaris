@@ -74,6 +74,20 @@ class ProfileServiceImplTest {
     }
 
     @Test
+    void updateProfile_allFieldsNonNull_updatesAll() {
+        User user = user();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateProfile(USER_ID, "Sam", "Lee", "+1 555 7777", "99 Oak Ave");
+
+        assertEquals("Sam", user.getFirstName());
+        assertEquals("Lee", user.getLastName());
+        assertEquals("+1 555 7777", user.getPhoneNumber());
+        assertEquals("99 Oak Ave", user.getAddress());
+    }
+
+    @Test
     void updateProfile_missingUserThrowsNotFound() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 

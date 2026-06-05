@@ -457,4 +457,260 @@ class InventoryServiceImplTest {
 
         assertEquals(1, result.size());
     }
+
+    @Test
+    void adjustStock_lockNotAcquired_throwsConflict() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(5);
+        req.setReason(AdjustmentReason.RESTOCK);
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.adjustStock(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void adjustStock_zeroRowsReturned_throwsBadRequest() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 3);
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(productRepository.adjustStock(PRODUCT_ID, -10)).thenReturn(0);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-10);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertThrows(BadRequestException.class, () ->
+                service.adjustStock(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void adjustStock_negativeDelta_triggersLowStockAlert() {
+        Product before = product(PRODUCT_ID, "Desk", "DESK-1", 10);
+        before.setLowStockThreshold(3);
+        Product after = product(PRODUCT_ID, "Desk", "DESK-1", 2);
+        after.setLowStockThreshold(3);
+
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(before), Optional.of(after));
+        when(productRepository.adjustStock(PRODUCT_ID, -8)).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(before);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user(OWNER_ID));
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-8);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        service.adjustStock(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        verify(stockAlertService).checkAndAlert(PRODUCT_ID, "Desk", null, null, 2, 3);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void bulkAdjust_lockNotAcquired_throwsConflict() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        BulkAdjustRequest request = new BulkAdjustRequest();
+        request.setItems(List.of(bulkItem(PRODUCT_ID, 2, AdjustmentReason.RESTOCK, "note")));
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.bulkAdjust(COMPANY_ID, OWNER_ID, request));
+    }
+
+    @Test
+    void bulkAdjust_productNotFoundInMap_throwsBadRequest() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID))).thenReturn(List.of());
+
+        BulkAdjustRequest request = new BulkAdjustRequest();
+        request.setItems(List.of(bulkItem(PRODUCT_ID, 2, AdjustmentReason.RESTOCK, "note")));
+
+        assertThrows(BadRequestException.class, () ->
+                service.bulkAdjust(COMPANY_ID, OWNER_ID, request));
+    }
+
+    @Test
+    void bulkAdjust_negativeResultOnAdjust_throwsBadRequest() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 2);
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID))).thenReturn(List.of(prod));
+        when(productRepository.adjustStock(PRODUCT_ID, -5)).thenReturn(0);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(prod);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user(OWNER_ID));
+
+        BulkAdjustRequest request = new BulkAdjustRequest();
+        request.setItems(List.of(bulkItem(PRODUCT_ID, -5, AdjustmentReason.MANUAL_ADJUSTMENT, "note")));
+
+        assertThrows(BadRequestException.class, () ->
+                service.bulkAdjust(COMPANY_ID, OWNER_ID, request));
+    }
+
+    @Test
+    void updateSettings_happyPath_savesProduct() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 10);
+        prod.setAutoRestockEnabled(false);
+        prod.setAutoRestockQty(null);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateInventorySettingsRequest req = new UpdateInventorySettingsRequest();
+        req.setLowStockThreshold(5);
+        req.setMaxStock(100);
+
+        InventoryItemResponse resp = service.updateSettings(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(resp);
+        verify(productRepository).save(prod);
+    }
+
+    @Test
+    void updateSettings_alreadyEnabled_withExistingQty_passes() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 10);
+        prod.setAutoRestockEnabled(true);
+        prod.setAutoRestockQty(20);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateInventorySettingsRequest req = new UpdateInventorySettingsRequest();
+        req.setLowStockThreshold(3);
+
+        InventoryItemResponse resp = service.updateSettings(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(resp);
+        verify(productRepository).save(prod);
+    }
+
+    @Test
+    void adjustVariantStock_lockNotAcquired_throwsConflict() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 12);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(3);
+        req.setReason(AdjustmentReason.RESTOCK);
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.adjustVariantStock(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void adjustVariantStock_untrackedVariant_throwsBadRequest() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 12);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(VARIANT_ID);
+        variant.setProduct(prod);
+        variant.setSku("DESK-1-BLACK");
+        variant.setStock(null);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(5);
+        req.setReason(AdjustmentReason.RESTOCK);
+
+        assertThrows(BadRequestException.class, () ->
+                service.adjustVariantStock(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void adjustVariantStock_negativeResult_throwsBadRequest() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 12);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(VARIANT_ID);
+        variant.setProduct(prod);
+        variant.setSku("DESK-1-BLACK");
+        variant.setStock(2);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(variantRepository.adjustStock(VARIANT_ID, -5)).thenReturn(0);
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-5);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertThrows(BadRequestException.class, () ->
+                service.adjustVariantStock(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void adjustVariantStock_negativeDelta_triggersAlert() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 12);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(VARIANT_ID);
+        variant.setProduct(prod);
+        variant.setSku("DESK-1-BLACK");
+        variant.setStock(10);
+        variant.setLowStockThreshold(2);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(variantRepository.adjustStock(VARIANT_ID, -8)).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(prod);
+        when(variantRepository.getReferenceById(VARIANT_ID)).thenReturn(variant);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user(OWNER_ID));
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(-8);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        service.adjustVariantStock(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req);
+
+        verify(stockAlertService).checkAndAlert(PRODUCT_ID, "Desk", VARIANT_ID, "DESK-1-BLACK", 2, 2);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void getAdjustmentHistory_returnsPageWithMappedAdjustments() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 5);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+
+        InventoryAdjustment adj = new InventoryAdjustment();
+        adj.setId(TestIds.uuid(99));
+        adj.setProduct(prod);
+        adj.setAdjustedBy(user(OWNER_ID));
+        adj.setDelta(5);
+        adj.setPreviousStock(0);
+        adj.setNewStock(5);
+        adj.setReason(AdjustmentReason.RESTOCK);
+        adj.setNote("restock");
+        adj.setCreatedAt(Instant.parse("2026-05-20T00:00:00Z"));
+
+        when(adjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(adj)));
+
+        var result = service.getAdjustmentHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(5, result.getItems().get(0).getDelta());
+    }
+
+    @Test
+    void getInventoryItem_outOfStock_stockStatusIsOutOfStock() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(product(PRODUCT_ID, "Desk", "DESK-1", 0)));
+
+        InventoryItemResponse resp = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals("OUT_OF_STOCK", resp.getStockStatus());
+    }
+
+    @Test
+    void getInventoryItem_percentThresholdLow_stockStatusIsLow() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 5);
+        prod.setMaxStock(100);
+        prod.setLowStockThresholdPercent(10);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+
+        InventoryItemResponse resp = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals("LOW_STOCK", resp.getStockStatus());
+    }
 }

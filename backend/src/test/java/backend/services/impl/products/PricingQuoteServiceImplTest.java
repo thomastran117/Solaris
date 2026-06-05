@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -179,6 +180,64 @@ class PricingQuoteServiceImplTest {
         PricingQuoteResponse resp = service.quote(req, null);
 
         assert resp.currency().equals("USD");
+    }
+
+    @Test
+    void quote_bundleNotListed_throwsBadRequest() {
+        PricingQuoteRequest.Item item = new PricingQuoteRequest.Item();
+        item.setBundleId(BUNDLE_ID);
+        item.setQuantity(1);
+        PricingQuoteRequest req = request(item);
+
+        ProductBundle bundle = bundle();
+        bundle.setListed(false); // active but not listed
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(bundle));
+
+        assertThrows(BadRequestException.class, () -> service.quote(req, null));
+    }
+
+    @Test
+    void quote_variantNotFound_throwsResourceNotFound() {
+        PricingQuoteRequest req = request(productItem(PRODUCT_ID, VARIANT_ID));
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product()));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.quote(req, null));
+    }
+
+    @Test
+    void quote_nullItems_throwsBadRequest() {
+        PricingQuoteRequest req = new PricingQuoteRequest();
+        req.setItems(null);
+
+        assertThrows(BadRequestException.class, () -> service.quote(req, null));
+    }
+
+    @Test
+    void quote_bundleHappyPath_returnsResponse() {
+        PricingQuoteRequest.Item item = new PricingQuoteRequest.Item();
+        item.setBundleId(BUNDLE_ID);
+        item.setQuantity(2);
+        PricingQuoteRequest req = request(item);
+
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(bundle()));
+        when(pricingEngine.quote(any())).thenReturn(emptyResult());
+
+        PricingQuoteResponse resp = service.quote(req, null);
+
+        assertNotNull(resp);
+        verify(bundleRepository).findById(BUNDLE_ID);
+    }
+
+    @Test
+    void quote_productNotListed_throwsBadRequest() {
+        PricingQuoteRequest req = request(productItem(PRODUCT_ID, null));
+
+        Product product = product();
+        product.setListed(false);
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product));
+
+        assertThrows(BadRequestException.class, () -> service.quote(req, null));
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

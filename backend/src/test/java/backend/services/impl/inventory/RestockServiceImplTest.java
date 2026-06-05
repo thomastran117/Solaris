@@ -303,6 +303,155 @@ class RestockServiceImplTest {
                 service.deleteRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID));
     }
 
+    @Test
+    void listRestockRequests_withProductFilter_queriesByProduct() {
+        when(restockRepository.findAllByCompanyIdAndProductId(eq(COMPANY_ID), eq(PRODUCT_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        service.listRestockRequests(COMPANY_ID, OWNER_ID, null, PRODUCT_ID, 0, 10);
+
+        verify(restockRepository).findAllByCompanyIdAndProductId(eq(COMPANY_ID), eq(PRODUCT_ID), any());
+    }
+
+    @Test
+    void listRestockRequests_withBothFilters_queriesByStatusAndProduct() {
+        when(restockRepository.findAllByCompanyIdAndStatusAndProductId(eq(COMPANY_ID), eq(RestockStatus.PENDING), eq(PRODUCT_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        service.listRestockRequests(COMPANY_ID, OWNER_ID, RestockStatus.PENDING, PRODUCT_ID, 0, 10);
+
+        verify(restockRepository).findAllByCompanyIdAndStatusAndProductId(eq(COMPANY_ID), eq(RestockStatus.PENDING), eq(PRODUCT_ID), any());
+    }
+
+    @Test
+    void updateRestockRequest_notFound_throwsResourceNotFoundException() {
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.IN_TRANSIT);
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateRestockRequest_pendingToInTransit_succeeds() {
+        RestockRequest rr = restockRequest(RestockStatus.PENDING, 10);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.IN_TRANSIT);
+
+        RestockRequestResponse resp = service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req);
+
+        assertEquals("IN_TRANSIT", resp.getStatus());
+    }
+
+    @Test
+    void updateRestockRequest_pendingToCancelled_succeeds() {
+        RestockRequest rr = restockRequest(RestockStatus.PENDING, 10);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.CANCELLED);
+
+        RestockRequestResponse resp = service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req);
+
+        assertEquals("CANCELLED", resp.getStatus());
+    }
+
+    @Test
+    void updateRestockRequest_inTransitToCancelled_succeeds() {
+        RestockRequest rr = restockRequest(RestockStatus.IN_TRANSIT, 10);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.CANCELLED);
+
+        RestockRequestResponse resp = service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req);
+
+        assertEquals("CANCELLED", resp.getStatus());
+    }
+
+    @Test
+    void updateRestockRequest_receivedQtyExceedsRequested_throws() {
+        RestockRequest rr = restockRequest(RestockStatus.IN_TRANSIT, 5);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.RECEIVED);
+        req.setReceivedQty(10); // exceeds requested qty of 5
+
+        assertThrows(backend.exceptions.http.BadRequestException.class, () ->
+                service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateRestockRequest_receivedQtyZero_throws() {
+        RestockRequest rr = restockRequest(RestockStatus.IN_TRANSIT, 5);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.RECEIVED);
+        req.setReceivedQty(0);
+
+        assertThrows(backend.exceptions.http.BadRequestException.class, () ->
+                service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateRestockRequest_stockLockNotAcquired_throwsConflict() {
+        RestockRequest rr = restockRequest(RestockStatus.IN_TRANSIT, 5);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.RECEIVED);
+        req.setReceivedQty(5);
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateRestockRequest_noStatusChange_updatesFieldsOnly() {
+        RestockRequest rr = restockRequest(RestockStatus.PENDING, 10);
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setSupplierNote("Delayed shipment");
+        req.setExpectedArrivalDate(LocalDate.of(2026, 7, 1));
+
+        RestockRequestResponse resp = service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req);
+
+        assertEquals("PENDING", resp.getStatus());
+        assertEquals("Delayed shipment", rr.getSupplierNote());
+    }
+
+    @Test
+    void updateRestockRequest_receivedTransitionWithVariant_adjustsVariantStock() {
+        RestockRequest rr = restockRequest(RestockStatus.IN_TRANSIT, 5);
+        rr.setVariant(variant());
+
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(variantRepository.findById(VARIANT_ID)).thenReturn(Optional.of(variant()))
+                .thenReturn(Optional.of(variant()));
+        when(variantRepository.adjustStock(VARIANT_ID, 5)).thenReturn(1);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        UpdateRestockRequest req = new UpdateRestockRequest();
+        req.setStatus(RestockStatus.RECEIVED);
+        req.setReceivedQty(5);
+
+        RestockRequestResponse resp = service.updateRestockRequest(COMPANY_ID, RESTOCK_ID, OWNER_ID, req);
+
+        assertEquals("RECEIVED", resp.getStatus());
+        verify(variantRepository).adjustStock(VARIANT_ID, 5);
+    }
+
     private static void assertNotNull(Object v) {
         if (v == null) throw new AssertionError("Expected non-null");
     }

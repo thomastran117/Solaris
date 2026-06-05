@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -201,6 +202,76 @@ class CompanyAnalyticsServiceImplTest {
         assertEquals(pid2, resp.products().get(0).productId());
         assertEquals(1, resp.products().get(0).revenueRank());
         assertEquals(2, resp.products().get(1).revenueRank());
+    }
+
+    // ─── getCategorySales – cache hit ─────────────────────────────────────────
+
+    @Test
+    void getCategorySales_cacheHit_doesNotCallRepository() throws Exception {
+        CategorySalesResponse cached = new CategorySalesResponse(COMPANY_ID, 30, List.of());
+        when(cacheService.get(anyString())).thenReturn(mapper.writeValueAsString(cached));
+
+        service.getCategorySales(COMPANY_ID, OWNER_ID, 30);
+
+        verify(analyticsRepository, never()).getCategorySales(any(), any(), any());
+    }
+
+    // ─── getSlowMovers – cache hit ────────────────────────────────────────────
+
+    @Test
+    void getSlowMovers_cacheHit_doesNotCallRepository() throws Exception {
+        SlowMoversResponse cached = new SlowMoversResponse(COMPANY_ID, 90, List.of());
+        when(cacheService.get(anyString())).thenReturn(mapper.writeValueAsString(cached));
+
+        service.getSlowMovers(COMPANY_ID, OWNER_ID, 90);
+
+        verify(analyticsRepository, never()).getSlowMovers(any(), any(), anyDouble(), anyDouble(), anyInt());
+    }
+
+    // ─── getProductPerformance – cache hit ────────────────────────────────────
+
+    @Test
+    void getProductPerformance_cacheHit_doesNotCallRepository() throws Exception {
+        ProductPerformanceResponse cached = new ProductPerformanceResponse(COMPANY_ID, 30, Instant.now(), List.of());
+        when(cacheService.get(anyString())).thenReturn(mapper.writeValueAsString(cached));
+
+        service.getProductPerformance(COMPANY_ID, OWNER_ID, 30);
+
+        verify(productRepository, never()).findTopByRevenue(any(), anyInt(), any(), any());
+    }
+
+    // ─── getProductPerformance – prior data exists ────────────────────────────
+
+    @Test
+    void getProductPerformance_productInBothPeriods_computesGrowth() {
+        when(cacheService.get(anyString())).thenReturn(null);
+
+        UUID pid = TestIds.uuid(30);
+        ProductSalesProjection cur   = productSalesRow(pid, "Widget", "SKU1", new BigDecimal("120.00"), 12L);
+        ProductSalesProjection prior = productSalesRow(pid, "Widget", "SKU1", new BigDecimal("100.00"), 10L);
+        when(productRepository.findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any()))
+                .thenReturn(List.of(cur))
+                .thenReturn(List.of(prior));
+
+        ProductPerformanceResponse resp = service.getProductPerformance(COMPANY_ID, OWNER_ID, 30);
+
+        assertEquals(1, resp.products().size());
+        assertEquals(20.0, resp.products().get(0).revenueGrowthPercent(), 0.1);  // (120-100)/100 * 100
+        assertEquals(20.0, resp.products().get(0).unitsGrowthPercent(), 0.1);    // (12-10)/10 * 100
+    }
+
+    // ─── toCache throws exception (coverage of catch block) ───────────────────
+
+    @Test
+    void getRevenueSummary_cacheWriteThrows_stillReturnsData() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        when(analyticsRepository.getDailyRevenue(eq(COMPANY_ID), any(), any())).thenReturn(List.of());
+        org.mockito.Mockito.doThrow(new RuntimeException("Redis write failed"))
+                .when(cacheService).set(anyString(), anyString(), anyLong());
+
+        CompanyRevenueSummaryResponse resp = service.getRevenueSummary(COMPANY_ID, OWNER_ID, 30);
+
+        assertNotNull(resp);
     }
 
     // ─── precomputeAll ────────────────────────────────────────────────────────

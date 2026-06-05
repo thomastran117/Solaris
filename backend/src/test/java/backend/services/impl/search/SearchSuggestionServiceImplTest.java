@@ -220,6 +220,15 @@ class SearchSuggestionServiceImplTest {
         assertEquals(3, result.products().size());
     }
 
+    @Test
+    void getSuggestions_onlySpecialChars_returnsEmptyAfterSanitization() {
+        // After stripping Lucene operators the sanitized query is blank
+        SearchSuggestionsResponse result = service.getSuggestions(MARKETPLACE_ID, "()", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
+    }
+
     // ─── getCompanySuggestions ────────────────────────────────────────────────
 
     @Test
@@ -305,6 +314,22 @@ class SearchSuggestionServiceImplTest {
         assertEquals(new BigDecimal("999.00"), s.price());
         assertEquals(new BigDecimal("899.00"), s.discountedPrice());
         assertEquals("https://cdn/lx.jpg", s.thumbnailUrl());
+    }
+
+    @Test
+    void getCompanySuggestions_onlySpecialChars_returnsEmptyAfterSanitization() {
+        SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "[]*?", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
+    }
+
+    @Test
+    void getCompanySuggestions_blankQuery_returnsEmptyImmediately() {
+        SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "  ", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
     }
 
     @Test

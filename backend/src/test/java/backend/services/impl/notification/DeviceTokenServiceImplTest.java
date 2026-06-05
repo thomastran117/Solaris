@@ -112,6 +112,82 @@ class DeviceTokenServiceImplTest {
         verify(userDeviceRepository, never()).save(any());
     }
 
+    @Test
+    void revokeToken_noDevices_doesNothing() {
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of());
+        service.revokeToken(USER_ID, FCM_TOKEN);
+        verify(userDeviceRepository, never()).save(any());
+    }
+
+    @Test
+    void registerToken_iosAlreadyRegistered_returnsEarly() {
+        UserDevice device = emptyDevice();
+        device.setApnsToken(APNS_TOKEN);
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of(device));
+
+        service.registerToken(USER_ID, "IOS", APNS_TOKEN);
+
+        verify(userDeviceRepository, never()).save(any());
+    }
+
+    @Test
+    void registerToken_noDevices_logsWarnAndDoesNothing() {
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of());
+
+        service.registerToken(USER_ID, "ANDROID", FCM_TOKEN);
+
+        verify(userDeviceRepository, never()).save(any());
+    }
+
+    @Test
+    void registerToken_allDevicesHaveTokens_iosFallbackToFirstDevice() {
+        UserDevice device = emptyDevice();
+        device.setApnsToken("existing-apns");
+        device.setFcmToken("existing-fcm");
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of(device));
+
+        service.registerToken(USER_ID, "IOS", APNS_TOKEN);
+
+        // Falls through loop (both tokens set, won't match IOS branch), then
+        // stream filter finds no null-token device → orElseGet returns devices.get(0) = device
+        ArgumentCaptor<UserDevice> captor = ArgumentCaptor.forClass(UserDevice.class);
+        verify(userDeviceRepository).save(captor.capture());
+        assert APNS_TOKEN.equals(captor.getValue().getApnsToken());
+    }
+
+    @Test
+    void registerToken_allDevicesHaveTokens_androidFallbackToFirstDevice() {
+        UserDevice device = emptyDevice();
+        device.setFcmToken("existing-fcm");
+        device.setApnsToken("existing-apns");
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of(device));
+
+        service.registerToken(USER_ID, "ANDROID", FCM_TOKEN);
+
+        ArgumentCaptor<UserDevice> captor = ArgumentCaptor.forClass(UserDevice.class);
+        verify(userDeviceRepository).save(captor.capture());
+        assert FCM_TOKEN.equals(captor.getValue().getFcmToken());
+    }
+
+    @Test
+    void registerToken_deviceHasOnlyFcmToken_iosUpdatesNullApns() {
+        // Only FCM set → APNStoken null → device matches IOS filter (apns==null && fcm==null is false here)
+        // Actually this exercises the "updated=false" path where stream finds this device
+        UserDevice device = emptyDevice();
+        device.setFcmToken("existing-fcm"); // apns is null
+        when(userDeviceRepository.findByUserId(USER_ID)).thenReturn(List.of(device));
+
+        // First iteration: IOS platform, APNS is null but FCM is not null → the condition
+        // `device.getApnsToken() == null && device.getFcmToken() == null` is false → skips save in loop
+        // Then updated=false, stream filter: `fcmToken==null && apnsToken==null` → not matched
+        // Falls to orElseGet → devices.get(0) → target = device
+        service.registerToken(USER_ID, "IOS", APNS_TOKEN);
+
+        ArgumentCaptor<UserDevice> captor = ArgumentCaptor.forClass(UserDevice.class);
+        verify(userDeviceRepository).save(captor.capture());
+        assert APNS_TOKEN.equals(captor.getValue().getApnsToken());
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private UserDevice emptyDevice() {
