@@ -77,7 +77,10 @@ import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
 import backend.services.pricing.PricingResult;
 import backend.services.pricing.CartContext;
 import backend.services.risk.RiskAssessmentResult;
+import backend.services.risk.RiskSignal;
+import backend.models.enums.RiskSignalType;
 import backend.testutil.TestIds;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -97,7 +100,20 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import backend.dtos.requests.order.ReturnOrderRequest;
+import backend.exceptions.http.BadRequestException;
+import backend.exceptions.http.ForbiddenException;
+import backend.models.core.ProductVariant;
+import backend.models.core.RiskAssessment;
+import backend.services.intf.returns.ReturnService;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -131,6 +147,9 @@ class OrderServiceImplTest {
     private InventoryLocationRepository locationRepository;
     private CouponRepository couponRepository;
     private CouponPerUserCountRepository couponPerUserCountRepository;
+    private LocationStockRepository      locationStockRepository;
+    private InventoryAdjustmentRepository adjustmentRepository;
+    private MarketplaceVendorRepository   marketplaceVendorRepository;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -155,6 +174,9 @@ class OrderServiceImplTest {
         couponRepository               = mock(CouponRepository.class);
         couponPerUserCountRepository   = mock(CouponPerUserCountRepository.class);
         when(couponPerUserCountRepository.tryIncrementUserCount(any(), any(), anyInt())).thenReturn(1);
+        locationStockRepository     = mock(LocationStockRepository.class);
+        adjustmentRepository        = mock(InventoryAdjustmentRepository.class);
+        marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
         locationRepository       = mock(InventoryLocationRepository.class);
 
         service = new OrderServiceImpl(
@@ -162,8 +184,8 @@ class OrderServiceImplTest {
                 compensationRepository,
                 productRepository,
                 variantRepository,
-                mock(LocationStockRepository.class),
-                mock(InventoryAdjustmentRepository.class),
+                locationStockRepository,
+                adjustmentRepository,
                 locationRepository,
                 bundleRepository,
                 mock(backend.repositories.ProductKitRepository.class),
@@ -187,7 +209,7 @@ class OrderServiceImplTest {
                 riskProperties,
                 mock(DeviceService.class),
                 mock(EmailVerificationService.class),
-                mock(MarketplaceVendorRepository.class),
+                marketplaceVendorRepository,
                 mock(SubOrderRepository.class),
                 mock(OrderItemRepository.class),
                 mock(CommissionEngine.class),
@@ -1643,6 +1665,753 @@ class OrderServiceImplTest {
         service.handlePaymentFailure(PAYMENT_INTENT_ID);
 
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // markPickedUpByDriver
+    // =========================================================================
+
+    @Test
+    void markPickedUpByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markPickedUpByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markPickedUpByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99)); // different driver
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markPickedUpByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markPickedUpByDriver_happyPath_doesNotThrow() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertDoesNotThrow(() -> service.markPickedUpByDriver(ORDER_ID, driverId));
+    }
+
+    // =========================================================================
+    // markArrivedByDriver
+    // =========================================================================
+
+    @Test
+    void markArrivedByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markArrivedByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markArrivedByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markArrivedByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markArrivedByDriver_happyPath_doesNotThrow() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertDoesNotThrow(() -> service.markArrivedByDriver(ORDER_ID, driverId));
+    }
+
+    // =========================================================================
+    // markDeliveredByDriver
+    // =========================================================================
+
+    @Test
+    void markDeliveredByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markDeliveredByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markDeliveredByDriver_invalidStatus_throwsConflict() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.RESERVED); // not SHIPPED or PARTIALLY_FULFILLED
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markDeliveredByDriver_happyPath_setsDeliveredAndPublishesEvent() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markDeliveredByDriver(ORDER_ID, driverId);
+
+        verify(orderRepository).save(any(Order.class));
+        verify(cacheService, atLeast(1)).delete(anyString());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Delivered.class));
+    }
+
+    // =========================================================================
+    // reorderOrder
+    // =========================================================================
+
+    @Test
+    void reorderOrder_orderNotFound_throwsNotFound() {
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.reorderOrder(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void reorderOrder_allItemsHaveNullProductAndBundle_throwsBadRequest() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setCurrency("USD");
+        order.setTotalAmount(BigDecimal.TEN);
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+        order.setStatus(OrderStatus.DELIVERED);
+        // item with both product=null and bundle=null → filtered out
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(null);
+        item.setQuantity(1);
+        item.setUnitPrice(BigDecimal.TEN);
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setDiscountAmount(BigDecimal.ZERO);
+        order.setItems(List.of(item));
+
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(BadRequestException.class,
+                () -> service.reorderOrder(ORDER_ID, USER_ID));
+    }
+
+    // =========================================================================
+    // initiateReturn
+    // =========================================================================
+
+    @Test
+    void initiateReturn_orderNotFound_throwsNotFound() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        ReturnOrderRequest req = new ReturnOrderRequest(null, null, false, false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req));
+    }
+
+    @Test
+    void initiateReturn_happyPath_withNullItemIds_callsReturnService() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+
+        Order order = order();
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        ReturnOrderRequest req = new ReturnOrderRequest("note", null, true, true);
+        service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        verify(returnService).merchantInitiateReturn(eq(ORDER_ID), eq(COMPANY_ID), eq(USER_ID), any());
+    }
+
+    @Test
+    void initiateReturn_withSpecificItemIds_filtersItemsById() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+
+        Order order = order();
+        UUID itemId = order.getItems().get(0).getId();
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        ReturnOrderRequest req = new ReturnOrderRequest(null, List.of(itemId), false, false);
+        service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        verify(returnService).merchantInitiateReturn(eq(ORDER_ID), eq(COMPANY_ID), eq(USER_ID), any());
+    }
+
+    // =========================================================================
+    // Static helper methods (via reflection)
+    // =========================================================================
+
+    @Test
+    void buildVariantTitle_allOptionsPresent_joinsWithSlash() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1("Red");
+        v.setOption2("Large");
+        v.setOption3("Cotton");
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertEquals("Red / Large / Cotton", result);
+    }
+
+    @Test
+    void buildVariantTitle_someOptionsNull_joinsPresentOnes() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1("Red");
+        v.setOption2(null);
+        v.setOption3("Cotton");
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertEquals("Red / Cotton", result);
+    }
+
+    @Test
+    void buildVariantTitle_allOptionsNull_returnsNull() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1(null);
+        v.setOption2(null);
+        v.setOption3(null);
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertNull(result);
+    }
+
+    @Test
+    void extractVariantIdFromDetail_validDetail_returnsUuid() {
+        UUID variantId = TestIds.uuid(10);
+        String detail = "Deducted 1 unit from variant " + variantId;
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractVariantIdFromDetail", detail);
+
+        assertEquals(variantId, result);
+    }
+
+    @Test
+    void extractVariantIdFromDetail_noVariantToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractVariantIdFromDetail", "no variant here");
+        assertNull(result);
+    }
+
+    @Test
+    void extractProductIdFromDetail_validDetail_returnsUuid() {
+        UUID productId = TestIds.uuid(20);
+        String detail = "Deducted 1 unit from product " + productId;
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractProductIdFromDetail", detail);
+
+        assertEquals(productId, result);
+    }
+
+    @Test
+    void extractProductIdFromDetail_noProductToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractProductIdFromDetail", "something else");
+        assertNull(result);
+    }
+
+    @Test
+    void extractLocationStockIdFromDetail_validDetail_returnsUuid() {
+        UUID locId = TestIds.uuid(30);
+        String detail = "[LOC:" + locId + "] Restored 3 units of product " + TestIds.uuid(31);
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractLocationStockIdFromDetail", detail);
+
+        assertEquals(locId, result);
+    }
+
+    @Test
+    void extractLocationStockIdFromDetail_noToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractLocationStockIdFromDetail", "no loc token");
+        assertNull(result);
+    }
+
+    @Test
+    void extractQuantityFromDetail_validDetail_returnsQty() {
+        String detail = "Restored 5 units of something";
+
+        Integer result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractQuantityFromDetail", detail);
+
+        assertEquals(5, result);
+    }
+
+    @Test
+    void extractQuantityFromDetail_noToken_returnsNegative() {
+        Integer result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractQuantityFromDetail", "nothing useful");
+        assertEquals(-1, result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_partialRefundFormat_returnsIntentId() {
+        String detail = "REFUND_PARTIAL:pi_abc123:CENTS:500";
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", detail);
+
+        assertEquals("pi_abc123", result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_legacyFormat_returnsIntentId() {
+        String detail = "Payment refund intent: pi_def456";
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", detail);
+
+        assertEquals("pi_def456", result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_nullDetail_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", (Object) null);
+        assertNull(result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_partialRefundFormat_returnsCents() {
+        String detail = "REFUND_PARTIAL:pi_abc123:CENTS:999";
+
+        Long result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", detail);
+
+        assertEquals(999L, result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_legacyFullRefund_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", "full refund detail");
+        assertNull(result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_nullDetail_returnsNull() {
+        Long result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", (Object) null);
+        assertNull(result);
+    }
+
+    // =========================================================================
+    // releaseCouponCountIfNeeded (via reflection)
+    // =========================================================================
+
+    @Test
+    void releaseCouponCountIfNeeded_couponNull_doesNothing() {
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", (Object) null, USER_ID));
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_couponWithoutMaxUsesPerUser_doesNothing() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(null);
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID));
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_couponWithMaxUsesPerUser_decrementsCount() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(5);
+
+        ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID);
+
+        verify(couponPerUserCountRepository).decrementUserCount(coupon.getId(), USER_ID);
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_decrementThrows_doesNotPropagate() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(5);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB down"))
+                .when(couponPerUserCountRepository).decrementUserCount(any(), any());
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID));
+    }
+
+    // =========================================================================
+    // resolveOrderCompanyId (via reflection — pure calculation)
+    // =========================================================================
+
+    @Test
+    void resolveOrderCompanyId_nullList_returnsNull() {
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", (Object) null);
+        assertNull(result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_emptyList_returnsNull() {
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of());
+        assertNull(result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_productWithCompany_returnsCompanyId() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertEquals(COMPANY_ID, result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_productWithMarketplaceId_prefersMarketplace() {
+        UUID marketplaceId = TestIds.uuid(97);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        p.setMarketplaceId(marketplaceId);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertEquals(marketplaceId, result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_itemWithNullProduct_returnsNull() {
+        OrderItem item = new OrderItem();
+        item.setProduct(null);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertNull(result);
+    }
+
+    // =========================================================================
+    // stampVendorIds (via reflection)
+    // =========================================================================
+
+    @Test
+    void stampVendorIds_emptyItems_returnsFalse() {
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of());
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_itemWithNullProduct_returnsFalse() {
+        OrderItem item = new OrderItem();
+        item.setProduct(null);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_productWithoutMarketplace_returnsFalse() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_productWithMarketplace_returnsTrue() {
+        UUID marketplaceId = TestIds.uuid(98);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        p.setMarketplaceId(marketplaceId);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(true, result);
+        verify(marketplaceVendorRepository).findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any());
+    }
+
+    // =========================================================================
+    // serializeSignals (via reflection)
+    // =========================================================================
+
+    @Test
+    void serializeSignals_emptyResult_returnsJsonWithEmptyArrays() {
+        // objectMapper is initialized inline in the field — never null
+        RiskAssessmentResult result = RiskAssessmentResult.allow(0, List.of(), List.of());
+        String json = ReflectionTestUtils.invokeMethod(service, "serializeSignals", result);
+        assertNotNull(json);
+        assertTrue(json.contains("signals"));
+    }
+
+    @Test
+    void serializeSignals_withSignals_returnsSignalsJson() {
+        RiskAssessmentResult result = RiskAssessmentResult.allow(
+                10,
+                List.of(RiskSignal.medium(RiskSignalType.FAILED_PAYMENT_VELOCITY, 10, "Velocity hit")),
+                List.of("warning-1"));
+
+        String json = ReflectionTestUtils.invokeMethod(service, "serializeSignals", result);
+
+        assertTrue(json.contains("signals"));
+        assertTrue(json.contains("Velocity hit"));
+    }
+
+    // =========================================================================
+    // recordCancelAdjustment (via reflection)
+    // =========================================================================
+
+    @Test
+    void recordCancelAdjustment_regularItem_savesOneAdjustment() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+        item.setQuantity(2);
+
+        ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID);
+
+        verify(adjustmentRepository).save(any());
+    }
+
+    @Test
+    void recordCancelAdjustment_bundleItem_savesAdjustmentPerBundleItem() {
+        Product p1 = new Product(); p1.setId(TestIds.uuid(50));
+        BundleItem bi1 = new BundleItem(); bi1.setProduct(p1); bi1.setQuantity(2);
+        Product p2 = new Product(); p2.setId(TestIds.uuid(51));
+        BundleItem bi2 = new BundleItem(); bi2.setProduct(p2); bi2.setQuantity(1);
+        ProductBundle bundle = new ProductBundle();
+        bundle.setItems(java.util.Arrays.asList(bi1, bi2));
+
+        OrderItem item = new OrderItem();
+        item.setQuantity(1);
+        item.setBundle(bundle);
+
+        ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID);
+
+        verify(adjustmentRepository, org.mockito.Mockito.times(2)).save(any());
+    }
+
+    @Test
+    void recordCancelAdjustment_saveThrows_doesNotPropagate() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem(); item.setProduct(p); item.setQuantity(1);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB error")).when(adjustmentRepository).save(any());
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID));
+    }
+
+    // =========================================================================
+    // restoreItemStock (via reflection)
+    // =========================================================================
+
+    @Test
+    void restoreItemStock_backorderedItem_doesNotRestoreStock() {
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(variantRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void restoreItemStock_variantItem_callsVariantRestore() {
+        ProductVariant variant = new ProductVariant();
+        variant.setId(TestIds.uuid(60));
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(variant);
+        item.setQuantity(3);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(variantRepository).restoreStock(variant.getId(), 3);
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void restoreItemStock_productOnlyItem_callsProductRestore() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(null);
+        item.setQuantity(2);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 2);
+    }
+
+    @Test
+    void restoreItemStock_bundleItem_restoresEachConstituentProduct() {
+        Product p1 = new Product(); p1.setId(TestIds.uuid(70));
+        BundleItem bi = new BundleItem();
+        bi.setProduct(p1); bi.setVariant(null); bi.setQuantity(3);
+        ProductBundle bundle = new ProductBundle();
+        bundle.setItems(java.util.Arrays.asList(bi));
+
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setQuantity(2);
+        item.setBundle(bundle);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        // order qty 2 * bundle qty 3 = 6
+        verify(productRepository).restoreStock(p1.getId(), 6);
+    }
+
+    // =========================================================================
+    // scheduleStockCompensation (via reflection)
+    // =========================================================================
+
+    @Test
+    void scheduleStockCompensation_emptyLists_doesNotRestoreAnything() {
+        Order order = new Order(); order.setId(ORDER_ID);
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), List.of(), List.of());
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(variantRepository, never()).restoreStock(any(), anyInt());
+        verify(locationStockRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleProduct_restoresAndRecordsCompensation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        java.util.ArrayList<Object[]> products = new java.util.ArrayList<>();
+        products.add(new Object[]{PRODUCT_ID, 5});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, products, List.of(), List.of());
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 5);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleVariant_restoresVariant() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        UUID variantId = TestIds.uuid(80);
+        java.util.ArrayList<Object[]> variants = new java.util.ArrayList<>();
+        variants.add(new Object[]{variantId, 2});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), variants, List.of());
+
+        verify(variantRepository).restoreStock(variantId, 2);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleLocationStock_restoresLocation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        UUID locStockId = TestIds.uuid(81);
+        java.util.ArrayList<Object[]> locationStocks = new java.util.ArrayList<>();
+        locationStocks.add(new Object[]{locStockId, 1});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), List.of(), locationStocks);
+
+        verify(locationStockRepository).restoreStock(locStockId, 1);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_productRestoreThrows_recordsFailedCompensation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB error"))
+                .when(productRepository).restoreStock(any(), anyInt());
+        java.util.ArrayList<Object[]> products = new java.util.ArrayList<>();
+        products.add(new Object[]{PRODUCT_ID, 5});
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, products, List.of(), List.of()));
+
+        verify(compensationRepository).save(any());
+    }
+
+    // =========================================================================
+    // Helper methods (for new tests)
+    // =========================================================================
+
+    private Order driverOrder(OrderStatus status) {
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(company(COMPANY_ID));
+        product.setName("Widget");
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(product);
+        item.setProductName("Widget");
+        item.setQuantity(1);
+        item.setUnitPrice(new BigDecimal("50.00"));
+        item.setFulfillmentStatus(FulfillmentStatus.SHIPPED);
+        item.setDiscountAmount(BigDecimal.ZERO);
+
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setStatus(status);
+        order.setPaymentIntentId(PAYMENT_INTENT_ID);
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+        order.setItems(List.of(item));
+        return order;
     }
 
     private static void assertNotNull(Object value) {

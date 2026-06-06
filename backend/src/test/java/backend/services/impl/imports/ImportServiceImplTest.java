@@ -559,4 +559,290 @@ class ImportServiceImplTest {
         }
         return list;
     }
+
+    // ─── listJobs ─────────────────────────────────────────────────────────────
+
+    @Test
+    void listJobs_returnsPagedJobResponses() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.COMPLETED);
+        when(jobRepository.findAllByCompanyIdOrderByCreatedAtDesc(eq(COMPANY_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(job), PageRequest.of(0, 10), 1));
+
+        PagedResponse<ImportJobResponse> response = service.listJobs(COMPANY_ID, OWNER_ID, 0, 10);
+
+        verify(companyAccessService).requireAnyAccess(COMPANY_ID, OWNER_ID);
+        assertEquals(1, response.getItems().size());
+        assertEquals(JOB_ID, response.getItems().get(0).getId());
+    }
+
+    // ─── getErrorReport success path ──────────────────────────────────────────
+
+    @Test
+    void getErrorReport_withStoredKey_returnsDownloadUrl() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.COMPLETED_WITH_ERRORS);
+        job.setErrorReportS3Key("reports/job-errors.csv");
+        when(jobRepository.findByIdAndCompanyId(JOB_ID, COMPANY_ID)).thenReturn(Optional.of(job));
+        when(storageService.presignDownload("reports/job-errors.csv", 600))
+                .thenReturn("https://download.test/job-errors.csv");
+
+        ImportDownloadResponse response = service.getErrorReport(COMPANY_ID, OWNER_ID, JOB_ID);
+
+        assertEquals("https://download.test/job-errors.csv", response.getUrl());
+        assertEquals(600, response.getExpiresIn());
+    }
+
+    // ─── createJob with PRODUCT_UPSERT type ───────────────────────────────────
+
+    @Test
+    void createJob_productUpsertRequiresManageProductsCapability() {
+        CreateImportJobRequest request = new CreateImportJobRequest();
+        request.setJobType(ImportJobType.PRODUCT_UPSERT);
+        request.setCsvS3Key("imports/products.csv");
+        request.setFileName("products.csv");
+        request.setMode(ImportMode.UPDATE_ONLY);
+
+        when(jobRepository.save(any(ImportJob.class))).thenAnswer(inv -> {
+            ImportJob j = inv.getArgument(0);
+            j.setId(JOB_ID);
+            return j;
+        });
+
+        service.createJob(COMPANY_ID, OWNER_ID, request);
+
+        verify(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_PRODUCTS);
+    }
+
+    // ─── getJob with PENDING status (progress = 0) ────────────────────────────
+
+    @Test
+    void getJob_pendingStatus_progressIsZero() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.findByIdAndCompanyId(JOB_ID, COMPANY_ID)).thenReturn(Optional.of(job));
+
+        ImportJobResponse response = service.getJob(COMPANY_ID, OWNER_ID, JOB_ID);
+
+        assertEquals(0, response.getProgressPercent());
+        assertFalse(response.isHasErrorReport());
+    }
+
+    @Test
+    void getJob_withPartialProgress_computesPercentage() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PROCESSING);
+        job.setTotalRows(100);
+        job.setProcessedRows(50);
+        when(jobRepository.findByIdAndCompanyId(JOB_ID, COMPANY_ID)).thenReturn(Optional.of(job));
+
+        ImportJobResponse response = service.getJob(COMPANY_ID, OWNER_ID, JOB_ID);
+
+        assertEquals(50, response.getProgressPercent());
+    }
+
+    // ─── processJob — EXPORT job type (no-op) ─────────────────────────────────
+
+    @Test
+    void processJob_exportJobType_isNoOp() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.EXPORT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv")).thenReturn(csvStream("SKU,NAME,PRICE\n"));
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+
+        service.processJob(JOB_ID);
+
+        verify(productService, never()).batchCreateProducts(any(), any(), any());
+        verify(inventoryService, never()).bulkAdjust(any(), any(), any());
+    }
+
+    // ─── processJob — UPDATE_ONLY mode ────────────────────────────────────────
+
+    @Test
+    void processJob_updateOnlyMode_rejectsNewSkus() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPDATE_ONLY, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nnew-sku,New Product,10.00\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of());
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.putBytes(any(), any(), any(), any()))
+                .thenReturn(new PresignUploadResponse("upload", "file", "reports/errors.csv", 600));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+        verify(productService, never()).batchCreateProducts(any(), any(), any());
+    }
+
+    // ─── processJob — CREATE_ONLY mode ────────────────────────────────────────
+
+    @Test
+    void processJob_createOnlyMode_rejectsExistingSkus() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.CREATE_ONLY, ImportJobStatus.PENDING);
+        Product existing = product("existing-sku", "Existing", new BigDecimal("9.99"), 4);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nexisting-sku,Old Chair,15.00\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.putBytes(any(), any(), any(), any()))
+                .thenReturn(new PresignUploadResponse("upload", "file", "reports/errors.csv", 600));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+        verify(productService, never()).updateProduct(any(), any(), any(), any());
+    }
+
+    // ─── processJob — null job after successful claim ─────────────────────────
+
+    @Test
+    void processJob_nullJobAfterClaim_returnsGracefully() {
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.empty());
+
+        service.processJob(JOB_ID);
+
+        verify(storageService, never()).openObject(anyString());
+    }
+
+    // ─── processJob — COMPLETED when no errors ────────────────────────────────
+
+    @Test
+    void processJob_noErrors_completesWithoutErrorReport() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        Product existing = product("good-sku", "Good Product", new BigDecimal("9.99"), 4);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\ngood-sku,Good Product,9.99\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(productService.updateProduct(eq(COMPANY_ID), eq(UPDATE_PRODUCT_ID), eq(OWNER_ID), any(UpdateProductRequest.class)))
+                .thenReturn(productResponse(UPDATE_PRODUCT_ID, "good-sku"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(0, job.getErrorRows());
+        assertEquals(ImportJobStatus.COMPLETED, job.getStatus());
+        verify(storageService, never()).putBytes(any(), any(), any(), any());
+    }
+
+    // ─── getJob — not found ───────────────────────────────────────────────────
+
+    @Test
+    void getJob_notFound_throwsResourceNotFoundException() {
+        when(jobRepository.findByIdAndCompanyId(JOB_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getJob(COMPANY_ID, OWNER_ID, JOB_ID));
+    }
+
+    // ─── processJob — bumpProgress saves to repo to update counters ───────────
+
+    @Test
+    void processJob_successfulRun_bumpProgressUpdatesCounters() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        Product existing = product("counter-sku", "Counter Product", new BigDecimal("5.00"), 2);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\ncounter-sku,Counter,5.00\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(productService.updateProduct(any(), any(), any(), any()))
+                .thenReturn(productResponse(UPDATE_PRODUCT_ID, "counter-sku"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(ImportJobStatus.COMPLETED, job.getStatus());
+        assertEquals(1, job.getSuccessRows());
+        assertEquals(0, job.getErrorRows());
+    }
+
+    // ─── processJob — inventory sync delta=0 ─────────────────────────────────
+
+    @Test
+    void processJob_inventorySync_zeroDelta_skipsAdjustment() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.INVENTORY_SYNC, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        Product tracked = product("same-stock", "Same", BigDecimal.TEN, 5);
+        tracked.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("sku,stock\nsame-stock,5\n"));  // delta = 5 - 5 = 0
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(tracked));
+
+        service.processJob(JOB_ID);
+
+        verify(inventoryService, never()).bulkAdjust(any(), any(), any());
+    }
+
+    // ─── validatePerJobType — validation edge cases ───────────────────────────
+
+    @Test
+    void processJob_negativeStockInCsv_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.INVENTORY_SYNC, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("sku,stock\nbad-sku,-3\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+        verify(inventoryService, never()).bulkAdjust(any(), any(), any());
+    }
+
+    @Test
+    void processJob_invalidStockNonInteger_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.INVENTORY_SYNC, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("sku,stock\nbad-sku,abc\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_missingSku_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\n,Missing SKU,9.99\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_negativePriceInProductUpsert_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nneg-price,Chair,-5.00\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of());
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+        verify(productService, never()).batchCreateProducts(any(), any(), any());
+    }
 }

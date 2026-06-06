@@ -811,6 +811,154 @@ class CollectionServiceImplTest {
                 () -> service.getCollectionBySlug(MARKETPLACE_ID, "missing-slug"));
     }
 
+    // ─── listCollectionProducts ───────────────────────────────────────────────
+
+    @Test
+    void listCollectionProducts_companyNotFound_throwsResourceNotFound() {
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+    }
+
+    @Test
+    void listCollectionProducts_collectionNotFound_throwsResourceNotFound() {
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+    }
+
+    @Test
+    void listCollectionProducts_returnsPagedResponses() {
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        Product p = makeProduct(PRODUCT_ID, COMPANY_ID);
+        CollectionProduct cp = makeCollectionProduct(TestIds.uuid(20), COLL_ID, p);
+        cp.setCollection(c);
+
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+        when(collectionProductRepository.findAllByCollectionIdRanked(eq(COLL_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(cp)));
+
+        var result = service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(PRODUCT_ID, result.getItems().get(0).productId());
+    }
+
+    // ─── listMarketplaceCollectionProducts ────────────────────────────────────
+
+    @Test
+    void listMarketplaceCollectionProducts_marketplaceNotFound_throwsResourceNotFound() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "some-slug", 0, 20));
+    }
+
+    @Test
+    void listMarketplaceCollectionProducts_noVendorHasSlug_throwsResourceNotFound() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "missing-slug", 0, 20));
+    }
+
+    @Test
+    void listMarketplaceCollectionProducts_returnsOnlyActiveMarketplaceListedProducts() {
+        // Set up vendor product so findActiveBySlugForMarketplace resolves the collection
+        Product vendorProduct = makeProduct(TestIds.uuid(7), COMPANY_ID);
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        c.setSlug("test-slug");
+
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of(vendorProduct));
+        when(collectionRepository.findBySlugAndCompanyId("test-slug", COMPANY_ID)).thenReturn(Optional.of(c));
+
+        // visible product: ACTIVE, marketplace-listed, correct marketplaceId
+        Product visible = makeProduct(PRODUCT_ID, COMPANY_ID);
+        visible.setMarketplaceId(MARKETPLACE_ID);
+        visible.setMarketplaceListed(true);
+        CollectionProduct visibleCp = makeCollectionProduct(TestIds.uuid(21), COLL_ID, visible);
+        visibleCp.setCollection(c);
+
+        // invisible product: not marketplace-listed
+        Product hidden = makeProduct(TestIds.uuid(8), COMPANY_ID);
+        hidden.setMarketplaceId(MARKETPLACE_ID);
+        hidden.setMarketplaceListed(false);
+        CollectionProduct hiddenCp = makeCollectionProduct(TestIds.uuid(22), COLL_ID, hidden);
+        hiddenCp.setCollection(c);
+
+        when(collectionProductRepository.findAllByCollectionIdRanked(eq(COLL_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(visibleCp, hiddenCp)));
+
+        var result = service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "test-slug", 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(PRODUCT_ID, result.getItems().get(0).productId());
+    }
+
+    // ─── getCollectionBySlug — happy path ─────────────────────────────────────
+
+    @Test
+    void getCollectionBySlug_vendorHasActiveCollection_returnsResponse() {
+        Product vendorProduct = makeProduct(TestIds.uuid(7), COMPANY_ID);
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        c.setSlug("my-slug");
+
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of(vendorProduct));
+        when(collectionRepository.findBySlugAndCompanyId("my-slug", COMPANY_ID)).thenReturn(Optional.of(c));
+        when(singleFlightCache.getOrLoad(anyString(), anyLong(), any(), any(Class.class)))
+                .thenAnswer(inv -> ((java.util.function.Supplier<?>) inv.getArgument(2)).get());
+
+        var result = service.getCollectionBySlug(MARKETPLACE_ID, "my-slug");
+
+        assertEquals(COLL_ID, result.id());
+    }
+
+    // ─── materialiseDynamicMembers — non-DYNAMIC guard ────────────────────────
+
+    @Test
+    void materialise_nonDynamic_returnsEarlyWithoutQuery() {
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+
+        service.materialiseDynamicMembers(c);
+
+        verifyNoInteractions(productRepository);
+    }
+
+    // ─── evictCollectionCaches — Redis failure is swallowed ───────────────────
+
+    @Test
+    void evictCollectionCaches_redisFailure_doesNotPropagate() {
+        doThrow(new RuntimeException("Redis down")).when(singleFlightCache).evict(anyString());
+
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+        when(collectionProductRepository.findAllByCollectionId(COLL_ID)).thenReturn(List.of());
+
+        // deleteCollection calls evictAfterCommit which, outside a real transaction,
+        // runs the eviction immediately — Redis failure must be swallowed
+        assertDoesNotThrow(() -> service.deleteCollection(COMPANY_ID, COLL_ID, OWNER_ID));
+    }
+
+    // ─── toResponse — countByCollectionId Redis fallback ─────────────────────
+
+    @Test
+    void toResponse_countByCollectionIdThrows_defaultsToZero() {
+        doThrow(new RuntimeException("Redis timeout"))
+                .when(collectionProductRepository).countByCollectionId(COLL_ID);
+
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+
+        var result = service.getCollection(COMPANY_ID, COLL_ID);
+
+        assertEquals(0L, result.productCount());
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private Company makeCompany(UUID id) {

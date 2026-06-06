@@ -62,8 +62,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import backend.models.core.ProductBundle;
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -766,5 +770,692 @@ class ReturnServiceImplTest {
         return new BuyerInitiateReturnRequest(
                 List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
                 reason, "note", null);
+    }
+
+    // =========================================================================
+    // findOwningCompanyId (private — pure calculation)
+    // =========================================================================
+
+    @Test
+    void findOwningCompanyId_itemWithProduct_returnsProductCompanyId() {
+        OrderItem item = new OrderItem();
+        item.setProduct(product());
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "findOwningCompanyId", item);
+
+        assertEquals(COMPANY_ID, result);
+    }
+
+    @Test
+    void findOwningCompanyId_itemWithBundle_returnsBundleCompanyId() {
+        UUID bundleCompanyId = TestIds.uuid(50);
+        Company bundleCompany = new Company();
+        bundleCompany.setId(bundleCompanyId);
+        ProductBundle bundle = new ProductBundle();
+        bundle.setCompany(bundleCompany);
+
+        OrderItem item = new OrderItem();
+        item.setBundle(bundle);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "findOwningCompanyId", item);
+
+        assertEquals(bundleCompanyId, result);
+    }
+
+    @Test
+    void findOwningCompanyId_noProductNoBundle_returnsNull() {
+        OrderItem item = new OrderItem();
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "findOwningCompanyId", item);
+
+        assertNull(result);
+    }
+
+    // =========================================================================
+    // resolveOwningCompanyId (private — throws on null)
+    // =========================================================================
+
+    @Test
+    void resolveOwningCompanyId_itemWithProduct_returnsCompanyId() {
+        OrderItem item = new OrderItem();
+        item.setId(ITEM_ID);
+        item.setProduct(product());
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOwningCompanyId", item);
+
+        assertEquals(COMPANY_ID, result);
+    }
+
+    @Test
+    void resolveOwningCompanyId_itemWithNoOwner_throwsBadRequest() {
+        OrderItem item = new OrderItem();
+        item.setId(ITEM_ID);
+
+        assertThrows(BadRequestException.class, () ->
+                ReflectionTestUtils.invokeMethod(service, "resolveOwningCompanyId", item));
+    }
+
+    // =========================================================================
+    // resolveReturnLocation (private)
+    // =========================================================================
+
+    @Test
+    void resolveReturnLocation_withExplicitLocationId_loadsFromRepository() {
+        UUID locId = TestIds.uuid(30);
+        Company c = new Company(); c.setId(COMPANY_ID);
+        CompanyReturnLocation loc = returnLocation();
+        when(returnLocationRepository.findByIdAndCompanyId(locId, COMPANY_ID))
+                .thenReturn(Optional.of(loc));
+
+        CompanyReturnLocation result =
+                ReflectionTestUtils.invokeMethod(service, "resolveReturnLocation", c, locId);
+
+        assertEquals(loc.getId(), result.getId());
+    }
+
+    @Test
+    void resolveReturnLocation_withExplicitLocationId_notFound_throwsResourceNotFound() {
+        UUID locId = TestIds.uuid(31);
+        Company c = new Company(); c.setId(COMPANY_ID);
+        when(returnLocationRepository.findByIdAndCompanyId(locId, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                ReflectionTestUtils.invokeMethod(service, "resolveReturnLocation", c, locId));
+    }
+
+    @Test
+    void resolveReturnLocation_withNullLocationId_fallsBackToPrimaryLocation() {
+        Company c = new Company(); c.setId(COMPANY_ID);
+        CompanyReturnLocation loc = returnLocation();
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(loc));
+
+        CompanyReturnLocation result =
+                ReflectionTestUtils.invokeMethod(service, "resolveReturnLocation", c, (UUID) null);
+
+        assertEquals(loc.getId(), result.getId());
+    }
+
+    @Test
+    void resolveReturnLocation_withNullLocationId_noLocations_throwsConflict() {
+        Company c = new Company(); c.setId(COMPANY_ID);
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ConflictException.class, () ->
+                ReflectionTestUtils.invokeMethod(service, "resolveReturnLocation", c, (UUID) null));
+    }
+
+    // =========================================================================
+    // getCompanyReturn
+    // =========================================================================
+
+    @Test
+    void getCompanyReturn_happyPath_returnsReturnResponse() {
+        Company company = company();
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any()))
+                .thenReturn(company);
+
+        Order order = deliveredOrder();
+        Return ret = scopedReturn(order);
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID))
+                .thenReturn(Optional.of(ret));
+
+        ReturnResponse result = service.getCompanyReturn(RETURN_ID, COMPANY_ID, USER_ID);
+
+        assertNotNull(result);
+        assertEquals(RETURN_ID, result.id());
+    }
+
+    @Test
+    void getCompanyReturn_notFound_throwsResourceNotFound() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any()))
+                .thenReturn(company());
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getCompanyReturn(RETURN_ID, COMPANY_ID, USER_ID));
+    }
+
+    // =========================================================================
+    // orderTotalCents (private static) — null totalAmount → 0L
+    // =========================================================================
+
+    @Test
+    void orderTotalCents_withNullTotalAmount_returnsZero() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setTotalAmount(null);
+
+        Long result = ReflectionTestUtils.invokeMethod(service, "orderTotalCents", order);
+
+        assertEquals(0L, result);
+    }
+
+    // =========================================================================
+    // resolveRefundAmount (private) — negative override
+    // =========================================================================
+
+    @Test
+    void resolveRefundAmount_negativeOverride_throwsBadRequest() {
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        Return ret = minimalReturn(order);
+
+        assertThrows(BadRequestException.class, () ->
+                ReflectionTestUtils.invokeMethod(service, "resolveRefundAmount", ret, Long.valueOf(-1L)));
+    }
+
+    // =========================================================================
+    // serializeRiskSignals (private) — exception path returns "{}"
+    // =========================================================================
+
+    @Test
+    void serializeRiskSignals_throwsException_returnsEmptyJson() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mockMapper =
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class);
+        ReflectionTestUtils.setField(service, "objectMapper", mockMapper);
+        when(mockMapper.writeValueAsString(any()))
+                .thenThrow(new com.fasterxml.jackson.core.JsonProcessingException("simulated") {});
+
+        RiskAssessmentResult result = RiskAssessmentResult.allow(0, List.of(), List.of());
+        String json = ReflectionTestUtils.invokeMethod(service, "serializeRiskSignals", result);
+
+        assertEquals("{}", json);
+    }
+
+    // =========================================================================
+    // getCompanyReturnsByOrder
+    // =========================================================================
+
+    @Test
+    void getCompanyReturnsByOrder_happyPath_returnsMatchingResponses() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        Return ret = scopedReturn(order); // items owned by COMPANY_ID
+
+        when(returnRepository.findAllByOrderIdAndCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(List.of(ret));
+
+        List<ReturnResponse> result = service.getCompanyReturnsByOrder(ORDER_ID, COMPANY_ID, USER_ID);
+
+        assertEquals(1, result.size());
+    }
+
+    // =========================================================================
+    // merchantInitiateReturn
+    // =========================================================================
+
+    @Test
+    void merchantInitiateReturn_orderNotFound_throwsResourceNotFound() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                        new backend.dtos.requests.return_.MerchantInitiateReturnRequest(
+                                List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                                ReturnReason.WRONG_ITEM, "note", false, 0L, null)));
+    }
+
+    @Test
+    void merchantInitiateReturn_wrongOrderStatus_throwsConflictException() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setStatus(OrderStatus.PAID);
+        order.setItems(new ArrayList<>());
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                        new backend.dtos.requests.return_.MerchantInitiateReturnRequest(
+                                List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                                ReturnReason.WRONG_ITEM, "note", false, 0L, null)));
+    }
+
+    @Test
+    void merchantInitiateReturn_riskBlocksInEnforceMode_throwsConflictException() {
+        riskProperties.setMode(RiskMode.ENFORCE);
+
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+
+        RiskSignal blockSignal = RiskSignal.high(
+                backend.models.enums.RiskSignalType.RETURN_PATTERN, 80, "High return rate");
+        when(riskEngine.assess(any()))
+                .thenReturn(RiskAssessmentResult.block(80, List.of(blockSignal), List.of()));
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                        new backend.dtos.requests.return_.MerchantInitiateReturnRequest(
+                                List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                                ReturnReason.WRONG_ITEM, "note", false, null, null)));
+    }
+
+    @Test
+    void merchantInitiateReturn_happyPath_waivedRefund_completesReturn() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new backend.dtos.requests.return_.MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong item sent", false, 0L, null));
+
+        assertNotNull(resp);
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
+        verify(paymentService, never()).refundPayment(any(), anyLong());
+    }
+
+    @Test
+    void merchantInitiateReturn_withRefund_callsPaymentService() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_merchant");
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(eq("pi_merchant"), eq(5000L)))
+                .thenReturn(new PaymentService.RefundResult("re_m1", 5000L, "usd", "pending", "pi_merchant"));
+
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new backend.dtos.requests.return_.MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong item", false, 5000L, null));
+
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
+        verify(paymentService).refundPayment(eq("pi_merchant"), eq(5000L));
+    }
+
+    // =========================================================================
+    // computeOrderStatusAfterReturn (private)
+    // =========================================================================
+
+    @Test
+    void computeOrderStatusAfterReturn_allReturnedFullyRefunded_setsRefunded() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(10000L); // 100.00 * 100 = 10000 cents = fully refunded
+
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        order.setItems(List.of(item));
+
+        ReflectionTestUtils.invokeMethod(service, "computeOrderStatusAfterReturn", order);
+
+        assertEquals(OrderStatus.REFUNDED, order.getStatus());
+    }
+
+    @Test
+    void computeOrderStatusAfterReturn_allReturnedNotFullyRefunded_setsReturned() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(5000L); // only partially refunded
+
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        order.setItems(List.of(item));
+
+        ReflectionTestUtils.invokeMethod(service, "computeOrderStatusAfterReturn", order);
+
+        assertEquals(OrderStatus.RETURNED, order.getStatus());
+    }
+
+    @Test
+    void computeOrderStatusAfterReturn_partialReturn_doesNotChangeStatus() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setStatus(OrderStatus.DELIVERED);
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+
+        OrderItem returned = new OrderItem();
+        returned.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        OrderItem stillDelivered = new OrderItem();
+        stillDelivered.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        order.setItems(List.of(returned, stillDelivered));
+
+        ReflectionTestUtils.invokeMethod(service, "computeOrderStatusAfterReturn", order);
+
+        assertEquals(OrderStatus.DELIVERED, order.getStatus()); // unchanged
+    }
+
+    // =========================================================================
+    // resolveRefundAmount (private) — auto-calculate from items
+    // =========================================================================
+
+    @Test
+    void resolveRefundAmount_nullOverride_autoCalculatesFromItems() {
+        Order order = deliveredOrder();
+        Return ret = minimalReturn(order);
+
+        OrderItem oi = new OrderItem();
+        oi.setUnitPrice(new BigDecimal("25.00"));
+        ReturnItem ri = new ReturnItem();
+        ri.setOrderItem(oi);
+        ri.setQuantityReturned(2);
+        ret.setItems(List.of(ri));
+
+        Long result = ReflectionTestUtils.invokeMethod(service, "resolveRefundAmount", ret, (Long) null);
+
+        assertEquals(5000L, result); // 25.00 * 2 * 100 = 5000 cents
+    }
+
+    // =========================================================================
+    // stripHtml (private static)
+    // =========================================================================
+
+    @Test
+    void stripHtml_nullInput_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(service, "stripHtml", (String) null);
+        assertNull(result);
+    }
+
+    @Test
+    void stripHtml_htmlContent_stripsToPlainText() {
+        String result = ReflectionTestUtils.invokeMethod(service, "stripHtml", "<b>bold</b> text");
+        assertEquals("bold text", result);
+    }
+
+    // =========================================================================
+    // requireCompanyScopedReturn — item belongs to different company
+    // =========================================================================
+
+    @Test
+    void getCompanyReturn_returnBelongsToDifferentCompany_throwsResourceNotFound() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        UUID otherCompanyId = TestIds.uuid(99);
+        Company otherCompany = new Company();
+        otherCompany.setId(otherCompanyId);
+
+        Product otherProduct = new Product();
+        otherProduct.setId(TestIds.uuid(100));
+        otherProduct.setCompany(otherCompany);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setProduct(otherProduct);
+
+        Return ret = new Return();
+        ret.setId(RETURN_ID);
+        ret.setOrder(deliveredOrder());
+        ret.setStatus(ReturnStatus.REQUESTED);
+        ReturnItem ri = new ReturnItem();
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getCompanyReturn(RETURN_ID, COMPANY_ID, USER_ID));
+    }
+
+    @Test
+    void getCompanyReturn_emptyItems_throwsResourceNotFound() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Return ret = minimalReturn(deliveredOrder()); // empty items
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getCompanyReturn(RETURN_ID, COMPANY_ID, USER_ID));
+    }
+
+    // =========================================================================
+    // handleRefundWebhookEvent — idempotency and null provisional
+    // =========================================================================
+
+    @Test
+    void handleRefundWebhookEvent_succeeded_alreadyApplied_skipsAddDelta() {
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStripeRefundId("re_dup");
+        ret.setRefundedAmountCents(5000L); // already shows 5000 cents applied
+
+        when(returnRepository.findByStripeRefundId("re_dup")).thenReturn(Optional.of(ret));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Same amount as already applied → idempotency guard fires
+        service.handleRefundWebhookEvent("re_dup", "succeeded", 5000L);
+
+        verify(orderRepository, never()).addRefundAmountDelta(any(), anyLong());
+    }
+
+    @Test
+    void handleRefundWebhookEvent_failed_nullProvisional_noDeltaDeducted() {
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStripeRefundId("re_fail_null");
+        ret.setRefundedAmountCents(null); // no provisional amount
+
+        when(returnRepository.findByStripeRefundId("re_fail_null")).thenReturn(Optional.of(ret));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleRefundWebhookEvent("re_fail_null", "failed", 0L);
+
+        verify(orderRepository, never()).addRefundAmountDelta(any(), anyLong());
+        verify(compensationRepository).save(any());
+    }
+
+    // =========================================================================
+    // inspectReturn with restock=true — covers restoreReturnedItemStock
+    // =========================================================================
+
+    @Test
+    void inspectReturn_withRestockTrue_restoresProductStock() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(11);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        // no variant, no fulfillment location → product-only restore path
+        ret.setItems(List.of(ri));
+        ri.setOrderItem(oi);
+        ri.setQuantityReturned(1);
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        ReturnResponse resp = service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req);
+
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(1));
+        verify(adjustmentRepository).save(any());
+    }
+
+    @Test
+    void inspectReturn_restockFails_throwsConflictException() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(12);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        ri.setOrderItem(oi);
+        ri.setQuantityReturned(1);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Make restoreStock throw so anyRestockFailed = true
+        org.mockito.Mockito.doThrow(new RuntimeException("stock error"))
+                .when(productRepository).restoreStock(any(), anyInt());
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.DAMAGED, true)), null);
+
+        assertThrows(backend.exceptions.http.ConflictException.class, () ->
+                service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req));
+    }
+
+    // =========================================================================
+    // issuePartialRefund — null reason uses default note
+    // =========================================================================
+
+    @Test
+    void issuePartialRefund_nullReason_usesDefaultNote() {
+        User staff = user(USER_ID, UserRole.SUPPORT);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(staff));
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_null_reason");
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setItems(new ArrayList<>());
+        order.setRefundedAmountCents(0L);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        when(paymentService.refundPayment(eq("pi_null_reason"), eq(500L)))
+                .thenReturn(new PaymentService.RefundResult("re_nr", 500L, "usd", "pending", "pi_null_reason"));
+        ArgumentCaptor<Return> captor = ArgumentCaptor.forClass(Return.class);
+        when(returnRepository.save(captor.capture())).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            r.setItems(new ArrayList<>());
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.issuePartialRefund(ORDER_ID, 500L, null, USER_ID); // null reason
+
+        assertTrue(captor.getValue().getMerchantNote().contains("support staff"));
+    }
+
+    // =========================================================================
+    // approveReturn — refundAmountCents > 0 but no payment intent
+    // =========================================================================
+
+    @Test
+    void approveReturn_noPaymentIntent_setsApprovedWithoutRefund() {
+        riskProperties.setMode(RiskMode.SHADOW);
+
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId(null); // no payment intent
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setRefundedAmountCents(0L);
+        User buyer = user(BUYER_ID, UserRole.USER);
+        buyer.setEmail("b@b.com");
+        buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
+        order.setUser(buyer);
+
+        OrderItem item = orderItem();
+        item.setUnitPrice(new BigDecimal("50.00"));
+        order.setItems(List.of(item));
+
+        Return ret = minimalReturn(order);
+        ret.setRequestedBy(buyer);
+        ret.setItems(List.of(returnItem(ret, item)));
+        when(returnRepository.findByIdAndCompanyIdForUpdate(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
+                new MerchantApproveReturnRequest("approved", null, null));
+
+        assertEquals(ReturnStatus.APPROVED.name(), resp.status());
+        verify(paymentService, never()).refundPayment(any(), anyLong());
     }
 }

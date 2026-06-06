@@ -16,6 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 class ReportIndexingServiceTest {
@@ -105,6 +106,83 @@ class ReportIndexingServiceTest {
 
         // Cannot directly drive worker loop in unit test; just confirm submit doesn't throw
         // (worker loop integration is tested by not throwing exceptions out of this layer)
+    }
+
+    // ── processBatch — success paths ─────────────────────────────────────────
+
+    @Test
+    void processBatch_indexReport_callsSaveAll() {
+        List<ReportIndexingService.Task> batch =
+                List.of(new ReportIndexingService.Task.Index(report()));
+
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(searchRepository).saveAll(anyList());
+    }
+
+    @Test
+    void processBatch_removeReport_callsDeleteAll() {
+        List<ReportIndexingService.Task> batch =
+                List.of(new ReportIndexingService.Task.Remove(REPORT_ID));
+
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(searchRepository).deleteAllById(anyList());
+    }
+
+    @Test
+    void processBatch_emptyBatch_callsNothing() {
+        ReflectionTestUtils.invokeMethod(service, "processBatch", List.of());
+
+        verify(searchRepository, never()).saveAll(any());
+        verify(searchRepository, never()).deleteAllById(any());
+    }
+
+    @Test
+    void processBatch_mixed_indexAndRemove() {
+        List<ReportIndexingService.Task> batch = List.of(
+                new ReportIndexingService.Task.Index(report()),
+                new ReportIndexingService.Task.Remove(TestIds.uuid(99))
+        );
+
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(searchRepository).saveAll(anyList());
+        verify(searchRepository).deleteAllById(anyList());
+    }
+
+    // ── processBatch — failure / DLQ paths ───────────────────────────────────
+
+    @Test
+    void processBatch_saveAllThrows_persistsFailureRecord() {
+        doThrow(new RuntimeException("ES down")).when(searchRepository).saveAll(any());
+
+        List<ReportIndexingService.Task> batch =
+                List.of(new ReportIndexingService.Task.Index(report()));
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(failureRepository).save(any());
+    }
+
+    @Test
+    void processBatch_deleteAllThrows_persistsFailureRecord() {
+        doThrow(new RuntimeException("ES down")).when(searchRepository).deleteAllById(any());
+
+        List<ReportIndexingService.Task> batch =
+                List.of(new ReportIndexingService.Task.Remove(REPORT_ID));
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(failureRepository).save(any());
+    }
+
+    @Test
+    void processBatch_failureRepositoryThrows_doesNotPropagate() {
+        doThrow(new RuntimeException("ES down")).when(searchRepository).saveAll(any());
+        doThrow(new RuntimeException("DB down")).when(failureRepository).save(any());
+
+        List<ReportIndexingService.Task> batch =
+                List.of(new ReportIndexingService.Task.Index(report()));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

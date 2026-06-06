@@ -31,6 +31,7 @@ import backend.services.intf.promotions.LoyaltyService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -704,6 +705,205 @@ class SubscriptionServiceImplTest {
 
         verify(paymentService, never()).updateSubscriptionQuantity(any(), any(), anyInt());
         verify(paymentService, never()).swapSubscriptionPrice(any(), any(), any(), anyInt());
+    }
+
+    // ─── handleSubscriptionUpdated — branch coverage ─────────────────────────
+
+    @Test
+    void handleSubscriptionUpdated_activeStatus_setsNextBillingAt() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+        assertNotNull(sub.getNextBillingAt());
+        assertNull(sub.getCancelledAt());
+    }
+
+    @Test
+    void handleSubscriptionUpdated_cancelledAtAlreadySet_doesNotOverwrite() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        Instant originalCancelledAt = Instant.now().minusSeconds(3600);
+        sub.setCancelledAt(originalCancelledAt);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(stripeResult("canceled"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        // cancelledAt already set — must not be overwritten
+        assertEquals(originalCancelledAt, sub.getCancelledAt());
+    }
+
+    // ─── handleInvoicePaid — additional branches ─────────────────────────────
+
+    @Test
+    void handleInvoicePaid_blankSubscriptionId_isNoop() {
+        service.handleInvoicePaid("in_42", "  ", 1500L);
+
+        verifyNoInteractions(subscriptionRepository);
+    }
+
+    @Test
+    void handleInvoicePaid_nullSubscriptionId_isNoop() {
+        service.handleInvoicePaid("in_42", null, 1500L);
+
+        verifyNoInteractions(subscriptionRepository);
+    }
+
+    @Test
+    void handleInvoicePaid_unknownSubscription_isNoop() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_unknown"))
+                .thenReturn(Optional.empty());
+
+        service.handleInvoicePaid("in_99", "sub_unknown", 1000L);
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void handleInvoicePaid_happyPath_createsRenewalOrderAndUpdatesStatus() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(orderRepository.findByStripeInvoiceId("in_42")).thenReturn(Optional.empty());
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleInvoicePaid("in_42", "sub_1", 1500L);
+
+        verify(orderService).createRenewalOrder(eq(sub), eq("in_42"), eq(1500L));
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+        assertNull(sub.getPastDueSince());
+        assertFalse(sub.isSkipNextCycle());
+    }
+
+    @Test
+    void handleInvoicePaid_createRenewalOrderThrows_returnEarlyNoStatusUpdate() {
+        Subscription sub = makeSubscription(SubscriptionStatus.PAST_DUE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        doThrow(new RuntimeException("order creation failed"))
+                .when(orderService).createRenewalOrder(any(), any(), anyLong());
+
+        service.handleInvoicePaid("in_42", "sub_1", 1500L);
+
+        // returned early — status must NOT have been updated to ACTIVE
+        assertEquals(SubscriptionStatus.PAST_DUE, sub.getStatus());
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void handleInvoicePaid_loyaltyServiceThrows_continuesAndSavesSub() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(orderRepository.findByStripeInvoiceId("in_42"))
+                .thenReturn(Optional.of(new backend.models.core.Order()));
+        doThrow(new RuntimeException("loyalty error"))
+                .when(loyaltyService).recordOrderEarn(any(), any());
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // must not propagate loyalty failure
+        assertDoesNotThrow(() -> service.handleInvoicePaid("in_42", "sub_1", 1500L));
+
+        verify(subscriptionRepository).save(any());
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+    }
+
+    // ─── handleInvoicePaymentFailed ───────────────────────────────────────────
+
+    @Test
+    void handleInvoicePaymentFailed_nullSubscriptionId_isNoop() {
+        service.handleInvoicePaymentFailed("in_42", null);
+
+        verifyNoInteractions(subscriptionRepository);
+    }
+
+    @Test
+    void handleInvoicePaymentFailed_unknownSubscription_isNoop() {
+        when(subscriptionRepository.findByStripeSubscriptionId("sub_unknown"))
+                .thenReturn(Optional.empty());
+
+        service.handleInvoicePaymentFailed("in_42", "sub_unknown");
+
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void handleInvoicePaymentFailed_happyPath_marksPastDueAndSetsPastDueSince() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionId("sub_1")).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleInvoicePaymentFailed("in_42", "sub_1");
+
+        assertEquals(SubscriptionStatus.PAST_DUE, sub.getStatus());
+        assertNotNull(sub.getPastDueSince());
+    }
+
+    @Test
+    void handleInvoicePaymentFailed_pastDueSinceAlreadySet_doesNotOverwrite() {
+        Subscription sub = makeSubscription(SubscriptionStatus.PAST_DUE);
+        Instant original = Instant.now().minusSeconds(86400);
+        sub.setPastDueSince(original);
+        when(subscriptionRepository.findByStripeSubscriptionId("sub_1")).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleInvoicePaymentFailed("in_42", "sub_1");
+
+        assertEquals(original, sub.getPastDueSince());
+    }
+
+    // ─── handleSetupIntentSucceeded — additional branches ────────────────────
+
+    @Test
+    void handleSetupIntentSucceeded_nullParams_isNoop() {
+        service.handleSetupIntentSucceeded(null, null);
+
+        verifyNoInteractions(savedPaymentMethodRepository);
+    }
+
+    @Test
+    void handleSetupIntentSucceeded_userNotFound_isNoop() {
+        when(savedPaymentMethodRepository.findByStripePaymentMethodId("pm_new")).thenReturn(Optional.empty());
+        when(userRepository.findByStripeCustomerId("cus_unknown")).thenReturn(Optional.empty());
+
+        service.handleSetupIntentSucceeded("cus_unknown", "pm_new");
+
+        verify(savedPaymentMethodRepository, never()).save(any());
+    }
+
+    @Test
+    void handleSetupIntentSucceeded_pmRetrievalFails_isNoop() {
+        User user = makeUser(TestIds.uuid(1));
+        when(savedPaymentMethodRepository.findByStripePaymentMethodId("pm_err")).thenReturn(Optional.empty());
+        when(userRepository.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(user));
+        doThrow(new RuntimeException("Stripe timeout"))
+                .when(paymentService).retrievePaymentMethod("pm_err");
+
+        assertDoesNotThrow(() -> service.handleSetupIntentSucceeded("cus_123", "pm_err"));
+
+        verify(savedPaymentMethodRepository, never()).save(any());
+    }
+
+    @Test
+    void handleSetupIntentSucceeded_existingDefaultPresent_savesAsNonDefault() {
+        User user = makeUser(TestIds.uuid(1));
+        when(savedPaymentMethodRepository.findByStripePaymentMethodId("pm_new")).thenReturn(Optional.empty());
+        when(userRepository.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(user));
+        when(paymentService.retrievePaymentMethod("pm_new"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_new", "cus_123", "visa", "4242", 12, 2030));
+        when(savedPaymentMethodRepository.findByUserIdAndIsDefaultTrue(any()))
+                .thenReturn(Optional.of(new SavedPaymentMethod())); // existing default
+        when(savedPaymentMethodRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSetupIntentSucceeded("cus_123", "pm_new");
+
+        ArgumentCaptor<SavedPaymentMethod> captor = ArgumentCaptor.forClass(SavedPaymentMethod.class);
+        verify(savedPaymentMethodRepository).save(captor.capture());
+        assertFalse(captor.getValue().isDefault());
     }
 
     // ─── helpers ────────────────────────────────────────────────────────────
