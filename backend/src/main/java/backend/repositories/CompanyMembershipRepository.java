@@ -1,6 +1,7 @@
 package backend.repositories;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -42,4 +43,8 @@ public interface CompanyMembershipRepository extends JpaRepository<CompanyMember
 
     Optional<CompanyMembership> findByCompanyIdAndUserIdAndRoleAndStatus(
             java.util.UUID companyId, UUID userId, CompanyRole role, CompanyMembershipStatus status);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM CompanyMembership m WHERE m.company.id = :companyId")
+    void deleteAllByCompanyId(@Param("companyId") UUID companyId);
 }

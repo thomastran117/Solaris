@@ -216,6 +216,7 @@ public class CompanyServiceImpl implements CompanyService {
     @Transactional
     public void deleteCompany(UUID companyId, UUID userId) {
         Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
+        membershipRepository.deleteAllByCompanyId(companyId);
         companyRepository.delete(company);
         companyAccessService.invalidate(companyId, userId);
     }
