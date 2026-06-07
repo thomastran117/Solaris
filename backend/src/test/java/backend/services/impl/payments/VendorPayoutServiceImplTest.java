@@ -262,6 +262,109 @@ class VendorPayoutServiceImplTest {
         verify(balanceRepository).returnFromInTransit(VENDOR_ID, 9500L);
     }
 
+    // ─── additional coverage tests ────────────────────────────────────────────
+
+    @Test
+    void listPayouts_noStatusFilter_returnsAll() {
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor(OWNER_ID)));
+        when(payoutRepository.findByVendorId(eq(VENDOR_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(payout(PayoutStatus.PAID))));
+
+        PagedResponse<VendorPayoutResponse> response = service.listPayouts(VENDOR_ID, null, 0, 10, OWNER_ID);
+
+        assertEquals(1, response.getItems().size());
+        verify(payoutRepository).findByVendorId(eq(VENDOR_ID), any(Pageable.class));
+    }
+
+    @Test
+    void handleTransferPaid_nonProcessingStatus_isIgnored() {
+        VendorPayout payout = payout(PayoutStatus.PAID); // already PAID
+        payout.setStripeTransferId("tr_dup");
+        when(payoutRepository.findByStripeTransferId("tr_dup")).thenReturn(Optional.of(payout));
+
+        service.handleTransferPaid("tr_dup");
+
+        // Should not save or confirm payout again
+        verify(payoutRepository, never()).save(payout);
+        verify(balanceRepository, never()).confirmPayout(any(), any(Long.class));
+    }
+
+    @Test
+    void handleTransferFailed_nonProcessingStatus_isIgnored() {
+        VendorPayout payout = payout(PayoutStatus.FAILED); // already FAILED
+        payout.setStripeTransferId("tr_dup2");
+        when(payoutRepository.findByStripeTransferId("tr_dup2")).thenReturn(Optional.of(payout));
+
+        service.handleTransferFailed("tr_dup2", "duplicate");
+
+        verify(payoutRepository, never()).save(payout);
+        verify(balanceRepository, never()).returnFromInTransit(any(), any(Long.class));
+    }
+
+    @Test
+    void triggerManualPayout_throwsWhenStripeNotEnabled() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(OWNER_ID);
+        vendor.setChargesEnabled(false); // not fully enabled
+        vendor.setPayoutsEnabled(true);
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(marketplaceProfile(OWNER_ID)));
+        when(balanceRepository.findByVendorIdForUpdate(VENDOR_ID)).thenReturn(Optional.of(balance));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+
+        assertThrows(BadRequestException.class,
+                () -> service.triggerManualPayout(VENDOR_ID, MARKETPLACE_ID, OWNER_ID));
+    }
+
+    @Test
+    void createAdjustment_negativeAmountReleasesFromPending() {
+        MarketplaceVendor vendor = vendor(OWNER_ID);
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(marketplaceProfile(OWNER_ID)));
+        when(adjustmentRepository.save(any(VendorAdjustment.class))).thenAnswer(inv -> {
+            VendorAdjustment adj = inv.getArgument(0);
+            adj.setId(TestIds.uuid(11));
+            return adj;
+        });
+        when(balanceRepository.releasePending(VENDOR_ID, 300L)).thenReturn(1);
+
+        VendorAdjustmentRequest request = new VendorAdjustmentRequest();
+        request.setAmountCents(-300L);
+        request.setCurrency("USD");
+        request.setReason("Penalty");
+
+        var response = service.createAdjustment(VENDOR_ID, OWNER_ID, request);
+
+        assertEquals(-300L, response.getAmountCents());
+        verify(balanceRepository).releasePending(VENDOR_ID, 300L);
+    }
+
+    @Test
+    void dispatchTransfer_balanceMoveReturnsZero_marksFailedWithoutCallingStripe() {
+        VendorPayout payout = payout(PayoutStatus.SCHEDULED);
+        when(balanceRepository.moveToInTransit(VENDOR_ID, 9500L)).thenReturn(0);
+
+        service.dispatchTransfer(payout, "acct_123", 9500L);
+
+        assertEquals(PayoutStatus.FAILED, payout.getStatus());
+        assertTrue(payout.getFailureReason().contains("insufficient or already reserved"));
+        verify(paymentService, never()).createTransfer(any(), any(Long.class), any(), any(), any());
+    }
+
+    @Test
+    void dispatchTransfer_stripeAndRollbackBothFail_logsDoubleFailure() {
+        VendorPayout payout = payout(PayoutStatus.SCHEDULED);
+        when(balanceRepository.moveToInTransit(VENDOR_ID, 9500L)).thenReturn(1);
+        when(paymentService.createTransfer(any(), any(Long.class), any(), any(), any()))
+                .thenThrow(new RuntimeException("stripe down"));
+        doThrow(new RuntimeException("DB down"))
+                .when(balanceRepository).returnFromInTransit(VENDOR_ID, 9500L);
+
+        // Should not throw — just log the accounting mismatch
+        service.dispatchTransfer(payout, "acct_123", 9500L);
+
+        assertEquals(PayoutStatus.FAILED, payout.getStatus());
+    }
+
     private UUID cloneUuid(UUID uuid) {
         return UUID.fromString(uuid.toString());
     }

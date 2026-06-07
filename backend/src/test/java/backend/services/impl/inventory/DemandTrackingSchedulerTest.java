@@ -14,6 +14,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DemandTrackingSchedulerTest {
@@ -27,6 +28,29 @@ class DemandTrackingSchedulerTest {
         productRepository = mock(ProductRepository.class);
         demandService = mock(DemandService.class);
         scheduler = new DemandTrackingScheduler(productRepository, demandService);
+    }
+
+    @Test
+    void refreshHotProductCaches_noActiveCompanies_noRefreshCalls() {
+        when(productRepository.findDistinctCompanyIdsWithPaidOrdersSince(any()))
+                .thenReturn(List.of());
+
+        scheduler.refreshHotProductCaches();
+
+        verifyNoInteractions(demandService);
+    }
+
+    @Test
+    void refreshHotProductCaches_24hRefreshFails_continuesGracefully() {
+        UUID companyA = TestIds.uuid(3);
+        when(productRepository.findDistinctCompanyIdsWithPaidOrdersSince(any()))
+                .thenReturn(List.of(companyA));
+        doThrow(new RuntimeException("redis down")).when(demandService).refreshCache(companyA, "24h");
+
+        scheduler.refreshHotProductCaches();
+
+        verify(demandService).refreshCache(companyA, "1h");
+        verify(demandService).refreshCache(companyA, "24h");
     }
 
     @Test

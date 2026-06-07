@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -844,5 +845,251 @@ class ImportServiceImplTest {
 
         assertEquals(1, job.getErrorRows());
         verify(productService, never()).batchCreateProducts(any(), any(), any());
+    }
+
+    // ─── validatePerJobType — additional branches ─────────────────────────────
+
+    @Test
+    void processJob_missingPrice_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nmissing-price,Chair,\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+        verify(productService, never()).batchCreateProducts(any(), any(), any());
+    }
+
+    @Test
+    void processJob_invalidPriceFormat_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nbad-price,Chair,not-a-number\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_invalidStatus_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE,STATUS\ninvalid-status,Chair,9.99,DELETED\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_stockInProductUpsert_negativeStock_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE,STOCK\nneg-stock,Chair,9.99,-1\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_stockInProductUpsert_nonIntegerStock_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE,STOCK\nbad-stock,Chair,9.99,abc\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    @Test
+    void processJob_invalidBoolean_inFeatured_marksRowAsError() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE,FEATURED\nbool-test,Chair,9.99,maybe\n"));
+
+        service.processJob(JOB_ID);
+
+        assertEquals(1, job.getErrorRows());
+    }
+
+    // ─── bumpProgress — concurrency retry ─────────────────────────────────────
+
+    @Test
+    void processJob_bumpProgress_retryOnConcurrencyFailure_thenSucceeds() throws Exception {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        Product existing = product("retry-sku", "Retry Product", new BigDecimal("9.99"), 4);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nretry-sku,Retry Product,9.99\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(productService.updateProduct(any(), any(), any(), any()))
+                .thenReturn(productResponse(UPDATE_PRODUCT_ID, "retry-sku"));
+
+        // First three saves succeed (setTotalRows, markStatus PROCESSING), then on bumpProgress: fail once then succeed
+        when(jobRepository.save(any(ImportJob.class)))
+                .thenAnswer(inv -> inv.getArgument(0))  // setTotalRows save
+                .thenAnswer(inv -> inv.getArgument(0))  // markStatus PROCESSING save
+                .thenThrow(new ConcurrencyFailureException("conflict"))  // bumpProgress first attempt
+                .thenAnswer(inv -> inv.getArgument(0))  // bumpProgress retry
+                .thenAnswer(inv -> inv.getArgument(0)); // finalizeJob save
+
+        assertDoesNotThrow(() -> service.processJob(JOB_ID));
+    }
+
+    // ─── batchCreate exception path ────────────────────────────────────────────
+
+    @Test
+    void processJob_batchCreateThrows_marksRowAsError() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.CREATE_ONLY, ImportJobStatus.PENDING);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nnew-sku,New Product,19.99\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of()); // no existing → goes to creates
+        when(productService.batchCreateProducts(any(), any(), any()))
+                .thenThrow(new RuntimeException("batch create DB error"));
+        when(storageService.putBytes(any(), any(), anyString(), any()))
+                .thenReturn(new PresignUploadResponse("https://s3/presign-url", "https://s3/errors.csv", "reports/key.csv", 3600));
+        when(storageService.presignDownload(anyString(), anyInt()))
+                .thenReturn("https://s3/errors.csv");
+
+        service.processJob(JOB_ID);
+
+        // Error report should be written since batchCreate failed → row has error
+        verify(storageService).putBytes(any(), any(), anyString(), any());
+    }
+
+    // ─── updateProduct exception path ─────────────────────────────────────────
+
+    @Test
+    void processJob_updateProductThrows_marksRowAsError() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPDATE_ONLY, ImportJobStatus.PENDING);
+        Product existing = product("upd-sku", "Update Product", new BigDecimal("10.00"), 5);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nupd-sku,Updated,25.00\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(productService.updateProduct(any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("update DB error"));
+        when(storageService.putBytes(any(), any(), anyString(), any()))
+                .thenReturn(new PresignUploadResponse("https://s3/presign-url", "https://s3/errors.csv", "reports/key.csv", 3600));
+        when(storageService.presignDownload(anyString(), anyInt()))
+                .thenReturn("https://s3/errors.csv");
+
+        service.processJob(JOB_ID);
+
+        verify(storageService).putBytes(any(), any(), anyString(), any());
+    }
+
+    // ─── bulkAdjust exception path ────────────────────────────────────────────
+
+    @Test
+    void processJob_bulkAdjustThrows_marksRowAsError() {
+        ImportJob job = job(JOB_ID, ImportJobType.INVENTORY_SYNC, ImportMode.UPSERT, ImportJobStatus.PENDING);
+        Product existing = product("adj-sku", "Adj Product", new BigDecimal("10.00"), 20);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,STOCK\nadj-sku,25\n")); // delta +5
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(inventoryService.bulkAdjust(any(), any(), any()))
+                .thenThrow(new RuntimeException("bulkAdjust DB error"));
+        when(storageService.putBytes(any(), any(), anyString(), any()))
+                .thenReturn(new PresignUploadResponse("https://s3/presign-url", "https://s3/errors.csv", "reports/key.csv", 3600));
+        when(storageService.presignDownload(anyString(), anyInt()))
+                .thenReturn("https://s3/errors.csv");
+
+        service.processJob(JOB_ID);
+
+        verify(storageService).putBytes(any(), any(), anyString(), any());
+    }
+
+    // ─── bumpProgress — exhausts all 5 retries ────────────────────────────────
+
+    @Test
+    void processJob_bumpProgress_exhaustsRetries_rethrows() {
+        ImportJob job = job(JOB_ID, ImportJobType.PRODUCT_UPSERT, ImportMode.UPDATE_ONLY, ImportJobStatus.PENDING);
+        Product existing = product("exh-sku", "Exhaust Product", new BigDecimal("9.99"), 5);
+        existing.setId(UPDATE_PRODUCT_ID);
+
+        when(jobRepository.claimForProcessing(JOB_ID, ImportJobStatus.PENDING, ImportJobStatus.PARSING)).thenReturn(1);
+        when(jobRepository.findById(JOB_ID)).thenReturn(Optional.of(job));
+        when(storageService.openObject("imports/products.csv"))
+                .thenReturn(csvStream("SKU,NAME,PRICE\nexh-sku,Exhaust,9.99\n"));
+        when(productRepository.findAllBySkuInAndCompanyId(anyCollection(), eq(COMPANY_ID)))
+                .thenReturn(List.of(existing));
+        when(productService.updateProduct(any(), any(), any(), any()))
+                .thenReturn(productResponse(UPDATE_PRODUCT_ID, "exh-sku"));
+
+        // calls 1-2: setTotalRows and markStatus PROCESSING succeed; calls 3-7: bumpProgress retries 1-5 all fail
+        when(jobRepository.save(any(ImportJob.class)))
+                .thenAnswer(inv -> inv.getArgument(0))
+                .thenAnswer(inv -> inv.getArgument(0))
+                .thenThrow(new ConcurrencyFailureException("c1"))
+                .thenThrow(new ConcurrencyFailureException("c2"))
+                .thenThrow(new ConcurrencyFailureException("c3"))
+                .thenThrow(new ConcurrencyFailureException("c4"))
+                .thenThrow(new ConcurrencyFailureException("c5"));
+
+        assertThrows(ConcurrencyFailureException.class, () -> service.processJob(JOB_ID));
+    }
+
+    // ─── exportCatalogue — multi-page ──────────────────────────────────────────
+
+    @Test
+    void exportCatalogue_multiPage_iteratesBothPages() {
+        Product p1 = product("sku-1", "Product 1", new BigDecimal("10.00"), 5);
+        p1.setStatus(ProductStatus.ACTIVE);
+        p1.setImages(new ArrayList<>());
+        Product p2 = product("sku-2", "Product 2", new BigDecimal("20.00"), 3);
+        p2.setStatus(ProductStatus.ACTIVE);
+        p2.setImages(new ArrayList<>());
+
+        when(productRepository.countByCompanyId(COMPANY_ID)).thenReturn(2L);
+
+        // totalElements=2000 with pageSize=1000 → totalPages=2 → page0.hasNext()=true, page1.hasNext()=false
+        var page0 = new PageImpl<>(List.of(p1), PageRequest.of(0, 1000), 2000);
+        var page1 = new PageImpl<>(List.of(p2), PageRequest.of(1, 1000), 2000);
+        when(productRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
+                .thenReturn(page0, page1);
+
+        when(storageService.putBytes(any(), any(), anyString(), any()))
+                .thenReturn(new PresignUploadResponse("https://s3/presign-url", "https://s3/out.csv", "exports/out.csv", 3600));
+        when(storageService.presignDownload(anyString(), anyInt()))
+                .thenReturn("https://s3/out.csv");
+
+        ImportDownloadResponse response = service.exportCatalogue(COMPANY_ID, OWNER_ID);
+
+        assertNotNull(response);
+        verify(productRepository, times(2)).findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class));
     }
 }

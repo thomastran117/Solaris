@@ -62,9 +62,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import backend.models.core.BundleItem;
+import backend.models.core.InventoryLocation;
+import backend.models.core.LocationStock;
 import backend.models.core.ProductBundle;
+import backend.models.core.ProductVariant;
+import backend.dtos.requests.return_.MerchantInitiateReturnRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -74,6 +80,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -1456,6 +1463,561 @@ class ReturnServiceImplTest {
                 new MerchantApproveReturnRequest("approved", null, null));
 
         assertEquals(ReturnStatus.APPROVED.name(), resp.status());
+        verify(paymentService, never()).refundPayment(any(), anyLong());
+    }
+
+    // =========================================================================
+    // buildReturnItems — item not DELIVERED or SHIPPED
+    // =========================================================================
+
+    @Test
+    void requestReturn_itemNotDeliveredOrShipped_throwsBadRequest() {
+        Order order = deliveredOrder();
+        order.setDeliveredAt(Instant.now().minus(3, ChronoUnit.DAYS));
+
+        OrderItem item = orderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.CANCELLED);
+        order.setItems(List.of(item));
+
+        when(orderRepository.findByIdAndUserId(ORDER_ID, BUYER_ID)).thenReturn(Optional.of(order));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+
+        assertThrows(BadRequestException.class, () ->
+                service.requestReturn(ORDER_ID, BUYER_ID,
+                        new BuyerInitiateReturnRequest(
+                                List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                                ReturnReason.CHANGED_MIND, "note", null)));
+    }
+
+    // =========================================================================
+    // buildReturnItems — multi-merchant items (no expectedCompanyId) — buyer path
+    // =========================================================================
+
+    @Test
+    void requestReturn_multiMerchantItems_throwsBadRequest() {
+        Order order = deliveredOrder();
+        order.setDeliveredAt(Instant.now().minus(3, ChronoUnit.DAYS));
+
+        Company otherCompany = new Company();
+        otherCompany.setId(TestIds.uuid(77));
+        Product otherProduct = new Product();
+        otherProduct.setId(TestIds.uuid(78));
+        otherProduct.setCompany(otherCompany);
+
+        UUID item2Id = TestIds.uuid(79);
+        OrderItem item2 = new OrderItem();
+        item2.setId(item2Id);
+        item2.setQuantity(1);
+        item2.setUnitPrice(new BigDecimal("30.00"));
+        item2.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item2.setProduct(otherProduct);
+
+        order.setItems(new ArrayList<>(List.of(orderItem(), item2)));
+
+        when(orderRepository.findByIdAndUserId(ORDER_ID, BUYER_ID)).thenReturn(Optional.of(order));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(item2Id)).thenReturn(0);
+
+        assertThrows(BadRequestException.class, () ->
+                service.requestReturn(ORDER_ID, BUYER_ID,
+                        new BuyerInitiateReturnRequest(
+                                List.of(
+                                        new BuyerReturnItemRequest(ITEM_ID, 1),
+                                        new BuyerReturnItemRequest(item2Id, 1)),
+                                ReturnReason.CHANGED_MIND, "note", null)));
+    }
+
+    // =========================================================================
+    // restoreReturnedItemStock — variant path
+    // =========================================================================
+
+    @Test
+    void inspectReturn_withRestockTrue_restoresVariantStock() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(15);
+        UUID variantId = TestIds.uuid(16);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(variantId);
+
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(2);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(2);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        oi.setVariant(variant);
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        ReturnResponse resp = service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req);
+
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
+        verify(variantRepository).restoreStock(eq(variantId), eq(2));
+    }
+
+    // =========================================================================
+    // restoreReturnedItemStock — bundle path (product component, no variant)
+    // =========================================================================
+
+    @Test
+    void inspectReturn_withRestockTrue_bundleItem_restoresBundleComponents() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        BundleItem bi = new BundleItem();
+        bi.setProduct(product());
+        bi.setVariant(null);
+        bi.setQuantity(2);
+
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(TestIds.uuid(18));
+        bundle.setCompany(company());
+        bundle.setItems(new ArrayList<>(List.of(bi)));
+
+        UUID riId = TestIds.uuid(17);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(1);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("80.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setBundle(bundle);
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req);
+
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(2)); // qty=1 * bi.quantity=2
+        verify(adjustmentRepository).save(any());
+    }
+
+    // =========================================================================
+    // issueRefundAndFinalize — refund fails → FAILED status (merchantInitiateReturn)
+    // =========================================================================
+
+    @Test
+    void merchantInitiateReturn_refundFails_setsFailedStatus() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_fail");
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(any(), anyLong()))
+                .thenThrow(new RuntimeException("Stripe down"));
+
+        ArgumentCaptor<Return> captor = ArgumentCaptor.forClass(Return.class);
+        when(returnRepository.save(captor.capture())).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong item", false, null, null));
+
+        assertEquals(ReturnStatus.FAILED.name(), resp.status());
+        verify(compensationRepository).save(any());
+    }
+
+    // =========================================================================
+    // handleRefundWebhookEvent — loyalty clawback throws → does not propagate
+    // =========================================================================
+
+    @Test
+    void handleRefundWebhookEvent_loyaltyClawbackThrows_doesNotPropagate() {
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>());
+
+        Return ret = minimalReturn(order);
+        ret.setStripeRefundId("re_clawback_fail");
+        ret.setRefundedAmountCents(0L);
+
+        when(returnRepository.findByStripeRefundId("re_clawback_fail")).thenReturn(Optional.of(ret));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        doThrow(new RuntimeException("loyalty service down"))
+                .when(loyaltyService).clawbackEarnedPoints(any(), anyLong(), anyLong());
+
+        assertDoesNotThrow(() ->
+                service.handleRefundWebhookEvent("re_clawback_fail", "succeeded", 3000L));
+
+        verify(orderRepository).addRefundAmountDelta(eq(ORDER_ID), eq(3000L));
+    }
+
+    // =========================================================================
+    // processReturnItems — restockItems=true (from merchantInitiateReturn)
+    // =========================================================================
+
+    @Test
+    void merchantInitiateReturn_withRestockTrue_restoresProductStock() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong item", true, 0L, null));
+
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(1));
+    }
+
+    // =========================================================================
+    // restoreReturnedItemStock — bundle item with variant
+    // =========================================================================
+
+    @Test
+    void inspectReturn_bundleItemWithVariant_restoresBundleVariantStock() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        UUID variantId = TestIds.uuid(20);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(variantId);
+
+        BundleItem bi = new BundleItem();
+        bi.setVariant(variant);
+        bi.setQuantity(3);
+
+        Product bundleProduct = new Product();
+        bundleProduct.setId(TestIds.uuid(21));
+        bi.setProduct(bundleProduct);
+
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(TestIds.uuid(22));
+        bundle.setItems(List.of(bi));
+        bundle.setCompany(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(23);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(2);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("60.00"));
+        oi.setQuantity(2);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setBundle(bundle);
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req);
+
+        verify(variantRepository).restoreStock(eq(variantId), eq(6)); // qty=2 * bi.quantity=3
+    }
+
+    // =========================================================================
+    // restoreReturnedItemStock — fulfillmentLocation present → location stock restored
+    // =========================================================================
+
+    @Test
+    void inspectReturn_withFulfillmentLocation_restoresLocationStock() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        UUID locationId = TestIds.uuid(30);
+        UUID locationStockId = TestIds.uuid(31);
+
+        InventoryLocation location = new InventoryLocation();
+        location.setId(locationId);
+
+        LocationStock ls = new LocationStock();
+        ls.setId(locationStockId);
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(32);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(1);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        oi.setFulfillmentLocation(location);
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
+                eq(locationId), eq(PRODUCT_ID), eq(null)))
+                .thenReturn(Optional.of(ls));
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req);
+
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(1));
+        verify(locationStockRepository).restoreStock(eq(locationStockId), eq(1));
+        verify(adjustmentRepository).save(any());
+    }
+
+    // =========================================================================
+    // restoreReturnedItemStock — location restore fails → rollback product stock
+    // =========================================================================
+
+    @Test
+    void inspectReturn_locationRestoreFails_rollbackProductStockAndSetsRestockFailed() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        UUID locationId = TestIds.uuid(40);
+        UUID locationStockId = TestIds.uuid(41);
+
+        InventoryLocation location = new InventoryLocation();
+        location.setId(locationId);
+
+        LocationStock ls = new LocationStock();
+        ls.setId(locationStockId);
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(42);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(1);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        oi.setFulfillmentLocation(location);
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
+                eq(locationId), eq(PRODUCT_ID), eq(null)))
+                .thenReturn(Optional.of(ls));
+        doThrow(new RuntimeException("location DB error"))
+                .when(locationStockRepository).restoreStock(eq(locationStockId), anyInt());
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        assertThrows(backend.exceptions.http.ConflictException.class,
+                () -> service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req));
+
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(1));
+        verify(productRepository).decrementStock(eq(PRODUCT_ID), eq(1));
+    }
+
+    // =========================================================================
+    // assessReturn — riskAssessmentRepository.save throws → doesNotPropagate
+    // =========================================================================
+
+    @Test
+    void merchantInitiateReturn_riskSaveThrows_continuesGracefully() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId(null);
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+        order.setItems(new ArrayList<>(List.of(orderItem())));
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        doThrow(new RuntimeException("DB down")).when(riskAssessmentRepository).save(any());
+
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong item", false, 0L, null));
+
+        assertNotNull(resp);
+    }
+
+    // =========================================================================
+    // recordReturnAdjustment — adjustmentRepository.save throws → doesNotPropagate
+    // =========================================================================
+
+    @Test
+    void inspectReturn_adjustmentSaveThrows_doesNotPropagate() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setRefundedAmountCents(0L);
+
+        Return ret = minimalReturn(order);
+        ret.setStatus(ReturnStatus.APPROVED);
+
+        UUID riId = TestIds.uuid(50);
+        ReturnItem ri = new ReturnItem();
+        ri.setId(riId);
+        ri.setReturnRequest(ret);
+        ri.setQuantityReturned(1);
+
+        OrderItem oi = new OrderItem();
+        oi.setId(ITEM_ID);
+        oi.setUnitPrice(new BigDecimal("50.00"));
+        oi.setQuantity(1);
+        oi.setFulfillmentStatus(FulfillmentStatus.RETURNED);
+        oi.setProduct(product());
+        ri.setOrderItem(oi);
+        ret.setItems(List.of(ri));
+
+        when(returnRepository.findByIdAndCompanyId(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new RuntimeException("adj DB error")).when(adjustmentRepository).save(any());
+
+        InspectReturnRequest req = new InspectReturnRequest(List.of(
+                new InspectReturnItemRequest(riId, ReturnItemCondition.RESELLABLE, true)), null);
+
+        assertDoesNotThrow(() -> service.inspectReturn(RETURN_ID, COMPANY_ID, USER_ID, req));
+        verify(productRepository).restoreStock(eq(PRODUCT_ID), eq(1));
+    }
+
+    // =========================================================================
+    // issueRefundAndFinalize — refundAmountCents > 0 but paymentIntentId == null
+    // =========================================================================
+
+    @Test
+    void merchantInitiateReturn_withAmountButNoPaymentIntent_completesWithoutRefund() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company());
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId(null);
+        order.setTotalAmount(new BigDecimal("100.00"));
+        order.setRefundedAmountCents(0L);
+
+        OrderItem item = orderItem();
+        item.setUnitPrice(new BigDecimal("50.00"));
+        order.setItems(new ArrayList<>(List.of(item)));
+
+        when(orderRepository.findByIdAndProductCompanyIdForUpdate(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(returnLocation()));
+        when(returnItemRepository.sumReturnedQuantityByOrderItemId(ITEM_ID)).thenReturn(0);
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> {
+            Return r = inv.getArgument(0);
+            r.setId(RETURN_ID);
+            return r;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReturnResponse resp = service.merchantInitiateReturn(ORDER_ID, COMPANY_ID, USER_ID,
+                new MerchantInitiateReturnRequest(
+                        List.of(new BuyerReturnItemRequest(ITEM_ID, 1)),
+                        ReturnReason.WRONG_ITEM, "wrong", false, null, null));
+
+        assertEquals(ReturnStatus.COMPLETED.name(), resp.status());
         verify(paymentService, never()).refundPayment(any(), anyLong());
     }
 }

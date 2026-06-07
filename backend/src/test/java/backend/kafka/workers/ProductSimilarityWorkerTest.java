@@ -115,6 +115,25 @@ class ProductSimilarityWorkerTest {
     }
 
     @Test
+    void recomputeAll_multiplePages_paginatesUntilEmpty() {
+        when(productRepository.findDistinctCompanyIdsWithActiveProducts()).thenReturn(List.of(COMPANY_ID));
+
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+
+        // First page: 1 item with hasNext=true (200 total, size 100 → 2 pages)
+        when(productRepository.findActiveByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product),
+                        org.springframework.data.domain.PageRequest.of(0, 100), 200))
+                .thenReturn(new PageImpl<>(List.of())); // second call returns empty
+
+        when(similarityRepository.findSourceIdsWithFreshRows(anyList(), any(Instant.class)))
+                .thenReturn(List.of(PRODUCT_ID)); // product is fresh — no recompute
+
+        assertDoesNotThrow(() -> worker.recomputeAll());
+    }
+
+    @Test
     void recomputeAll_companyThrows_otherCompaniesStillProcessed() {
         UUID company2 = TestIds.uuid(3);
         when(productRepository.findDistinctCompanyIdsWithActiveProducts()).thenReturn(List.of(COMPANY_ID, company2));

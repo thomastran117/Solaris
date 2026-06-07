@@ -6,6 +6,7 @@ import backend.dtos.requests.inventory.SetLocationStockRequest;
 import backend.dtos.requests.inventory.UpdateLocationRequest;
 import backend.dtos.responses.inventory.LocationResponse;
 import backend.dtos.responses.inventory.LocationStockResponse;
+import backend.dtos.responses.inventory.NearbyPickupLocationResponse;
 import backend.exceptions.http.ConflictException;
 import backend.models.core.Company;
 import backend.models.core.InventoryLocation;
@@ -31,14 +32,18 @@ import org.junit.jupiter.api.Test;
 
 import backend.models.core.ProductVariant;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -635,5 +640,158 @@ class LocationInventoryServiceImplTest {
         v.setProduct(product());
         v.setSku("DESK-BLACK");
         return v;
+    }
+
+    // ─── getNearbyPickupLocations ─────────────────────────────────────────────
+
+    @Test
+    void getNearbyPickupLocations_returnsMappedResponse() {
+        UUID storeId = TestIds.uuid(20);
+        byte[] uuidBytes = uuidToBytes(storeId);
+        // row order: [0]=id, [1]=name, [2]=code, [3]=address, [4]=city, [5]=country,
+        //            [6]=pickupReadyHours, [7]=type, [8]=distanceKm
+        Object[] row = new Object[]{
+            uuidBytes, "Downtown Store", "DWNTN", "123 Main St", "Toronto", "CA",
+            4, "STORE", 2.5
+        };
+        when(locationRepository.findNearbyPickupLocations(eq(COMPANY_ID), eq(43.65), eq(-79.38), eq(5)))
+                .thenReturn(List.<Object[]>of(row));
+
+        List<NearbyPickupLocationResponse> result = service.getNearbyPickupLocations(COMPANY_ID, 43.65, -79.38, 5);
+
+        assertEquals(1, result.size());
+        assertEquals(storeId, result.get(0).id());
+        assertEquals("Downtown Store", result.get(0).name());
+        assertEquals(LocationType.STORE, result.get(0).type());
+        assertEquals(2.5, result.get(0).distanceKm(), 0.001);
+    }
+
+    @Test
+    void getNearbyPickupLocations_nullPickupHours_handledGracefully() {
+        UUID storeId = TestIds.uuid(21);
+        Object[] row = new Object[]{
+            uuidToBytes(storeId), "Corner Store", "CRNR", "456 Elm St", "Vancouver", "CA",
+            null, "STORE", 0.8
+        };
+        when(locationRepository.findNearbyPickupLocations(any(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.<Object[]>of(row));
+
+        List<NearbyPickupLocationResponse> result = service.getNearbyPickupLocations(COMPANY_ID, 49.28, -123.12, 3);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertNull(result.get(0).pickupReadyHours());
+    }
+
+    // ─── updateLocation — change type to WAREHOUSE with existing pickup hours ──
+
+    @Test
+    void updateLocation_changeTypeToWarehouse_withPickupHours_throwsBadRequest() {
+        InventoryLocation existing = location();
+        existing.setType(LocationType.STORE);
+        existing.setPickupReadyHours(4); // has pickup hours set already
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateLocationRequest req = new UpdateLocationRequest();
+        req.setType(LocationType.WAREHOUSE); // changing to WAREHOUSE but pickupReadyHours still set
+
+        assertThrows(BadRequestException.class, () ->
+                service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateLocation_allOptionalFields_updated() {
+        InventoryLocation existing = location();
+        existing.setType(LocationType.STORE);
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+        when(locationRepository.save(any(InventoryLocation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateLocationRequest req = new UpdateLocationRequest();
+        req.setAddress("999 Bay St");
+        req.setCity("Toronto");
+        req.setCountry("CA");
+        req.setActive(false);
+        req.setDisplayOrder(10);
+        req.setLatitude(43.65);
+        req.setLongitude(-79.38);
+        req.setFulfillmentCost(new BigDecimal("4.99"));
+        req.setType(LocationType.STORE);
+        req.setHandlingDays(1);
+        req.setPickupReadyHours(3);
+
+        service.updateLocation(COMPANY_ID, LOCATION_ID, OWNER_ID, req);
+
+        assertEquals("999 Bay St", existing.getAddress());
+        assertFalse(existing.isActive());
+        assertEquals(10, existing.getDisplayOrder());
+        assertEquals(3, existing.getPickupReadyHours());
+    }
+
+    private static byte[] uuidToBytes(UUID uuid) {
+        ByteBuffer bb = ByteBuffer.allocate(16);
+        bb.putLong(uuid.getMostSignificantBits());
+        bb.putLong(uuid.getLeastSignificantBits());
+        return bb.array();
+    }
+
+    // ─── adjustLocationStock with variant ─────────────────────────────────────
+
+    @Test
+    void adjustLocationStock_withVariant_recordsVariantAdjustment() {
+        InventoryLocation location = location();
+        Product product = product();
+        ProductVariant variant = variant();
+        LocationStock ls = locationStock(location, product, 20, null);
+        ls.setVariant(variant);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, VARIANT_ID))
+                .thenReturn(Optional.of(ls));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(3))).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(variantRepository.getReferenceById(VARIANT_ID)).thenReturn(variant);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        AdjustStockRequest req = new AdjustStockRequest();
+        req.setDelta(3);
+        req.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        service.adjustLocationStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, VARIANT_ID);
+
+        verify(variantRepository).findByIdAndProductId(VARIANT_ID, PRODUCT_ID);
+        verify(variantRepository).getReferenceById(VARIANT_ID);
+        verify(adjustmentRepository).save(any());
+    }
+
+    // ─── setLocationStock — OUT_OF_STOCK status ───────────────────────────────
+
+    @Test
+    void setLocationStock_zeroStock_returnsOutOfStockStatus() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock existing = locationStock(location, product, 5, 2);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(existing));
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        SetLocationStockRequest req = new SetLocationStockRequest();
+        req.setStock(0);
+        req.setLowStockThreshold(2);
+
+        LocationStockResponse resp = service.setLocationStock(
+                COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, req, null);
+
+        assertEquals("OUT_OF_STOCK", resp.getStockStatus());
+        assertEquals(0, resp.getStock());
+        verify(stockAlertService).checkAndAlertLocation(
+                LOCATION_STOCK_ID, "Toronto Warehouse", PRODUCT_ID, "Desk", null, 0, 2);
     }
 }

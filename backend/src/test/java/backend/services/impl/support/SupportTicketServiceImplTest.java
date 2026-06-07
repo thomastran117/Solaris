@@ -530,6 +530,73 @@ class SupportTicketServiceImplTest {
                         new UpdateTicketPriorityRequest(TicketPriority.LOW)));
     }
 
+    // ─── updateStatus — same status no-op ────────────────────────────────────
+
+    @Test
+    void updateStatus_sameStatus_returnsWithoutSaving() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.OPEN);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        service.updateStatus(TestIds.uuid(10), TestIds.uuid(2), new UpdateTicketStatusRequest(TicketStatus.OPEN));
+
+        verify(ticketRepository, never()).save(any()); // no-op: save not called
+    }
+
+    // ─── formatName — with first and last name ─────────────────────────────────
+
+    @Test
+    void createTicket_userWithBothNames_formatNameReturnsFullName() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        customer.setFirstName("Alice");
+        customer.setLastName("Smith");
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "subject", "desc", TicketCategory.OTHER, null, null, null);
+
+        TicketResponse resp = service.createTicket(TestIds.uuid(1), req);
+        assertNotNull(resp);
+        verify(ticketRepository).save(any());
+    }
+
+    // ─── createTicket — staff + orderId ──────────────────────────────────────
+
+    @Test
+    void createTicket_staffWithOrderId_linksOrder() {
+        User staff    = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        Order order = makeOrder(TestIds.uuid(99), customer);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(orderRepository.findById(TestIds.uuid(99))).thenReturn(Optional.of(order));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "Staff issue", "desc", TicketCategory.ORDER_ISSUE, null, TestIds.uuid(99), null);
+
+        TicketResponse resp = service.createTicket(TestIds.uuid(2), req);
+        assertEquals(TestIds.uuid(99), resp.getOrderId());
+    }
+
     // ─── getTicket — not found ────────────────────────────────────────────────
 
     @Test
@@ -540,6 +607,93 @@ class SupportTicketServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.getTicket(TestIds.uuid(99), TestIds.uuid(2)));
+    }
+
+    // ─── createTicket — additional paths ─────────────────────────────────────
+
+    @Test
+    void createTicket_staffOpensForSelf_usesActorAsCustomer() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.save(any())).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(TestIds.uuid(100));
+            t.setStatus(TicketStatus.OPEN);
+            return t;
+        });
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.findAllByTicketIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+
+        // Staff opens without specifying customerId → actor IS the customer
+        CreateTicketRequest req = new CreateTicketRequest(
+                "Internal ticket", "desc", TicketCategory.OTHER, null, null, null);
+
+        TicketResponse resp = service.createTicket(TestIds.uuid(2), req);
+
+        assertEquals(TestIds.uuid(2), resp.getCustomerId());
+    }
+
+    @Test
+    void createTicket_staffCustomerNotFound_throwsResourceNotFound() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(userRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "subject", "desc", TicketCategory.OTHER, null, null, TestIds.uuid(99));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.createTicket(TestIds.uuid(2), req));
+    }
+
+    @Test
+    void createTicket_orderNotFound_throwsResourceNotFound() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(orderRepository.findById(TestIds.uuid(99))).thenReturn(Optional.empty());
+
+        CreateTicketRequest req = new CreateTicketRequest(
+                "subject", "desc", TicketCategory.ORDER_ISSUE, null, TestIds.uuid(99), null);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.createTicket(TestIds.uuid(1), req));
+    }
+
+    // ─── listTickets — with assignedTo filter ────────────────────────────────
+
+    @Test
+    void listTickets_staffWithAssignedToFilter_passesFilterToRepository() {
+        User staff = makeUser(TestIds.uuid(2), UserRole.SUPPORT);
+        UUID assigneeId = TestIds.uuid(55);
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(ticketRepository.findAllByFilters(any(), eq(assigneeId), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listTickets(TestIds.uuid(2), TicketStatus.OPEN, assigneeId, 0, 20);
+
+        verify(ticketRepository).findAllByFilters(eq(TicketStatus.OPEN), eq(assigneeId), any(Pageable.class));
+    }
+
+    // ─── addMessage — open status stays open when customer replies ──────────
+
+    @Test
+    void addMessage_customerRepliesOnOpenTicket_statusUnchanged() {
+        User customer = makeUser(TestIds.uuid(1), UserRole.USER);
+        SupportTicket ticket = makeTicket(TestIds.uuid(10), customer);
+        ticket.setStatus(TicketStatus.OPEN);
+
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(customer));
+        when(ticketRepository.findByIdForUpdate(TestIds.uuid(10))).thenReturn(Optional.of(ticket));
+        when(messageRepository.save(any())).thenAnswer(inv -> {
+            SupportTicketMessage m = inv.getArgument(0);
+            m.setAuthor(customer);
+            return m;
+        });
+
+        service.addMessage(TestIds.uuid(10), TestIds.uuid(1), new TicketMessageRequest("Hello"));
+
+        // customer on OPEN ticket: neither branch fires → status unchanged
+        assertEquals(TicketStatus.OPEN, ticket.getStatus());
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

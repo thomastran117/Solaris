@@ -359,6 +359,68 @@ class CompanyServiceImplTest {
         assertEquals(COMPANY_ID, result.get(0).getId());
     }
 
+    // ─── searchPublicCompanies ───────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchPublicCompanies_clampsPageSizeTo50() {
+        when(companyRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.searchPublicCompanies(null, null, null, null, 0, 200, null, null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(companyRepository).findAll(any(Specification.class), captor.capture());
+        assertEquals(50, captor.getValue().getPageSize());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchPublicCompanies_validSortField_usesIt() {
+        when(companyRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.searchPublicCompanies(null, null, null, null, 0, 20, "name", "asc");
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(companyRepository).findAll(any(Specification.class), captor.capture());
+        var sortOrder = captor.getValue().getSort().iterator().next();
+        assertEquals("name", sortOrder.getProperty());
+        assertTrue(sortOrder.isAscending());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchPublicCompanies_invalidSortField_defaultsToCreatedAt() {
+        when(companyRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.searchPublicCompanies(null, null, null, null, 0, 20, "bogus", "desc");
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(companyRepository).findAll(any(Specification.class), captor.capture());
+        assertEquals("createdAt", captor.getValue().getSort().iterator().next().getProperty());
+    }
+
+    // ─── updateCompany — additional field coverage ───────────────────────────
+
+    @Test
+    void updateCompany_preordersEnabled_setsPreordersEnabled() {
+        Company existing = makeCompany(COMPANY_ID, OWNER_ID, CompanyStatus.ACTIVE);
+        when(companyAccessService.require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_COMPANY))
+                .thenReturn(existing);
+        when(companyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateCompanyRequest req = new UpdateCompanyRequest();
+        req.setPreordersEnabled(true);
+
+        service.updateCompany(COMPANY_ID, OWNER_ID, req);
+
+        ArgumentCaptor<Company> cap = ArgumentCaptor.forClass(Company.class);
+        verify(companyRepository).save(cap.capture());
+        assertTrue(cap.getValue().isPreordersEnabled());
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private User makeUser(UUID id) {

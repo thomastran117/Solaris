@@ -8,6 +8,7 @@ import backend.models.core.Company;
 import backend.models.core.MarketplaceProfile;
 import backend.models.core.MarketplaceVendor;
 import backend.models.core.User;
+import backend.models.core.VendorPayout;
 import backend.models.enums.PayoutStatus;
 import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
@@ -15,16 +16,20 @@ import backend.repositories.VendorAnalyticsRepository;
 import backend.repositories.VendorPayoutRepository;
 import backend.repositories.projections.DailyCountProjection;
 import backend.repositories.projections.TopVendorProjection;
+import backend.repositories.projections.VendorRevenueDailyProjection;
 import backend.repositories.projections.VendorRevenueSummaryProjection;
+import backend.repositories.projections.VendorTopProductProjection;
 import backend.services.intf.CacheService;
 import backend.testutil.TestIds;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -472,5 +477,146 @@ class VendorAnalyticsServiceImplTest {
         when(analyticsRepository.vendorShipHours(any(), any(), any(), any(), anyDouble())).thenReturn(ship);
 
         assertDoesNotThrow(() -> service.getSummary(vendorId, mktId, 30, ownerId));
+    }
+
+    // ─── getRevenue — non-empty daily list covers loop body ──────────────────
+
+    @Test
+    void getRevenue_withDailyData_coversLoopBody() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorRevenueSummaryProjection summary = mock(VendorRevenueSummaryProjection.class);
+        when(analyticsRepository.vendorRevenueSummary(any(), any(), any(), any())).thenReturn(summary);
+
+        VendorRevenueDailyProjection daily = mock(VendorRevenueDailyProjection.class);
+        when(daily.getDay()).thenReturn(LocalDate.now());
+        when(daily.getGross()).thenReturn(new BigDecimal("500.00"));
+        when(daily.getCommission()).thenReturn(new BigDecimal("50.00"));
+        when(daily.getNet()).thenReturn(new BigDecimal("450.00"));
+        when(daily.getOrderCount()).thenReturn(3L);
+        when(analyticsRepository.vendorRevenueDaily(any(), any(), any(), any())).thenReturn(List.of(daily));
+
+        assertDoesNotThrow(() -> service.getRevenue(vendorId, mktId, 30, ownerId));
+    }
+
+    @Test
+    void getRevenue_withNullDailyFields_usesZeroDefaults() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorRevenueSummaryProjection summary = mock(VendorRevenueSummaryProjection.class);
+        when(analyticsRepository.vendorRevenueSummary(any(), any(), any(), any())).thenReturn(summary);
+
+        VendorRevenueDailyProjection daily = mock(VendorRevenueDailyProjection.class);
+        when(daily.getDay()).thenReturn(LocalDate.now());
+        // all BigDecimal/Long fields return null (mock default)
+        when(analyticsRepository.vendorRevenueDaily(any(), any(), any(), any())).thenReturn(List.of(daily));
+
+        assertDoesNotThrow(() -> service.getRevenue(vendorId, mktId, 30, ownerId));
+    }
+
+    // ─── getTopProducts — non-empty projection covers loop body ──────────────
+
+    @Test
+    void getTopProducts_withData_coversLoopBody() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorTopProductProjection row = mock(VendorTopProductProjection.class);
+        when(row.getProductId()).thenReturn(TestIds.uuid(88));
+        when(row.getProductName()).thenReturn("Widget A");
+        when(row.getTotalUnitsSold()).thenReturn(42L);
+        when(row.getTotalRevenue()).thenReturn(new BigDecimal("840.00"));
+        when(analyticsRepository.vendorTopProducts(any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
+
+        assertDoesNotThrow(() -> service.getTopProducts(vendorId, mktId, 30, 10, ownerId));
+    }
+
+    @Test
+    void getTopProducts_withNullFields_usesZeroDefaults() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorTopProductProjection row = mock(VendorTopProductProjection.class);
+        when(row.getProductId()).thenReturn(TestIds.uuid(89));
+        when(row.getProductName()).thenReturn("Sparse Product");
+        // getTotalUnitsSold() and getTotalRevenue() return null
+        when(analyticsRepository.vendorTopProducts(any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
+
+        assertDoesNotThrow(() -> service.getTopProducts(vendorId, mktId, 30, 10, ownerId));
+    }
+
+    // ─── getPayouts — non-empty payout list covers loop body ─────────────────
+
+    @Test
+    void getPayouts_withPayoutItems_coversLoopBody() {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        VendorPayout payout = new VendorPayout();
+        payout.setId(TestIds.uuid(200));
+        payout.setNetAmount(new BigDecimal("750.00"));
+        payout.setCurrency("USD");
+        payout.setStatus(PayoutStatus.PAID);
+        payout.setPaidAt(Instant.now());
+
+        when(payoutRepository.findByVendorIdAndStatus(eq(vendorId), eq(PayoutStatus.PAID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(payout)));
+
+        VendorPayoutsMetricResponse response = service.getPayouts(vendorId, mktId, 10, ownerId);
+
+        assertEquals(new BigDecimal("750.00"), response.getTotalPaidOut());
+        assertEquals(1, response.getRecent().size());
+    }
+
+    // ─── getMarketplaceSummary — non-null gmv > 0 covers takeRate true branch ─
+
+    @Test
+    void getMarketplaceSummary_nonZeroGmv_computesTakeRate() {
+        UUID mktId = TestIds.uuid(20); UUID operatorId = TestIds.uuid(55);
+        MarketplaceProfile profile = makeMarketplaceProfile(mktId, operatorId);
+        when(marketplaceProfileRepository.findByCompanyId(mktId)).thenReturn(Optional.of(profile));
+
+        backend.repositories.projections.MarketplaceSummaryProjection summary =
+                mock(backend.repositories.projections.MarketplaceSummaryProjection.class);
+        when(summary.getGmv()).thenReturn(new BigDecimal("10000.00"));
+        when(summary.getTotalCommission()).thenReturn(new BigDecimal("1000.00"));
+        when(summary.getTotalOrders()).thenReturn(50L);
+        when(summary.getActiveVendors()).thenReturn(5L);
+        when(analyticsRepository.marketplaceSummary(eq(mktId), any(), any())).thenReturn(summary);
+        when(analyticsRepository.marketplaceOrdersDaily(eq(mktId), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.getMarketplaceSummary(mktId, operatorId, 30));
+    }
+
+    // ─── writeCache — serialization error does not propagate ─────────────────
+
+    @Test
+    void writeCache_serializationError_doesNotPropagate() throws Exception {
+        UUID vendorId = TestIds.uuid(7); UUID mktId = TestIds.uuid(20); UUID ownerId = TestIds.uuid(10);
+        MarketplaceVendor vendor = makeVendor(vendorId, mktId, ownerId);
+        when(marketplaceVendorRepository.findById(vendorId)).thenReturn(Optional.of(vendor));
+
+        ObjectMapper spyMapper = Mockito.spy(new ObjectMapper());
+        Mockito.doThrow(new RuntimeException("serialize error"))
+                .when(spyMapper).writeValueAsString(any());
+
+        VendorAnalyticsServiceImpl svc = new VendorAnalyticsServiceImpl(
+                analyticsRepository, payoutRepository,
+                marketplaceProfileRepository, marketplaceVendorRepository,
+                cacheService, spyMapper);
+
+        when(cacheService.get(any())).thenReturn(null);
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(5L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(1L);
+        when(analyticsRepository.vendorOrdersDaily(any(), any(), any(), any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> svc.getOrders(vendorId, mktId, 30, ownerId));
     }
 }

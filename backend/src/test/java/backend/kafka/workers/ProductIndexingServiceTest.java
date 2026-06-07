@@ -424,6 +424,69 @@ class ProductIndexingServiceTest {
         verify(bundleSearchRepository).deleteAllById(anyList());
     }
 
+    // ─── run — bundle count throws ────────────────────────────────────────────
+
+    @Test
+    void run_bundleCountThrows_doesNotPropagate() throws Exception {
+        when(productSearchRepository.count()).thenReturn(1L); // skip product reindex
+        when(bundleSearchRepository.count()).thenThrow(new RuntimeException("ES down"));
+
+        assertDoesNotThrow(() -> service.run(null));
+    }
+
+    // ─── toProductDocument — brand, null name, filtered attributes ───────────
+
+    @Test
+    void processBatch_product_withBrand_includesBrandInNameCompletion() {
+        stubNoRulesNoCollections();
+        Product p = product();
+        p.setName("Widget");
+        p.setBrand("Acme");
+
+        List<IndexingTask> batch = List.of(new IndexingTask.IndexProduct(p, COMPANY_ID));
+        ReflectionTestUtils.invokeMethod(service, "processBatch", batch);
+
+        verify(productSearchRepository).saveAll(anyList());
+    }
+
+    @Test
+    void processBatch_product_nullName_nameCompletionIsNull() {
+        stubNoRulesNoCollections();
+        Product p = product();
+        p.setName(null);
+
+        List<IndexingTask> batch = List.of(new IndexingTask.IndexProduct(p, COMPANY_ID));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
+        verify(productSearchRepository).saveAll(anyList());
+    }
+
+    @Test
+    void processBatch_product_attributeWithNullName_isFiltered() {
+        stubNoRulesNoCollections();
+        Product p = product();
+        ProductAttribute attrWithNullName = new ProductAttribute();
+        attrWithNullName.setValue("red"); // name is null — should be filtered out
+        ProductAttribute goodAttr = new ProductAttribute();
+        goodAttr.setName("size");
+        goodAttr.setValue("M");
+        p.setAttributes(List.of(attrWithNullName, goodAttr));
+
+        List<IndexingTask> batch = List.of(new IndexingTask.IndexProduct(p, COMPANY_ID));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
+        verify(productSearchRepository).saveAll(anyList());
+    }
+
+    // ─── submit — queue full ─────────────────────────────────────────────────
+
+    @Test
+    void indexProduct_queueFull_doesNotThrow() {
+        LinkedBlockingQueue<IndexingTask> fullQueue = new LinkedBlockingQueue<>(1);
+        fullQueue.offer(new IndexingTask.RemoveProduct(PRODUCT_ID)); // fill the queue
+        ReflectionTestUtils.setField(service, "taskQueue", fullQueue);
+
+        assertDoesNotThrow(() -> service.indexProduct(product(), COMPANY_ID));
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private void stubNoRulesNoCollections() {

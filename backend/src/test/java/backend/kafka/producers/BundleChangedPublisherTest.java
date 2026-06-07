@@ -71,4 +71,23 @@ class BundleChangedPublisherTest {
 
         assertDoesNotThrow(() -> publisher.onBundleIndex(new BundleIndexEvent(bundle)));
     }
+
+    @Test
+    void onBundleIndex_kafkaCallbackFails_doesNotPropagate() {
+        ProductBundle bundle = mock(ProductBundle.class);
+        when(bundle.getId()).thenReturn(BUNDLE_ID);
+        CompletableFuture<SendResult<String, BundleChangedEvent>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new RuntimeException("async send failure"));
+        when(kafkaTemplate.send(anyString(), anyString(), any())).thenReturn(failed);
+
+        assertDoesNotThrow(() -> publisher.onBundleIndex(new BundleIndexEvent(bundle)));
+    }
+
+    @Test
+    void onBundleRemove_kafkaThrows_doesNotPropagate() {
+        when(kafkaTemplate.send(anyString(), anyString(), any()))
+                .thenThrow(new RuntimeException("Kafka down"));
+
+        assertDoesNotThrow(() -> publisher.onBundleRemove(new BundleRemoveEvent(BUNDLE_ID)));
+    }
 }

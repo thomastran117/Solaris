@@ -456,6 +456,149 @@ class KitServiceImplTest {
                 () -> service.importChoicesFromCollection(COMPANY_ID, KIT_ID, OWNER_ID, req));
     }
 
+    // ─── listKits / getKit (authenticated owner API) ─────────────────────────
+
+    @Test
+    void listKits_authenticatedOwner_delegatesToPublicListing() {
+        when(kitRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listKits(COMPANY_ID, OWNER_ID, null, 0, 10);
+
+        verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
+        verify(kitRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+    }
+
+    @Test
+    void getKit_authenticatedOwner_returnsKitResponse() {
+        ProductKit kit = makeKit(KIT_ID);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+
+        KitResponse result = service.getKit(COMPANY_ID, KIT_ID, OWNER_ID);
+
+        verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
+        assertNotNull(result);
+        assertEquals("Test Kit", result.getName());
+    }
+
+    @Test
+    void getKit_authenticatedOwner_notFound_throwsResourceNotFound() {
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getKit(COMPANY_ID, KIT_ID, OWNER_ID));
+    }
+
+    // ─── updateKit with valid new slots (success path) ───────────────────────
+
+    @Test
+    void updateKit_withValidNewSlots_replacesSlots() {
+        ProductKit kit = makeKit(KIT_ID);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+
+        Product product = makeProduct(PRODUCT_A, new BigDecimal("50.00"));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_A, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        UpdateKitRequest req = new UpdateKitRequest();
+        req.setSlots(List.of(slotReq("New Slot", true, 1, 2,
+                List.of(choiceReq(PRODUCT_A, null, null, true)))));
+
+        KitResponse result = service.updateKit(COMPANY_ID, KIT_ID, OWNER_ID, req);
+
+        assertEquals(1, result.getSlots().size());
+        assertEquals("New Slot", result.getSlots().get(0).getName());
+    }
+
+    @Test
+    void updateKit_withStatusChange_updatesStatus() {
+        ProductKit kit = makeKit(KIT_ID);
+        kit.setStatus(ProductStatus.DRAFT);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+
+        UpdateKitRequest req = new UpdateKitRequest();
+        req.setStatus(ProductStatus.ACTIVE);
+
+        KitResponse result = service.updateKit(COMPANY_ID, KIT_ID, OWNER_ID, req);
+
+        assertEquals("ACTIVE", result.getStatus());
+    }
+
+    @Test
+    void updateKit_withCurrencyAndListed_updatesBothFields() {
+        ProductKit kit = makeKit(KIT_ID);
+        kit.setListed(false);
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+
+        UpdateKitRequest req = new UpdateKitRequest();
+        req.setCurrency("EUR");
+        req.setListed(true);
+
+        KitResponse result = service.updateKit(COMPANY_ID, KIT_ID, OWNER_ID, req);
+
+        assertEquals("EUR", result.getCurrency());
+        assertTrue(result.isListed());
+    }
+
+    @Test
+    void createKit_withCompareAtPriceAndStatus_setsFields() {
+        Product product = makeProduct(PRODUCT_A, new BigDecimal("10.00"));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_A, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        CreateKitRequest req = makeCreateRequest(
+                List.of(slotReq("CPU", true, 1, 1, List.of(choiceReq(PRODUCT_A, null, null, false)))));
+        req.setStatus(ProductStatus.ACTIVE);
+        req.setCompareAtPrice(new BigDecimal("99.00"));
+
+        KitResponse result = service.createKit(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals("ACTIVE", result.getStatus());
+        assertEquals(new BigDecimal("99.00"), result.getCompareAtPrice());
+    }
+
+    @Test
+    void importChoicesFromCollection_emptySlotChoices_usesZeroDisplayOrder() {
+        ProductKit kit = makeKit(KIT_ID);
+        KitSlot slot = kit.getSlots().get(0);
+        slot.setId(SLOT_ID);
+        // slot starts with no choices
+        assertTrue(slot.getChoices().isEmpty());
+
+        Product newProd = makeProduct(PRODUCT_A, new BigDecimal("10.00"));
+        CollectionProduct cp = new CollectionProduct();
+        cp.setProduct(newProd);
+
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+        when(collectionProductRepository.findAllByCollectionId(COLLECTION_ID)).thenReturn(List.of(cp));
+
+        ImportFromCollectionRequest req = new ImportFromCollectionRequest();
+        req.setCollectionId(COLLECTION_ID);
+        req.setSlotId(SLOT_ID);
+
+        KitResponse result = service.importChoicesFromCollection(COMPANY_ID, KIT_ID, OWNER_ID, req);
+
+        assertEquals(1, result.getSlots().get(0).getChoices().size());
+        assertEquals(0, result.getSlots().get(0).getChoices().get(0).getDisplayOrder());
+    }
+
+    @Test
+    void createKit_variantNotPurchasable_purchasableFalse() {
+        Product product = makeProduct(PRODUCT_A, new BigDecimal("10.00"));
+        product.setStatus(ProductStatus.ACTIVE);
+        product.setPurchasable(true);
+
+        ProductVariant variant = makeVariant(VARIANT_ID, new BigDecimal("10.00"));
+        variant.setPurchasable(false); // not purchasable → choiceInStock returns false
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_A, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_A)).thenReturn(Optional.of(variant));
+
+        KitResponse result = service.createKit(COMPANY_ID, OWNER_ID, makeCreateRequest(
+                List.of(slotReq("CPU", true, 1, 1,
+                        List.of(choiceReq(PRODUCT_A, VARIANT_ID, null, false))))));
+
+        assertFalse(result.isPurchasable());
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private Company makeCompany() {

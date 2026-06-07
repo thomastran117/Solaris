@@ -292,6 +292,92 @@ class CompanyAnalyticsServiceImplTest {
         verify(productRepository, org.mockito.Mockito.times(2)).findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any());
     }
 
+    // ─── null-guard branches (projection fields may be null) ─────────────────
+
+    @Test
+    void getRevenueSummary_nullProjectionFields_coalesceToZero() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        DailyRevProjection nullRow = dailyRevRow(LocalDate.now(), null, null, null);
+        when(analyticsRepository.getDailyRevenue(eq(COMPANY_ID), any(), any())).thenReturn(List.of(nullRow));
+
+        CompanyRevenueSummaryResponse resp = service.getRevenueSummary(COMPANY_ID, OWNER_ID, 30);
+
+        assertEquals(BigDecimal.ZERO, resp.totalRevenue());
+        assertEquals(0L, resp.totalOrders());
+        assertEquals(1, resp.daily().size());
+    }
+
+    @Test
+    void getCategorySales_nullProjectionFields_coalesceToZero() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        CategorySalesProjection nullRow = categoryRow("Electronics", null, null, null);
+        when(analyticsRepository.getCategorySales(eq(COMPANY_ID), any(), any())).thenReturn(List.of(nullRow));
+
+        CategorySalesResponse resp = service.getCategorySales(COMPANY_ID, OWNER_ID, 30);
+
+        assertEquals(1, resp.categories().size());
+        assertEquals(0.0, resp.categories().get(0).revenueSharePercent(), 0.001);
+    }
+
+    @Test
+    void getSlowMovers_daysZero_velocityFallsToZero() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        SlowMoverProjection row = slowMoverRow(TestIds.uuid(11), "Gadget", "SKU2", 5, BigDecimal.ONE, "USD", 10L, BigDecimal.TEN);
+        when(analyticsRepository.getSlowMovers(eq(COMPANY_ID), any(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(row));
+
+        SlowMoversResponse resp = service.getSlowMovers(COMPANY_ID, OWNER_ID, 0);
+
+        assertEquals(0.0, resp.items().get(0).dailyVelocity(), 0.001);
+    }
+
+    @Test
+    void getSlowMovers_nonZeroUnits_neverSoldFalseAndVelocityPositive() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        SlowMoverProjection row = slowMoverRow(TestIds.uuid(12), "Gadget", "SKU3", 50, BigDecimal.TEN, "USD", 9L, new BigDecimal("90.00"));
+        when(analyticsRepository.getSlowMovers(eq(COMPANY_ID), any(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(row));
+
+        SlowMoversResponse resp = service.getSlowMovers(COMPANY_ID, OWNER_ID, 90);
+
+        assertEquals(false, resp.items().get(0).neverSold());
+        assertEquals(0.1, resp.items().get(0).dailyVelocity(), 0.001); // 9 / 90
+    }
+
+    @Test
+    void getProductPerformance_zeroCurAndPriorRevenue_growthIsZero() {
+        when(cacheService.get(anyString())).thenReturn(null);
+
+        UUID pid = TestIds.uuid(40);
+        ProductSalesProjection cur   = productSalesRow(pid, "Dud", "SKU-D", BigDecimal.ZERO, 0L);
+        ProductSalesProjection prior = productSalesRow(pid, "Dud", "SKU-D", BigDecimal.ZERO, 0L);
+        when(productRepository.findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any()))
+                .thenReturn(List.of(cur))
+                .thenReturn(List.of(prior));
+
+        ProductPerformanceResponse resp = service.getProductPerformance(COMPANY_ID, OWNER_ID, 30);
+
+        assertEquals(0.0, resp.products().get(0).revenueGrowthPercent(), 0.001);
+        assertEquals(0.0, resp.products().get(0).unitsGrowthPercent(), 0.001);
+    }
+
+    @Test
+    void getProductPerformance_negativeRevGrowth_negativePercent() {
+        when(cacheService.get(anyString())).thenReturn(null);
+
+        UUID pid = TestIds.uuid(50);
+        ProductSalesProjection cur   = productSalesRow(pid, "Fading", "SKU-F", new BigDecimal("80.00"), 8L);
+        ProductSalesProjection prior = productSalesRow(pid, "Fading", "SKU-F", new BigDecimal("100.00"), 10L);
+        when(productRepository.findTopByRevenue(eq(COMPANY_ID), anyInt(), any(), any()))
+                .thenReturn(List.of(cur))
+                .thenReturn(List.of(prior));
+
+        ProductPerformanceResponse resp = service.getProductPerformance(COMPANY_ID, OWNER_ID, 30);
+
+        assertEquals(-20.0, resp.products().get(0).revenueGrowthPercent(), 0.1);
+        assertEquals(-20.0, resp.products().get(0).unitsGrowthPercent(), 0.1);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private static DailyRevProjection dailyRevRow(LocalDate day, BigDecimal rev, Long units, Long orders) {

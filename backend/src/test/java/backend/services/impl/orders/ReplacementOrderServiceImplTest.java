@@ -109,6 +109,45 @@ class ReplacementOrderServiceImplTest {
     }
 
     @Test
+    void createReplacement_throwsWhenActorUserNotFound() {
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.empty());
+
+        ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
+                List.of(new ResolveWithReplacementRequest.ReplacementItem(TestIds.uuid(1), 1)),
+                "123 Main St", "Springfield", "US", "12345");
+
+        assertThrows(ResourceNotFoundException.class, () -> service.createReplacement(TestIds.uuid(10), req, TestIds.uuid(2)));
+    }
+
+    @Test
+    void createReplacement_variantWithAllThreeOptions_buildsTitleWithSlashes() {
+        User customer = makeUser(TestIds.uuid(1));
+        User staff    = makeStaffUser(TestIds.uuid(2));
+        Order original = makeOrder(TestIds.uuid(10), customer);
+        ProductVariant variant = makeVariant(TestIds.uuid(5));
+        variant.setOption1("Red");
+        variant.setOption2("M");
+        variant.setOption3("Cotton");
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(orderRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
+        when(variantRepository.findById(TestIds.uuid(5))).thenReturn(Optional.of(variant));
+        when(orderRepository.save(any())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(TestIds.uuid(99));
+            return o;
+        });
+
+        ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
+                List.of(new ResolveWithReplacementRequest.ReplacementItem(TestIds.uuid(5), 1)),
+                "123 Main St", "Springfield", "US", "12345");
+
+        OrderResponse resp = service.createReplacement(TestIds.uuid(10), req, TestIds.uuid(2));
+
+        assertEquals("Red / M / Cotton", resp.getItems().get(0).getVariantTitle());
+    }
+
+    @Test
     void createReplacement_throwsWhenActorIsNotStaff() {
         when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(makeUser(TestIds.uuid(2))));
 

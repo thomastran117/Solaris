@@ -166,7 +166,9 @@ public class ProductSimilarityService {
             return sim;
         }).toList();
 
-        productSimilarityRepository.saveAll(rows);
+        if (!rows.isEmpty()) {
+            productSimilarityRepository.saveAll(rows);
+        }
     }
 
     // ── ES candidate retrieval ──────────────────────────────────────────────────

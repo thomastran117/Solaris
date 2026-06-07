@@ -9,9 +9,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+
+import org.junit.jupiter.api.AfterEach;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +32,13 @@ class AnnouncementEventPublisherTest {
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, AnnouncementPublishedEvent> kafkaTemplate;
     private AnnouncementEventPublisher publisher;
+
+    @AfterEach
+    void tearDown() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -61,5 +72,27 @@ class AnnouncementEventPublisherTest {
         when(kafkaTemplate.send(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Kafka down"));
         assertDoesNotThrow(() -> publisher.publish(event()));
+    }
+
+    @Test
+    void publish_kafkaCallbackError_doesNotPropagate() {
+        CompletableFuture<SendResult<String, AnnouncementPublishedEvent>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new RuntimeException("send failed"));
+        when(kafkaTemplate.send(anyString(), anyString(), any())).thenReturn(failed);
+
+        assertDoesNotThrow(() -> publisher.publish(event()));
+    }
+
+    @Test
+    void publish_withActiveTransaction_sendsAfterCommit() {
+        TransactionSynchronizationManager.initSynchronization();
+
+        publisher.publish(event());
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+
+        TransactionSynchronizationManager.getSynchronizations()
+                .forEach(s -> s.afterCommit());
+
+        verify(kafkaTemplate).send(eq(TOPIC), eq(COMPANY_ID.toString()), any(AnnouncementPublishedEvent.class));
     }
 }

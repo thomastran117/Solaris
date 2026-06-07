@@ -39,10 +39,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,6 +52,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -712,5 +715,168 @@ class InventoryServiceImplTest {
         InventoryItemResponse resp = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
 
         assertEquals("LOW_STOCK", resp.getStockStatus());
+    }
+
+    // ─── getCompanyAdjustmentHistory ──────────────────────────────────────────
+
+    @Test
+    void getCompanyAdjustmentHistory_returnsFilteredPage() {
+        InventoryAdjustment adj = new InventoryAdjustment();
+        adj.setId(TestIds.uuid(99));
+        adj.setProduct(product(PRODUCT_ID, "Desk", "DESK-1", 5));
+        adj.setAdjustedBy(user(OWNER_ID));
+        adj.setDelta(-2);
+        adj.setPreviousStock(7);
+        adj.setNewStock(5);
+        adj.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+        adj.setNote("cycle count");
+        adj.setCreatedAt(java.time.Instant.parse("2026-06-01T10:00:00Z"));
+
+        when(adjustmentRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(adj)));
+
+        var result = service.getCompanyAdjustmentHistory(
+                COMPANY_ID, OWNER_ID, AdjustmentReason.MANUAL_ADJUSTMENT, null, null, null, null, 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(-2, result.getItems().get(0).getDelta());
+    }
+
+    @Test
+    void getCompanyAdjustmentHistory_clampsPageSizeTo50() {
+        when(adjustmentRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        service.getCompanyAdjustmentHistory(COMPANY_ID, OWNER_ID, null, null, null, null, null, 0, 200);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(adjustmentRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), captor.capture());
+        assertEquals(50, captor.getValue().getPageSize());
+    }
+
+    // ─── getInventory — valid cursor path ────────────────────────────────────
+
+    @Test
+    void getInventory_withValidCursor_decodesAndQueriesWithOffset() {
+        long ts = java.time.Instant.parse("2026-05-20T00:00:00Z").toEpochMilli();
+        String rawCursor = ts + ":" + PRODUCT_ID;
+        String cursor = Base64.getEncoder().encodeToString(rawCursor.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        var result = service.getInventory(COMPANY_ID, OWNER_ID, null, null, null, null, null, null, null, cursor, 20);
+
+        assertFalse(result.hasMore());
+    }
+
+    // ─── updateSettings — product not found ──────────────────────────────────
+
+    @Test
+    void updateSettings_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class, () ->
+                service.updateSettings(COMPANY_ID, PRODUCT_ID, OWNER_ID, new UpdateInventorySettingsRequest()));
+    }
+
+    // ─── toInventoryItemResponse — quantity threshold path ───────────────────
+
+    @Test
+    void getInventoryItem_quantityThresholdLow_stockStatusIsLow() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 3);
+        prod.setLowStockThreshold(5); // stock(3) <= threshold(5) → LOW_STOCK
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+
+        InventoryItemResponse resp = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals("LOW_STOCK", resp.getStockStatus());
+    }
+
+    // ─── adjustStock — unlock failure swallowed ──────────────────────────────
+
+    @Test
+    void adjustStock_unlockFailure_doesNotPropagate() {
+        Product before = product(PRODUCT_ID, "Desk", "DESK-1", 10);
+        Product after  = product(PRODUCT_ID, "Desk", "DESK-1", 5);
+        User user = user(OWNER_ID);
+
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(before), Optional.of(after));
+        when(productRepository.adjustStock(PRODUCT_ID, -5)).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(before);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user);
+        doThrow(new RuntimeException("Redis unavailable")).when(cacheService).unlock(any(), any());
+
+        AdjustStockRequest request = new AdjustStockRequest();
+        request.setDelta(-5);
+        request.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertDoesNotThrow(() -> service.adjustStock(COMPANY_ID, PRODUCT_ID, OWNER_ID, request));
+    }
+
+    // ─── adjustVariantStock — unlock failure swallowed ───────────────────────
+
+    @Test
+    void adjustVariantStock_unlockFailure_doesNotPropagate() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 12);
+        ProductVariant variant = new ProductVariant();
+        variant.setId(VARIANT_ID);
+        variant.setProduct(prod);
+        variant.setSku("DESK-1-BLACK");
+        variant.setStock(5);
+        variant.setLowStockThreshold(2);
+        User user = user(OWNER_ID);
+
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(variantRepository.adjustStock(VARIANT_ID, -2)).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(prod);
+        when(variantRepository.getReferenceById(VARIANT_ID)).thenReturn(variant);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user);
+        doThrow(new RuntimeException("Redis unavailable")).when(cacheService).unlock(any(), any());
+
+        AdjustStockRequest request = new AdjustStockRequest();
+        request.setDelta(-2);
+        request.setReason(AdjustmentReason.MANUAL_ADJUSTMENT);
+
+        assertDoesNotThrow(() -> service.adjustVariantStock(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, request));
+    }
+
+    // ─── toInventoryItemResponse — UNTRACKED status ───────────────────────────
+
+    @Test
+    void getInventoryItem_untrackedProduct_stockStatusIsUntracked() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", null); // stock == null
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(prod));
+
+        InventoryItemResponse resp = service.getInventoryItem(COMPANY_ID, PRODUCT_ID, OWNER_ID);
+
+        assertEquals("UNTRACKED", resp.getStockStatus());
+        assertNull(resp.getStock());
+    }
+
+    // ─── releaseLocks — cache failure swallowed ──────────────────────────────
+
+    @Test
+    void bulkAdjust_unlockFailure_doesNotPropagate() {
+        Product prod = product(PRODUCT_ID, "Desk", "DESK-1", 10);
+        Product refreshed = product(PRODUCT_ID, "Desk", "DESK-1", 5);
+
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(prod), List.of(refreshed));
+        when(productRepository.adjustStock(PRODUCT_ID, -5)).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(prod);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user(OWNER_ID));
+        // Make unlock throw — releaseLocks catch block must swallow it
+        doThrow(new RuntimeException("Redis unavailable"))
+                .when(cacheService).unlock(any(), any());
+
+        BulkAdjustRequest request = new BulkAdjustRequest();
+        request.setItems(List.of(bulkItem(PRODUCT_ID, -5, AdjustmentReason.MANUAL_ADJUSTMENT, "note")));
+
+        assertDoesNotThrow(() -> service.bulkAdjust(COMPANY_ID, OWNER_ID, request));
     }
 }

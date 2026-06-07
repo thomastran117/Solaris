@@ -31,6 +31,7 @@ import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -586,5 +587,130 @@ class VendorOnboardingServiceImplTest {
         c.setId(id);
         c.setName(name);
         return c;
+    }
+
+    // ─── getVendor ────────────────────────────────────────────────────────────
+
+    @Test
+    void getVendor_returnsVendorResponse() {
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID))
+                .thenReturn(Optional.of(makeMarketplaceProfile(true)));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(makeCompany(MARKETPLACE_ID, "MP"));
+        MarketplaceVendor vendor = makeVendor(VendorStatus.APPROVED, OnboardingStep.COMPLETE);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(VENDOR_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(vendor));
+
+        MarketplaceVendorResponse resp = service.getVendor(MARKETPLACE_ID, VENDOR_ID, USER_ID);
+
+        assertEquals(VENDOR_ID, resp.getId());
+        assertEquals("APPROVED", resp.getStatus());
+    }
+
+    // ─── listVendors ──────────────────────────────────────────────────────────
+
+    @Test
+    void listVendors_noStatusFilter_returnsAll() {
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID))
+                .thenReturn(Optional.of(makeMarketplaceProfile(true)));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(makeCompany(MARKETPLACE_ID, "MP"));
+        MarketplaceVendor vendor = makeVendor(VendorStatus.APPROVED, OnboardingStep.COMPLETE);
+        when(marketplaceVendorRepository.findByMarketplaceId(eq(MARKETPLACE_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(vendor)));
+
+        var resp = service.listVendors(MARKETPLACE_ID, null, 0, 10, USER_ID);
+
+        assertEquals(1, resp.getItems().size());
+        verify(marketplaceVendorRepository).findByMarketplaceId(eq(MARKETPLACE_ID), any());
+    }
+
+    @Test
+    void listVendors_withStatusFilter_queriesByStatus() {
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID))
+                .thenReturn(Optional.of(makeMarketplaceProfile(true)));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(makeCompany(MARKETPLACE_ID, "MP"));
+        MarketplaceVendor vendor = makeVendor(VendorStatus.APPLIED, OnboardingStep.REVIEW);
+        when(marketplaceVendorRepository.findByMarketplaceIdAndStatus(eq(MARKETPLACE_ID), eq(VendorStatus.APPLIED), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(vendor)));
+
+        var resp = service.listVendors(MARKETPLACE_ID, VendorStatus.APPLIED, 0, 10, USER_ID);
+
+        assertEquals(1, resp.getItems().size());
+        verify(marketplaceVendorRepository).findByMarketplaceIdAndStatus(eq(MARKETPLACE_ID), eq(VendorStatus.APPLIED), any());
+    }
+
+    @Test
+    void listVendors_pageSizeClampsTo50() {
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID))
+                .thenReturn(Optional.of(makeMarketplaceProfile(true)));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(makeCompany(MARKETPLACE_ID, "MP"));
+        when(marketplaceVendorRepository.findByMarketplaceId(eq(MARKETPLACE_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        service.listVendors(MARKETPLACE_ID, null, 0, 200, USER_ID);
+
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> pageCaptor =
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(marketplaceVendorRepository).findByMarketplaceId(eq(MARKETPLACE_ID), pageCaptor.capture());
+        assertEquals(50, pageCaptor.getValue().getPageSize());
+    }
+
+    // ─── getMyVendorRecord ────────────────────────────────────────────────────
+
+    @Test
+    void getMyVendorRecord_returnsFirstMatchingVendor() {
+        Company vendorCompany = makeCompany(COMPANY_ID, "Vendor Co");
+        MarketplaceVendor vendor = makeVendor(VendorStatus.APPROVED, OnboardingStep.COMPLETE);
+        when(companyAccessService.listAccessibleCompanies(USER_ID)).thenReturn(List.of(vendorCompany));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyId(MARKETPLACE_ID, COMPANY_ID))
+                .thenReturn(Optional.of(vendor));
+
+        MarketplaceVendorResponse resp = service.getMyVendorRecord(MARKETPLACE_ID, USER_ID);
+
+        assertEquals(VENDOR_ID, resp.getId());
+        assertEquals("APPROVED", resp.getStatus());
+    }
+
+    @Test
+    void getMyVendorRecord_noMatchingCompany_throwsNotFound() {
+        when(companyAccessService.listAccessibleCompanies(USER_ID)).thenReturn(List.of());
+
+        assertThrows(backend.exceptions.http.ResourceNotFoundException.class,
+                () -> service.getMyVendorRecord(MARKETPLACE_ID, USER_ID));
+    }
+
+    // ─── listDocuments ────────────────────────────────────────────────────────
+
+    @Test
+    void listDocuments_returnsDocumentResponses() {
+        MarketplaceVendor vendor = makeVendor(VendorStatus.DRAFT, OnboardingStep.DOCUMENTS);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(VENDOR_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(vendor));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(vendor.getVendorCompany());
+
+        VendorOnboardingDocument doc = new VendorOnboardingDocument();
+        doc.setId(TestIds.uuid(50));
+        doc.setMarketplaceVendor(vendor);
+        doc.setDocumentType(VendorDocumentType.IDENTITY);
+        doc.setS3Key("s3://bucket/id.pdf");
+        when(documentRepository.findAllByMarketplaceVendorId(VENDOR_ID)).thenReturn(List.of(doc));
+
+        var docs = service.listDocuments(MARKETPLACE_ID, VENDOR_ID, USER_ID);
+
+        assertEquals(1, docs.size());
+        assertEquals("IDENTITY", docs.get(0).getDocumentType());
+        assertEquals("s3://bucket/id.pdf", docs.get(0).getS3Key());
+    }
+
+    @Test
+    void listDocuments_emptyList_returnsEmpty() {
+        MarketplaceVendor vendor = makeVendor(VendorStatus.DRAFT, OnboardingStep.DOCUMENTS);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(VENDOR_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(vendor));
+        when(companyAccessService.require(any(), any(), any())).thenReturn(vendor.getVendorCompany());
+        when(documentRepository.findAllByMarketplaceVendorId(VENDOR_ID)).thenReturn(List.of());
+
+        var docs = service.listDocuments(MARKETPLACE_ID, VENDOR_ID, USER_ID);
+
+        assertTrue(docs.isEmpty());
     }
 }

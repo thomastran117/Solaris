@@ -156,6 +156,255 @@ class VendorPayoutSchedulerTest {
         verify(vendorPayoutService, never()).dispatchTransfer(any(), any(), any(Long.class));
     }
 
+    @Test
+    void releaseHeldBalances_skipsNonApprovedVendor() {
+        CommissionRecord record = commissionRecord(false);
+        MarketplaceVendor suspendedVendor = vendor(true, true, VendorStatus.SUSPENDED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of(record)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(suspendedVendor));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorBalanceRepository, never()).releasePending(any(), any(Long.class));
+    }
+
+    @Test
+    void releaseHeldBalances_skipsVendorNotFound() {
+        CommissionRecord record = commissionRecord(false);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of(record)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.empty());
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorBalanceRepository, never()).releasePending(any(), any(Long.class));
+    }
+
+    @Test
+    void releaseHeldBalances_skipsRecordStillInHoldPeriod() {
+        CommissionRecord record = commissionRecord(false);
+        // Set computedAt to very recent (within hold period)
+        record.setComputedAt(Instant.now().minusSeconds(60));
+        MarketplaceVendor approvedVendor = vendor(true, true, VendorStatus.APPROVED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of(record)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(approvedVendor));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorBalanceRepository, never()).releasePending(any(), any(Long.class));
+    }
+
+    @Test
+    void releaseHeldBalances_releasePendingReturnsZero_doesNotSaveRecord() {
+        CommissionRecord record = commissionRecord(false);
+        MarketplaceVendor approvedVendor = vendor(true, true, VendorStatus.APPROVED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of(marketplaceProfile(7)));
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of(record)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(approvedVendor));
+        when(vendorBalanceRepository.releasePending(VENDOR_ID, 9000L)).thenReturn(0);
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(commissionRecordRepository, never()).save(record);
+    }
+
+    @Test
+    void createPayoutBatches_skipsVendorNotApproved() {
+        VendorBalance balance = balance();
+        MarketplaceVendor pendingVendor = vendor(true, true, VendorStatus.SUSPENDED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(pendingVendor));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createPayoutBatches_skipsVendorWithChargesDisabled() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(false, true, VendorStatus.APPROVED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createPayoutBatches_skipsWhenProfileMissing() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.empty());
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createPayoutBatches_skipsWhenPayoutNotDue() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
+        // Recent paid payout → not due
+        VendorPayout recentPaid = payout();
+        recentPaid.setStatus(PayoutStatus.PAID);
+        recentPaid.setPaidAt(Instant.now().minusSeconds(60)); // paid 1 minute ago
+
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(marketplaceProfile(7)));
+        when(vendorPayoutRepository.findByVendorIdAndStatusList(VENDOR_ID, PayoutStatus.PAID))
+                .thenReturn(List.of(recentPaid));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createPayoutBatches_skipsWhenNoReadyRecordsOrAdjustments() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
+        CommissionRecord notReleased = commissionRecord(false);
+
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(marketplaceProfile(7)));
+        when(vendorPayoutRepository.findByVendorIdAndStatusList(VENDOR_ID, PayoutStatus.PAID)).thenReturn(List.of());
+        when(commissionRecordRepository.findAllByVendorId(VENDOR_ID)).thenReturn(List.of(notReleased));
+        when(vendorAdjustmentRepository.findAllByVendorIdAndAppliedToPayoutIdIsNull(VENDOR_ID)).thenReturn(List.of());
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void dispatchScheduledPayouts_skipsWhenVendorNotFound() {
+        VendorPayout payout = payout();
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of(payout));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.empty());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).dispatchTransfer(any(), any(), any(Long.class));
+    }
+
+    @Test
+    void dispatchScheduledPayouts_skipsWhenVendorSuspended() {
+        VendorPayout payout = payout();
+        MarketplaceVendor suspended = vendor(true, true, VendorStatus.SUSPENDED);
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of()));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of(payout));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(suspended));
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).dispatchTransfer(any(), any(), any(Long.class));
+    }
+
+    @Test
+    void isPayoutDue_biweekly_notDueIfWithin14Days() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
+        VendorPayout recentPaid = payout();
+        recentPaid.setStatus(PayoutStatus.PAID);
+        recentPaid.setPaidAt(Instant.now().minusSeconds(3 * 24 * 3600L)); // 3 days ago — under 14
+
+        MarketplaceProfile biweeklyProfile = marketplaceProfile(7);
+        biweeklyProfile.setPayoutSchedule(PayoutSchedule.BIWEEKLY);
+
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(biweeklyProfile));
+        when(vendorPayoutRepository.findByVendorIdAndStatusList(VENDOR_ID, PayoutStatus.PAID))
+                .thenReturn(List.of(recentPaid));
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService, never()).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void isPayoutDue_monthly_dueIfMoreThan30DaysAgo() {
+        VendorBalance balance = balance();
+        MarketplaceVendor vendor = vendor(true, true, VendorStatus.APPROVED);
+        VendorPayout oldPaid = payout();
+        oldPaid.setStatus(PayoutStatus.PAID);
+        oldPaid.setPaidAt(Instant.now().minusSeconds(35 * 24 * 3600L)); // 35 days ago — over 30
+        CommissionRecord record = commissionRecord(true);
+        VendorPayout newPayout = payout();
+
+        MarketplaceProfile monthlyProfile = marketplaceProfile(7);
+        monthlyProfile.setPayoutSchedule(PayoutSchedule.MONTHLY);
+
+        when(marketplaceProfileRepository.findAll()).thenReturn(List.of());
+        when(commissionRecordRepository.findEligibleForReleasePaged(any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(vendorBalanceRepository.findByAvailableCentsGreaterThan(eq(0L), any(PageRequest.class)))
+                .thenReturn(new SliceImpl<>(List.of(balance)));
+        when(marketplaceVendorRepository.findById(VENDOR_ID)).thenReturn(Optional.of(vendor));
+        when(marketplaceProfileRepository.findByCompanyId(MARKETPLACE_ID)).thenReturn(Optional.of(monthlyProfile));
+        when(vendorPayoutRepository.findByVendorIdAndStatusList(VENDOR_ID, PayoutStatus.PAID))
+                .thenReturn(List.of(oldPaid));
+        when(commissionRecordRepository.findAllByVendorId(VENDOR_ID)).thenReturn(List.of(record));
+        when(vendorAdjustmentRepository.findAllByVendorIdAndAppliedToPayoutIdIsNull(VENDOR_ID)).thenReturn(List.of());
+        when(vendorPayoutService.buildAndSavePayout(any(), any(), any(), any(), any())).thenReturn(newPayout);
+        when(vendorPayoutRepository.findAllByStatus(PayoutStatus.SCHEDULED)).thenReturn(List.of());
+
+        scheduler.runPayoutCycle();
+
+        verify(vendorPayoutService).buildAndSavePayout(any(), any(), any(), any(), any());
+    }
+
     private VendorBalance balance() {
         VendorBalance balance = new VendorBalance();
         balance.setVendorId(VENDOR_ID);

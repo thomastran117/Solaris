@@ -21,6 +21,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -231,6 +232,52 @@ class ReviewIndexingServiceTest {
         List<ReviewIndexingService.Task> batch =
                 List.of(new ReviewIndexingService.Task.Index(review(), false));
         assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
+    }
+
+    // ─── toDocument — null company on product ─────────────────────────────────
+
+    @Test
+    void processBatch_reviewWithProductButNullCompany_buildsDocumentWithNullCompanyId() {
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(null); // company is null
+
+        ProductReview r = review();
+        r.setProduct(product);
+
+        List<ReviewIndexingService.Task> batch =
+                List.of(new ReviewIndexingService.Task.Index(r, false));
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
+        verify(reviewSearchRepository).saveAll(anyList());
+    }
+
+    // ─── submit — queue full ───────────────────────────────────────────────────
+
+    @Test
+    void indexReview_queueFull_doesNotThrow() {
+        LinkedBlockingQueue<ReviewIndexingService.Task> fullQueue = new LinkedBlockingQueue<>(1);
+        fullQueue.offer(new ReviewIndexingService.Task.Index(review(), false));
+        ReflectionTestUtils.setField(service, "taskQueue", fullQueue);
+
+        assertDoesNotThrow(() -> service.indexReview(review(), false));
+    }
+
+    // ─── failure truncation ────────────────────────────────────────────────────
+
+    @Test
+    void processBatch_saveAllThrowsLongMessage_truncatesFailureMessage() {
+        String longMsg = "E".repeat(600);
+        doThrow(new RuntimeException(longMsg)).when(reviewSearchRepository).saveAll(any());
+
+        List<ReviewIndexingService.Task> batch =
+                List.of(new ReviewIndexingService.Task.Index(review(), false));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "processBatch", batch));
+
+        verify(failureRepository).save(argThat(f ->
+                f instanceof backend.models.core.IndexingFailure failure
+                        && failure.getErrorMessage() != null
+                        && failure.getErrorMessage().length() <= 500));
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

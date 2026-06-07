@@ -906,6 +906,129 @@ class SubscriptionServiceImplTest {
         assertFalse(captor.getValue().isDefault());
     }
 
+    // ─── create — zero price guard ────────────────────────────────────────────
+
+    @Test
+    void create_zeroPriceProduct_throwsBadRequest() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        product.setPrice(BigDecimal.ZERO); // zero price → unitAmountCents = 0 → throws
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+
+        assertThrows(BadRequestException.class,
+                () -> service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10))));
+    }
+
+    @Test
+    void create_retrievePaymentMethodThrows_throwsBadRequest() {
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, null);
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+        doThrow(new RuntimeException("Stripe error")).when(paymentService).retrievePaymentMethod("pm_test");
+
+        assertThrows(BadRequestException.class,
+                () -> service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10))));
+    }
+
+    // ─── update — empty items guard ───────────────────────────────────────────
+
+    @Test
+    void update_emptyItems_throwsConflict() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        sub.setItems(new java.util.ArrayList<>());
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1)))
+                .thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // Even a no-op update request should hit the empty-items check before qty comparison
+        UpdateSubscriptionRequest req = new UpdateSubscriptionRequest();
+        req.setBillingInterval(BillingInterval.WEEK);
+
+        assertThrows(ConflictException.class,
+                () -> service.update(TestIds.uuid(1), TestIds.uuid(99), req));
+    }
+
+    // ─── update — variant in price swap ──────────────────────────────────────
+
+    @Test
+    void update_withVariantId_usesVariantPriceInSwap() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        ProductVariant variant = makeVariant(TestIds.uuid(40), sub.getItems().get(0).getProduct(), true);
+
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+        when(variantRepository.findByIdAndProductId(TestIds.uuid(40), TestIds.uuid(10))).thenReturn(Optional.of(variant));
+        when(paymentService.createRecurringPrice(anyLong(), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_v", 1200L, "usd"));
+        when(paymentService.swapSubscriptionPrice("sub_1", "si_1", "price_v", 1)).thenReturn(stripeResult("active"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateSubscriptionRequest req = new UpdateSubscriptionRequest();
+        req.setVariantId(TestIds.uuid(40));
+
+        service.update(TestIds.uuid(1), TestIds.uuid(99), req);
+
+        verify(paymentService).swapSubscriptionPrice("sub_1", "si_1", "price_v", 1);
+    }
+
+    // ─── mapStripeStatus — unmapped branches ─────────────────────────────────
+
+    @Test
+    void handleSubscriptionUpdated_trialingStatus_mapsToActive() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(
+                new PaymentService.SubscriptionResult("sub_1", "cus_1", "trialing", "in_1",
+                        Instant.now(), Instant.now().plusSeconds(86400 * 14), "pm_test", "si_1"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+    }
+
+    @Test
+    void handleSubscriptionUpdated_incompleteExpiredStatus_mapsToExpired() {
+        Subscription sub = makeSubscription(SubscriptionStatus.INCOMPLETE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(
+                new PaymentService.SubscriptionResult("sub_1", "cus_1", "incomplete_expired", "in_1",
+                        Instant.now(), Instant.now().plusSeconds(86400), "pm_test", "si_1"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        assertEquals(SubscriptionStatus.EXPIRED, sub.getStatus());
+    }
+
+    @Test
+    void handleSubscriptionUpdated_unknownStatus_mapsToIncomplete() {
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(paymentService.retrieveSubscription("sub_1")).thenReturn(
+                new PaymentService.SubscriptionResult("sub_1", "cus_1", "some_future_status", "in_1",
+                        Instant.now(), Instant.now().plusSeconds(86400), "pm_test", "si_1"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleSubscriptionUpdated("sub_1");
+
+        assertEquals(SubscriptionStatus.INCOMPLETE, sub.getStatus());
+    }
+
+    // ─── requireMutable — EXPIRED status ─────────────────────────────────────
+
+    @Test
+    void update_expiredSubscription_throwsConflict() {
+        Subscription sub = makeSubscription(SubscriptionStatus.EXPIRED);
+        when(subscriptionRepository.findByIdAndUserId(TestIds.uuid(99), TestIds.uuid(1))).thenReturn(Optional.of(sub));
+
+        assertThrows(ConflictException.class,
+                () -> service.update(TestIds.uuid(1), TestIds.uuid(99), new UpdateSubscriptionRequest()));
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────
 
     private User makeUser(UUID id) {
