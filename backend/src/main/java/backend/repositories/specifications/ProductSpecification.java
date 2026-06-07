@@ -82,8 +82,9 @@ public class ProductSpecification {
                 predicates.add(cb.equal(root.get("featured"), featured));
             }
 
-            ProductStatus effectiveStatus = status != null ? status : ProductStatus.ACTIVE;
-            predicates.add(cb.equal(root.get("status"), effectiveStatus));
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
 
             if (listed != null) {
                 predicates.add(cb.equal(root.get("listed"), listed));

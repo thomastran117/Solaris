@@ -69,12 +69,12 @@ class OrderStatusHistoryIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(user)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[0].status").value("RESERVED"))
-                .andExpect(jsonPath("$[1].status").value("PAID"))
-                .andExpect(jsonPath("$[2].status").value("PACKED"))
-                .andExpect(jsonPath("$[1].note").value("Payment confirmed"))
-                .andExpect(jsonPath("$[2].note").doesNotExist());
+                .andExpect(jsonPath("$.data", hasSize(3)))
+                .andExpect(jsonPath("$.data[0].status").value("RESERVED"))
+                .andExpect(jsonPath("$.data[1].status").value("PAID"))
+                .andExpect(jsonPath("$.data[2].status").value("PACKED"))
+                .andExpect(jsonPath("$.data[1].note").value("Payment confirmed"))
+                .andExpect(jsonPath("$.data[2].note").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
@@ -109,6 +109,6 @@ class OrderStatusHistoryIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(user)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.data", hasSize(0)));
     }
 }

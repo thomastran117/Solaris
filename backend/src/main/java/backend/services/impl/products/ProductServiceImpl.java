@@ -508,6 +508,7 @@ public class ProductServiceImpl implements ProductService {
         productChangeLogger.logDelete(product);
         promotionRuleRepository.removeProductFromAllRules(productId);
         collectionProductRepository.deleteAllByProductId(productId);
+        productChangeLogRepository.deleteAllByProductId(productId);
         productRepository.delete(product);
         eventPublisher.publishEvent(new ProductRemoveEvent(product.getId(), marketplaceId));
         evictAfterCommit(() -> {
@@ -590,6 +591,9 @@ public class ProductServiceImpl implements ProductService {
         }
         for (Product p : products) {
             productChangeLogger.logDelete(p);
+        }
+        for (UUID pid : request.getIds()) {
+            productChangeLogRepository.deleteAllByProductId(pid);
         }
         productRepository.deleteAll(products);
         for (Product p : products) {
@@ -1096,6 +1100,7 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
 
         productChangeLogger.logVariantDelete(variant);
+        productChangeLogRepository.deleteAllByVariantId(variantId);
         productVariantRepository.delete(variant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
