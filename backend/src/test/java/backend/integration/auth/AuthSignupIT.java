@@ -119,6 +119,12 @@ class AuthSignupIT extends AbstractIntegrationIT {
     }
 
     @Test
+    void verifyEmail_missingTokenParam_returns400() throws Exception {
+        mockMvc.perform(post(VERIFY_URL))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void verifyEmail_tokenIsConsumedAfterUse() throws Exception {
         User user = createPendingUser("consume@example.com", PASSWORD);
         String token = "consume-token-001";

@@ -9,6 +9,7 @@ import backend.repositories.OrderRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.search.BundleSearchRepository;
 import backend.repositories.search.ProductSearchRepository;
+import backend.repositories.search.ReportSearchRepository;
 import backend.repositories.search.ReviewSearchRepository;
 import backend.services.intf.CacheService;
 import backend.services.intf.auth.OAuthService;
@@ -27,7 +28,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.messaging.converter.StringMessageConverter;
+import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -43,6 +44,8 @@ import software.amazon.awssdk.services.s3.S3Client;
 import jakarta.mail.internet.MimeMessage;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,10 +67,13 @@ class DeliveryWebSocketIT {
         registry.add("app.redis.host", REDIS::getHost);
         registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
-        // Use a separate H2 database so create-drop on this RANDOM_PORT context
-        // does not drop the shared shopwave_it schema used by all MockMvc IT tests.
+        // Use a separate H2 database so this context's create-drop lifecycle does not
+        // touch shopwave_it, which is owned by AbstractIntegrationIT's MOCK context.
         registry.add("app.database.url",
                 () -> "jdbc:h2:mem:shopwave_ws;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=VALUE");
+        // Allow all origins so the Java StandardWebSocketClient (which sends no
+        // Origin header) is not rejected by the STOMP endpoint's origin check.
+        registry.add("app.cors.allowed-origins", () -> "*");
     }
 
     @LocalServerPort int port;
@@ -88,6 +94,7 @@ class DeliveryWebSocketIT {
     @MockitoBean BundleSearchRepository bundleSearchRepository;
     @MockitoBean ProductSearchRepository productSearchRepository;
     @MockitoBean ReviewSearchRepository reviewSearchRepository;
+    @MockitoBean ReportSearchRepository reportSearchRepository;
     @MockitoBean S3Client s3Client;
 
     @BeforeEach
@@ -127,12 +134,12 @@ class DeliveryWebSocketIT {
 
     private WebSocketStompClient buildStompClient() {
         WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
-        client.setMessageConverter(new StringMessageConverter());
+        client.setMessageConverter(new MappingJackson2MessageConverter());
         return client;
     }
 
     private String wsUrl() {
-        return "ws://localhost:" + port + "/ws/delivery";
+        return "ws://localhost:" + port + "/api/ws/delivery";
     }
 
     @Test
@@ -156,8 +163,11 @@ class DeliveryWebSocketIT {
                     }
                 });
 
-        Awaitility.await().atMost(5, TimeUnit.SECONDS).untilTrue(connected);
-        stompClient.stop();
+        try {
+            Awaitility.await().atMost(5, TimeUnit.SECONDS).untilTrue(connected);
+        } finally {
+            stompClient.stop();
+        }
     }
 
     @Test
@@ -177,20 +187,23 @@ class DeliveryWebSocketIT {
                 new StompSessionHandlerAdapter() {
                     @Override
                     public void afterConnected(StompSession session, StompHeaders headers) {
-                        String body = String.format(
-                                "{\"lat\":37.77,\"lng\":-122.42,\"timestamp\":\"%s\"}",
-                                Instant.now());
+                        Map<String, Object> body = new LinkedHashMap<>();
+                        body.put("lat", 37.77);
+                        body.put("lng", -122.42);
+                        body.put("timestamp", Instant.now().toString());
                         session.send("/app/delivery/" + order.getId() + "/location", body);
                         sent.set(true);
                     }
                 });
 
-        Awaitility.await().atMost(5, TimeUnit.SECONDS).untilTrue(sent);
-        Awaitility.await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
-            String cached = cacheService.get("delivery:location:" + order.getId());
-            assertNotNull(cached, "Driver location should be cached in Redis after location update");
-        });
-
-        stompClient.stop();
+        try {
+            Awaitility.await().atMost(5, TimeUnit.SECONDS).untilTrue(sent);
+            Awaitility.await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+                String cached = cacheService.get("delivery:location:" + order.getId());
+                assertNotNull(cached, "Driver location should be cached in Redis after location update");
+            });
+        } finally {
+            stompClient.stop();
+        }
     }
 }

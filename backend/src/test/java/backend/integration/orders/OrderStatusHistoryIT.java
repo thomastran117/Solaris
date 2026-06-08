@@ -74,7 +74,7 @@ class OrderStatusHistoryIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data[1].status").value("PAID"))
                 .andExpect(jsonPath("$.data[2].status").value("PACKED"))
                 .andExpect(jsonPath("$.data[1].note").value("Payment confirmed"))
-                .andExpect(jsonPath("$.data[2].note").value(org.hamcrest.Matchers.nullValue()));
+                .andExpect(jsonPath("$.data[2].note").doesNotExist());
     }
 
     @Test

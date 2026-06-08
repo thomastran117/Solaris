@@ -16,6 +16,7 @@ import backend.repositories.search.BundleSearchRepository;
 import backend.repositories.search.ProductSearchRepository;
 import backend.repositories.search.ReportSearchRepository;
 import backend.repositories.search.ReviewSearchRepository;
+import backend.services.intf.CaptchaService;
 import backend.services.intf.support.EmailService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -93,6 +94,7 @@ public abstract class AbstractIntegrationIT {
     @MockitoBean protected JavaMailSender mailSender;
     @MockitoBean protected EmailService emailService;
     @MockitoBean protected OAuthService oauthService;
+    @MockitoBean protected CaptchaService captchaService;
     @MockitoBean protected ElasticsearchClient esClient;
     @MockitoBean protected ElasticsearchOperations elasticsearchOperations;
     @MockitoBean protected BundleSearchRepository bundleSearchRepository;
@@ -122,6 +124,12 @@ public abstract class AbstractIntegrationIT {
         // does not NPE when the service tries to construct a MimeMessage.
         MimeMessage mime = org.mockito.Mockito.mock(MimeMessage.class);
         when(mailSender.createMimeMessage()).thenReturn(mime);
+
+        // Captcha always passes in integration tests — the real reCAPTCHA service
+        // requires a live Google API call which is impossible in CI. The @NotEmpty
+        // constraint on the request field still rejects absent captcha tokens.
+        when(captchaService.verify(any())).thenReturn(true);
+        when(captchaService.verify(any(), any())).thenReturn(true);
     }
 
     @AfterEach
