@@ -64,6 +64,10 @@ class DeliveryWebSocketIT {
         registry.add("app.redis.host", REDIS::getHost);
         registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
+        // Use a separate H2 database so create-drop on this RANDOM_PORT context
+        // does not drop the shared shopwave_it schema used by all MockMvc IT tests.
+        registry.add("app.database.url",
+                () -> "jdbc:h2:mem:shopwave_ws;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=VALUE");
     }
 
     @LocalServerPort int port;

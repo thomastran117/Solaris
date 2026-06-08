@@ -275,6 +275,103 @@ Standard animation rules:
 
 ---
 
+## Testing
+
+Every feature — backend or frontend — must ship with an updated test suite. This is not optional. A feature is not complete until its tests are written and passing.
+
+### Feature completion checklist
+
+Before marking any feature done, verify all of the following:
+
+- [ ] Unit tests cover the new/changed logic
+- [ ] Integration tests cover the happy path and key failure paths
+- [ ] Existing tests that touch the modified code have been reviewed and updated if needed
+- [ ] All test suites pass with no failures or skipped tests
+
+**After completing the checklist, Claude must run the full test suites** (backend and frontend) and confirm there are no regressions before finishing.
+
+---
+
+### Backend Testing
+
+**Stack**: JUnit 5, Mockito, Spring Boot Test, Testcontainers (MySQL, Kafka, Redis).
+
+#### Unit tests
+
+- Location: `src/test/java/<package>`
+- Test service logic in isolation. Mock all dependencies with `@ExtendWith(MockitoExtension.class)`.
+- Every service method with branching logic (conditionals, exceptions, locking paths) needs a test case per branch.
+- Use `assertThrows` to assert domain exceptions are thrown under expected failure conditions.
+- Do not spin up the Spring context in unit tests — keep them fast.
+
+#### Integration tests
+
+- Location: `src/test/java/integration/`
+- Use `@SpringBootTest` + Testcontainers for real database/broker interactions.
+- **Order and stock tests must use real MySQL** — do not mock the database for consistency-critical paths. Test that optimistic locking (`@Version`) actually throws `OptimisticLockException` under concurrent writes.
+- **Kafka integration tests** must verify that events are published only after the transaction commits (not on rollback) and that consumers are idempotent (replaying the same event twice has no additional side effect).
+- **Redis integration tests** must verify cache-aside behaviour: a cache miss loads from DB and populates the cache; a product update invalidates the correct key.
+- Use `@Sql` or Flyway test migrations to seed deterministic state before each test. Never rely on leftover data from a prior test.
+
+#### Naming conventions
+
+| Type | Pattern | Example |
+|---|---|---|
+| Unit test class | `<Subject>Test` | `OrderServiceTest` |
+| Integration test class | `<Subject>IT` | `OrderServiceIT` |
+| Test method | `should<Outcome>When<Condition>` | `shouldThrowOutOfStockWhenStockIsZero` |
+
+---
+
+### Frontend Testing
+
+**Stack**: Vitest, React Testing Library, MSW (Mock Service Worker) for API mocking.
+
+#### Unit tests
+
+- Location: `src/components/**/__tests__/` or co-located as `ComponentName.test.tsx`
+- Test each reusable component in isolation.
+- Cover: renders correctly with required props, handles edge-case prop values (empty strings, zero, null-ish), fires the right callbacks on interaction.
+- Do not test implementation details (internal state, ref values) — test what the user sees and does.
+
+#### Integration tests
+
+- Location: `src/pages/__tests__/` or `src/features/__tests__/`
+- Use MSW to intercept API calls and return controlled fixtures. Do not mock `fetch` or React Query directly.
+- Cover: full user flows (e.g. adding to cart → stock error shown, search filtering products, form validation preventing submission).
+- Always assert on visible text or ARIA roles — not on CSS classes or internal component structure.
+
+#### Animation and motion
+
+- Set `prefers-reduced-motion: reduce` in the test environment so Framer Motion skips animations. This prevents timing-sensitive flakiness.
+
+---
+
+### Running the test suites
+
+After completing any feature, run all of the following and confirm zero failures before finishing:
+
+```bash
+# Backend — unit tests only (fast)
+./mvnw test -Dtest="**/*Test"
+
+# Backend — integration tests (requires Docker for Testcontainers)
+./mvnw test -Dtest="**/*IT"
+
+# Backend — full suite
+./mvnw verify
+
+# Frontend — unit + integration tests
+npm run test
+
+# Frontend — with coverage report
+npm run test:coverage
+```
+
+If any test fails, fix it before considering the feature complete. Do not disable, skip, or comment out a failing test to make the suite pass.
+
+---
+
 ## Running the Project
 
 ```bash
