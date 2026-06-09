@@ -145,6 +145,6 @@ public class OrderItem {
     private Long vendorId;
 
     /** FK to the SubOrder this item belongs to. Null for non-marketplace orders. */
-    @Column(name = "sub_order_id", nullable = true)
-    private Long subOrderId;
+    @Column(name = "sub_order_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID subOrderId;
 }
