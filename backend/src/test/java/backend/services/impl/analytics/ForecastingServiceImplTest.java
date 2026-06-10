@@ -22,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import backend.dtos.responses.forecasting.ReorderSuggestionResponse;
 import backend.dtos.responses.forecasting.ReorderSuggestionResponse.ReorderReasonCode;
 
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -608,10 +609,17 @@ class ForecastingServiceImplTest {
 
     private DailyDemandProjection projection(UUID productId, LocalDate day, Long units) {
         return new DailyDemandProjection() {
-            @Override public UUID getProductId() { return productId; }
+            @Override public byte[] getProductId() { return uuidToBytes(productId); }
             @Override public LocalDate getDay() { return day; }
             @Override public Long getUnits() { return units; }
         };
+    }
+
+    private static byte[] uuidToBytes(UUID uuid) {
+        ByteBuffer bb = ByteBuffer.allocate(16);
+        bb.putLong(uuid.getMostSignificantBits());
+        bb.putLong(uuid.getLeastSignificantBits());
+        return bb.array();
     }
 
     private ProductForecastResponse mockItem() {

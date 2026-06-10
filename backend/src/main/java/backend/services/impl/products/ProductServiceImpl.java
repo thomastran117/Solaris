@@ -1345,13 +1345,10 @@ public class ProductServiceImpl implements ProductService {
                 log.warn("[COMPANY CATALOG SEARCH] Falling back to unfiltered database listing");
             }
 
-            // --- JPA fallback (unfiltered, ACTIVE-only) ---
-            Page<Product> productPage = productRepository.findAllByCompanyId(companyId, pageable);
-            List<Product> active = productPage.getContent().stream()
-                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
-                    .toList();
-            Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(active);
-            List<MarketplaceCatalogProductResponse> content = active.stream()
+            // --- JPA fallback (ACTIVE-only) ---
+            Page<Product> productPage = productRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable);
+            Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
+            List<MarketplaceCatalogProductResponse> content = productPage.getContent().stream()
                     .map(p -> toCatalogResponse(p, null, jpaPromoMap.get(p.getId())))
                     .toList();
             return new CatalogSearchResponse(

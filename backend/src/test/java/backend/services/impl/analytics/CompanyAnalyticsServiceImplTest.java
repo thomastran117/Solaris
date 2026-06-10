@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -402,7 +403,7 @@ class CompanyAnalyticsServiceImplTest {
                                                      BigDecimal price, String currency,
                                                      Long units, BigDecimal rev) {
         return new SlowMoverProjection() {
-            public UUID getProductId()          { return id; }
+            public byte[] getProductId()        { return uuidToBytes(id); }
             public String getProductName()      { return name; }
             public String getSku()              { return sku; }
             public Integer getCurrentStock()    { return stock; }
@@ -416,7 +417,7 @@ class CompanyAnalyticsServiceImplTest {
     private static ProductSalesProjection productSalesRow(UUID id, String name, String sku,
                                                            BigDecimal rev, Long units) {
         return new ProductSalesProjection() {
-            public UUID getProductId()          { return id; }
+            public byte[] getProductId()        { return uuidToBytes(id); }
             public String getProductName()      { return name; }
             public String getSku()              { return sku; }
             public Integer getCurrentStock()    { return 10; }
@@ -425,5 +426,12 @@ class CompanyAnalyticsServiceImplTest {
             public Long getTotalUnitsSold()     { return units; }
             public BigDecimal getTotalRevenue() { return rev; }
         };
+    }
+
+    private static byte[] uuidToBytes(UUID uuid) {
+        ByteBuffer bb = ByteBuffer.allocate(16);
+        bb.putLong(uuid.getMostSignificantBits());
+        bb.putLong(uuid.getLeastSignificantBits());
+        return bb.array();
     }
 }

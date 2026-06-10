@@ -24,6 +24,7 @@ import backend.services.intf.CacheService;
 import backend.services.intf.analytics.ForecastingService;
 import backend.services.intf.company.CompanyAccessService;
 
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -301,9 +302,14 @@ public class ForecastingServiceImpl implements ForecastingService {
     private Map<UUID, List<DailyDemandProjection>> groupByProduct(List<DailyDemandProjection> rows) {
         Map<UUID, List<DailyDemandProjection>> map = new HashMap<>();
         for (DailyDemandProjection row : rows) {
-            map.computeIfAbsent(row.getProductId(), k -> new ArrayList<>()).add(row);
+            map.computeIfAbsent(bytesToUuid(row.getProductId()), k -> new ArrayList<>()).add(row);
         }
         return map;
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 
     private double avgDaily(List<DailyDemandProjection> rows, int windowDays) {

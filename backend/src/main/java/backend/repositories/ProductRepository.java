@@ -78,6 +78,9 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
      */
     Page<Product> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
 
+    /** Paginated, status-filtered catalogue listing — used by the company catalog search's JPA fallback. */
+    Page<Product> findAllByCompanyIdAndStatus(java.util.UUID companyId, ProductStatus status, Pageable pageable);
+
     /** Cheap upper-bound check so callers can short-circuit before paging through a huge result set. */
     long countByCompanyId(java.util.UUID companyId);
 
@@ -140,8 +143,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
                 p.stock       AS currentStock,
                 p.price       AS price,
                 p.currency    AS currency,
-                COALESCE(SUM(oi.quantity), 0)                    AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.unit_price), 0.00) AS totalRevenue
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0)                    AS totalUnitsSold,
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity * oi.unit_price ELSE 0 END), 0.00) AS totalRevenue
             FROM products p
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
@@ -171,8 +174,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
                 p.stock       AS currentStock,
                 p.price       AS price,
                 p.currency    AS currency,
-                COALESCE(SUM(oi.quantity), 0)                    AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.unit_price), 0.00) AS totalRevenue
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0)                    AS totalUnitsSold,
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity * oi.unit_price ELSE 0 END), 0.00) AS totalRevenue
             FROM products p
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id

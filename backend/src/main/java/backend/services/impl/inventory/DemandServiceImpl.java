@@ -18,6 +18,7 @@ import backend.services.intf.CacheService;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.inventory.DemandService;
 
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -114,7 +115,7 @@ public class DemandServiceImpl implements DemandService {
                     .findTopByDemandSince(companyId, now.minus(24, ChronoUnit.HOURS), CACHE_SIZE)
                     .stream()
                     .collect(Collectors.toMap(
-                            ProductDemandProjection::getProductId,
+                            p -> bytesToUuid(p.getProductId()),
                             p -> p.getTotalUnitsSold() != null ? p.getTotalUnitsSold() : 0L));
         }
 
@@ -129,13 +130,13 @@ public class DemandServiceImpl implements DemandService {
             double acceleration = 1.0;
             if (is1h) {
                 // units24h / 24 = average hourly rate over last 24h
-                double velocity24hAvg = base.getOrDefault(p.getProductId(), 0L) / 24.0;
+                double velocity24hAvg = base.getOrDefault(bytesToUuid(p.getProductId()), 0L) / 24.0;
                 // epsilon prevents division by zero for products with no prior 24h history
                 acceleration = velocity / Math.max(velocity24hAvg, 0.001);
             }
 
             entries.add(new DemandEntry(
-                    p.getProductId(),
+                    bytesToUuid(p.getProductId()),
                     p.getProductName(),
                     p.getSku(),
                     p.getPrice(),
@@ -160,5 +161,10 @@ public class DemandServiceImpl implements DemandService {
         return new HotProductsResponse(
                 window, now, windowStart,
                 entries.stream().limit(limit).toList());
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 }

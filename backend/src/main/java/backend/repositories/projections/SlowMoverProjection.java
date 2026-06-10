@@ -1,10 +1,10 @@
 package backend.repositories.projections;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 public interface SlowMoverProjection {
-    UUID getProductId();
+    /** Raw BINARY(16) product id — Spring Data cannot project byte[] to UUID directly. */
+    byte[] getProductId();
     String getProductName();
     String getSku();
     Integer getCurrentStock();

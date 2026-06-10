@@ -1755,7 +1755,7 @@ class ProductServiceImplTest {
                         any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
 
         Product product = makeProduct();
-        when(productRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
+        when(productRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(product)));
 
         var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,

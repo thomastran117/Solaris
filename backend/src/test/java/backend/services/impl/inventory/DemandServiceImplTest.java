@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -187,7 +188,7 @@ class DemandServiceImplTest {
 
     private ProductDemandProjection demandProjection(UUID id, String name, Long units, BigDecimal revenue) {
         return new ProductDemandProjection() {
-            @Override public UUID getProductId() { return id; }
+            @Override public byte[] getProductId() { return uuidToBytes(id); }
             @Override public String getProductName() { return name; }
             @Override public String getSku() { return "SKU-" + name; }
             @Override public BigDecimal getPrice() { return BigDecimal.TEN; }
@@ -195,5 +196,12 @@ class DemandServiceImplTest {
             @Override public Long getTotalUnitsSold() { return units; }
             @Override public BigDecimal getTotalRevenue() { return revenue; }
         };
+    }
+
+    private static byte[] uuidToBytes(UUID uuid) {
+        ByteBuffer bb = ByteBuffer.allocate(16);
+        bb.putLong(uuid.getMostSignificantBits());
+        bb.putLong(uuid.getLeastSignificantBits());
+        return bb.array();
     }
 }

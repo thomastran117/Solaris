@@ -1,10 +1,10 @@
 package backend.repositories.projections;
 
 import java.time.LocalDate;
-import java.util.UUID;
 
 public interface DailyDemandProjection {
-    UUID getProductId();
+    /** Raw BINARY(16) product id — Spring Data cannot project byte[] to UUID directly. */
+    byte[] getProductId();
     LocalDate getDay();
     Long getUnits();
 }

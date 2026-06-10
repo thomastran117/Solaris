@@ -70,7 +70,7 @@ class DeliveryWebSocketIT {
         // Use a separate H2 database so this context's create-drop lifecycle does not
         // touch shopwave_it, which is owned by AbstractIntegrationIT's MOCK context.
         registry.add("app.database.url",
-                () -> "jdbc:h2:mem:shopwave_ws;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=VALUE");
+                () -> "jdbc:h2:mem:shopwave_ws;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=VALUE,DAY");
         // Allow all origins so the Java StandardWebSocketClient (which sends no
         // Origin header) is not rejected by the STOMP endpoint's origin check.
         registry.add("app.cors.allowed-origins", () -> "*");

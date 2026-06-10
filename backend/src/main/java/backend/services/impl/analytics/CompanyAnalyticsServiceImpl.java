@@ -29,6 +29,7 @@ import backend.services.intf.company.CompanyAccessService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -205,7 +206,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
             BigDecimal rev = r.getTotalRevenue() != null ? r.getTotalRevenue() : BigDecimal.ZERO;
             double velocity = days > 0 ? (double) units / days : 0.0;
             entries.add(new SlowMoverEntry(
-                    r.getProductId(), r.getProductName(), r.getSku(),
+                    bytesToUuid(r.getProductId()), r.getProductName(), r.getSku(),
                     r.getCurrentStock(), r.getPrice(), r.getCurrency(),
                     units, rev, velocity, units == 0));
         }
@@ -225,7 +226,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
         Map<UUID, ProductSalesProjection> priorMap = new HashMap<>();
         for (ProductSalesProjection p : prior) {
-            priorMap.put(p.getProductId(), p);
+            priorMap.put(bytesToUuid(p.getProductId()), p);
         }
 
         // Sort current by revenue descending for ranking
@@ -241,7 +242,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
 
         Map<UUID, Integer> unitsRankMap = new HashMap<>();
         for (int i = 0; i < byUnits.size(); i++) {
-            unitsRankMap.put(byUnits.get(i).getProductId(), i + 1);
+            unitsRankMap.put(bytesToUuid(byUnits.get(i).getProductId()), i + 1);
         }
 
         List<ProductPerfEntry> entries = new ArrayList<>(sorted.size());
@@ -250,7 +251,7 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
             BigDecimal curRev   = p.getTotalRevenue()   != null ? p.getTotalRevenue()   : BigDecimal.ZERO;
             long curUnits       = p.getTotalUnitsSold() != null ? p.getTotalUnitsSold() : 0L;
 
-            ProductSalesProjection priorP = priorMap.get(p.getProductId());
+            ProductSalesProjection priorP = priorMap.get(bytesToUuid(p.getProductId()));
             BigDecimal priorRev   = priorP != null && priorP.getTotalRevenue()   != null ? priorP.getTotalRevenue()   : BigDecimal.ZERO;
             long priorUnits       = priorP != null && priorP.getTotalUnitsSold() != null ? priorP.getTotalUnitsSold() : 0L;
 
@@ -266,11 +267,11 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
                     : (curUnits > 0 ? 100.0 : 0.0);
 
             entries.add(new ProductPerfEntry(
-                    p.getProductId(), p.getProductName(), p.getSku(),
+                    bytesToUuid(p.getProductId()), p.getProductName(), p.getSku(),
                     curRev, curUnits, priorRev, priorUnits,
                     revGrowth, unitsGrowth,
                     revenueRank++,
-                    unitsRankMap.getOrDefault(p.getProductId(), 0)));
+                    unitsRankMap.getOrDefault(bytesToUuid(p.getProductId()), 0)));
         }
 
         ProductPerformanceResponse response =
@@ -303,5 +304,10 @@ public class CompanyAnalyticsServiceImpl implements CompanyAnalyticsService {
         } catch (Exception e) {
             log.warn("[ANALYTICS] Cache write error for key {}: {}", key, e.getMessage());
         }
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 }
