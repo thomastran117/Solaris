@@ -62,7 +62,7 @@ jobs:
           - name: company-customers
             tests: AnnouncementIT,CompanyCatalogControllerIT,CompanyFollowIT,CompanyIT,TeamIT,CustomerAddressIT,CustomerCreditIT,CustomerFeedIT,CustomerSegmentIT,ProfileIT,UserPreferenceIT
           - name: marketplace-vendors-inventory-analytics
-            tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT
+            tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,MarketplaceAnalyticsIT
           - name: misc
             tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
 
