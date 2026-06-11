@@ -883,15 +883,10 @@ class CollectionServiceImplTest {
         CollectionProduct visibleCp = makeCollectionProduct(TestIds.uuid(21), COLL_ID, visible);
         visibleCp.setCollection(c);
 
-        // invisible product: not marketplace-listed
-        Product hidden = makeProduct(TestIds.uuid(8), COMPANY_ID);
-        hidden.setMarketplaceId(MARKETPLACE_ID);
-        hidden.setMarketplaceListed(false);
-        CollectionProduct hiddenCp = makeCollectionProduct(TestIds.uuid(22), COLL_ID, hidden);
-        hiddenCp.setCollection(c);
-
-        when(collectionProductRepository.findAllByCollectionIdRanked(eq(COLL_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(visibleCp, hiddenCp)));
+        // The repository query itself restricts to ACTIVE, marketplace-listed products for this
+        // marketplace, so the mock only returns the visible row.
+        when(collectionProductRepository.findVisibleByCollectionIdRanked(eq(COLL_ID), eq(MARKETPLACE_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(visibleCp)));
 
         var result = service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "test-slug", 0, 20);
 

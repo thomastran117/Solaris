@@ -2,6 +2,7 @@ package backend.controllers.impl.marketplace;
 
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import backend.dtos.responses.collection.CollectionProductResponse;
@@ -21,6 +22,7 @@ import java.util.List;
  * Mirrors the {@code /marketplaces/{mId}/catalog/...} pattern used by {@code MarketplaceCatalogController}.
  */
 @RestController
+@Validated
 @RequestMapping("/marketplaces/{marketplaceId}/collections")
 public class MarketplaceCollectionController {
 
