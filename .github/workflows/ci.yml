@@ -54,7 +54,7 @@ jobs:
       matrix:
         include:
           - name: products
-            tests: BundleIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT
+            tests: BundleIT,ImportIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT
           - name: orders-returns
             tests: CompanyOrderIT,DeliveryWebSocketIT,OrderIssueIT,OrderIT,OrderSseIT,OrderStatusHistoryIT,SubOrderIT,TrackingWebhookIT,CompanyReturnIT,CompanyReturnLocationIT,ReturnIT
           - name: auth-admin
@@ -65,10 +65,6 @@ jobs:
             tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,MarketplaceAnalyticsIT
           - name: misc
             tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
-          # TEMPORARY: standalone shard to validate the new ImportIT on CI (local runs keep
-          # hanging at Hibernate bootstrap on this machine). Fold into an existing shard once verified.
-          - name: imports-temp
-            tests: ImportIT
 
     steps:
       - name: Checkout
