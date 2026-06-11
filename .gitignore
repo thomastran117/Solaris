@@ -20,7 +20,6 @@ target/
 .settings/
 
 # Maven
-.mvn/
 pom.xml.tag
 pom.xml.releaseBackup
 
