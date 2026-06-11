@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Run unit tests with coverage gate
+        run: ./mvnw verify -Dtest="**/*Test" -Dspring-boot.repackage.skip=true --batch-mode
+
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/
+
+  backend-integration-tests:
+    name: Backend ITs (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: products
+            tests: BundleIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT
+          - name: orders-returns
+            tests: CompanyOrderIT,DeliveryWebSocketIT,OrderIssueIT,OrderIT,OrderSseIT,OrderStatusHistoryIT,SubOrderIT,TrackingWebhookIT,CompanyReturnIT,CompanyReturnLocationIT,ReturnIT
+          - name: auth-admin
+            tests: AuthDeviceIT,AuthLoginIT,AuthOAuthIT,AuthRefreshIT,AuthSignupIT,AuthTokenIT,AdminFeedbackIT,AdminReportControllerIT,ReviewAdminIT,SearchAdminIT,UserAdminIT
+          - name: company-customers
+            tests: AnnouncementIT,CompanyCatalogControllerIT,CompanyFollowIT,CompanyIT,TeamIT,CustomerAddressIT,CustomerCreditIT,CustomerFeedIT,CustomerSegmentIT,ProfileIT,UserPreferenceIT
+          - name: marketplace-vendors-inventory-analytics
+            tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT
+          - name: misc
+            tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Run integration tests
+        run: >-
+          ./mvnw test -Dtest=${{ matrix.tests }}
+          -DreuseForks=false
+          -Dsurefire.timeout=240
+          -Dsurefire.rerunFailingTestsCount=1
+          -Djacoco.skip=true
+          --batch-mode
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test -- --run
