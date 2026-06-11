@@ -64,7 +64,7 @@ jobs:
           - name: marketplace-vendors-inventory-analytics
             tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,MarketplaceAnalyticsIT
           - name: misc
-            tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
+            tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,PremiumIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
 
     steps:
       - name: Checkout
