@@ -379,9 +379,9 @@ public class OrderServiceImpl implements OrderService {
             );
         } catch (Exception e) {
             // The reservation already committed, so rolling back is not an option — restore the
-            // committed stock and mark the order FAILED before surfacing the original error.
-            // No PaymentIntent exists yet, so there is nothing to cancel.
-            compensateFailedReservation(reserved, "Payment intent creation failed: " + e.getMessage(), null);
+            // committed stock, coupon/loyalty usage, and mark the order FAILED before surfacing the
+            // original error. No PaymentIntent exists yet, so there is nothing to cancel.
+            failReservedOrderQuietly(reserved, "Payment intent creation failed: " + e.getMessage(), null);
             throw e;
         }
 
@@ -389,10 +389,11 @@ public class OrderServiceImpl implements OrderService {
         try {
             response = self().attachPaymentIntent(reserved, paymentIntent);
         } catch (Exception e) {
-            // The PaymentIntent exists at Stripe but could not be persisted on the order. Cancel
-            // the orphaned intent (the order never stored its id, so no later path could) and fail
-            // the order so the committed stock is restored and the customer is never charged.
-            compensateFailedReservation(reserved,
+            // The PaymentIntent exists at Stripe but could not be persisted on the order. Hand the
+            // orphaned intent id to failReservedOrder so it is cancelled (and recorded as a
+            // retryable PAYMENT_CANCEL compensation if the cancel itself fails) and the committed
+            // stock/coupon/loyalty are restored so the customer is never charged.
+            failReservedOrderQuietly(reserved,
                     "Failed to attach payment intent: " + e.getMessage(), paymentIntent.id());
             throw e;
         }
@@ -408,22 +409,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Best-effort compensation for a reservation that committed but whose payment could not be
-     * completed: optionally cancels an orphaned Stripe PaymentIntent, then marks the order FAILED
-     * and restores the committed stock. All steps swallow their own errors so the caller can still
-     * surface the original failure.
+     * Invokes {@link #failReservedOrder} through the proxy, swallowing any compensation failure so
+     * the caller can still surface the original (payment) error.
      */
-    private void compensateFailedReservation(Order reserved, String reason, String paymentIntentIdToCancel) {
-        if (paymentIntentIdToCancel != null) {
-            try {
-                paymentService.cancelPaymentIntent(paymentIntentIdToCancel);
-            } catch (Exception cx) {
-                log.error("[ORDER] Failed to cancel orphaned payment intent {} for order {}: {}",
-                        paymentIntentIdToCancel, reserved.getId(), cx.getMessage());
-            }
-        }
+    private void failReservedOrderQuietly(Order reserved, String reason, String orphanPaymentIntentId) {
         try {
-            self().failReservedOrder(reserved, reason);
+            self().failReservedOrder(reserved, reason, orphanPaymentIntentId);
         } catch (Exception compEx) {
             log.error("[ORDER] Failed to compensate order {} after payment failure: {}",
                     reserved.getId(), compEx.getMessage());
@@ -1343,13 +1334,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Compensation path when the PaymentIntent call fails after {@link #reserveOrder} has
-     * committed: marks the order FAILED, releases the Redis reservation, and restores the
-     * already-committed stock from the order's items (under product/variant locks).
-     * Mirrors {@link #compensateOrder} but sets a FAILED terminal status with a reason.
+     * Compensation path when the payment step fails after {@link #reserveOrder} has committed:
+     * marks the order FAILED, releases the Redis reservation, restores the already-committed stock
+     * (under product/variant locks), and undoes the committed coupon and loyalty usage. If an
+     * orphaned PaymentIntent id is supplied (attach-failure path, where the id was never persisted
+     * on the order), it is cancelled and — on cancel failure — recorded as a retryable
+     * PAYMENT_CANCEL compensation. Mirrors the non-stock cleanup of {@link #compensateOrder} but
+     * sets a FAILED terminal status with a reason.
      */
     @Transactional
-    public void failReservedOrder(Order order, String reason) {
+    public void failReservedOrder(Order order, String reason, String orphanPaymentIntentId) {
         UUID orderId = order.getId();
         order.setStatus(OrderStatus.FAILED);
         order.setFailureReason(reason);
@@ -1390,6 +1384,31 @@ public class OrderServiceImpl implements OrderService {
             }
         } finally {
             releaseLocks(failLocks, failLockToken);
+        }
+
+        // Undo non-stock side effects committed by reserveOrder so a failed checkout does not
+        // consume the customer's coupon allowance or loyalty points (mirrors compensateOrder).
+        releaseCouponUsage(order);
+        try {
+            loyaltyService.restoreRedeemedPoints(orderId);
+        } catch (Exception e) {
+            log.error("failReservedOrder: failed to restore loyalty points for order {}: {}", orderId, e.getMessage());
+        }
+
+        // Cancel an orphaned PaymentIntent that was created at Stripe but never persisted on the
+        // order (attach-failure path). Record a retryable PAYMENT_CANCEL row if the cancel fails —
+        // the order is marked compensated, so the scheduler would not otherwise revisit it.
+        if (orphanPaymentIntentId != null) {
+            try {
+                paymentService.cancelPaymentIntent(orphanPaymentIntentId);
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancelled payment intent: " + orphanPaymentIntentId, CompensationStatus.COMPLETED);
+            } catch (Exception e) {
+                log.error("failReservedOrder: failed to cancel orphaned payment intent {} for order {}: {}",
+                        orphanPaymentIntentId, orderId, e.getMessage());
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancel payment intent: " + orphanPaymentIntentId, CompensationStatus.FAILED, e.getMessage());
+            }
         }
     }
 
@@ -2259,6 +2278,13 @@ public class OrderServiceImpl implements OrderService {
     private static String buildRestoreDetail(OrderItem item) {
         if (item.getBundle() != null) {
             return "[BUNDLE:" + item.getBundle().getId() + "] " + item.getQuantity() + " unit(s) of bundle " + item.getBundleName();
+        }
+        // Kit lines have a null product; label them explicitly so a failed-restore row is not
+        // misrecorded as "product unknown". NOTE: kit/bundle restores are multi-component and the
+        // string-based retryCompensation() path cannot reconstruct them — restoreItemStock() must
+        // succeed on the first pass. Component-level compensation rows are a known follow-up.
+        if (item.getKit() != null) {
+            return "[KIT:" + item.getKit().getId() + "] " + item.getQuantity() + " unit(s) of kit " + item.getKitName();
         }
         if (item.getVariant() != null) {
             return "[VARIANT] " + item.getQuantity() + " units for variant " + item.getVariant().getId();
@@ -3184,9 +3210,48 @@ public class OrderServiceImpl implements OrderService {
         return toRiskAssessmentResponse(latest);
     }
 
+    /**
+     * Approving a held order charges the customer, so — like {@link #createOrder} — the Stripe
+     * PaymentIntent is created OUTSIDE any transaction: {@link #beginRiskApproval} validates in T1,
+     * the intent is created with no DB connection held, and {@link #completeRiskApproval} attaches
+     * it in T2. If T2 fails, the orphaned intent is cancelled.
+     */
     @Override
-    @Transactional
     public OrderResponse approveRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req) {
+        RiskApproval approval = self().beginRiskApproval(companyId, orderId, ownerId);
+
+        PaymentIntentResult paymentIntent;
+        try {
+            paymentIntent = paymentService.createPaymentIntent(
+                    approval.amountInCents(),
+                    approval.currency(),
+                    null,
+                    Map.of("user_id", String.valueOf(approval.userId()),
+                            "order_id", String.valueOf(orderId),
+                            "risk_reviewed_by", String.valueOf(ownerId))
+            );
+        } catch (Exception e) {
+            throw new backend.exceptions.http.BadGatewayException(
+                    "Failed to create payment intent: " + e.getMessage());
+        }
+
+        try {
+            return self().completeRiskApproval(orderId, paymentIntent, ownerId, req);
+        } catch (Exception e) {
+            // Intent was created in Stripe but not attached; cancel it so no orphaned hold remains.
+            try {
+                paymentService.cancelPaymentIntent(paymentIntent.id());
+            } catch (Exception ce) {
+                log.error("approveRiskReview: failed to cancel orphaned intent {} after completion failure: {}",
+                        paymentIntent.id(), ce.getMessage());
+            }
+            throw e;
+        }
+    }
+
+    /** T1 of {@link #approveRiskReview}: authorize, validate review state, and compute the charge. */
+    @Transactional(readOnly = true)
+    public RiskApproval beginRiskApproval(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -3199,35 +3264,31 @@ public class OrderServiceImpl implements OrderService {
         if (review.getStatus() != RiskReviewStatus.PENDING) {
             throw new ConflictException("Review already decided (status=" + review.getStatus() + ")");
         }
-
         long amountInCents = order.getTotalAmount().multiply(BigDecimal.valueOf(100))
                 .setScale(0, RoundingMode.HALF_UP).longValueExact();
-        PaymentIntentResult paymentIntent;
-        try {
-            paymentIntent = paymentService.createPaymentIntent(
-                    amountInCents,
-                    order.getCurrency(),
-                    null,
-                    Map.of("user_id", String.valueOf(order.getUser().getId()),
-                            "order_id", String.valueOf(order.getId()),
-                            "risk_reviewed_by", String.valueOf(ownerId))
-            );
-        } catch (Exception e) {
-            throw new backend.exceptions.http.BadGatewayException(
-                    "Failed to create payment intent: " + e.getMessage());
+        return new RiskApproval(amountInCents, order.getCurrency(), order.getUser().getId());
+    }
+
+    /** T2 of {@link #approveRiskReview}: attach the intent, flip to RESERVED, and approve the review. */
+    @Transactional
+    public OrderResponse completeRiskApproval(UUID orderId, PaymentIntentResult paymentIntent,
+                                              UUID ownerId, RiskDecisionRequest req) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        // Re-check under the T2 transaction in case the review was decided concurrently between phases.
+        if (order.getStatus() != OrderStatus.UNDER_REVIEW) {
+            throw new ConflictException("Order is not under review (status=" + order.getStatus() + ")");
         }
+        RiskReview review = riskReviewRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("No pending review for order " + orderId));
+        if (review.getStatus() != RiskReviewStatus.PENDING) {
+            throw new ConflictException("Review already decided (status=" + review.getStatus() + ")");
+        }
+
         order.setPaymentIntentId(paymentIntent.id());
         order.setPaymentClientSecret(paymentIntent.clientSecret());
         order.setStatus(OrderStatus.RESERVED);
-        try {
-            orderRepository.save(order);
-        } catch (Exception e) {
-            // Intent was created in Stripe; cancel it immediately so no orphaned hold remains.
-            try { paymentService.cancelPaymentIntent(paymentIntent.id()); } catch (Exception ce) {
-                log.error("approveRiskReview: failed to cancel orphaned intent {} after order save failure: {}", paymentIntent.id(), ce.getMessage());
-            }
-            throw e;
-        }
+        orderRepository.save(order);
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, ownerId, "Risk review approved");
         publishSseEvent(order, "Risk review approved", "status_update");
 
@@ -3241,6 +3302,9 @@ public class OrderServiceImpl implements OrderService {
 
         return toResponse(order);
     }
+
+    /** Carries the validated charge details from {@link #beginRiskApproval} to the Stripe call. */
+    public record RiskApproval(long amountInCents, String currency, UUID userId) {}
 
     @Override
     @Transactional
@@ -3309,6 +3373,9 @@ public class OrderServiceImpl implements OrderService {
     private UUID findOwningCompanyId(OrderItem item) {
         if (item.getBundle() != null && item.getBundle().getCompany() != null) {
             return item.getBundle().getCompany().getId();
+        }
+        if (item.getKit() != null && item.getKit().getCompany() != null) {
+            return item.getKit().getCompany().getId();
         }
         if (item.getProduct() != null && item.getProduct().getCompany() != null) {
             return item.getProduct().getCompany().getId();
@@ -3567,8 +3634,14 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * Groups items by vendorId and creates one {@link SubOrder} per vendor.
-     * Updates each item's {@code subOrderId} via a batch repository call.
-     * Items with no vendorId (standalone products in a mixed cart) are skipped.
+     * Updates each item's {@code subOrderId}. Items with no vendorId (standalone products in a
+     * mixed cart) are skipped.
+     *
+     * <p>Order-level discounts (coupon, loyalty, premium) are not encoded per line, so each
+     * sub-order's commissionable {@code totalAmount} is the vendor's net line value scaled by
+     * {@code collected / allLinesNet} (capped at 1). This pro-rates those discounts across all
+     * lines by value, guaranteeing the sum of sub-order totals never exceeds what the platform
+     * actually collected — so vendor commission/payout is never computed on more than was charged.
      */
     private void createSubOrders(Order order, List<OrderItem> items) {
         Map<UUID, List<OrderItem>> byVendor = items.stream()
@@ -3578,6 +3651,16 @@ public class OrderServiceImpl implements OrderService {
 
         Map<UUID, MarketplaceVendor> vendorById = marketplaceVendorRepository.findAllById(byVendor.keySet())
                 .stream().collect(Collectors.toMap(MarketplaceVendor::getId, v -> v));
+
+        // Distribute the actually-collected total across every line by value. allLinesNet is the
+        // post-promotion subtotal (pre order-level discount); order.getTotalAmount() is the charged
+        // amount after coupon/loyalty/premium. scale is in (0,1]; never scale up (tax/shipping could
+        // push the charged total above line value — vendors are not credited platform-collected tax).
+        BigDecimal allLinesNet = items.stream().map(this::lineNet).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal collected = order.getTotalAmount() != null ? order.getTotalAmount() : allLinesNet;
+        BigDecimal scale = (allLinesNet.signum() > 0 && collected.compareTo(allLinesNet) < 0)
+                ? collected.divide(allLinesNet, 6, RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
 
         String currency = order.getCurrency() != null ? order.getCurrency() : "USD";
         for (Map.Entry<UUID, List<OrderItem>> entry : byVendor.entrySet()) {
@@ -3593,6 +3676,8 @@ public class OrderServiceImpl implements OrderService {
             BigDecimal subtotal = vendorItems.stream()
                     .map(this::lineNet)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal total = subtotal.multiply(scale).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal allocatedDiscount = subtotal.subtract(total).max(BigDecimal.ZERO);
 
             SubOrder subOrder = new SubOrder();
             subOrder.setOrder(order);
@@ -3600,7 +3685,8 @@ public class OrderServiceImpl implements OrderService {
             subOrder.setMarketplaceId(vendor.getMarketplace().getId());
             subOrder.setStatus(SubOrderStatus.PENDING);
             subOrder.setSubtotal(subtotal);
-            subOrder.setTotalAmount(subtotal);
+            subOrder.setVendorDiscountAmount(allocatedDiscount);
+            subOrder.setTotalAmount(total);
             subOrder.setCurrency(currency);
             SubOrder saved = subOrderRepository.save(subOrder);
 

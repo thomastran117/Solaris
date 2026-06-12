@@ -560,6 +560,47 @@ class OrderServiceImplTest {
         verify(paymentService, never()).cancelPaymentIntent(any());
     }
 
+    @Test
+    void cancelOrderByCompany_productPlusKitSameCompany_isOwnedExclusivelyAndCancels() {
+        // A mixed product + kit order entirely owned by the company must pass the exclusivity
+        // guard: findOwningCompanyId must recognise kit ownership (not just product/bundle).
+        Order order = cancellableOrder(OrderStatus.PAID);
+        backend.models.core.ProductKit kit = new backend.models.core.ProductKit();
+        kit.setId(TestIds.uuid(12));
+        kit.setCompany(company(COMPANY_ID));
+        OrderItem kitItem = new OrderItem();
+        kitItem.setId(TestIds.uuid(13));
+        kitItem.setKit(kit);
+        kitItem.setProduct(null);
+        kitItem.setQuantity(1);
+        kitItem.setUnitPrice(new BigDecimal("15.00"));
+        kitItem.setFulfillmentStatus(FulfillmentStatus.PENDING);
+        order.setItems(List.of(order.getItems().get(0), kitItem));
+
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.CANCELLED, order.getStatus());
+    }
+
+    @Test
+    void failReservedOrder_withOrphanIntent_cancelsIntentRestoresLoyaltyAndMarksCompensated() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        stubLockSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.failReservedOrder(order, "attach failed", "pi_orphan");
+
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        assertTrue(order.isCompensated());
+        verify(paymentService).cancelPaymentIntent("pi_orphan");
+        verify(loyaltyService).restoreRedeemedPoints(ORDER_ID);
+    }
+
     // -------------------------------------------------------------------------
     // Builders
     // -------------------------------------------------------------------------
@@ -2250,7 +2291,50 @@ class OrderServiceImplTest {
         assertEquals(marketplaceId, created.getMarketplaceId());
         // net unitPrice (10.00, already discounted) × qty 2 = 20.00 — savings not re-subtracted
         assertEquals(0, new BigDecimal("20.00").compareTo(created.getSubtotal()));
+        // No order-level discount (totalAmount unset) → scale 1 → total == subtotal
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getTotalAmount()));
         assertEquals(TestIds.uuid(500), item.getSubOrderId());
+    }
+
+    @Test
+    void createSubOrders_orderLevelDiscount_scalesVendorTotalDownProRata() {
+        UUID vendorId = TestIds.uuid(99);
+        UUID marketplaceId = TestIds.uuid(98);
+
+        Order order = new Order();
+        order.setId(TestIds.uuid(3));
+        order.setCurrency("USD");
+        // Lines net to 20.00 but only 15.00 was actually collected (e.g. a $5 coupon). The vendor's
+        // commissionable total must be scaled to 15.00 so payout is never based on more than charged.
+        order.setTotalAmount(new BigDecimal("15.00"));
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setQuantity(2);
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setDiscountAmount(BigDecimal.ZERO);
+        item.setPromotionSavings(BigDecimal.ZERO);
+        item.setVendorId(vendorId);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setMarketplace(company(marketplaceId));
+        when(marketplaceVendorRepository.findAllById(any())).thenReturn(List.of(vendor));
+        when(subOrderRepository.save(any(backend.models.core.SubOrder.class))).thenAnswer(inv -> {
+            backend.models.core.SubOrder s = inv.getArgument(0);
+            s.setId(TestIds.uuid(500));
+            return s;
+        });
+
+        ReflectionTestUtils.invokeMethod(service, "createSubOrders", order, List.of(item));
+
+        ArgumentCaptor<backend.models.core.SubOrder> captor =
+                ArgumentCaptor.forClass(backend.models.core.SubOrder.class);
+        verify(subOrderRepository).save(captor.capture());
+        backend.models.core.SubOrder created = captor.getValue();
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getSubtotal()));
+        assertEquals(0, new BigDecimal("15.00").compareTo(created.getTotalAmount()));
+        assertEquals(0, new BigDecimal("5.00").compareTo(created.getVendorDiscountAmount()));
     }
 
     // =========================================================================
