@@ -115,20 +115,25 @@ public class OrderController {
         try {
             UUID userId = resolveUserId();
 
-            // Cap order creation per user so a runaway/abusive client can't exhaust the
-            // payment-intent quota or DB connection pool. Fails open on Redis errors.
-            rateLimitService.enforce("order:create", userId.toString(),
-                    ORDER_CREATE_LIMIT, ORDER_CREATE_WINDOW_SECONDS);
-
-            // Idempotency: if the caller already created an order under this key, return
-            // it directly so a retried POST doesn't charge the customer twice. We only
-            // engage when a key is provided (back-compat: existing clients still work).
+            // Idempotency: if the caller already created an order under this key, return it
+            // directly so a retried POST doesn't charge the customer twice. This runs BEFORE
+            // the rate limiter: returning an already-created order is a cheap read that creates
+            // no PaymentIntent, so aggressive idempotent retries must not be rejected as 429.
+            // We only engage when a key is provided (back-compat: existing clients still work).
             if (idempotencyKey != null && !idempotencyKey.isBlank()) {
                 Optional<UUID> existing = idempotencyService.lookup("order:create", userId, idempotencyKey);
                 if (existing.isPresent()) {
                     OrderResponse prior = orderService.getOrder(existing.get(), userId);
                     return ResponseEntity.status(HttpStatus.OK).body(prior);
                 }
+            }
+
+            // Cap genuinely new order creation per user so a runaway/abusive client can't
+            // exhaust the payment-intent quota or DB connection pool. Fails open on Redis errors.
+            rateLimitService.enforce("order:create", userId.toString(),
+                    ORDER_CREATE_LIMIT, ORDER_CREATE_WINDOW_SECONDS);
+
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
                 // Claim the key so a near-simultaneous duplicate retry doesn't slip
                 // through while the first request is still creating the order.
                 boolean claimed = idempotencyService.claim("order:create", userId, idempotencyKey,

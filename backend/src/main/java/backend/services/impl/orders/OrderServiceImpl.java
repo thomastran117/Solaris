@@ -380,17 +380,54 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception e) {
             // The reservation already committed, so rolling back is not an option — restore the
             // committed stock and mark the order FAILED before surfacing the original error.
-            try {
-                self().failReservedOrder(reserved, "Payment intent creation failed: " + e.getMessage());
-            } catch (Exception compEx) {
-                log.error("[ORDER] Failed to compensate order {} after payment-intent failure: {}",
-                        reserved.getId(), compEx.getMessage());
-            }
+            // No PaymentIntent exists yet, so there is nothing to cancel.
+            compensateFailedReservation(reserved, "Payment intent creation failed: " + e.getMessage(), null);
             throw e;
         }
 
-        return self().attachPaymentIntent(reserved, paymentIntent,
-                reservation.email(), reservation.firstName());
+        OrderResponse response;
+        try {
+            response = self().attachPaymentIntent(reserved, paymentIntent);
+        } catch (Exception e) {
+            // The PaymentIntent exists at Stripe but could not be persisted on the order. Cancel
+            // the orphaned intent (the order never stored its id, so no later path could) and fail
+            // the order so the committed stock is restored and the customer is never charged.
+            compensateFailedReservation(reserved,
+                    "Failed to attach payment intent: " + e.getMessage(), paymentIntent.id());
+            throw e;
+        }
+
+        // Receipt email is best-effort and runs AFTER the PaymentIntent is committed, so an email
+        // failure can never roll back the attachment or orphan the intent.
+        try {
+            emailService.sendOrderReceiptEmail(reservation.email(), reservation.firstName(), response);
+        } catch (Exception e) {
+            log.warn("[ORDER] Failed to send receipt email for order {}: {}", reserved.getId(), e.getMessage());
+        }
+        return response;
+    }
+
+    /**
+     * Best-effort compensation for a reservation that committed but whose payment could not be
+     * completed: optionally cancels an orphaned Stripe PaymentIntent, then marks the order FAILED
+     * and restores the committed stock. All steps swallow their own errors so the caller can still
+     * surface the original failure.
+     */
+    private void compensateFailedReservation(Order reserved, String reason, String paymentIntentIdToCancel) {
+        if (paymentIntentIdToCancel != null) {
+            try {
+                paymentService.cancelPaymentIntent(paymentIntentIdToCancel);
+            } catch (Exception cx) {
+                log.error("[ORDER] Failed to cancel orphaned payment intent {} for order {}: {}",
+                        paymentIntentIdToCancel, reserved.getId(), cx.getMessage());
+            }
+        }
+        try {
+            self().failReservedOrder(reserved, reason);
+        } catch (Exception compEx) {
+            log.error("[ORDER] Failed to compensate order {} after payment failure: {}",
+                    reserved.getId(), compEx.getMessage());
+        }
     }
 
     /**
@@ -1292,18 +1329,17 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Transaction T2 of {@link #createOrder}: persists the PaymentIntent id/client-secret on
-     * the already-RESERVED order and sends the receipt email. Runs after the Stripe call has
-     * returned, so no external work happens inside this transaction.
+     * Transaction T2 of {@link #createOrder}: persists the PaymentIntent id/client-secret on the
+     * already-RESERVED order. Runs after the Stripe call has returned, so no external work happens
+     * inside this transaction; the receipt email is sent best-effort by the caller after commit.
      */
     @Transactional
-    public OrderResponse attachPaymentIntent(Order order, PaymentIntentResult paymentIntent,
-                                             String email, String firstName) {
+    public OrderResponse attachPaymentIntent(Order order, PaymentIntentResult paymentIntent) {
         order.setPaymentIntentId(paymentIntent.id());
         order.setPaymentClientSecret(paymentIntent.clientSecret());
-        OrderResponse response = toResponse(orderRepository.save(order));
-        emailService.sendOrderReceiptEmail(email, firstName, response);
-        return response;
+        // Persist the intent only — the receipt email is sent best-effort by the caller after this
+        // transaction commits, so an email failure can never roll back the attachment.
+        return toResponse(orderRepository.save(order));
     }
 
     /**
@@ -3479,7 +3515,13 @@ public class OrderServiceImpl implements OrderService {
     /**
      * For each item whose product is listed on a marketplace, resolves the owning
      * MarketplaceVendor and stamps {@code item.vendorId}. Uses a single batch query
-     * per marketplace to avoid N+1 lookups. Returns true if any marketplace items exist.
+     * per marketplace to avoid N+1 lookups.
+     *
+     * <p>Returns true if at least one item was successfully attributed to a vendor — this drives
+     * the {@code marketplaceOrder} flag and sub-order creation. A product carrying a
+     * {@code marketplaceId} but with no matching MarketplaceVendor row is logged at ERROR (data
+     * corruption) and left unattributed rather than aborting the whole order; such a line simply
+     * won't produce a sub-order.
      */
     private boolean stampVendorIds(List<OrderItem> items) {
         // Group product company IDs by marketplace
@@ -3514,7 +3556,8 @@ public class OrderServiceImpl implements OrderService {
                 item.setVendorId(vendorId);
                 anyStamped = true;
             } else {
-                log.warn("[MARKETPLACE] No MarketplaceVendor for product {} (marketplace {} company {}) — line left unattributed",
+                log.error("[MARKETPLACE] No MarketplaceVendor for product {} (marketplace {} company {}) — "
+                                + "line left unattributed; commission/payout will not be recorded for it",
                         item.getProduct().getId(), item.getProduct().getMarketplaceId(),
                         item.getProduct().getCompany().getId());
             }
@@ -3607,54 +3650,74 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Computes and persists a {@link CommissionRecord} for each sub-order on a
-     * just-paid marketplace order. Failures are logged but do not abort the transaction.
+     * Computes and persists a {@link CommissionRecord} for each sub-order on a just-paid
+     * marketplace order. Each sub-order is processed in its own {@code REQUIRES_NEW} transaction
+     * ({@link #recordOneSubOrderCommission}) so the record and the vendor-balance credit either
+     * both commit or both roll back — a failure can never leave a CommissionRecord without its
+     * matching pending-balance credit. Per-sub-order failures are logged but do not abort the
+     * surrounding payment-confirmation transaction.
      */
     private void recordSubOrderCommission(Order order) {
-        List<SubOrder> subOrders = subOrderRepository.findAllByOrderId(order.getId());
         Instant paidAt = order.getPaidAt();
-        for (SubOrder subOrder : subOrders) {
-            subOrder.setPaidAt(paidAt);
+        for (SubOrder subOrder : subOrderRepository.findAllByOrderId(order.getId())) {
             try {
-                CommissionEngine.CommissionResult result = commissionEngine.compute(subOrder);
-                subOrder.setCommissionAmount(result.commissionAmount());
-                subOrder.setNetVendorAmount(result.netVendorAmount());
-                subOrderRepository.save(subOrder);
-
-                CommissionRecord record = new CommissionRecord();
-                record.setSubOrder(subOrder);
-                record.setVendorId(subOrder.getMarketplaceVendor().getId());
-                record.setMarketplaceId(subOrder.getMarketplaceId());
-                record.setCommissionRate(result.commissionRate());
-                record.setGrossAmount(result.grossAmount());
-                record.setCommissionAmount(result.commissionAmount());
-                record.setNetVendorAmount(result.netVendorAmount());
-                record.setCurrency(result.currency());
-                commissionRecordRepository.save(record);
-
-                // Credit VendorBalance.pendingCents atomically (hold period releases via scheduler).
-                // R2-H5: clamp netVendor to >= 0. If a refund cycle pushes the engine to
-                // return a negative net (refund > commission), we DO NOT debit the vendor's
-                // balance via this path — the refund's own compensation pipeline handles
-                // balance adjustments. Persisting a negative pending would silently put
-                // the vendor in the red.
-                long pendingCents = Math.max(0L, result.netVendorAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                long grossCents = Math.max(0L, result.grossAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                long commissionCents = Math.max(0L, result.commissionAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                if (result.netVendorAmount().signum() < 0) {
-                    log.warn("[COMMISSION] Negative netVendor {} for sub_order {} on order {} — capping at 0; refund accounting must handle the debit",
-                            result.netVendorAmount(), subOrder.getId(), order.getId());
-                }
-                vendorBalanceRepository.upsertPending(
-                        subOrder.getMarketplaceVendor().getId(),
-                        pendingCents, grossCents, commissionCents, result.currency());
+                self().recordOneSubOrderCommission(subOrder.getId(), paidAt, order.getId());
             } catch (Exception e) {
                 log.warn("[COMMISSION] Failed to record commission for sub_order {} on order {}: {}",
                         subOrder.getId(), order.getId(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * Records commission for a single sub-order atomically: sub-order snapshot, CommissionRecord,
+     * and the VendorBalance pending credit all commit together (or roll back together) in a
+     * dedicated transaction. Idempotent — if a CommissionRecord already exists for the sub-order
+     * (unique per {@code sub_order_id}) the method returns without re-crediting the balance.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordOneSubOrderCommission(UUID subOrderId, Instant paidAt, UUID orderId) {
+        if (commissionRecordRepository.findBySubOrderId(subOrderId).isPresent()) {
+            return; // already processed — do not credit the vendor balance a second time
+        }
+        SubOrder subOrder = subOrderRepository.findById(subOrderId)
+                .orElseThrow(() -> new ResourceNotFoundException("SubOrder not found: " + subOrderId));
+        subOrder.setPaidAt(paidAt);
+
+        CommissionEngine.CommissionResult result = commissionEngine.compute(subOrder);
+        subOrder.setCommissionAmount(result.commissionAmount());
+        subOrder.setNetVendorAmount(result.netVendorAmount());
+        subOrderRepository.save(subOrder);
+
+        CommissionRecord record = new CommissionRecord();
+        record.setSubOrder(subOrder);
+        record.setVendorId(subOrder.getMarketplaceVendor().getId());
+        record.setMarketplaceId(subOrder.getMarketplaceId());
+        record.setCommissionRate(result.commissionRate());
+        record.setGrossAmount(result.grossAmount());
+        record.setCommissionAmount(result.commissionAmount());
+        record.setNetVendorAmount(result.netVendorAmount());
+        record.setCurrency(result.currency());
+        commissionRecordRepository.save(record);
+
+        // Credit VendorBalance.pendingCents (hold period releases via scheduler).
+        // R2-H5: clamp netVendor to >= 0. If a refund cycle pushes the engine to
+        // return a negative net (refund > commission), we DO NOT debit the vendor's
+        // balance via this path — the refund's own compensation pipeline handles
+        // balance adjustments. Persisting a negative pending would silently put
+        // the vendor in the red.
+        long pendingCents = Math.max(0L, result.netVendorAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        long grossCents = Math.max(0L, result.grossAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        long commissionCents = Math.max(0L, result.commissionAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        if (result.netVendorAmount().signum() < 0) {
+            log.warn("[COMMISSION] Negative netVendor {} for sub_order {} on order {} — capping at 0; refund accounting must handle the debit",
+                    result.netVendorAmount(), subOrderId, orderId);
+        }
+        vendorBalanceRepository.upsertPending(
+                subOrder.getMarketplaceVendor().getId(),
+                pendingCents, grossCents, commissionCents, result.currency());
     }
 }
