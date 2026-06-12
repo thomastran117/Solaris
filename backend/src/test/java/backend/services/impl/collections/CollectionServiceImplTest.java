@@ -264,15 +264,15 @@ class CollectionServiceImplTest {
         when(collectionRepository.existsBySlugAndCompanyId(any(), any())).thenReturn(false);
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // No products match
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
         service.createCollection(COMPANY_ID, OWNER_ID, req);
 
         // Materialise was called — verify by the spec query being invoked
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -348,8 +348,8 @@ class CollectionServiceImplTest {
         existing.setRulesJson("{\"tagsAnyOf\":[\"old\"]}");
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -358,7 +358,7 @@ class CollectionServiceImplTest {
 
         service.updateCollection(COMPANY_ID, COLL_ID, OWNER_ID, req);
 
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -591,14 +591,14 @@ class CollectionServiceImplTest {
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
         when(collectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), any()))
                 .thenReturn(List.of());
 
         service.refreshCollection(COMPANY_ID, COLL_ID, OWNER_ID);
 
-        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class));
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class));
         verify(collectionRepository).save(c);
     }
 
@@ -608,8 +608,8 @@ class CollectionServiceImplTest {
     void materialise_setsLastMaterialisedAt() {
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -625,8 +625,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), eq(PRODUCT_ID)))
@@ -651,8 +651,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(stale));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stale)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(COLL_ID, CollectionMembershipSource.AUTO))
                 .thenReturn(List.of(staleRow));
         when(collectionProductRepository.findByCollectionIdAndProductId(COLL_ID, PRODUCT_ID))
@@ -672,8 +672,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         // A MANUAL row already exists
@@ -692,8 +692,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"categoriesAnyOf\":[\"apparel\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), any())).thenReturn(false);
@@ -711,8 +711,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"brandsAnyOf\":[\"targetbrand\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
 
@@ -728,8 +728,8 @@ class CollectionServiceImplTest {
 
         Collection c = makeCollection(COLL_ID, CollectionType.DYNAMIC, CollectionStatus.ACTIVE);
         c.setRulesJson("{\"tagsAnyOf\":[\"sale\"]}");
-        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
-                .thenReturn(List.of(p));
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p)));
         when(collectionProductRepository.findAllByCollectionIdAndSource(any(), eq(CollectionMembershipSource.AUTO)))
                 .thenReturn(List.of());
         when(collectionProductRepository.existsByCollectionIdAndProductId(any(), any())).thenReturn(false);
@@ -809,6 +809,149 @@ class CollectionServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.getCollectionBySlug(MARKETPLACE_ID, "missing-slug"));
+    }
+
+    // ─── listCollectionProducts ───────────────────────────────────────────────
+
+    @Test
+    void listCollectionProducts_companyNotFound_throwsResourceNotFound() {
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+    }
+
+    @Test
+    void listCollectionProducts_collectionNotFound_throwsResourceNotFound() {
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+    }
+
+    @Test
+    void listCollectionProducts_returnsPagedResponses() {
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        Product p = makeProduct(PRODUCT_ID, COMPANY_ID);
+        CollectionProduct cp = makeCollectionProduct(TestIds.uuid(20), COLL_ID, p);
+        cp.setCollection(c);
+
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+        when(collectionProductRepository.findAllByCollectionIdRanked(eq(COLL_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(cp)));
+
+        var result = service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(PRODUCT_ID, result.getItems().get(0).productId());
+    }
+
+    // ─── listMarketplaceCollectionProducts ────────────────────────────────────
+
+    @Test
+    void listMarketplaceCollectionProducts_marketplaceNotFound_throwsResourceNotFound() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "some-slug", 0, 20));
+    }
+
+    @Test
+    void listMarketplaceCollectionProducts_noVendorHasSlug_throwsResourceNotFound() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "missing-slug", 0, 20));
+    }
+
+    @Test
+    void listMarketplaceCollectionProducts_returnsOnlyActiveMarketplaceListedProducts() {
+        // Set up vendor product so findActiveBySlugForMarketplace resolves the collection
+        Product vendorProduct = makeProduct(TestIds.uuid(7), COMPANY_ID);
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        c.setSlug("test-slug");
+
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of(vendorProduct));
+        when(collectionRepository.findBySlugAndCompanyId("test-slug", COMPANY_ID)).thenReturn(Optional.of(c));
+
+        // visible product: ACTIVE, marketplace-listed, correct marketplaceId
+        Product visible = makeProduct(PRODUCT_ID, COMPANY_ID);
+        visible.setMarketplaceId(MARKETPLACE_ID);
+        visible.setMarketplaceListed(true);
+        CollectionProduct visibleCp = makeCollectionProduct(TestIds.uuid(21), COLL_ID, visible);
+        visibleCp.setCollection(c);
+
+        // The repository query itself restricts to ACTIVE, marketplace-listed products for this
+        // marketplace, so the mock only returns the visible row.
+        when(collectionProductRepository.findVisibleByCollectionIdRanked(eq(COLL_ID), eq(MARKETPLACE_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(visibleCp)));
+
+        var result = service.listMarketplaceCollectionProducts(MARKETPLACE_ID, "test-slug", 0, 20);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(PRODUCT_ID, result.getItems().get(0).productId());
+    }
+
+    // ─── getCollectionBySlug — happy path ─────────────────────────────────────
+
+    @Test
+    void getCollectionBySlug_vendorHasActiveCollection_returnsResponse() {
+        Product vendorProduct = makeProduct(TestIds.uuid(7), COMPANY_ID);
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        c.setSlug("my-slug");
+
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        when(productRepository.findMarketplaceListed(MARKETPLACE_ID)).thenReturn(List.of(vendorProduct));
+        when(collectionRepository.findBySlugAndCompanyId("my-slug", COMPANY_ID)).thenReturn(Optional.of(c));
+        when(singleFlightCache.getOrLoad(anyString(), anyLong(), any(), any(Class.class)))
+                .thenAnswer(inv -> ((java.util.function.Supplier<?>) inv.getArgument(2)).get());
+
+        var result = service.getCollectionBySlug(MARKETPLACE_ID, "my-slug");
+
+        assertEquals(COLL_ID, result.id());
+    }
+
+    // ─── materialiseDynamicMembers — non-DYNAMIC guard ────────────────────────
+
+    @Test
+    void materialise_nonDynamic_returnsEarlyWithoutQuery() {
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+
+        service.materialiseDynamicMembers(c);
+
+        verifyNoInteractions(productRepository);
+    }
+
+    // ─── evictCollectionCaches — Redis failure is swallowed ───────────────────
+
+    @Test
+    void evictCollectionCaches_redisFailure_doesNotPropagate() {
+        doThrow(new RuntimeException("Redis down")).when(singleFlightCache).evict(anyString());
+
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+        when(collectionProductRepository.findAllByCollectionId(COLL_ID)).thenReturn(List.of());
+
+        // deleteCollection calls evictAfterCommit which, outside a real transaction,
+        // runs the eviction immediately — Redis failure must be swallowed
+        assertDoesNotThrow(() -> service.deleteCollection(COMPANY_ID, COLL_ID, OWNER_ID));
+    }
+
+    // ─── toResponse — countByCollectionId Redis fallback ─────────────────────
+
+    @Test
+    void toResponse_countByCollectionIdThrows_defaultsToZero() {
+        doThrow(new RuntimeException("Redis timeout"))
+                .when(collectionProductRepository).countByCollectionId(COLL_ID);
+
+        Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
+        when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
+
+        var result = service.getCollection(COMPANY_ID, COLL_ID);
+
+        assertEquals(0L, result.productCount());
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

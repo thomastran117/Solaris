@@ -1,7 +1,6 @@
 package backend.repositories.projections;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 /**
  * Interface projection for native SQL analytics queries that aggregate
@@ -9,7 +8,8 @@ import java.util.UUID;
  * (case-insensitive) to the getter names declared here.
  */
 public interface ProductSalesProjection {
-    UUID getProductId();
+    /** Raw BINARY(16) product id — Spring Data cannot project byte[] to UUID directly. */
+    byte[] getProductId();
     String getProductName();
     String getSku();
     Integer getCurrentStock();

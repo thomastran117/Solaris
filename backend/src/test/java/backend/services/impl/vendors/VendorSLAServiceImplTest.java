@@ -101,7 +101,6 @@ class VendorSLAServiceImplTest {
 
     @Test
     void createPolicy_happyPath_savesPolicy() {
-        // assertOperator uses == for UUID comparison — reuse the same object reference
         UUID operatorId = TestIds.uuid(55);
         User operatorUser = new User();
         operatorUser.setId(operatorId);

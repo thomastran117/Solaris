@@ -425,26 +425,16 @@ public class CollectionServiceImpl implements CollectionService {
         Collection collection = findActiveBySlugForMarketplace(marketplaceId, slug);
 
         Pageable pageable = PageRequest.of(page, Math.min(size, 50));
+
+        // Only surface ACTIVE, marketplace-listed products belonging to this marketplace —
+        // filtering at the query level keeps totalElements/totalPages accurate for shoppers.
         Page<CollectionProduct> rows = collectionProductRepository
-                .findAllByCollectionIdRanked(collection.getId(), pageable);
+                .findVisibleByCollectionIdRanked(collection.getId(), marketplaceId, pageable);
 
-        // Only surface ACTIVE, marketplace-listed products to shoppers.
-        List<CollectionProduct> visible = rows.getContent().stream()
-                .filter(cp -> cp.getProduct().getStatus() == ProductStatus.ACTIVE)
-                .filter(cp -> {
-                    UUID mId = cp.getProduct().getMarketplaceId();
-                    return mId != null && mId.equals(marketplaceId) && cp.getProduct().isMarketplaceListed();
-                })
-                .toList();
-
-        List<Product> products = visible.stream().map(CollectionProduct::getProduct).toList();
+        List<Product> products = rows.getContent().stream().map(CollectionProduct::getProduct).toList();
         Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
 
-        List<CollectionProductResponse> items = visible.stream()
-                .map(cp -> toMembershipResponse(cp, promoMap.get(cp.getProduct().getId())))
-                .toList();
-
-        return new PagedResponse<>(new PageImpl<>(items, pageable, rows.getTotalElements()));
+        return new PagedResponse<>(rows.map(cp -> toMembershipResponse(cp, promoMap.get(cp.getProduct().getId()))));
     }
 
     // -------------------------------------------------------------------------

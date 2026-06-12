@@ -167,6 +167,7 @@ export interface DriverLocation {
 export interface SseStatusUpdateEvent {
   eventId: string;
   orderId: string;
+  driverId: string | null;
   status: string;
   trackingNumber: string | null;
   carrier: string | null;

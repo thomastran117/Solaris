@@ -158,8 +158,11 @@ class ProductFeedServiceImplTest {
         UUID wishlistProductId = TestIds.uuid(99);
         when(savedListItemRepository.findActiveWishlistProductIdsByUserId(USER_ID))
                 .thenReturn(List.of(wishlistProductId));
+        // Create mock products before the when() stub to avoid Mockito state corruption
+        // from nested mock creation inside thenReturn() argument evaluation.
+        Product wishlistProduct = mockProduct("Books", "NoName");
         when(productRepository.findAllById(anyIterable()))
-                .thenReturn(List.of(mockProduct("Books", "NoName")));
+                .thenReturn(List.of(wishlistProduct));
 
         when(productRepository.findPersonalizedFeed(any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -185,11 +188,11 @@ class ProductFeedServiceImplTest {
 
         when(savedListItemRepository.findActiveWishlistProductIdsByUserId(USER_ID))
                 .thenReturn(List.of(TestIds.uuid(50), TestIds.uuid(51), TestIds.uuid(52)));
-        when(productRepository.findAllById(anyIterable()))
-                .thenReturn(List.of(
-                        mockProduct("Books", null),
-                        mockProduct("Books", null),
-                        mockProduct("Books", null)));
+        // Create mock products before the when() stub to avoid Mockito state corruption.
+        Product wp1 = mockProduct("Books", null);
+        Product wp2 = mockProduct("Books", null);
+        Product wp3 = mockProduct("Books", null);
+        when(productRepository.findAllById(anyIterable())).thenReturn(List.of(wp1, wp2, wp3));
 
         when(productRepository.findPersonalizedFeed(any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));

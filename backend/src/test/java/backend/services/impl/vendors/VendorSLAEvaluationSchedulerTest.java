@@ -173,6 +173,95 @@ class VendorSLAEvaluationSchedulerTest {
         assertDoesNotThrow(() -> scheduler.runEvaluationCycle());
     }
 
+    @Test
+    void runEvaluationCycle_restrictListingsAction_logs() {
+        UUID marketplaceId = TestIds.uuid(1);
+        VendorSLAPolicy policy = makePolicy(marketplaceId, SLABreachAction.RESTRICT_LISTINGS);
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(10), marketplaceId);
+
+        when(policyRepository.findAllByActiveTrue()).thenReturn(List.of(policy));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndStatus(
+                eq(marketplaceId), eq(VendorStatus.APPROVED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(vendor)));
+
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(100L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(20L);
+        when(analyticsRepository.vendorReturnedCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorShipHours(any(), any(), any(), any(), anyInt())).thenReturn(null);
+        when(metricRepository.findByVendorIdAndDate(any(), any())).thenReturn(Optional.empty());
+        when(metricRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(breachRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertDoesNotThrow(() -> scheduler.runEvaluationCycle());
+        // Vendor should NOT be suspended — RESTRICT_LISTINGS is log-only
+        assertEquals(VendorStatus.APPROVED, vendor.getStatus());
+    }
+
+    @Test
+    void runEvaluationCycle_nullTotalOrders_treatedAsZeroAndSkipped() {
+        UUID marketplaceId = TestIds.uuid(1);
+        VendorSLAPolicy policy = makePolicy(marketplaceId, SLABreachAction.WARN);
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(10), marketplaceId);
+
+        when(policyRepository.findAllByActiveTrue()).thenReturn(List.of(policy));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndStatus(
+                eq(marketplaceId), eq(VendorStatus.APPROVED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(vendor)));
+        // null returned from analytics — treated as 0 → skip
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(null);
+
+        scheduler.runEvaluationCycle();
+
+        verify(metricRepository, never()).save(any());
+        verify(breachRepository, never()).save(any());
+    }
+
+    @Test
+    void runEvaluationCycle_existingMetricRecord_isUpdated() {
+        UUID marketplaceId = TestIds.uuid(1);
+        VendorSLAPolicy policy = makePolicy(marketplaceId, SLABreachAction.WARN);
+        MarketplaceVendor vendor = makeVendor(TestIds.uuid(10), marketplaceId);
+        backend.models.core.VendorSLAMetric existing = new backend.models.core.VendorSLAMetric();
+
+        when(policyRepository.findAllByActiveTrue()).thenReturn(List.of(policy));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndStatus(
+                eq(marketplaceId), eq(VendorStatus.APPROVED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(vendor)));
+
+        when(analyticsRepository.vendorTotalOrders(any(), any(), any(), any())).thenReturn(50L);
+        when(analyticsRepository.vendorCancelledCount(any(), any(), any(), any())).thenReturn(1L);
+        when(analyticsRepository.vendorReturnedCount(any(), any(), any(), any())).thenReturn(0L);
+        when(analyticsRepository.vendorShipHours(any(), any(), any(), any(), anyInt())).thenReturn(null);
+        // Existing record found — should be updated, not created
+        when(metricRepository.findByVendorIdAndDate(any(), any())).thenReturn(Optional.of(existing));
+        when(metricRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        scheduler.runEvaluationCycle();
+
+        verify(metricRepository).save(same(existing));
+    }
+
+    @Test
+    void runEvaluationCycle_vendorEvaluationFails_continuesWithNextVendor() {
+        UUID marketplaceId = TestIds.uuid(1);
+        VendorSLAPolicy policy = makePolicy(marketplaceId, SLABreachAction.WARN);
+        MarketplaceVendor failingVendor = makeVendor(TestIds.uuid(10), marketplaceId);
+        MarketplaceVendor goodVendor = makeVendor(TestIds.uuid(11), marketplaceId);
+
+        when(policyRepository.findAllByActiveTrue()).thenReturn(List.of(policy));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndStatus(
+                eq(marketplaceId), eq(VendorStatus.APPROVED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(failingVendor, goodVendor)));
+
+        // First vendor's analytics throws, second succeeds with zero orders
+        when(analyticsRepository.vendorTotalOrders(eq(failingVendor.getId()), any(), any(), any()))
+                .thenThrow(new RuntimeException("analytics timeout"));
+        when(analyticsRepository.vendorTotalOrders(eq(goodVendor.getId()), any(), any(), any()))
+                .thenReturn(0L);
+
+        assertDoesNotThrow(() -> scheduler.runEvaluationCycle());
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private VendorSLAPolicy makePolicy(UUID marketplaceId, SLABreachAction action) {

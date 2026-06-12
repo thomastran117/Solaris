@@ -37,6 +37,10 @@ public class MarketplaceVendor {
     @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "marketplace_id", nullable = false)
     private Company marketplace;

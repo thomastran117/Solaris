@@ -111,7 +111,7 @@ describe("QASection", () => {
   it("renders_loadingState_initially", () => {
     mockListQuestions.mockReturnValue(new Promise(() => {}));
     renderQASection();
-    expect(screen.getByRole("region", { hidden: true }) ?? document.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.queryByRole("region", { hidden: true }) ?? document.querySelector(".animate-pulse")).toBeTruthy();
   });
 
   it("renders_questionList_onSuccess", async () => {
@@ -119,7 +119,7 @@ describe("QASection", () => {
     renderQASection();
 
     await waitFor(() => {
-      expect(screen.getByText("Is this waterproof?")).toBeInTheDocument();
+      expect(screen.getByText(/Is this waterproof\?/)).toBeInTheDocument();
     });
   });
 

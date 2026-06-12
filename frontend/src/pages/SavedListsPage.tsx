@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Plus, Bookmark } from "lucide-react";
 import type { RootState } from "../stores";
 import { useSavedLists } from "../hooks/useSavedLists";
@@ -9,18 +9,8 @@ import SavedListCard from "../components/savedlist/SavedListCard";
 import CreateListModal from "../components/savedlist/CreateListModal";
 import { ALL_TYPES, LIST_TYPE_META } from "../components/savedlist/listTypeMeta";
 import type { SavedListType } from "../types/savedList";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.06 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 export default function SavedListsPage() {
   const navigate = useNavigate();

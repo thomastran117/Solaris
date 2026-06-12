@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { AlertCircle, RotateCcw, User as UserIcon, Box } from "lucide-react";
+import { useAnims } from "../../hooks/useAnims";
 import {
   adminProductsApi,
   type CompanyRole,
@@ -30,14 +31,6 @@ interface Props {
   onReverted?: () => void;
 }
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } };
-  return { fadeInUp, stagger };
-};
 
 function formatTime(iso: string) {
   const d = new Date(iso);

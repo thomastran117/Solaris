@@ -33,6 +33,9 @@ public class KafkaConsumerConfig {
     @Value("${app.kafka.topics.notification-events.dlq}")
     private String notificationDlqTopic;
 
+    @Value("${app.kafka.topics.import-jobs.dlq}")
+    private String importJobsDlqTopic;
+
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory(
             ConsumerFactory<String, Object> consumerFactory,
@@ -94,6 +97,24 @@ public class KafkaConsumerConfig {
 
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(notificationDlqTopic, 0));
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));
+
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(errorHandler);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object> importKafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> consumerFactory,
+            KafkaTemplate<String, Object> kafkaTemplate) {
+
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate, (record, ex) -> new org.apache.kafka.common.TopicPartition(importJobsDlqTopic, 0));
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
                 recoverer, new FixedBackOff(RETRY_INTERVAL_MS, MAX_ATTEMPTS - 1L));

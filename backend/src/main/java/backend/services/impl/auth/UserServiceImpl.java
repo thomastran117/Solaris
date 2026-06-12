@@ -39,16 +39,23 @@ public class UserServiceImpl implements UserService {
         this.tokenService = tokenService;
     }
 
+    // A bcrypt hash of "dummy" — used as the comparison target when the email is not found
+    // so that the response time is indistinguishable from a wrong-password attempt, closing
+    // the timing side-channel that reveals whether an address is registered.
+    private static final String DUMMY_HASH =
+            "$2a$10$7EqJtq98hPqEX7fNZaFWoOhJ1XIZZ3w1J3M1P1jOdFkjT3NQ5NeFe";
+
     @Override
     public User login(String email, String password) {
         Optional<User> user = userRepository.findByEmail(email);
 
-        if (user.isEmpty()) {
-            throw new UnauthorizedException("User doesn't exist");
-        }
+        // Always run bcrypt regardless of whether the user exists — this equalises response
+        // time and prevents enumeration via timing or distinct error messages.
+        String storedHash = user.map(User::getPassword).orElse(DUMMY_HASH);
+        boolean passwordMatches = passwordEncoder.matches(password, storedHash);
 
-        if (!passwordEncoder.matches(password, user.get().getPassword())) {
-            throw new UnauthorizedException("Invalid username or password");
+        if (user.isEmpty() || !passwordMatches) {
+            throw new UnauthorizedException("Invalid email or password");
         }
 
         validateAccountAccessible(user.get());

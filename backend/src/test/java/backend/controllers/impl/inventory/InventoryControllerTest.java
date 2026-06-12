@@ -71,6 +71,7 @@ class InventoryControllerTest {
                         new InventoryController(inventoryService, locationInventoryService, sanitizationService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

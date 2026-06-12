@@ -33,6 +33,10 @@ public class LoyaltyAccount {
     @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
     private UUID userId;
 

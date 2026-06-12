@@ -60,6 +60,7 @@ class RestockControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new RestockController(restockService, sanitizationService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

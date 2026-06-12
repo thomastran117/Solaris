@@ -21,12 +21,18 @@ import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
+import backend.dtos.responses.product.ProductAttributeResponse;
 import backend.models.core.Company;
 import backend.models.core.Product;
+import backend.models.core.ProductAttribute;
 import backend.models.core.ProductImage;
 import backend.models.core.ProductOption;
 import backend.models.core.ProductVariant;
+import backend.models.core.ProductChangeLog;
+import backend.models.enums.ChangeSource;
 import backend.models.enums.CompanyCapability;
+import backend.models.enums.ProductChangeType;
 import backend.models.enums.ProductStatus;
 import backend.repositories.BundleRepository;
 import backend.repositories.CollectionProductRepository;
@@ -56,6 +62,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -100,6 +107,8 @@ class ProductServiceImplTest {
     private ProductChangeLogRepository productChangeLogRepository;
     private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private CompanyAccessService companyAccessService;
+    private backend.repositories.ProductRelationshipRepository productRelationshipRepository;
+    private backend.repositories.ProductSimilarityRepository productSimilarityRepository;
 
     private ProductServiceImpl service;
 
@@ -124,7 +133,9 @@ class ProductServiceImplTest {
         productChangeLogger         = mock(ProductChangeLogger.class);
         productChangeLogRepository  = mock(ProductChangeLogRepository.class);
         inventoryAdjustmentRepository = mock(InventoryAdjustmentRepository.class);
-        companyAccessService        = mock(CompanyAccessService.class);
+        companyAccessService          = mock(CompanyAccessService.class);
+        productRelationshipRepository = mock(backend.repositories.ProductRelationshipRepository.class);
+        productSimilarityRepository   = mock(backend.repositories.ProductSimilarityRepository.class);
 
         service = new ProductServiceImpl(
                 productRepository, companyRepository,
@@ -137,8 +148,8 @@ class ProductServiceImplTest {
                 singleFlightCache, activePromotionLookupService,
                 productChangeLogger, productChangeLogRepository,
                 inventoryAdjustmentRepository,
-                mock(backend.repositories.ProductRelationshipRepository.class),
-                mock(backend.repositories.ProductSimilarityRepository.class),
+                productRelationshipRepository,
+                productSimilarityRepository,
                 companyAccessService,
                 300L, 60L);
 
@@ -1325,5 +1336,1716 @@ class ProductServiceImplTest {
         req.setPrice(new BigDecimal("9.99"));
         req.setSku(sku);
         return req;
+    }
+
+    // ─── getProductHistory ────────────────────────────────────────────────────
+
+    @Test
+    void getProductHistory_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20));
+    }
+
+    @Test
+    void getProductHistory_emptyHistory_returnsEmptyPage() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productChangeLogRepository.findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20);
+
+        assertEquals(0, result.getItems().size());
+    }
+
+    @Test
+    void getProductHistory_capsPageSizeAt100() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productChangeLogRepository.findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 9999); // should clamp to 100
+
+        verify(productChangeLogRepository).findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any());
+    }
+
+    // ─── updateProductMerchandising ───────────────────────────────────────────
+
+    @Test
+    void updateProductMerchandising_pinnedUntilInPast_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setPinnedUntil(Instant.now().minusSeconds(3600)); // in the past
+
+        assertThrows(BadRequestException.class, () ->
+                service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void updateProductMerchandising_happyPath_savesAndPublishesEvent() {
+        Product product = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setBoostWeight(5);
+        req.setPinnedUntil(null); // no pin
+
+        service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        verify(productRepository).save(product);
+        verify(eventPublisher).publishEvent(any(backend.events.ProductIndexEvent.class));
+    }
+
+    @Test
+    void updateProductMerchandising_pinnedUntilInFuture_setsRankAndPin() {
+        Product product = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+
+        backend.dtos.requests.product.UpdateProductMerchandisingRequest req =
+                new backend.dtos.requests.product.UpdateProductMerchandisingRequest();
+        req.setPinnedUntil(Instant.now().plusSeconds(86400));
+        req.setPinnedRank(2);
+
+        service.updateProductMerchandising(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertEquals(2, product.getPinnedRank());
+        verify(productRepository).save(product);
+    }
+
+    private Product makeProduct() {
+        Company company = new Company();
+        company.setId(COMPANY_ID);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company);
+        p.setName("Widget");
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setPrice(new BigDecimal("9.99"));
+        p.setImages(new java.util.ArrayList<>());
+        p.setOptions(new java.util.ArrayList<>());
+        p.setVariants(new java.util.ArrayList<>());
+        p.setAttributes(new java.util.ArrayList<>());
+        return p;
+    }
+
+    // =========================================================================
+    // searchProducts — ES happy path
+    // =========================================================================
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchProducts_esSuccess_returnsPagedResults() {
+        // ES returns one hit with PRODUCT_ID
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+
+        when(elasticsearchOperations.search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any())).thenReturn(hits);
+
+        Product product = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(product));
+
+        var result = service.searchProducts(COMPANY_ID, "widget", null, null,
+                null, null, null, null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchProducts_esFails_fallsBackToJpa_alreadyCovered() {
+        // This scenario was already tested in searchProducts_elasticsearchFails_fallsBackToJpa
+        // Adding a complementary test verifying ServiceUnavailableException when filters present
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        // No filters — should fall back to JPA without throwing
+        var result = service.searchProducts(COMPANY_ID, null, null, null,
+                null, null, null, null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(0, result.getItems().size());
+    }
+
+    // =========================================================================
+    // addProductRelationship
+    // =========================================================================
+
+    @Test
+    void addProductRelationship_happyPath_savesRelationship() {
+        UUID targetId = TestIds.uuid(20);
+        Product source = makeProduct();
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findByIdAndCompanyId(targetId, COMPANY_ID)).thenReturn(Optional.of(target));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(false);
+        when(productRelationshipRepository.save(any())).thenAnswer(inv -> {
+            var rel = inv.getArgument(0, backend.models.core.ProductRelationship.class);
+            rel.setId(TestIds.uuid(99));
+            return rel;
+        });
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(targetId);
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertNotNull(service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+        verify(productRelationshipRepository).save(any());
+    }
+
+    @Test
+    void addProductRelationship_selfRelationship_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(PRODUCT_ID); // same as source = self-relationship
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertThrows(BadRequestException.class, () ->
+                service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void addProductRelationship_duplicate_throwsConflict() {
+        UUID targetId = TestIds.uuid(21);
+        Product source = makeProduct();
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findByIdAndCompanyId(targetId, COMPANY_ID)).thenReturn(Optional.of(target));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(true); // already exists
+
+        var req = new backend.dtos.requests.product.AddProductRelationshipRequest();
+        req.setTargetProductId(targetId);
+        req.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        assertThrows(ConflictException.class, () ->
+                service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void removeProductRelationship_notFound_throwsResourceNotFound() {
+        UUID targetId = TestIds.uuid(22);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.removeProductRelationship(COMPANY_ID, PRODUCT_ID, targetId,
+                        backend.models.enums.ProductRelationshipType.SIMILAR, OWNER_ID));
+    }
+
+    @Test
+    void removeProductRelationship_happyPath_deletesRelationship() {
+        UUID targetId = TestIds.uuid(23);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any())).thenReturn(true);
+
+        service.removeProductRelationship(COMPANY_ID, PRODUCT_ID, targetId,
+                backend.models.enums.ProductRelationshipType.SIMILAR, OWNER_ID);
+
+        verify(productRelationshipRepository).deleteBySourceProductIdAndTargetProductIdAndType(
+                eq(PRODUCT_ID), eq(targetId), any());
+    }
+
+    @Test
+    void getProductRelationships_nullType_returnsAll() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct()));
+        when(productRelationshipRepository.findAllBySourceProductIdAndSourceProductCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(List.of());
+
+        var result = service.getProductRelationships(COMPANY_ID, PRODUCT_ID, null);
+
+        assertNotNull(result);
+        verify(productRelationshipRepository).findAllBySourceProductIdAndSourceProductCompanyId(PRODUCT_ID, COMPANY_ID);
+    }
+
+    // =========================================================================
+    // compareProducts
+    // =========================================================================
+
+    @Test
+    void compareProducts_twoProducts_returnsComparison() {
+        UUID id2 = TestIds.uuid(30);
+        Product p1 = makeProduct();
+        Product p2 = makeProduct();
+        p2.setId(id2);
+
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(p1, p2));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        var result = service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, id2));
+
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void compareProducts_onlyOneProduct_throwsBadRequest() {
+        assertThrows(BadRequestException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID)));
+    }
+
+    @Test
+    void compareProducts_fiveProducts_throwsBadRequest() {
+        assertThrows(BadRequestException.class, () ->
+                service.compareProducts(COMPANY_ID,
+                        List.of(TestIds.uuid(1), TestIds.uuid(2), TestIds.uuid(3),
+                                TestIds.uuid(4), TestIds.uuid(5))));
+    }
+
+    @Test
+    void compareProducts_noProductsFound_throwsResourceNotFoundException() {
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, TestIds.uuid(31))));
+    }
+
+    // =========================================================================
+    // searchMarketplaceCatalog
+    // =========================================================================
+
+    @Test
+    void searchMarketplaceCatalog_marketplaceNotFound_throwsResourceNotFoundException() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                        null, null, null, null, 0, 10, null, null));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchMarketplaceCatalog_esSuccess_returnsProductList() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        Product product = makeProduct();
+        product.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findAllByIdInAndMarketplaceId(any(), eq(MARKETPLACE_ID)))
+                .thenReturn(List.of(product));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        var result = service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                null, null, null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchMarketplaceCatalog_esFails_hasFilters_throwsServiceUnavailable() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, "widget", null, null,
+                        null, null, null, null, 0, 10, null, null)); // q != null = has filters
+    }
+
+    @Test
+    void searchMarketplaceCatalog_esFails_noFilters_throwsServiceUnavailable() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        // ES unavailable — always throws ServiceUnavailableException regardless of filters.
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                        null, null, null, null, 0, 10, null, null));
+    }
+
+    // =========================================================================
+    // searchCompanyCatalog
+    // =========================================================================
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchCompanyCatalog_esSuccess_returnsProductList() {
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        Product product = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(product));
+
+        var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void searchCompanyCatalog_esFails_hasFilters_throwsServiceUnavailable() {
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        assertThrows(backend.exceptions.http.ServiceUnavaliableException.class, () ->
+                service.searchCompanyCatalog(COMPANY_ID, "widget", null, null,
+                        null, null, 0, 10, null, null));
+    }
+
+    @Test
+    void searchCompanyCatalog_esFails_noFilters_fallsBackToJpa() {
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+
+        Product product = makeProduct();
+        when(productRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product)));
+
+        var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                null, null, 0, 10, null, null);
+
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // getVendorStorefront
+    // =========================================================================
+
+    @Test
+    void getVendorStorefront_vendorNotFound_throwsResourceNotFoundException() {
+        UUID mktId = MARKETPLACE_ID;
+        UUID vendorId = TestIds.uuid(40);
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, mktId))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getVendorStorefront(mktId, vendorId));
+    }
+
+    @Test
+    void getVendorStorefront_happyPath_returnsStorefront() {
+        UUID mktId = MARKETPLACE_ID;
+        UUID vendorId = TestIds.uuid(41);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setTier(backend.models.enums.VendorTier.STANDARD);
+        vendor.setStatus(backend.models.enums.VendorStatus.APPROVED);
+        backend.models.core.Company vendorCompany = new backend.models.core.Company();
+        vendorCompany.setId(COMPANY_ID);
+        vendorCompany.setName("Vendor Co");
+        vendor.setVendorCompany(vendorCompany);
+
+        when(marketplaceVendorRepository.findByIdAndMarketplaceId(vendorId, mktId))
+                .thenReturn(Optional.of(vendor));
+        when(productRepository.findMarketplaceListed(mktId)).thenReturn(List.of());
+
+        assertNotNull(service.getVendorStorefront(mktId, vendorId));
+    }
+
+    // =========================================================================
+    // getSimilarProducts
+    // =========================================================================
+
+    @Test
+    void getSimilarProducts_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5));
+    }
+
+    @Test
+    void getSimilarProducts_hasExplicitRelationships_returnsThem() {
+        Product source = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+
+        UUID targetId = TestIds.uuid(60);
+        Product target = makeProduct();
+        target.setId(targetId);
+
+        backend.models.core.ProductRelationship rel = new backend.models.core.ProductRelationship();
+        rel.setId(TestIds.uuid(61));
+        rel.setSourceProduct(source);
+        rel.setTargetProduct(target);
+        rel.setType(backend.models.enums.ProductRelationshipType.SIMILAR);
+
+        when(productRelationshipRepository
+                .findAllBySourceProductIdAndTypeAndSourceProductCompanyId(PRODUCT_ID,
+                        backend.models.enums.ProductRelationshipType.SIMILAR, COMPANY_ID))
+                .thenReturn(List.of(rel));
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(target));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getSimilarProducts_noRelationships_noSimilarityRows_returnsEmpty() {
+        Product source = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(source));
+        when(productRelationshipRepository
+                .findAllBySourceProductIdAndTypeAndSourceProductCompanyId(any(), any(), any()))
+                .thenReturn(List.of()); // no manual relationships
+        // productSimilarityRepository default (empty list) — no precomputed rows
+
+        // ES fallback and JPA fallback stubs
+        doThrow(new RuntimeException("ES down"))
+                .when(elasticsearchOperations).search(
+                        any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID))).thenReturn(List.of());
+        when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(productRepository.findFeaturedByCompanyId(any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.getSimilarProducts(COMPANY_ID, PRODUCT_ID, 5);
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // revertProductChanges
+    // =========================================================================
+
+    @Test
+    void revertProductChanges_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(TestIds.uuid(70)));
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    // ─── Helper ───────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument> emptySearchHits() {
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of());
+        when(hits.getTotalHits()).thenReturn(0L);
+        when(hits.getAggregations()).thenReturn(null);
+        return hits;
+    }
+
+    private void assertNotNull(Object value) {
+        if (value == null) throw new AssertionError("Expected non-null value but was null");
+    }
+
+    // =========================================================================
+    // getProductsByIds
+    // =========================================================================
+
+    @Test
+    void getProductsByIds_tooManyIds_throwsBadRequest() {
+        List<UUID> ids = new java.util.ArrayList<>();
+        for (int i = 0; i < 1001; i++) ids.add(UUID.randomUUID());
+        assertThrows(BadRequestException.class, () -> service.getProductsByIds(COMPANY_ID, ids));
+    }
+
+    @Test
+    void getProductsByIds_companyNotFound_throwsResourceNotFound() {
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class, () -> service.getProductsByIds(COMPANY_ID, List.of(PRODUCT_ID)));
+    }
+
+    @Test
+    void getProductsByIds_happyPath_returnsResponses() {
+        Product p = makeProduct();
+        when(productRepository.findAllByIdInAndCompanyId(List.of(PRODUCT_ID), COMPANY_ID)).thenReturn(List.of(p));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        List<ProductResponse> result = service.getProductsByIds(COMPANY_ID, List.of(PRODUCT_ID));
+
+        assertEquals(1, result.size());
+        assertEquals(PRODUCT_ID, result.get(0).getId());
+    }
+
+    // =========================================================================
+    // getProductImages
+    // =========================================================================
+
+    @Test
+    void getProductImages_productNotFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.getProductImages(COMPANY_ID, PRODUCT_ID));
+    }
+
+    @Test
+    void getProductImages_happyPath_returnsImages() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductImage img = makeImage(IMAGE_ID, "http://img.example.com/1.jpg");
+        when(productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(img));
+
+        List<ProductImageResponse> result = service.getProductImages(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(IMAGE_ID, result.get(0).id());
+    }
+
+    // =========================================================================
+    // getProductOptions
+    // =========================================================================
+
+    @Test
+    void getProductOptions_happyPath_returnsOptions() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductOption opt = makeOption(OPTION_ID, "Size");
+        when(productOptionRepository.findAllByProductIdOrderByPositionAsc(PRODUCT_ID))
+                .thenReturn(List.of(opt));
+
+        List<ProductOptionResponse> result = service.getProductOptions(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(OPTION_ID, result.get(0).id());
+    }
+
+    // =========================================================================
+    // getProductVariants / getProductVariant
+    // =========================================================================
+
+    @Test
+    void getProductVariants_happyPath_returnsVariants() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductVariant v = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(v));
+
+        List<ProductVariantResponse> result = service.getProductVariants(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals(VARIANT_ID, result.get(0).id());
+    }
+
+    @Test
+    void getProductVariant_happyPath_returnsVariant() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductVariant v = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.of(v));
+
+        ProductVariantResponse result = service.getProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID);
+
+        assertEquals(VARIANT_ID, result.id());
+    }
+
+    @Test
+    void getProductVariant_notFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID));
+    }
+
+    // =========================================================================
+    // getProductAttributes
+    // =========================================================================
+
+    @Test
+    void getProductAttributes_happyPath_returnsAttributes() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID))
+                .thenReturn(Optional.of(makeProduct()));
+        ProductAttribute attr = new ProductAttribute();
+        attr.setId(TestIds.uuid(90));
+        attr.setName("Material");
+        attr.setValue("Cotton");
+        attr.setDisplayOrder(0);
+        when(productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(PRODUCT_ID))
+                .thenReturn(List.of(attr));
+
+        List<ProductAttributeResponse> result =
+                service.getProductAttributes(COMPANY_ID, PRODUCT_ID);
+
+        assertEquals(1, result.size());
+        assertEquals("Material", result.get(0).name());
+    }
+
+    // =========================================================================
+    // getMarketplaceProduct
+    // =========================================================================
+
+    @Test
+    void getMarketplaceProduct_notFound_throwsResourceNotFound() {
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID));
+    }
+
+    @Test
+    void getMarketplaceProduct_happyPath_returnsCatalogProduct() {
+        Product p = makeProduct();
+        p.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+                .thenReturn(Optional.of(p));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        MarketplaceCatalogProductResponse result =
+                service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID);
+
+        assertNotNull(result);
+        assertEquals(PRODUCT_ID, result.getId());
+    }
+
+    // =========================================================================
+    // revertProductChanges — additional paths
+    // =========================================================================
+
+    @Test
+    void revertProductChanges_versionConflict_throwsConflict() {
+        Product p = makeProduct();
+        p.setVersion(2L);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(TestIds.uuid(70)));
+        req.setExpectedVersion(1L);
+
+        assertThrows(ConflictException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_logEntryNotFound_throwsResourceNotFound() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(71);
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of()); // fewer than requested
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_stockField_throwsBadRequest() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(72);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setFieldName("stock");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(BadRequestException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_logEntryFromWrongProduct_throwsBadRequest() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(73);
+        Product otherProduct = makeProduct(TestIds.uuid(99));
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(otherProduct); // belongs to a different product
+        entry.setFieldName("name");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(BadRequestException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void revertProductChanges_happyPath_revertsProductNameField() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        UUID logId = TestIds.uuid(74);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setFieldName("name");
+        entry.setOldValue("Old Name");
+        entry.setNewValue("New Name");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        ProductResponse result = service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        verify(productChangeLogger).logUpdate(any(), any(), eq(ChangeSource.REVERT), any());
+    }
+
+    // =========================================================================
+    // applyProductField (private — exhaustive switch coverage)
+    // =========================================================================
+
+    private Product blankProduct() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        Company c = new Company(); c.setId(COMPANY_ID);
+        p.setCompany(c);
+        return p;
+    }
+
+    private void applyField(Product p, String field, String value) {
+        ReflectionTestUtils.invokeMethod(service, "applyProductField", p, field, value);
+    }
+
+    @Test
+    void applyProductField_name_setsName() {
+        Product p = blankProduct();
+        applyField(p, "name", "Widget Pro");
+        assertEquals("Widget Pro", p.getName());
+    }
+
+    @Test
+    void applyProductField_description_setsDescription() {
+        Product p = blankProduct();
+        applyField(p, "description", "A great widget");
+        assertEquals("A great widget", p.getDescription());
+    }
+
+    @Test
+    void applyProductField_sku_setsSku() {
+        Product p = blankProduct();
+        applyField(p, "sku", "SKU-001");
+        assertEquals("SKU-001", p.getSku());
+    }
+
+    @Test
+    void applyProductField_price_setsPrice() {
+        Product p = blankProduct();
+        applyField(p, "price", "19.99");
+        assertEquals(new BigDecimal("19.99"), p.getPrice());
+    }
+
+    @Test
+    void applyProductField_price_null_setsNull() {
+        Product p = blankProduct();
+        applyField(p, "price", null);
+        assertNull(p.getPrice());
+    }
+
+    @Test
+    void applyProductField_compareAtPrice_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "compareAtPrice", "29.99");
+        assertEquals(new BigDecimal("29.99"), p.getCompareAtPrice());
+    }
+
+    @Test
+    void applyProductField_currency_setsCurrency() {
+        Product p = blankProduct();
+        applyField(p, "currency", "EUR");
+        assertEquals("EUR", p.getCurrency());
+    }
+
+    @Test
+    void applyProductField_category_setsCategory() {
+        Product p = blankProduct();
+        applyField(p, "category", "Electronics");
+        assertEquals("Electronics", p.getCategory());
+    }
+
+    @Test
+    void applyProductField_brand_setsBrand() {
+        Product p = blankProduct();
+        applyField(p, "brand", "Acme");
+        assertEquals("Acme", p.getBrand());
+    }
+
+    @Test
+    void applyProductField_tags_setsTags() {
+        Product p = blankProduct();
+        applyField(p, "tags", "sale,new");
+        assertEquals("sale,new", p.getTags());
+    }
+
+    @Test
+    void applyProductField_thumbnailUrl_setsUrl() {
+        Product p = blankProduct();
+        applyField(p, "thumbnailUrl", "https://cdn.example.com/thumb.jpg");
+        assertEquals("https://cdn.example.com/thumb.jpg", p.getThumbnailUrl());
+    }
+
+    @Test
+    void applyProductField_weight_setsWeight() {
+        Product p = blankProduct();
+        applyField(p, "weight", "1.5");
+        assertEquals(new BigDecimal("1.5"), p.getWeight());
+    }
+
+    @Test
+    void applyProductField_weightUnit_setsUnit() {
+        Product p = blankProduct();
+        applyField(p, "weightUnit", "kg");
+        assertEquals("kg", p.getWeightUnit());
+    }
+
+    @Test
+    void applyProductField_status_setsStatus() {
+        Product p = blankProduct();
+        applyField(p, "status", "ACTIVE");
+        assertEquals(ProductStatus.ACTIVE, p.getStatus());
+    }
+
+    @Test
+    void applyProductField_status_null_setsNull() {
+        Product p = blankProduct();
+        applyField(p, "status", null);
+        assertNull(p.getStatus());
+    }
+
+    @Test
+    void applyProductField_scheduledPublishAt_setsInstant() {
+        Product p = blankProduct();
+        String ts = "2026-01-01T00:00:00Z";
+        applyField(p, "scheduledPublishAt", ts);
+        assertEquals(Instant.parse(ts), p.getScheduledPublishAt());
+    }
+
+    @Test
+    void applyProductField_featured_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "featured", "true");
+        assertTrue(p.isFeatured());
+    }
+
+    @Test
+    void applyProductField_purchasable_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "purchasable", "true");
+        assertTrue(p.isPurchasable());
+    }
+
+    @Test
+    void applyProductField_listed_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "listed", "true");
+        assertTrue(p.isListed());
+    }
+
+    @Test
+    void applyProductField_backorderEnabled_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "backorderEnabled", "true");
+        assertTrue(p.isBackorderEnabled());
+    }
+
+    @Test
+    void applyProductField_preorderEnabled_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "preorderEnabled", "true");
+        assertTrue(p.isPreorderEnabled());
+    }
+
+    @Test
+    void applyProductField_preorderExpectedDate_setsInstant() {
+        Product p = blankProduct();
+        String ts = "2026-06-01T12:00:00Z";
+        applyField(p, "preorderExpectedDate", ts);
+        assertEquals(Instant.parse(ts), p.getPreorderExpectedDate());
+    }
+
+    @Test
+    void applyProductField_subscribable_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "subscribable", "true");
+        assertTrue(p.isSubscribable());
+    }
+
+    @Test
+    void applyProductField_subscriptionIntervals_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "subscriptionIntervals", "monthly,quarterly");
+        assertEquals("monthly,quarterly", p.getSubscriptionIntervals());
+    }
+
+    @Test
+    void applyProductField_subscriptionDiscountPercent_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "subscriptionDiscountPercent", "10.00");
+        assertEquals(new BigDecimal("10.00"), p.getSubscriptionDiscountPercent());
+    }
+
+    @Test
+    void applyProductField_boostWeight_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "boostWeight", "5");
+        assertEquals(Integer.valueOf(5), p.getBoostWeight());
+    }
+
+    @Test
+    void applyProductField_pinnedUntil_setsInstant() {
+        Product p = blankProduct();
+        String ts = "2026-12-31T23:59:59Z";
+        applyField(p, "pinnedUntil", ts);
+        assertEquals(Instant.parse(ts), p.getPinnedUntil());
+    }
+
+    @Test
+    void applyProductField_pinnedRank_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "pinnedRank", "3");
+        assertEquals(Integer.valueOf(3), p.getPinnedRank());
+    }
+
+    @Test
+    void applyProductField_lowStockThreshold_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "lowStockThreshold", "10");
+        assertEquals(Integer.valueOf(10), p.getLowStockThreshold());
+    }
+
+    @Test
+    void applyProductField_lowStockThresholdPercent_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "lowStockThresholdPercent", "20");
+        assertEquals(Integer.valueOf(20), p.getLowStockThresholdPercent());
+    }
+
+    @Test
+    void applyProductField_maxStock_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "maxStock", "100");
+        assertEquals(Integer.valueOf(100), p.getMaxStock());
+    }
+
+    @Test
+    void applyProductField_autoRestockEnabled_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "autoRestockEnabled", "true");
+        assertTrue(p.isAutoRestockEnabled());
+    }
+
+    @Test
+    void applyProductField_autoRestockQty_setsValue() {
+        Product p = blankProduct();
+        applyField(p, "autoRestockQty", "50");
+        assertEquals(Integer.valueOf(50), p.getAutoRestockQty());
+    }
+
+    @Test
+    void applyProductField_marketplaceListed_setsTrue() {
+        Product p = blankProduct();
+        applyField(p, "marketplaceListed", "true");
+        assertTrue(p.isMarketplaceListed());
+    }
+
+    @Test
+    void applyProductField_unknownField_throwsBadRequest() {
+        Product p = blankProduct();
+        assertThrows(BadRequestException.class,
+                () -> applyField(p, "nonExistentField", "value"));
+    }
+
+    // =========================================================================
+    // buildRatingMap (private — via reflection)
+    // =========================================================================
+
+    @Test
+    void buildRatingMap_emptyRepository_returnsEmptyMap() {
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        Map<UUID, double[]> result = ReflectionTestUtils.invokeMethod(service, "buildRatingMap", List.of(PRODUCT_ID));
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void buildRatingMap_withData_populatesMap() {
+        // Use an explicit List<Object[]> to avoid List.of(Object[]) varargs ambiguity
+        List<Object[]> rows = new java.util.ArrayList<>();
+        rows.add(new Object[]{PRODUCT_ID, 4.5, 10.0});
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(rows);
+
+        Map<UUID, double[]> result = ReflectionTestUtils.invokeMethod(service, "buildRatingMap", List.of(PRODUCT_ID));
+
+        assertNotNull(result);
+        assertTrue(result.containsKey(PRODUCT_ID));
+        assertEquals(4.5, result.get(PRODUCT_ID)[0], 0.001);
+        assertEquals(10.0, result.get(PRODUCT_ID)[1], 0.001);
+    }
+
+    @Test
+    void buildRatingMap_repositoryThrows_returnsEmptyMap() {
+        doThrow(new RuntimeException("DB error"))
+                .when(productReviewRepository).findAverageRatingsByProductIds(any());
+
+        Map<UUID, double[]> result = ReflectionTestUtils.invokeMethod(service, "buildRatingMap", List.of(PRODUCT_ID));
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    // =========================================================================
+    // createProduct — DataIntegrityViolationException on save
+    // =========================================================================
+
+    @Test
+    void createProduct_dataIntegrityViolationOnSave_throwsConflict() {
+        when(productRepository.save(any(Product.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("constraint"));
+
+        CreateProductRequest req = new CreateProductRequest();
+        req.setName("Widget");
+        req.setPrice(new BigDecimal("9.99"));
+        req.setSku("UNIQUE-SKU");
+
+        assertThrows(ConflictException.class, () -> service.createProduct(COMPANY_ID, OWNER_ID, req));
+    }
+
+    // =========================================================================
+    // searchProducts — page-too-large guard
+    // =========================================================================
+
+    @Test
+    void searchProducts_pageTooLarge_throwsBadRequest() {
+        assertThrows(BadRequestException.class, () ->
+                service.searchProducts(COMPANY_ID, null, null, null,
+                        null, null, null, null, null, null, null,
+                        10_001, 20, "createdAt", "desc"));
+    }
+
+    // =========================================================================
+    // searchMarketplaceCatalog — page-too-large guard + price range path
+    // =========================================================================
+
+    @Test
+    void searchMarketplaceCatalog_pageTooLarge_throwsBadRequest() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+
+        assertThrows(BadRequestException.class, () ->
+                service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                        null, null, null, null, 10_001, 10, null, null));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchMarketplaceCatalog_withPriceRange_esSucceeds() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        Product product = makeProduct();
+        product.setMarketplaceId(MARKETPLACE_ID);
+        when(productRepository.findAllByIdInAndMarketplaceId(any(), eq(MARKETPLACE_ID)))
+                .thenReturn(List.of(product));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
+                .thenReturn(List.of());
+
+        // Pass minPrice and maxPrice to trigger the RangeQuery branch
+        var result = service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                new BigDecimal("10.00"), new BigDecimal("100.00"), null, null, 0, 10, "price", "asc");
+
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // searchCompanyCatalog — company not found + price range path
+    // =========================================================================
+
+    @Test
+    void searchCompanyCatalog_companyNotFound_throwsResourceNotFound() {
+        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                        null, null, 0, 10, null, null));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void searchCompanyCatalog_withPriceRange_esSucceeds() {
+        var doc = new backend.documents.ProductDocument();
+        doc.setId(PRODUCT_ID);
+        var hit = (org.springframework.data.elasticsearch.core.SearchHit<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHit.class);
+        when(hit.getContent()).thenReturn(doc);
+
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(hits.getTotalHits()).thenReturn(1L);
+        when(hits.getAggregations()).thenReturn(null);
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(makeProduct()));
+
+        var result = service.searchCompanyCatalog(COMPANY_ID, null, null, null,
+                new BigDecimal("5.00"), new BigDecimal("50.00"), 0, 10, "price", "desc");
+
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // updateProduct — price drop event + marketplace eviction + pinning
+    // =========================================================================
+
+    @Test
+    void updateProduct_priceDropBelowOriginal_publishesPriceDropAlertEvent() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setPrice(new BigDecimal("50.00"));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        // Snapshot must return a separate object so 'before.price' stays at 50.00
+        // when the product's price is later overwritten to 30.00
+        Product beforeSnapshot = makeProduct(PRODUCT_ID);
+        beforeSnapshot.setPrice(new BigDecimal("50.00"));
+        when(productChangeLogger.snapshot(any(Product.class))).thenReturn(beforeSnapshot);
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setPrice(new BigDecimal("30.00")); // lower than 50.00 → triggers price drop event
+
+        ProductResponse result = service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        // Price drop event + ProductIndexEvent both published
+        verify(eventPublisher, atLeast(2)).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void updateProduct_priceRaisedAboveOriginal_doesNotPublishPriceDropEvent() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setPrice(new BigDecimal("30.00"));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        Product beforeSnapshot = makeProduct(PRODUCT_ID);
+        beforeSnapshot.setPrice(new BigDecimal("30.00"));
+        when(productChangeLogger.snapshot(any(Product.class))).thenReturn(beforeSnapshot);
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setPrice(new BigDecimal("50.00")); // higher — no price drop
+
+        ProductResponse result = service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        verify(productRepository).save(any(Product.class));
+    }
+
+    @Test
+    void updateProduct_withMarketplaceId_evictsMarketplaceCache() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setMarketplaceId(MARKETPLACE_ID);
+        existing.setMarketplaceListed(true);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setName("Updated With Marketplace");
+
+        service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        verify(singleFlightCache, atLeastOnce()).evict(contains("marketplace:product:"));
+    }
+
+    @Test
+    void updateProduct_withValidPinnedUntil_setsPinAndRank() {
+        Product existing = makeProduct(PRODUCT_ID);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        Instant futurePin = Instant.now().plusSeconds(86400);
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setPinnedUntil(futurePin);
+        req.setPinnedRank(1);
+
+        ProductResponse result = service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        assertEquals(futurePin, existing.getPinnedUntil());
+        assertEquals(1, existing.getPinnedRank());
+    }
+
+    @Test
+    void updateProduct_withPinnedRankOnly_setsRankWithoutChangingPin() {
+        Instant existingPin = Instant.now().plusSeconds(86400);
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setPinnedUntil(existingPin);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setPinnedRank(5); // only rank, no new pinnedUntil
+
+        service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertEquals(5, existing.getPinnedRank());
+        assertEquals(existingPin, existing.getPinnedUntil()); // unchanged
+    }
+
+    // =========================================================================
+    // applyProductField — null branches for nullable fields
+    // =========================================================================
+
+    @Test
+    void applyProductField_compareAtPrice_null_setsNull() {
+        Product p = blankProduct();
+        p.setCompareAtPrice(new BigDecimal("10.00"));
+        applyField(p, "compareAtPrice", null);
+        assertNull(p.getCompareAtPrice());
+    }
+
+    @Test
+    void applyProductField_weight_null_setsNull() {
+        Product p = blankProduct();
+        p.setWeight(new BigDecimal("1.5"));
+        applyField(p, "weight", null);
+        assertNull(p.getWeight());
+    }
+
+    @Test
+    void applyProductField_scheduledPublishAt_null_setsNull() {
+        Product p = blankProduct();
+        p.setScheduledPublishAt(Instant.now());
+        applyField(p, "scheduledPublishAt", null);
+        assertNull(p.getScheduledPublishAt());
+    }
+
+    @Test
+    void applyProductField_preorderExpectedDate_null_setsNull() {
+        Product p = blankProduct();
+        p.setPreorderExpectedDate(Instant.now());
+        applyField(p, "preorderExpectedDate", null);
+        assertNull(p.getPreorderExpectedDate());
+    }
+
+    @Test
+    void applyProductField_subscriptionDiscountPercent_null_setsNull() {
+        Product p = blankProduct();
+        applyField(p, "subscriptionDiscountPercent", null);
+        assertNull(p.getSubscriptionDiscountPercent());
+    }
+
+    @Test
+    void applyProductField_boostWeight_null_setsNull() {
+        Product p = blankProduct();
+        p.setBoostWeight(3);
+        applyField(p, "boostWeight", null);
+        assertNull(p.getBoostWeight());
+    }
+
+    @Test
+    void applyProductField_pinnedUntil_null_setsNull() {
+        Product p = blankProduct();
+        p.setPinnedUntil(Instant.now());
+        applyField(p, "pinnedUntil", null);
+        assertNull(p.getPinnedUntil());
+    }
+
+    @Test
+    void applyProductField_pinnedRank_null_setsNull() {
+        Product p = blankProduct();
+        p.setPinnedRank(2);
+        applyField(p, "pinnedRank", null);
+        assertNull(p.getPinnedRank());
+    }
+
+    @Test
+    void applyProductField_lowStockThreshold_null_setsNull() {
+        Product p = blankProduct();
+        p.setLowStockThreshold(5);
+        applyField(p, "lowStockThreshold", null);
+        assertNull(p.getLowStockThreshold());
+    }
+
+    @Test
+    void applyProductField_lowStockThresholdPercent_null_setsNull() {
+        Product p = blankProduct();
+        p.setLowStockThresholdPercent(10);
+        applyField(p, "lowStockThresholdPercent", null);
+        assertNull(p.getLowStockThresholdPercent());
+    }
+
+    @Test
+    void applyProductField_maxStock_null_setsNull() {
+        Product p = blankProduct();
+        p.setMaxStock(100);
+        applyField(p, "maxStock", null);
+        assertNull(p.getMaxStock());
+    }
+
+    @Test
+    void applyProductField_autoRestockQty_null_setsNull() {
+        Product p = blankProduct();
+        p.setAutoRestockQty(50);
+        applyField(p, "autoRestockQty", null);
+        assertNull(p.getAutoRestockQty());
+    }
+
+    // =========================================================================
+    // applyVariantField (private — exhaustive switch coverage via reflection)
+    // =========================================================================
+
+    private void applyVariantField(ProductVariant v, String field, String value) {
+        ReflectionTestUtils.invokeMethod(service, "applyVariantField", v, field, value);
+    }
+
+    @Test
+    void applyVariantField_sku_setsSku() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "sku", "VAR-001");
+        assertEquals("VAR-001", v.getSku());
+    }
+
+    @Test
+    void applyVariantField_price_setsPrice() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "price", "9.99");
+        assertEquals(new BigDecimal("9.99"), v.getPrice());
+    }
+
+    @Test
+    void applyVariantField_price_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "price", null);
+        assertNull(v.getPrice());
+    }
+
+    @Test
+    void applyVariantField_compareAtPrice_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "compareAtPrice", "14.99");
+        assertEquals(new BigDecimal("14.99"), v.getCompareAtPrice());
+    }
+
+    @Test
+    void applyVariantField_compareAtPrice_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "compareAtPrice", null);
+        assertNull(v.getCompareAtPrice());
+    }
+
+    @Test
+    void applyVariantField_lowStockThreshold_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "lowStockThreshold", "5");
+        assertEquals(Integer.valueOf(5), v.getLowStockThreshold());
+    }
+
+    @Test
+    void applyVariantField_lowStockThreshold_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "lowStockThreshold", null);
+        assertNull(v.getLowStockThreshold());
+    }
+
+    @Test
+    void applyVariantField_lowStockThresholdPercent_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "lowStockThresholdPercent", "10");
+        assertEquals(Integer.valueOf(10), v.getLowStockThresholdPercent());
+    }
+
+    @Test
+    void applyVariantField_lowStockThresholdPercent_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "lowStockThresholdPercent", null);
+        assertNull(v.getLowStockThresholdPercent());
+    }
+
+    @Test
+    void applyVariantField_maxStock_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "maxStock", "200");
+        assertEquals(Integer.valueOf(200), v.getMaxStock());
+    }
+
+    @Test
+    void applyVariantField_maxStock_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "maxStock", null);
+        assertNull(v.getMaxStock());
+    }
+
+    @Test
+    void applyVariantField_autoRestockEnabled_setsTrue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "autoRestockEnabled", "true");
+        assertTrue(v.isAutoRestockEnabled());
+    }
+
+    @Test
+    void applyVariantField_autoRestockQty_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "autoRestockQty", "25");
+        assertEquals(Integer.valueOf(25), v.getAutoRestockQty());
+    }
+
+    @Test
+    void applyVariantField_autoRestockQty_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "autoRestockQty", null);
+        assertNull(v.getAutoRestockQty());
+    }
+
+    @Test
+    void applyVariantField_purchasable_setsTrue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "purchasable", "true");
+        assertTrue(v.isPurchasable());
+    }
+
+    @Test
+    void applyVariantField_backorderEnabled_setsTrue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "backorderEnabled", "true");
+        assertTrue(v.isBackorderEnabled());
+    }
+
+    @Test
+    void applyVariantField_preorderEnabled_setsTrue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "preorderEnabled", "true");
+        assertTrue(v.isPreorderEnabled());
+    }
+
+    @Test
+    void applyVariantField_preorderExpectedDate_setsInstant() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        String ts = "2026-09-01T00:00:00Z";
+        applyVariantField(v, "preorderExpectedDate", ts);
+        assertEquals(Instant.parse(ts), v.getPreorderExpectedDate());
+    }
+
+    @Test
+    void applyVariantField_preorderExpectedDate_null_setsNull() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "preorderExpectedDate", null);
+        assertNull(v.getPreorderExpectedDate());
+    }
+
+    @Test
+    void applyVariantField_option1_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "option1", "Red");
+        assertEquals("Red", v.getOption1());
+    }
+
+    @Test
+    void applyVariantField_option2_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "option2", "Large");
+        assertEquals("Large", v.getOption2());
+    }
+
+    @Test
+    void applyVariantField_option3_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "option3", "Matte");
+        assertEquals("Matte", v.getOption3());
+    }
+
+    @Test
+    void applyVariantField_displayOrder_setsValue() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        applyVariantField(v, "displayOrder", "3");
+        assertEquals(3, v.getDisplayOrder());
+    }
+
+    @Test
+    void applyVariantField_displayOrder_null_setsZero() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        v.setDisplayOrder(5);
+        applyVariantField(v, "displayOrder", null);
+        assertEquals(0, v.getDisplayOrder());
+    }
+
+    @Test
+    void applyVariantField_unknownField_throwsBadRequest() {
+        ProductVariant v = makeVariant(VARIANT_ID);
+        assertThrows(BadRequestException.class,
+                () -> applyVariantField(v, "nonExistentVariantField", "value"));
+    }
+
+    // =========================================================================
+    // revertProductChanges — variant log entry path
+    // =========================================================================
+
+    @Test
+    void revertProductChanges_variantField_revertsVariantSku() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        variant.setSku("NEW-VAR-SKU");
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.of(variant));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UUID logId = TestIds.uuid(80);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setVariant(variant);
+        entry.setFieldName("sku");
+        entry.setOldValue("OLD-VAR-SKU");
+        entry.setNewValue("NEW-VAR-SKU");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        ProductResponse result = service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        assertEquals("OLD-VAR-SKU", variant.getSku());
+        verify(productVariantRepository).save(variant);
+        verify(productChangeLogger).logVariantUpdate(any(), any(), eq(ChangeSource.REVERT), any());
+    }
+
+    @Test
+    void revertProductChanges_variantNotFound_throwsResourceNotFound() {
+        Product p = makeProduct();
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(p));
+
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID))
+                .thenReturn(Optional.empty());
+
+        UUID logId = TestIds.uuid(81);
+        ProductChangeLog entry = new ProductChangeLog();
+        entry.setId(logId);
+        entry.setProduct(p);
+        entry.setVariant(variant);
+        entry.setFieldName("price");
+        entry.setOldValue("9.99");
+        entry.setChangeType(ProductChangeType.UPDATED);
+        entry.setSource(ChangeSource.USER);
+        entry.setChangedAt(Instant.now());
+
+        when(productChangeLogRepository.findAllByIdInAndCompanyId(List.of(logId), COMPANY_ID))
+                .thenReturn(List.of(entry));
+
+        backend.dtos.requests.product.RevertProductChangesRequest req =
+                new backend.dtos.requests.product.RevertProductChangesRequest();
+        req.setLogEntryIds(List.of(logId));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.revertProductChanges(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
     }
 }

@@ -52,6 +52,7 @@ class FeedbackControllerTest {
                 .standaloneSetup(new FeedbackController(feedbackService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

@@ -106,9 +106,10 @@ class LoyaltyServiceImplTest {
         });
         // Tier evaluation is a no-op unless overridden
         when(tierRepository.findByCompanyIdOrderByMinPointsDesc(any())).thenReturn(List.of());
-        // New dependency defaults — no referral conversions, no expiring points, no first order
-        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(any(), any())).thenReturn(0L);
-        when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(any(), any())).thenReturn(0L);
+        when(tierRepository.findByCompanyIdOrderByMinPointsDesc(any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        // New dependency defaults — no expiring points, no first order
+        // Note: referral repo methods are NOT defaulted here so test-level stubs take priority cleanly.
         when(transactionRepository.countByAccountIdAndType(any(), any())).thenReturn(0L);
     }
 
@@ -945,7 +946,9 @@ class LoyaltyServiceImplTest {
         LoyaltyAccount account = makeAccount(ACCOUNT_ID, 0L);
         account.setReferralCode("MYCODE12");
         when(accountRepository.findByUserIdAndCompanyId(USER_ID, COMPANY_ID)).thenReturn(Optional.of(account));
-        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(ACCOUNT_ID, COMPANY_ID)).thenReturn(5L);
+        // totalReferrals = people who applied the code (countByReferredByCode...)
+        when(accountRepository.countByReferredByCodeAndCompanyId("MYCODE12", COMPANY_ID)).thenReturn(5L);
+        when(referralConversionRepository.countByReferrerAccountIdAndCompanyId(ACCOUNT_ID, COMPANY_ID)).thenReturn(3L);
         when(referralConversionRepository.sumPointsAwardedByReferrerAccountId(ACCOUNT_ID, COMPANY_ID)).thenReturn(500L);
 
         LoyaltyReferralResponse result = service.getReferralInfo(USER_ID, COMPANY_ID);
@@ -1105,6 +1108,9 @@ class LoyaltyServiceImplTest {
                 .thenReturn(1L);
         when(accountRepository.findByReferralCodeAndCompanyId("REFCODE99", COMPANY_ID))
                 .thenReturn(Optional.of(makeReferrerAccount()));
+        // markReferralConverted is now called atomically before awarding the bonus.
+        // Stub it to return 1 (won the CAS race) so the bonus is actually awarded.
+        when(accountRepository.markReferralConverted(ACCOUNT_ID)).thenReturn(1);
 
         service.recordOrderEarn(makeOrder(), COMPANY_ID);
 
@@ -1187,6 +1193,8 @@ class LoyaltyServiceImplTest {
         LoyaltyTier gold = makeTier(TIER_ID, COMPANY_ID, "Gold");
         gold.setMinPoints(0L);
         when(tierRepository.findByCompanyIdOrderByMinPointsDesc(COMPANY_ID)).thenReturn(List.of(gold));
+        when(tierRepository.findByCompanyIdOrderByMinPointsDesc(eq(COMPANY_ID), any()))
+                .thenReturn(new PageImpl<>(List.of(gold)));
         when(accountRepository.updateTierIfChanged(eq(ACCOUNT_ID), eq(TIER_ID), any())).thenReturn(1);
 
         service.recordOrderEarn(makeOrder(new BigDecimal("50.00")), COMPANY_ID);

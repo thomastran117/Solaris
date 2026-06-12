@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Plus, Pencil, Trash2, Layers } from "lucide-react";
 import { kitsApi } from "../../api/kits";
 import type { KitStatus } from "../../types/kit";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
 const STATUS_FILTERS: ReadonlyArray<{ value: KitStatus | "ALL"; label: string }> = [
   { value: "ALL", label: "All" },
@@ -16,16 +17,6 @@ const STATUS_FILTERS: ReadonlyArray<{ value: KitStatus | "ALL"; label: string }>
   { value: "ARCHIVED", label: "Archived" },
 ];
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
-  return { fadeInUp, stagger };
-};
 
 function StatusBadge({ status }: { status: KitStatus }) {
   const tone: Record<KitStatus, string> = {

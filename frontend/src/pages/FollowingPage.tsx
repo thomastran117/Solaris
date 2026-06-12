@@ -1,25 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Megaphone, Building2, Bell, BellOff, UserMinus, Rss } from "lucide-react";
 import { followApi } from "../api/follow";
 import type { AnnouncementType } from "../types/company";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
 import SectionTitle from "../components/section/SectionTitle";
 import SectionGlow from "../components/section/SectionGlow";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: reduced ? 0 : 0.05 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 const TYPE_LABELS: Record<AnnouncementType, string> = {
   GENERAL: "General",

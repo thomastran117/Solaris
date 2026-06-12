@@ -106,4 +106,41 @@ class AuthLoginIT extends AbstractIntegrationIT {
                         .content(loginBody("user@example.com", "weak")))
                 .andExpect(status().isBadRequest());
     }
+
+    // ── Rate limiting ─────────────────────────────────────────────────────────
+
+    @Test
+    void login_emailRateLimitExceeded_returns429() throws Exception {
+        // Default loginPerEmailLimit = 5; the 6th request within the window must be rejected.
+        createActiveUser("ratelimit@example.com", PASSWORD);
+        String wrongBody = loginBody("ratelimit@example.com", "WrongPass1!");
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post(URL)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("User-Agent", TEST_USER_AGENT)
+                            .content(wrongBody))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post(URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .content(wrongBody))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void login_accountLockedOut_returns429() throws Exception {
+        // Seed the lockout key directly to simulate an account locked after repeated failures.
+        String email = "locked@example.com";
+        createActiveUser(email, PASSWORD);
+        cacheService.set("lockout:until:" + email, "1", 900);
+
+        mockMvc.perform(post(URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .content(loginBody(email, PASSWORD)))
+                .andExpect(status().isTooManyRequests());
+    }
 }

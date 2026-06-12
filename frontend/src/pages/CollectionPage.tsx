@@ -1,24 +1,15 @@
 import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Layers } from "lucide-react";
 import { marketplaceCollectionsApi } from "../api/merchandising";
 import { catalogApi } from "../api/catalog";
 import ProductCard from "../components/product/ProductCard";
 import type { CatalogProduct } from "../api/catalog";
 import type { RootState } from "../stores";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
-  return { fadeInUp, stagger };
-};
 
 /**
  * Public collection detail page. Members come from the marketplace endpoint already ordered

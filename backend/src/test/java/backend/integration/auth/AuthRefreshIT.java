@@ -2,6 +2,7 @@ package backend.integration.auth;
 
 import backend.integration.AbstractIntegrationIT;
 import backend.models.core.User;
+import backend.models.enums.UserStatus;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MvcResult;
@@ -10,6 +11,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -142,6 +144,55 @@ class AuthRefreshIT extends AbstractIntegrationIT {
     void logout_noCookie_stillReturns200() throws Exception {
         mockMvc.perform(post(LOGOUT_URL))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void logout_blacklistsAccessToken_subsequentRequestRejected() throws Exception {
+        User user = createActiveUser("blacklist@example.com", PASSWORD);
+        String accessToken = accessTokenFor(user);
+        String refreshToken = tokenService.generateRefreshToken(
+                user.getId(), user.getRole().name(), user.getEmail());
+
+        mockMvc.perform(post(LOGOUT_URL)
+                        .header("Authorization", bearer(accessToken))
+                        .cookie(new Cookie("refreshToken", refreshToken)))
+                .andExpect(status().isOk());
+
+        // Blacklisted access token must be rejected even though it hasn't expired yet.
+        mockMvc.perform(get("/auth/hello")
+                        .header("Authorization", bearer(accessToken)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ── Cookie attributes ─────────────────────────────────────────────────────
+
+    @Test
+    void refresh_cookieIsHttpOnlyAndHasSameSite() throws Exception {
+        User user = createActiveUser("cookie-attrs@example.com", PASSWORD);
+        String refreshToken = tokenService.generateRefreshToken(
+                user.getId(), user.getRole().name(), user.getEmail());
+
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(new Cookie("refreshToken", refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
+                .andExpect(header().string("Set-Cookie", containsString("SameSite=Lax")));
+    }
+
+    // ── Account state ─────────────────────────────────────────────────────────
+
+    @Test
+    void refresh_suspendedUser_returns403() throws Exception {
+        User user = createActiveUser("suspended-refresh@example.com", PASSWORD);
+        String refreshToken = tokenService.generateRefreshToken(
+                user.getId(), user.getRole().name(), user.getEmail());
+
+        user.setStatus(UserStatus.SUSPENDED);
+        userRepository.save(user);
+
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(new Cookie("refreshToken", refreshToken)))
+                .andExpect(status().isForbidden());
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

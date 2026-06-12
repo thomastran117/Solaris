@@ -55,6 +55,7 @@ class StockNotificationControllerTest {
                         new StockNotificationController(stockNotificationService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

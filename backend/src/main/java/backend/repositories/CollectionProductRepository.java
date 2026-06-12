@@ -35,6 +35,22 @@ public interface CollectionProductRepository extends JpaRepository<CollectionPro
     Page<CollectionProduct> findAllByCollectionIdRanked(@Param("collectionId") java.util.UUID collectionId, Pageable pageable);
 
     /**
+     * Same ranking as {@link #findAllByCollectionIdRanked} but restricted to products that are
+     * ACTIVE, marketplace-listed, and belong to the given marketplace — used by the public
+     * storefront so that pagination ({@code totalElements}/{@code totalPages}) reflects only the
+     * products that are actually visible to shoppers.
+     */
+    @Query("SELECT cp FROM CollectionProduct cp JOIN FETCH cp.product p JOIN FETCH p.company "
+            + "WHERE cp.collection.id = :collectionId "
+            + "AND p.status = backend.models.enums.ProductStatus.ACTIVE "
+            + "AND p.marketplaceListed = true "
+            + "AND p.marketplaceId = :marketplaceId "
+            + "ORDER BY CASE WHEN cp.pinnedRank IS NULL THEN 1 ELSE 0 END, cp.pinnedRank ASC, cp.id DESC")
+    Page<CollectionProduct> findVisibleByCollectionIdRanked(@Param("collectionId") java.util.UUID collectionId,
+                                                             @Param("marketplaceId") java.util.UUID marketplaceId,
+                                                             Pageable pageable);
+
+    /**
      * Used by the indexing pipeline to attach the set of collection IDs each product belongs to.
      * Returned shape is {@code [productId, collectionId]} so the caller can group by product.
      */

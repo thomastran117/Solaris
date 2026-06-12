@@ -3,6 +3,7 @@ import authReducer from "./authSlice";
 import vendorReducer from "./vendorSlice";
 import marketplaceReducer from "./marketplaceSlice";
 import loyaltyReducer from "./loyaltySlice";
+import cartReducer from "./cartSlice";
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     vendor: vendorReducer,
     marketplace: marketplaceReducer,
     loyalty: loyaltyReducer,
+    cart: cartReducer,
   },
 });
 

@@ -218,7 +218,177 @@ class OperationsDashboardServiceImplTest {
         assertEquals(out.getTotal(), sum);
     }
 
+    // ─── getSummary cache miss ───────────────────────────────────────────────
+
+    @Test
+    void getSummary_cacheMiss_callsAllBuilders() {
+        stubAllBuilderDeps(TestIds.uuid(1));
+
+        OperationsSummaryResponse out = service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertNotNull(out);
+        assertNotNull(out.getFulfillment());
+        assertNotNull(out.getRefunds());
+        assertNotNull(out.getPickDelays());
+        assertNotNull(out.getStockouts());
+        assertNotNull(out.getSupplierLateness());
+        assertNotNull(out.getCancellations());
+        verify(metricsRepository).fulfillmentStats(eq(TestIds.uuid(1)), any(), any());
+        verify(metricsRepository).refundStats(eq(TestIds.uuid(1)), any(), any());
+        verify(metricsRepository).pickDelayStats(eq(TestIds.uuid(1)), any(), any());
+    }
+
+    // ─── individual metric methods not tested above ──────────────────────────
+
+    @Test
+    void getRefundMetric_computesAverageHours() {
+        when(metricsRepository.refundStats(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(stats(6L, 1800.0));
+        when(metricsRepository.refundDaily(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(List.of(daily(LocalDate.of(2026, 5, 1), 2L, 900.0)));
+
+        DurationMetricResponse out = service.getRefundMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(6L, out.getCount());
+        assertEquals(0.5, out.getAvgHours(), 1e-9);
+        assertEquals(1, out.getDaily().size());
+        assertEquals(0.25, out.getDaily().get(0).getValue(), 1e-9);
+    }
+
+    @Test
+    void getPickDelayMetric_returnsZeroAvgWhenNoData() {
+        when(metricsRepository.pickDelayStats(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(stats(0L, null));
+        when(metricsRepository.pickDelayDaily(eq(TestIds.uuid(1)), any(), any())).thenReturn(List.of());
+
+        DurationMetricResponse out = service.getPickDelayMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(0L, out.getCount());
+        assertNull(out.getAvgHours());
+    }
+
+    @Test
+    void getFulfillmentMetric_cacheHitSkipsRepository() throws Exception {
+        DurationMetricResponse cached = new DurationMetricResponse(3L, 1.5, List.of());
+        when(cacheService.get(anyString())).thenReturn(objectMapper.writeValueAsString(cached));
+
+        DurationMetricResponse out = service.getFulfillmentMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(3L, out.getCount());
+        verify(metricsRepository, never()).fulfillmentStats(any(), any(), any());
+    }
+
+    @Test
+    void getCancellationMetric_cacheHitSkipsRepository() throws Exception {
+        CancellationMetricResponse cached = new CancellationMetricResponse(5L, List.of(), List.of());
+        when(cacheService.get(anyString())).thenReturn(objectMapper.writeValueAsString(cached));
+
+        CancellationMetricResponse out = service.getCancellationMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(5L, out.getTotal());
+        verify(metricsRepository, never()).cancellationsByReason(any(), any(), any());
+    }
+
+    // ─── null/error edge cases ───────────────────────────────────────────────
+
+    @Test
+    void toDurationResponse_nullStats_returnsZeroCountNullAvg() {
+        when(metricsRepository.fulfillmentStats(eq(TestIds.uuid(1)), any(), any())).thenReturn(null);
+        when(metricsRepository.fulfillmentDaily(eq(TestIds.uuid(1)), any(), any())).thenReturn(List.of());
+
+        DurationMetricResponse out = service.getFulfillmentMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(0L, out.getCount());
+        assertNull(out.getAvgHours());
+    }
+
+    @Test
+    void toDailyPoints_nullCount_treatedAsZero() {
+        when(metricsRepository.cancellationsByReason(eq(TestIds.uuid(1)), any(), any())).thenReturn(List.of());
+        when(metricsRepository.cancellationsDaily(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(List.of(new DailyCountProjection() {
+                    public LocalDate getDay() { return LocalDate.of(2026, 5, 5); }
+                    public Long getCount() { return null; }
+                }));
+
+        CancellationMetricResponse out = service.getCancellationMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(1, out.getDaily().size());
+        assertEquals(0L, out.getDaily().get(0).getCount());
+    }
+
+    @Test
+    void cancellationMetric_nullCountInRow_treatedAsZero() {
+        when(metricsRepository.cancellationsByReason(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(List.of(reasonCount(backend.models.enums.CancellationReason.CUSTOMER_REQUEST, null)));
+        when(metricsRepository.cancellationsDaily(eq(TestIds.uuid(1)), any(), any())).thenReturn(List.of());
+
+        CancellationMetricResponse out = service.getCancellationMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(0L, out.getTotal());
+        assertEquals(1, out.getByReason().size());
+        assertEquals(0L, out.getByReason().get(0).getCount());
+    }
+
+    @Test
+    void readCache_deserializeError_returnsNull() {
+        when(cacheService.get(anyString())).thenReturn("THIS IS NOT JSON {{{");
+        // cache error means we fall through to DB
+        stubAllBuilderDeps(TestIds.uuid(1));
+
+        OperationsSummaryResponse out = service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertNotNull(out);
+        verify(metricsRepository).fulfillmentStats(any(), any(), any());
+    }
+
+    @Test
+    void writeCache_serializeError_doesNotThrow() {
+        // Use a non-serializable value injected via a custom objectMapper — instead we just cover
+        // the branch by verifying normal flow completes even when cacheService.set is called.
+        stubAllBuilderDeps(TestIds.uuid(1));
+        doThrow(new RuntimeException("redis down")).when(cacheService).set(anyString(), anyString(), anyLong());
+
+        assertDoesNotThrow(() -> service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 30));
+    }
+
+    @Test
+    void supplierLatenessMetric_statsNonNullButNullTotals_useZero() {
+        SupplierLatenessProjection statsNullFields = new SupplierLatenessProjection() {
+            public Long getTotal() { return null; }
+            public Long getLate() { return null; }
+            public Double getAvgLateDays() { return null; }
+        };
+        when(metricsRepository.supplierLatenessStats(eq(TestIds.uuid(1)), any(), any()))
+                .thenReturn(statsNullFields);
+        when(metricsRepository.supplierLatenessDaily(eq(TestIds.uuid(1)), any(), any())).thenReturn(List.of());
+
+        SupplierLatenessMetricResponse out = service.getSupplierLatenessMetric(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(0L, out.getTotal());
+        assertEquals(0L, out.getLate());
+        assertEquals(0.0, out.getLateRate());
+        assertNull(out.getAvgLateDays());
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────
+
+    private void stubAllBuilderDeps(java.util.UUID companyId) {
+        when(metricsRepository.fulfillmentStats(eq(companyId), any(), any())).thenReturn(stats(2L, 3600.0));
+        when(metricsRepository.fulfillmentDaily(eq(companyId), any(), any())).thenReturn(List.of());
+        when(metricsRepository.refundStats(eq(companyId), any(), any())).thenReturn(stats(1L, 7200.0));
+        when(metricsRepository.refundDaily(eq(companyId), any(), any())).thenReturn(List.of());
+        when(metricsRepository.pickDelayStats(eq(companyId), any(), any())).thenReturn(stats(0L, null));
+        when(metricsRepository.pickDelayDaily(eq(companyId), any(), any())).thenReturn(List.of());
+        when(productRepository.countTrackedProducts(companyId)).thenReturn(50L);
+        when(productRepository.countOutOfStock(companyId)).thenReturn(3L);
+        when(orderRepository.countOrdersInWindow(eq(companyId), any(), any())).thenReturn(100L);
+        when(orderRepository.countOrdersWithBackorderedItemsInWindow(eq(companyId), any(), any())).thenReturn(5L);
+        when(metricsRepository.supplierLatenessStats(eq(companyId), any(), any())).thenReturn(supplier(20L, 4L, 1.0));
+        when(metricsRepository.supplierLatenessDaily(eq(companyId), any(), any())).thenReturn(List.of());
+        when(metricsRepository.cancellationsByReason(eq(companyId), any(), any())).thenReturn(List.of());
+        when(metricsRepository.cancellationsDaily(eq(companyId), any(), any())).thenReturn(List.of());
+    }
 
     private DurationStatsProjection stats(Long count, Double avgSeconds) {
         return new DurationStatsProjection() {
@@ -257,3 +427,5 @@ class OperationsDashboardServiceImplTest {
         };
     }
 }
+
+

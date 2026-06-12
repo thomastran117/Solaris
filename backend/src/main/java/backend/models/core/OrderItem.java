@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.FulfillmentStatus;
@@ -27,6 +29,18 @@ public class OrderItem {
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
     @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private java.time.Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    private java.time.Instant updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
@@ -131,6 +145,6 @@ public class OrderItem {
     private Long vendorId;
 
     /** FK to the SubOrder this item belongs to. Null for non-marketplace orders. */
-    @Column(name = "sub_order_id", nullable = true)
-    private Long subOrderId;
+    @Column(name = "sub_order_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID subOrderId;
 }

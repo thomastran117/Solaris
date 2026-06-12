@@ -28,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -186,6 +187,165 @@ class ProductSimilarityServiceTest {
         }));
     }
 
+    @Test
+    void recompute_sourceNotFound_skipsGracefully() {
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.empty());
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository, never()).deleteAllByIdSourceProductId(any());
+        verify(elasticsearchOperations, never()).search(any(Query.class), any());
+    }
+
+    @Test
+    void recompute_esCandidatesQueryFails_countsMetric() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(elasticsearchOperations.search(any(Query.class), eq(ProductDocument.class)))
+                .thenThrow(new RuntimeException("ES cluster down"));
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void recompute_emptyCandidates_countsSuccessMetric() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        stubEsSearch(); // no hits
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository, never()).saveAll(any());
+        verify(productSimilarityRepository, never()).deleteAllByIdSourceProductId(any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recompute_collectionSignal_scoredWhenShared() {
+        UUID sharedCollection = TestIds.uuid(10);
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.getReferenceById(any())).thenAnswer(inv -> {
+            Product p = new Product(); p.setId(inv.getArgument(0)); return p;
+        });
+        List<Object[]> pairs = List.<Object[]>of(new Object[]{SOURCE_ID, sharedCollection});
+        when(collectionProductRepository.findProductCollectionPairs(any())).thenReturn(pairs);
+
+        ProductDocument docWithCollection = makeDoc(TARGET_A, "Electronics", null, new BigDecimal("100.00"),
+                List.of(sharedCollection), null);
+        stubEsSearch(docWithCollection);
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository).saveAll(argThat(rows -> {
+            List<ProductSimilarity> list = (List<ProductSimilarity>) rows;
+            return list.get(0).getMatchSignals().contains("COLLECTION");
+        }));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recompute_tagsSignal_scoredWhenShared() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", null, new BigDecimal("100.00"));
+        source.setTags("wireless bluetooth");
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.getReferenceById(any())).thenAnswer(inv -> {
+            Product p = new Product(); p.setId(inv.getArgument(0)); return p;
+        });
+
+        ProductDocument docWithTags = makeDoc(TARGET_A, "Electronics", null, new BigDecimal("100.00"), null, null);
+        docWithTags.setTags("bluetooth audio");
+        stubEsSearch(docWithTags);
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository).saveAll(argThat(rows -> {
+            List<ProductSimilarity> list = (List<ProductSimilarity>) rows;
+            return list.get(0).getMatchSignals().contains("TAGS");
+        }));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recompute_attributesSignal_scoredWhenShared() {
+        ProductAttribute attr = new ProductAttribute();
+        attr.setName("color");
+        attr.setValue("red");
+        when(productAttributeRepository.findAllByProductIdOrderByDisplayOrderAsc(SOURCE_ID))
+                .thenReturn(List.of(attr));
+
+        Product source = makeProduct(SOURCE_ID, "Electronics", null, new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.getReferenceById(any())).thenAnswer(inv -> {
+            Product p = new Product(); p.setId(inv.getArgument(0)); return p;
+        });
+
+        ProductDocument docWithAttr = makeDoc(TARGET_A, "Electronics", null, new BigDecimal("100.00"),
+                null, "color:red size:large");
+        stubEsSearch(docWithAttr);
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository).saveAll(argThat(rows -> {
+            List<ProductSimilarity> list = (List<ProductSimilarity>) rows;
+            return list.get(0).getMatchSignals().contains("ATTRIBUTES");
+        }));
+    }
+
+    // ── static helper tests ────────────────────────────────────────────────────
+
+    @Test
+    void buildAttributeText_withAttributes_joinsNameValuePairs() {
+        ProductAttribute a1 = new ProductAttribute();
+        a1.setName("color"); a1.setValue("red");
+        ProductAttribute a2 = new ProductAttribute();
+        a2.setName("size"); a2.setValue("L");
+
+        String result = ProductSimilarityService.buildAttributeText(List.of(a1, a2));
+        assertNotNull(result);
+        assertTrue(result.contains("color:red"));
+        assertTrue(result.contains("size:L"));
+    }
+
+    @Test
+    void buildAttributeText_nullNameOrValue_skipped() {
+        ProductAttribute goodAttr = new ProductAttribute();
+        goodAttr.setName("material"); goodAttr.setValue("cotton");
+        ProductAttribute nullName = new ProductAttribute();
+        nullName.setName(null); nullName.setValue("x");
+        ProductAttribute nullVal = new ProductAttribute();
+        nullVal.setName("y"); nullVal.setValue(null);
+
+        String result = ProductSimilarityService.buildAttributeText(List.of(goodAttr, nullName, nullVal));
+        assertEquals("material:cotton", result);
+    }
+
+    @Test
+    void buildAttributeText_emptyList_returnsNull() {
+        assertNull(ProductSimilarityService.buildAttributeText(List.of()));
+    }
+
+    @Test
+    void tokenize_commaSeparated_splitsCorrectly() {
+        Set<String> tokens = ProductSimilarityService.tokenize("bluetooth,wireless,audio");
+        assertTrue(tokens.contains("bluetooth"));
+        assertTrue(tokens.contains("wireless"));
+        assertTrue(tokens.contains("audio"));
+    }
+
+    @Test
+    void parseAttributePairs_filtersPairsWithColon() {
+        Set<String> pairs = ProductSimilarityService.parseAttributePairs("color:red material:cotton nocodon");
+        assertTrue(pairs.contains("color:red"));
+        assertTrue(pairs.contains("material:cotton"));
+        assertFalse(pairs.contains("nocodon"));
+    }
+
     // ── parseSignals ───────────────────────────────────────────────────────────
 
     @Test
@@ -205,6 +365,99 @@ class ProductSimilarityServiceTest {
         assertTrue(ProductSimilarityService.parseSignals(null).isEmpty());
         assertTrue(ProductSimilarityService.parseSignals("").isEmpty());
         assertTrue(ProductSimilarityService.parseSignals("   ").isEmpty());
+    }
+
+    // ── buildAttributeText — null input ────────────────────────────────────────
+
+    @Test
+    void buildAttributeText_nullList_returnsNull() {
+        assertNull(ProductSimilarityService.buildAttributeText(null));
+    }
+
+    // ── doRecompute — latest product not found (stale guard: latest==null) ─────
+
+    @Test
+    void recompute_latestProductNotFound_skipsWrite() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+
+        ProductDocument doc = makeDoc(TARGET_A, "Electronics", "BrandX", new BigDecimal("90.00"), null, null);
+        stubEsSearch(doc);
+
+        // findById returns empty → latest == null → stale guard fires
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.empty());
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository, never()).deleteAllByIdSourceProductId(any());
+        verify(productSimilarityRepository, never()).saveAll(any());
+    }
+
+    // ── score — candidate with null price skips PRICE_RANGE signal ─────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recompute_candidateNullPrice_priceSignalNotScored() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.getReferenceById(any())).thenAnswer(inv -> {
+            Product p = new Product(); p.setId(inv.getArgument(0)); return p;
+        });
+
+        // Candidate has null price — PRICE_RANGE signal should be absent
+        ProductDocument docNullPrice = makeDoc(TARGET_A, "Electronics", "BrandX", null, null, null);
+        stubEsSearch(docNullPrice);
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository).saveAll(argThat(rows -> {
+            List<ProductSimilarity> list = (List<ProductSimilarity>) rows;
+            return !list.isEmpty() && !list.get(0).getMatchSignals().contains("PRICE_RANGE");
+        }));
+    }
+
+    // ── score — candidate score == 0, filtered out ─────────────────────────────
+
+    @Test
+    void recompute_candidateScoreZero_filteredOut() {
+        // Source has only category signal; candidate has different category → score = 0
+        Product source = makeProduct(SOURCE_ID, "Electronics", null, null);
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+
+        // Candidate has wrong category → CATEGORY won't match → score=0 → filtered
+        ProductDocument docWrongCat = makeDoc(TARGET_A, "Furniture", null, null, null, null);
+        stubEsSearch(docWrongCat);
+
+        service.recompute(SOURCE_ID);
+
+        // Score=0 means the row is filtered; saveAll should not be called
+        verify(productSimilarityRepository, never()).saveAll(any());
+    }
+
+    // ── boostWeight — candidate with non-null boostWeight ─────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recompute_candidateWithBoostWeight_appliedInSorting() {
+        Product source = makeProduct(SOURCE_ID, "Electronics", "BrandX", new BigDecimal("100.00"));
+        when(productRepository.findByIdWithCompanyOwner(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.findById(SOURCE_ID)).thenReturn(Optional.of(source));
+        when(productRepository.getReferenceById(any())).thenAnswer(inv -> {
+            Product p = new Product(); p.setId(inv.getArgument(0)); return p;
+        });
+
+        ProductDocument doc = makeDoc(TARGET_A, "Electronics", "BrandX", new BigDecimal("90.00"), null, null);
+        doc.setBoostWeight(10);
+        stubEsSearch(doc);
+
+        service.recompute(SOURCE_ID);
+
+        verify(productSimilarityRepository).saveAll(argThat(rows -> {
+            List<ProductSimilarity> list = (List<ProductSimilarity>) rows;
+            return !list.isEmpty();
+        }));
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

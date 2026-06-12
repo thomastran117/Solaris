@@ -61,4 +61,14 @@ public interface TokenService {
      * Revoke all refresh tokens for a user (e.g. security reset, password change).
      */
     void revokeAllRefreshTokensForUser(UUID userId);
+
+    /**
+     * Adds the raw access token to a short-lived blacklist so it cannot be re-used after
+     * logout, even within its remaining TTL. The blacklist entry expires after the
+     * configured access-token TTL, at which point the token would have expired anyway.
+     */
+    void blacklistAccessToken(String rawToken);
+
+    /** Returns true if this access token has been explicitly revoked via {@link #blacklistAccessToken}. */
+    boolean isAccessTokenBlacklisted(String rawToken);
 }

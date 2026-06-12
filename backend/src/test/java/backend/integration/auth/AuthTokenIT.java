@@ -115,6 +115,17 @@ class AuthTokenIT extends AbstractIntegrationIT {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void protectedEndpoint_blacklistedToken_returns401() throws Exception {
+        User user = createActiveUser("blacklisted@example.com", "Password123!");
+        String token = accessTokenFor(user);
+        tokenService.blacklistAccessToken(token);
+
+        mockMvc.perform(get(HELLO_URL)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ── Device management ─────────────────────────────────────────────────────
 
     @Test

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag, Users, Bell, BellOff, Megaphone } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { companiesApi } from "../api/companies";
@@ -15,18 +15,8 @@ import ReportModal from "../components/report/ReportModal";
 import type { SearchFacets } from "../types/search";
 import type { AnnouncementType } from "../types/company";
 import type { RootState } from "../stores";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.06 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 const SORT_OPTIONS = [
   { label: "Relevance", sort: "createdAt", direction: "desc" },

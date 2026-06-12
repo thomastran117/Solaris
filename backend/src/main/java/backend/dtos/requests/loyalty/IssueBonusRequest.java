@@ -13,7 +13,7 @@ import lombok.Setter;
 @NoArgsConstructor
 public class IssueBonusRequest {
 
-    @NotNull @Min(1)
+    @NotNull
     private UUID userId;
 
     @NotNull @Min(1)

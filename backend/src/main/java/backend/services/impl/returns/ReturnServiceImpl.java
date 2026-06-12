@@ -305,6 +305,12 @@ public class ReturnServiceImpl implements ReturnService {
         issueRefundAtApproval(ret, request.refundAmountOverrideCents());
         computeOrderStatusAfterReturn(ret.getOrder());
 
+        auditLogger.log(AuthAuditLogger.Event.REFUND_ISSUED, ownerId.toString(),
+                "returnId=" + ret.getId()
+                + " orderId=" + ret.getOrder().getId()
+                + (request.refundAmountOverrideCents() != null
+                        ? " overrideCents=" + request.refundAmountOverrideCents() : ""));
+
         orderRepository.save(ret.getOrder());
         return toReturnResponse(returnRepository.save(ret));
     }

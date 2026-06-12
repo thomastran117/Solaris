@@ -113,7 +113,7 @@ public class VendorPayoutServiceImpl implements VendorPayoutService {
         var vendor = marketplaceVendorRepository.findById(vendorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
 
-        if (vendor.getMarketplace().getId() != marketplaceId) {
+        if (!vendor.getMarketplace().getId().equals(marketplaceId)) {
             throw new ForbiddenException("Vendor does not belong to this marketplace");
         }
 

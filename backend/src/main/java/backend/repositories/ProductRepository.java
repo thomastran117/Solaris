@@ -48,11 +48,21 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     // on p.getCompany().getName() outside a JPA session
     // -------------------------------------------------------------------------
 
+    /** Full scan — OOM-prone for large datasets. Prefer the paginated overload for new callers. */
     @Query("SELECT p FROM Product p JOIN FETCH p.company")
     List<Product> findAllWithCompany();
 
+    @Query(value = "SELECT p FROM Product p JOIN FETCH p.company",
+           countQuery = "SELECT COUNT(p) FROM Product p")
+    Page<Product> findAllWithCompanyPaged(Pageable pageable);
+
+    /** Full scan — OOM-prone for large datasets. Prefer the paginated overload for new callers. */
     @Query("SELECT p FROM Product p JOIN FETCH p.company WHERE p.company.id = :companyId")
     List<Product> findAllByCompanyIdWithCompany(@Param("companyId") java.util.UUID companyId);
+
+    @Query(value = "SELECT p FROM Product p JOIN FETCH p.company WHERE p.company.id = :companyId",
+           countQuery = "SELECT COUNT(p) FROM Product p WHERE p.company.id = :companyId")
+    Page<Product> findAllByCompanyIdWithCompanyPaged(@Param("companyId") java.util.UUID companyId, Pageable pageable);
 
     /** Acquires a pessimistic write lock on the product row — use inside @Transactional to serialize concurrent mutations. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -67,6 +77,9 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
      * companies; prefer this method for new callers and migrate existing ones over time.
      */
     Page<Product> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
+
+    /** Paginated, status-filtered catalogue listing — used by the company catalog search's JPA fallback. */
+    Page<Product> findAllByCompanyIdAndStatus(java.util.UUID companyId, ProductStatus status, Pageable pageable);
 
     /** Cheap upper-bound check so callers can short-circuit before paging through a huge result set. */
     long countByCompanyId(java.util.UUID companyId);
@@ -89,9 +102,12 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     @Query("UPDATE Product p SET p.stock = p.stock - :quantity WHERE p.id = :id AND (p.stock IS NULL OR p.stock >= :quantity)")
     int decrementStock(@Param("id") java.util.UUID id, @Param("quantity") int quantity);
 
-    /** Restores stock after a failed or cancelled order. */
+    /**
+     * Restores stock after a failed or cancelled order. Skips null-stock (untracked) products.
+     * Caps the result at maxStock when a ceiling is configured to prevent over-restoration.
+     */
     @Modifying
-    @Query("UPDATE Product p SET p.stock = p.stock + :quantity WHERE p.id = :id")
+    @Query("UPDATE Product p SET p.stock = CASE WHEN p.maxStock IS NOT NULL AND (p.stock + :quantity) > p.maxStock THEN p.maxStock ELSE p.stock + :quantity END WHERE p.id = :id AND p.stock IS NOT NULL")
     int restoreStock(@Param("id") java.util.UUID id, @Param("quantity") int quantity);
 
     /**
@@ -127,8 +143,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
                 p.stock       AS currentStock,
                 p.price       AS price,
                 p.currency    AS currency,
-                COALESCE(SUM(oi.quantity), 0)                    AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.unit_price), 0.00) AS totalRevenue
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0)                    AS totalUnitsSold,
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity * oi.unit_price ELSE 0 END), 0.00) AS totalRevenue
             FROM products p
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
@@ -158,8 +174,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
                 p.stock       AS currentStock,
                 p.price       AS price,
                 p.currency    AS currency,
-                COALESCE(SUM(oi.quantity), 0)                    AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.unit_price), 0.00) AS totalRevenue
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0)                    AS totalUnitsSold,
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity * oi.unit_price ELSE 0 END), 0.00) AS totalRevenue
             FROM products p
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id

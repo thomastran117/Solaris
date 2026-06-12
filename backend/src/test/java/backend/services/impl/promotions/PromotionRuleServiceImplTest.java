@@ -456,6 +456,168 @@ class PromotionRuleServiceImplTest {
         verify(ruleRepository).findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class));
     }
 
+    // ─── createRule — valid bundle/segment targets ────────────────────────────
+
+    @Test
+    void createRule_validBundleTargets_resolvesCorrectly() {
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(BUNDLE_ID);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID))).thenReturn(List.of(bundle));
+
+        CreatePromotionRuleRequest req = minimalCreateRequest();
+        req.setTargetBundleIds(List.of(BUNDLE_ID));
+
+        PromotionRuleResponse result = service.createRule(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(List.of(BUNDLE_ID), result.targetBundleIds());
+    }
+
+    @Test
+    void createRule_validSegmentTargets_resolvesCorrectly() {
+        CustomerSegment seg = new CustomerSegment();
+        seg.setId(SEGMENT_ID);
+        when(segmentRepository.findAllById(anyList())).thenReturn(List.of(seg));
+
+        CreatePromotionRuleRequest req = minimalCreateRequest();
+        req.setTargetSegmentIds(List.of(SEGMENT_ID));
+
+        PromotionRuleResponse result = service.createRule(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(List.of(SEGMENT_ID), result.targetSegmentIds());
+    }
+
+    // ─── updateRule — additional branches ────────────────────────────────────
+
+    @Test
+    void updateRule_priorityAndStackable_updatesFields() {
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setPriority(50);
+        req.setStackable(true);
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(50, result.priority());
+        assertTrue(result.stackable());
+    }
+
+    @Test
+    void updateRule_startDate_provided_updates() {
+        Instant newStart = Instant.now().plusSeconds(3600);
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setStartDate(newStart);
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(newStart, result.startDate());
+    }
+
+    @Test
+    void updateRule_endDate_validAfterExistingStart_updates() {
+        PromotionRule rule = makeRule(RULE_ID);
+        rule.setStartDate(Instant.now().plusSeconds(60));
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(rule));
+
+        Instant newEnd = Instant.now().plusSeconds(7200);
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setEndDate(newEnd);
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(newEnd, result.endDate());
+    }
+
+    @Test
+    void updateRule_minCartAmount_maxUses_maxUsesPerUser_updated() {
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setMinCartAmount(new BigDecimal("25.00"));
+        req.setMaxUses(100);
+        req.setMaxUsesPerUser(2);
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(new BigDecimal("25.00"), result.minCartAmount());
+        assertEquals(100, result.maxUses());
+        assertEquals(2, result.maxUsesPerUser());
+    }
+
+    @Test
+    void updateRule_fundedByCompanyId_provided_setsCompany() {
+        UUID funderId = TestIds.uuid(99);
+        Company funder = new Company();
+        funder.setId(funderId);
+        when(companyRepository.findById(funderId)).thenReturn(Optional.of(funder));
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setFundedByCompanyId(funderId);
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(funderId, result.fundedByCompanyId());
+    }
+
+    @Test
+    void updateRule_targetBundlesReplaced_whenProvided() {
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(BUNDLE_ID);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID))).thenReturn(List.of(bundle));
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setTargetBundleIds(List.of(BUNDLE_ID));
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(List.of(BUNDLE_ID), result.targetBundleIds());
+    }
+
+    @Test
+    void updateRule_targetSegmentsReplaced_whenProvided() {
+        CustomerSegment seg = new CustomerSegment();
+        seg.setId(SEGMENT_ID);
+        when(segmentRepository.findAllById(anyList())).thenReturn(List.of(seg));
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(makeRule(RULE_ID)));
+
+        UpdatePromotionRuleRequest req = new UpdatePromotionRuleRequest();
+        req.setTargetSegmentIds(List.of(SEGMENT_ID));
+
+        PromotionRuleResponse result = service.updateRule(COMPANY_ID, RULE_ID, OWNER_ID, req);
+
+        assertEquals(List.of(SEGMENT_ID), result.targetSegmentIds());
+    }
+
+    // ─── getRule — additional branches ───────────────────────────────────────
+
+    @Test
+    void getRule_withFundedByCompany_returnsFundedById() {
+        UUID funderId = TestIds.uuid(99);
+        Company funder = new Company();
+        funder.setId(funderId);
+        PromotionRule rule = makeRule(RULE_ID);
+        rule.setFundedByCompany(funder);
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(rule));
+
+        PromotionRuleResponse result = service.getRule(COMPANY_ID, RULE_ID, OWNER_ID);
+
+        assertEquals(funderId, result.fundedByCompanyId());
+    }
+
+    @Test
+    void getRule_corruptConfigJson_throwsIllegalState() {
+        PromotionRule rule = makeRule(RULE_ID);
+        rule.setConfigJson("not valid json {{{");
+        when(ruleRepository.findByIdAndCompanyId(RULE_ID, COMPANY_ID)).thenReturn(Optional.of(rule));
+
+        assertThrows(IllegalStateException.class,
+                () -> service.getRule(COMPANY_ID, RULE_ID, OWNER_ID));
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private Company makeCompany() {

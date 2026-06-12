@@ -62,6 +62,7 @@ class LoyaltyControllerTest {
                         new LoyaltyController(loyaltyService, companyAccessService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         authenticateAs(USER_ID);

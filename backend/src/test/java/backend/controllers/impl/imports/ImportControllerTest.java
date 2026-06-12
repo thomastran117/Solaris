@@ -60,6 +60,7 @@ class ImportControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new ImportController(importService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

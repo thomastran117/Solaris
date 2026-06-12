@@ -53,6 +53,7 @@ class SavedListControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new SavedListController(savedListService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         authenticateAs(USER_ID);

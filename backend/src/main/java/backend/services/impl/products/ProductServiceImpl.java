@@ -58,6 +58,7 @@ import backend.dtos.responses.product.ProductImageResponse;
 import backend.dtos.responses.product.ProductOptionResponse;
 import backend.dtos.responses.product.ProductResponse;
 import backend.dtos.responses.product.ProductVariantResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ForbiddenException;
@@ -208,6 +209,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PagedResponse<ProductResponse> searchProducts(
             UUID companyId,
             String q,
@@ -226,6 +228,9 @@ public class ProductServiceImpl implements ProductService {
             String direction) {
 
         assertCompanyExists(companyId);
+        if (page > 10_000) {
+            throw new BadRequestException("Page number too large. Maximum page is 10,000 (roughly 500,000 products at max page size).");
+        }
         final int clampedSize = Math.min(size, 50);
         // Normalize nulls to "" so cache keys are canonical regardless of whether params
         // are omitted vs. explicitly null (prevents duplicate entries for the same query).
@@ -343,6 +348,9 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids) {
+        if (ids.size() > 1000) {
+            throw new BadRequestException("Cannot fetch more than 1000 products at once");
+        }
         assertCompanyExists(companyId);
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "products:batch:" + companyId + ":" + sortedIds;
@@ -387,7 +395,12 @@ public class ProductServiceImpl implements ProductService {
         ProductStatus initialStatus = request.getStatus() != null ? request.getStatus() : ProductStatus.DRAFT;
         applyStatusTransition(product, initialStatus, request.getScheduledPublishAt(), true);
 
-        Product saved = productRepository.save(product);
+        Product saved;
+        try {
+            saved = productRepository.save(product);
+        } catch (DataIntegrityViolationException e) {
+            throw new ConflictException("A product with this SKU already exists in this company");
+        }
         productChangeLogger.logCreate(saved, ChangeSource.USER);
         eventPublisher.publishEvent(new ProductIndexEvent(saved, saved.getCompany().getId()));
         evictAfterCommit(() -> {
@@ -495,6 +508,7 @@ public class ProductServiceImpl implements ProductService {
         productChangeLogger.logDelete(product);
         promotionRuleRepository.removeProductFromAllRules(productId);
         collectionProductRepository.deleteAllByProductId(productId);
+        productChangeLogRepository.deleteAllByProductId(productId);
         productRepository.delete(product);
         eventPublisher.publishEvent(new ProductRemoveEvent(product.getId(), marketplaceId));
         evictAfterCommit(() -> {
@@ -577,6 +591,9 @@ public class ProductServiceImpl implements ProductService {
         }
         for (Product p : products) {
             productChangeLogger.logDelete(p);
+        }
+        for (UUID pid : request.getIds()) {
+            productChangeLogRepository.deleteAllByProductId(pid);
         }
         productRepository.deleteAll(products);
         for (Product p : products) {
@@ -1083,6 +1100,7 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
 
         productChangeLogger.logVariantDelete(variant);
+        productChangeLogRepository.deleteAllByVariantId(variantId);
         productVariantRepository.delete(variant);
         evictAfterCommit(() -> {
             singleFlightCache.evict("product:" + companyId + ":" + productId);
@@ -1148,6 +1166,9 @@ public class ProductServiceImpl implements ProductService {
         if (!marketplaceProfileRepository.existsByCompanyId(marketplaceId)) {
             throw new ResourceNotFoundException("Marketplace not found");
         }
+        if (page > 10_000) {
+            throw new BadRequestException("Page number too large. Maximum page is 10,000.");
+        }
         final int clampedSize = Math.min(size, 50);
         String cacheKey = String.format("marketplace:search:%s:%s:%s:%s:%s:%s:%s:%s:%d:%d:%s:%s",
                 marketplaceId, q, category, brand, minPrice, maxPrice, featured,
@@ -1197,8 +1218,8 @@ public class ProductServiceImpl implements ProductService {
             NativeQuery esQuery = NativeQuery.builder()
                     .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
                     .withPageable(esPageable)
-                    .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
-                    .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
+                    .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20).minDocCount(1))))
+                    .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20).minDocCount(1))))
                     .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
                             .field("price")
                             .ranges(rb -> rb.to(25.0))
@@ -1230,22 +1251,8 @@ public class ProductServiceImpl implements ProductService {
 
         } catch (Exception e) {
             log.warn("[CATALOG SEARCH] Elasticsearch unavailable: {}", e.getMessage());
-            boolean hasFilters = (q != null && !q.isBlank())
-                    || category != null || brand != null || vendorId != null
-                    || minPrice != null || maxPrice != null || featured != null;
-            if (hasFilters) {
-                throw new ServiceUnavaliableException("Search is temporarily unavailable. Please try again shortly.");
-            }
-            log.warn("[CATALOG SEARCH] Falling back to unfiltered database listing");
+            throw new ServiceUnavaliableException("Search is temporarily unavailable. Please try again shortly.");
         }
-
-        // --- JPA fallback (unfiltered, no active search filters) ---
-        Page<Product> productPage = productRepository.findMarketplaceListedPaged(marketplaceId, pageable);
-        Map<UUID, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, productPage.getContent());
-        Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
-        return new CatalogSearchResponse(
-                productPage.map(p -> toCatalogResponse(p, vendorMap.get(p.getCompany().getId()), jpaPromoMap.get(p.getId()))),
-                new SearchFacets(List.of(), List.of(), List.of()));
         }, new TypeReference<CatalogSearchResponse>() {});
     }
 
@@ -1338,13 +1345,10 @@ public class ProductServiceImpl implements ProductService {
                 log.warn("[COMPANY CATALOG SEARCH] Falling back to unfiltered database listing");
             }
 
-            // --- JPA fallback (unfiltered, ACTIVE-only) ---
-            Page<Product> productPage = productRepository.findAllByCompanyId(companyId, pageable);
-            List<Product> active = productPage.getContent().stream()
-                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
-                    .toList();
-            Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(active);
-            List<MarketplaceCatalogProductResponse> content = active.stream()
+            // --- JPA fallback (ACTIVE-only) ---
+            Page<Product> productPage = productRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable);
+            Map<UUID, ActivePromotionSummary> jpaPromoMap = activePromotionLookupService.findForProducts(productPage.getContent());
+            List<MarketplaceCatalogProductResponse> content = productPage.getContent().stream()
                     .map(p -> toCatalogResponse(p, null, jpaPromoMap.get(p.getId())))
                     .toList();
             return new CatalogSearchResponse(

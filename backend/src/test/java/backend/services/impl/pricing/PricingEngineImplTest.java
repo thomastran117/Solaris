@@ -611,4 +611,91 @@ class PricingEngineImplTest {
                 .findFirst().orElseThrow();
         assertEquals(bd("0.00"), productBreakdown.savings());
     }
+
+    // -------------------- coupon validation edge cases --------------------
+
+    @Test
+    void coupon_inactiveStatus_isSkippedWithWarning() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        Coupon c = coupon("OFF10", DiscountType.PERCENTAGE, "10.00", null);
+        c.setStatus(backend.models.enums.DiscountStatus.DISABLED);
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("0.00"), result.couponSavings());
+        assertNull(result.appliedCouponCode());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("not active")));
+    }
+
+    @Test
+    void coupon_notYetActive_isSkippedWithWarning() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        Coupon c = coupon("FUTURE", DiscountType.PERCENTAGE, "10.00", null);
+        c.setStartDate(ctx.now().plusSeconds(3600)); // starts in the future
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("0.00"), result.couponSavings());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("not yet active")));
+    }
+
+    @Test
+    void coupon_expired_isSkippedWithWarning() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        Coupon c = coupon("OLD", DiscountType.PERCENTAGE, "10.00", null);
+        c.setEndDate(ctx.now().minusSeconds(3600)); // ended in the past
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("0.00"), result.couponSavings());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("expired")));
+    }
+
+    @Test
+    void coupon_maxUsesReached_isSkippedWithWarning() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        Coupon c = coupon("USED", DiscountType.PERCENTAGE, "10.00", null);
+        c.setMaxUses(5);
+        c.setUsedCount(5);
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("0.00"), result.couponSavings());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("redemption limit")));
+    }
+
+    @Test
+    void coupon_fixedAmountType_appliesCorrectly() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        Coupon c = coupon("FIXED20", DiscountType.FIXED_AMOUNT, "20.00", null);
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("20.00"), result.couponSavings());
+        assertEquals(bd("80.00"), result.finalTotal());
+        assertEquals("FIXED20", result.appliedCouponCode());
+    }
+
+    @Test
+    void coupon_fixedAmountExceedsSubtotal_capsAtSubtotal() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "10.00")), null, Set.of());
+        Coupon c = coupon("BIG", DiscountType.FIXED_AMOUNT, "50.00", null);
+        PricingResult result = engine.compute(ctx, List.of(), c);
+        assertEquals(bd("10.00"), result.couponSavings());
+        assertEquals(bd("0.00"), result.finalTotal());
+    }
+
+    // -------------------- per-user rule limit — null userId skips repo call --------------------
+
+    @Test
+    void perUserRuleLimit_withNullUserId_ruleStillApplies() {
+        // maxUsesPerUser set but ctx has no userId → short-circuits, repo never called, rule applies
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        PromotionRule rule = percentageRule("10", null, "ORDER", false, 100);
+        rule.setMaxUsesPerUser(1);
+        PricingResult result = engine.compute(ctx, List.of(rule), null);
+        assertEquals(bd("10.00"), result.promotionSavings());
+        assertEquals(bd("90.00"), result.finalTotal());
+    }
+
+    // -------------------- emptyResult with shipping --------------------
+
+    @Test
+    void emptyCart_withShipping_shippingPassesThrough() {
+        CartContext ctx = contextWithShipping(List.of(), null, Set.of(), "5.99");
+        PricingResult r = engine.quote(ctx);
+        assertEquals(bd("0.00"), r.subtotal());
+        assertEquals(bd("5.99"), r.shippingAmount());
+        assertEquals(bd("5.99"), r.finalTotal());
+    }
 }

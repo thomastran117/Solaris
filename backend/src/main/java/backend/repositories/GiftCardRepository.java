@@ -23,4 +23,8 @@ public interface GiftCardRepository extends JpaRepository<GiftCard, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT g FROM GiftCard g WHERE g.id = ?1")
     Optional<GiftCard> findByIdWithLock(UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT g FROM GiftCard g WHERE UPPER(g.code) = UPPER(?1)")
+    Optional<GiftCard> findByCodeWithLock(String code);
 }

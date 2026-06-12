@@ -24,10 +24,15 @@ const FADE_IN_NO_MOTION: Variants = {
 
 const DATE_FORMAT: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
 
+function toUtcDate(isoStr: string): Date {
+  // Ensure the string is treated as UTC by appending Z if no timezone offset present.
+  return new Date(/[Zz]|[+-]\d{2}:\d{2}$/.test(isoStr) ? isoStr : `${isoStr}Z`);
+}
+
 function formatEtaRange(min: string | null, max: string | null): string | null {
   if (!min || !max) return null;
-  const minDate = new Date(min);
-  const maxDate = new Date(max);
+  const minDate = toUtcDate(min);
+  const maxDate = toUtcDate(max);
   if (Number.isNaN(minDate.getTime()) || Number.isNaN(maxDate.getTime())) return null;
   const fmt = new Intl.DateTimeFormat(undefined, DATE_FORMAT);
   if (min === max) return fmt.format(minDate);
@@ -46,14 +51,17 @@ export default function AvailabilityPanel({ marketplaceId, productId, variantId,
   const variants = prefersReducedMotion ? FADE_IN_NO_MOTION : FADE_IN_UP;
   const { coords, permission, isRequesting, request } = useUserLocation();
 
+  const roundedLat = coords ? Math.round(coords.lat * 100) / 100 : null;
+  const roundedLng = coords ? Math.round(coords.lng * 100) / 100 : null;
+
   const { data, isLoading, isError } = useQuery({
     queryKey: [
       "availability",
       marketplaceId,
       productId,
       variantId ?? null,
-      coords?.lat ?? null,
-      coords?.lng ?? null,
+      roundedLat,
+      roundedLng,
     ],
     queryFn: () =>
       catalogApi

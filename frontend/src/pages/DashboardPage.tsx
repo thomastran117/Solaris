@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import {
   AreaChart,
@@ -12,6 +12,7 @@ import {
   type TooltipProps,
 } from "recharts";
 import type { RootState } from "../stores";
+import { useAnims } from "../hooks/useAnims";
 import {
   companyAnalyticsApi,
   type CompanyRevenueSummary,
@@ -25,23 +26,6 @@ import {
 } from "../api/analytics";
 
 // ---- Animation helpers (respect reduced motion) ----
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-
-  const fadeIn: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1 } }
-    : { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.6 } } };
-
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.12 } } };
-
-  return { fadeInUp, fadeIn, stagger };
-};
 
 // ---- Loading skeleton ----
 function SkeletonRows({ rows = 4 }: { rows?: number }) {

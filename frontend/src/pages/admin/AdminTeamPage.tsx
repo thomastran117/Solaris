@@ -1,20 +1,13 @@
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { UserPlus, Trash2, ShieldAlert } from "lucide-react";
 import type { RootState } from "../../stores";
 import { teamApi, type CompanyRole, type TeamMembership } from "../../api/team";
 import { useCompanyCapabilities } from "../../hooks/useCompanyRole";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-  return { fadeInUp, stagger };
-};
 
 function roleBadgeClass(role: CompanyRole): string {
   switch (role) {

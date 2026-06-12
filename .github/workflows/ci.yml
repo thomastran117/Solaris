@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Run unit tests with coverage gate
+        run: ./mvnw verify -Dtest="**/*Test" -Dspring-boot.repackage.skip=true --batch-mode
+
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/
+
+  backend-integration-tests:
+    name: Backend Integration Tests ${{ matrix.shard }}/7 (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            name: products-auth
+            tests: ProductSubResourcesIT,ProductIT,InventoryIT,RestockIT,AuthTokenIT,AuthRefreshIT,AuthOAuthIT,AuthSignupIT,AuthLoginIT,AuthDeviceIT
+          - shard: 2
+            name: products-extra
+            tests: BundleIT,ProductQAIT,ProductBatchIT,ReviewIT,PromotionRuleIT,KitIT,PriceWatchIT,UploadIT,PricingIT,GiftCardIT,PremiumIT,UserPreferenceIT
+          - shard: 3
+            name: marketplace-catalog
+            tests: MarketplaceAnalyticsIT,MarketplaceCatalogControllerIT,MarketplaceIT,MarketplaceCollectionIT,CommissionPolicyIT,CollectionIT,ImportIT
+          - shard: 4
+            name: orders-fulfillment
+            tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
+          - shard: 5
+            name: vendors-company
+            tests: VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,CompanyIT,TeamIT,AnnouncementIT,CompanyFollowIT,CompanyCatalogControllerIT,ProfileIT
+          - shard: 6
+            name: customers-admin-analytics
+            tests: CustomerSegmentIT,CustomerCreditIT,CustomerAddressIT,CustomerFeedIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,AdminReportControllerIT,AdminFeedbackIT,ReviewAdminIT,UserAdminIT,SearchAdminIT,PricingReportControllerIT,ReportIT
+          - shard: 7
+            name: subscriptions-returns-support
+            tests: SavedListIT,LoyaltyIT,CouponIT,SubscriptionIT,CompanyReturnLocationIT,CompanyReturnIT,ReturnIT,SupportTicketIT,InternalNoteIT,FeedbackIT
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Run integration tests
+        run: >-
+          ./mvnw test -Dtest=${{ matrix.tests }}
+          -DreuseForks=false
+          -Dsurefire.timeout=240
+          -Dsurefire.rerunFailingTestsCount=1
+          -Djacoco.skip=true
+          --batch-mode
+
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test -- --run

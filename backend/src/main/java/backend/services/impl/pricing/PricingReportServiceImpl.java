@@ -17,6 +17,7 @@ import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.pricing.PricingReportService;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,7 +54,7 @@ public class PricingReportServiceImpl implements PricingReportService {
             long redemptions = p.getRedemptionCount() != null ? p.getRedemptionCount() : 0L;
             long uniqueOrders = p.getUniqueOrderCount() != null ? p.getUniqueOrderCount() : 0L;
             rows.add(new PayoutAttributionResponse.Row(
-                    p.getFundedByCompanyId(),
+                    bytesToUuid(p.getFundedByCompanyId()),
                     p.getCompanyName(),
                     savings,
                     redemptions,
@@ -79,6 +80,11 @@ public class PricingReportServiceImpl implements PricingReportService {
         long orders = p != null && p.getUniqueOrderCount() != null ? p.getUniqueOrderCount() : 0L;
         long users = p != null && p.getUniqueUserCount() != null ? p.getUniqueUserCount() : 0L;
         return new PromotionRuleAnalyticsResponse(ruleId, from, to, count, total, orders, users);
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 
     private void validateWindow(Instant from, Instant to) {

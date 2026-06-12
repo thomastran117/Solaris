@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
 import { store } from "../stores";
@@ -15,10 +15,13 @@ export function useOrderStream(orderId: string | undefined): {
   const [connected, setConnected] = useState(false);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Prevents reopening after a terminal status is received.
+  const terminatedRef = useRef(false);
 
-  useEffect(() => {
-    if (!orderId) return;
+  const openStream = useCallback(() => {
+    if (!orderId || terminatedRef.current) return;
 
+    abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
@@ -43,7 +46,10 @@ export function useOrderStream(orderId: string | undefined): {
           try {
             const order: Order = JSON.parse(msg.data);
             qc.setQueryData(["order", orderId], order);
-            if (TERMINAL_STATUSES.has(order.status)) ctrl.abort();
+            if (TERMINAL_STATUSES.has(order.status)) {
+              terminatedRef.current = true;
+              ctrl.abort();
+            }
           } catch { /* ignore */ }
           return;
         }
@@ -55,7 +61,10 @@ export function useOrderStream(orderId: string | undefined): {
               prev ? { ...prev, status: event.status } : prev
             );
             qc.invalidateQueries({ queryKey: ["order-history", orderId] });
-            if (TERMINAL_STATUSES.has(event.status)) ctrl.abort();
+            if (TERMINAL_STATUSES.has(event.status)) {
+              terminatedRef.current = true;
+              ctrl.abort();
+            }
           } catch { /* ignore */ }
           return;
         }
@@ -75,7 +84,7 @@ export function useOrderStream(orderId: string | undefined): {
             const event: SseStatusUpdateEvent = JSON.parse(msg.data);
             if (event.driverLat != null && event.driverLng != null) {
               setDriverLocation({
-                driverId: event.orderId,
+                driverId: event.driverId ?? event.orderId,
                 lat: event.driverLat,
                 lng: event.driverLng,
                 timestamp: event.occurredAt,
@@ -99,12 +108,31 @@ export function useOrderStream(orderId: string | undefined): {
         setConnected(false);
       },
     });
+  }, [orderId, qc]);
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    terminatedRef.current = false;
+    openStream();
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        abortRef.current?.abort();
+        setConnected(false);
+      } else {
+        openStream();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      ctrl.abort();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      abortRef.current?.abort();
       setConnected(false);
     };
-  }, [orderId, qc]);
+  }, [orderId, openStream]);
 
   return { connected, driverLocation };
 }

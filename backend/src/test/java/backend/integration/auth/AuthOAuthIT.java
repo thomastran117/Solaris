@@ -1,6 +1,8 @@
 package backend.integration.auth;
 
 import backend.integration.AbstractIntegrationIT;
+import backend.models.core.User;
+import backend.models.enums.UserStatus;
 import backend.models.other.OAuthUser;
 import backend.security.oauth.InvalidOAuthTokenException;
 import backend.security.oauth.OAuthProviderNotConfiguredException;
@@ -9,6 +11,7 @@ import org.springframework.http.MediaType;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -140,6 +143,47 @@ class AuthOAuthIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(oauthBody("any-token")))
                 .andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
+    void apple_invalidToken_returns401() throws Exception {
+        when(oauthService.verifyAppleToken(any()))
+                .thenThrow(new InvalidOAuthTokenException("bad apple token"));
+
+        mockMvc.perform(post(APPLE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oauthBody("bad-token")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ── Microsoft ─────────────────────────────────────────────────────────────
+
+    @Test
+    void microsoft_providerNotConfigured_returns503() throws Exception {
+        when(oauthService.verifyMicrosoftToken(any()))
+                .thenThrow(new OAuthProviderNotConfiguredException("Microsoft"));
+
+        mockMvc.perform(post(MICROSOFT_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oauthBody("any-token")))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    // ── Account state ─────────────────────────────────────────────────────────
+
+    @Test
+    void oauth_createsUserWithActiveStatus() throws Exception {
+        when(oauthService.verifyGoogleToken(any()))
+                .thenReturn(new OAuthUser("g-sub-active", "oauthactive@example.com", "OAuth Active", "google"));
+
+        mockMvc.perform(post(GOOGLE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .content(oauthBody("mock-token")))
+                .andExpect(status().isOk());
+
+        User created = userRepository.findByEmail("oauthactive@example.com").orElseThrow();
+        assertEquals(UserStatus.ACTIVE, created.getStatus());
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

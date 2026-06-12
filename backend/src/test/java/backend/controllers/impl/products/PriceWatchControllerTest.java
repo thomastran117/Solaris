@@ -13,6 +13,7 @@ import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -41,10 +42,16 @@ class PriceWatchControllerTest {
         priceWatchService = mock(PriceWatchService.class);
         rateLimitService  = mock(RateLimitService.class);
 
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .findAndRegisterModules()
+                        .disable(com.fasterxml.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new PriceWatchController(priceWatchService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 
@@ -83,10 +90,13 @@ class PriceWatchControllerTest {
     @Test
     void list_returnsPaginatedWatches() throws Exception {
         authenticateAs(USER_ID);
+        // Use PageRequest.of(0,20) instead of Unpaged — Unpaged.getPageNumber() throws
+        // UnsupportedOperationException which would cause Jackson serialization to fail.
         when(priceWatchService.getWatchedProducts(eq(USER_ID), any()))
                 .thenReturn(new PageImpl<>(List.of(
                         new PriceWatcherResponse(WATCHER_ID, PRODUCT_ID, "Desk", 4999,
-                                Instant.parse("2026-05-31T00:00:00Z")))));
+                                Instant.parse("2026-05-31T00:00:00Z"))),
+                        org.springframework.data.domain.PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/price-watches"))
                 .andExpect(status().isOk())

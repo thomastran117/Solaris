@@ -577,6 +577,184 @@ class BundleServiceImplTest {
         verify(bundleRepository, never()).deleteAll(anyList());
     }
 
+    // ─── updateBundle — valid new items (success path) ───────────────────────
+
+    @Test
+    void updateBundle_withNewValidItems_replacesItemsAndRecomputesPrice() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        Product newProduct = makeProduct(TestIds.uuid(30), new BigDecimal("15.00"));
+        when(productRepository.findByIdAndCompanyId(TestIds.uuid(30), COMPANY_ID)).thenReturn(Optional.of(newProduct));
+
+        UpdateBundleRequest req = new UpdateBundleRequest();
+        req.setItems(List.of(item(TestIds.uuid(30), null, 2))); // 2 × $15 = $30 → auto-price
+
+        BundleResponse result = service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, req);
+
+        assertEquals(new BigDecimal("30.00"), result.getPrice());
+    }
+
+    @Test
+    void updateBundle_withNewItemsAndExplicitPrice_usesExplicitPrice() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        Product newProduct = makeProduct(TestIds.uuid(31), new BigDecimal("20.00"));
+        when(productRepository.findByIdAndCompanyId(TestIds.uuid(31), COMPANY_ID)).thenReturn(Optional.of(newProduct));
+
+        UpdateBundleRequest req = new UpdateBundleRequest();
+        req.setItems(List.of(item(TestIds.uuid(31), null, 1)));
+        req.setPrice(new BigDecimal("10.00")); // under component total of $20
+
+        BundleResponse result = service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, req);
+
+        assertEquals(new BigDecimal("10.00"), result.getPrice());
+    }
+
+    @Test
+    void updateBundle_withNewItemsAndPriceExceedsTotal_throwsBadRequest() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        Product newProduct = makeProduct(TestIds.uuid(32), new BigDecimal("10.00"));
+        when(productRepository.findByIdAndCompanyId(TestIds.uuid(32), COMPANY_ID)).thenReturn(Optional.of(newProduct));
+
+        UpdateBundleRequest req = new UpdateBundleRequest();
+        req.setItems(List.of(item(TestIds.uuid(32), null, 1)));
+        req.setPrice(new BigDecimal("50.00")); // exceeds component total of $10
+
+        assertThrows(BadRequestException.class,
+                () -> service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, req));
+    }
+
+    // ─── listBundles / getBundle (authenticated owner API) ────────────────────
+
+    @Test
+    void listBundles_authenticatedOwner_delegatesToPublicListing() {
+        when(bundleRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listBundles(COMPANY_ID, OWNER_ID, null, 0, 10);
+
+        verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
+        verify(bundleRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+    }
+
+    @Test
+    void getBundle_authenticatedOwner_delegatesToPublicMethod() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        bundle.setStatus(ProductStatus.ACTIVE);
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        BundleResponse result = service.getBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID);
+
+        verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
+        assertNotNull(result);
+        assertEquals(BUNDLE_ID, result.getId());
+    }
+
+    // ─── buildVariantTitle — non-null options ─────────────────────────────────
+
+    @Test
+    void createBundle_variantWithNonNullOption_buildsVariantTitleInResponse() {
+        Product product = makeProduct(PRODUCT_ID, new BigDecimal("20.00"));
+        ProductVariant variant = makeVariant(VARIANT_ID, new BigDecimal("12.00"));
+        variant.setOption1("Red");
+        variant.setOption2("Large");
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+
+        CreateBundleRequest req = makeCreateRequest(null, List.of(item(PRODUCT_ID, VARIANT_ID, 1)));
+
+        BundleResponse result = service.createBundle(COMPANY_ID, OWNER_ID, req);
+
+        assertNotNull(result);
+        assertFalse(result.getItems().isEmpty());
+        assertEquals("Red / Large", result.getItems().get(0).getVariantTitle());
+    }
+
+    // ─── deleteBundle ─────────────────────────────────────────────────────────
+
+    @Test
+    void deleteBundle_noActiveOrders_deletesAndPublishesEvent() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+        when(orderRepository.existsActiveOrderWithBundle(BUNDLE_ID)).thenReturn(false);
+
+        service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID);
+
+        verify(bundleRepository).delete(bundle);
+        verify(eventPublisher).publishEvent((Object) any());
+    }
+
+    // ─── batchUpdateBundles ───────────────────────────────────────────────────
+
+    @Test
+    void batchUpdateBundles_updatesStatusForAllBundles() {
+        UUID id2 = TestIds.uuid(10);
+        ProductBundle b1 = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        b1.setStatus(ProductStatus.DRAFT);
+        ProductBundle b2 = makeBundle(id2, new BigDecimal("30.00"));
+        b2.setStatus(ProductStatus.DRAFT);
+
+        when(bundleRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(b1, b2));
+        when(bundleRepository.save(any(ProductBundle.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BatchUpdateBundlesRequest req = new BatchUpdateBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID, id2));
+        req.setStatus(ProductStatus.ACTIVE);
+
+        List<BundleResponse> results = service.batchUpdateBundles(COMPANY_ID, OWNER_ID, req);
+
+        assertEquals(2, results.size());
+        verify(bundleRepository, times(2)).save(any(ProductBundle.class));
+        verify(eventPublisher, times(2)).publishEvent((Object) any());
+    }
+
+    // ─── batchDeleteBundles ───────────────────────────────────────────────────
+
+    @Test
+    void batchDeleteBundles_deletesAllAndPublishesEvents() {
+        UUID id2 = TestIds.uuid(11);
+        ProductBundle b1 = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        ProductBundle b2 = makeBundle(id2, new BigDecimal("30.00"));
+
+        when(bundleRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(b1, b2));
+
+        BatchDeleteBundlesRequest req = new BatchDeleteBundlesRequest();
+        req.setIds(List.of(BUNDLE_ID, id2));
+
+        service.batchDeleteBundles(COMPANY_ID, OWNER_ID, req);
+
+        verify(bundleRepository).deleteAll(anyList());
+        verify(eventPublisher, times(2)).publishEvent((Object) any());
+    }
+
+    // ─── compareBundles ───────────────────────────────────────────────────────
+
+    @Test
+    void compareBundles_validIds_returnsBundleResponses() {
+        UUID id2 = TestIds.uuid(12);
+        ProductBundle b1 = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        ProductBundle b2 = makeBundle(id2, new BigDecimal("30.00"));
+
+        when(bundleRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(b1, b2));
+
+        List<BundleResponse> results = service.compareBundles(COMPANY_ID, List.of(BUNDLE_ID, id2));
+
+        assertEquals(2, results.size());
+    }
+
+    @Test
+    void compareBundles_tooFewIds_throwsBadRequest() {
+        assertThrows(BadRequestException.class,
+                () -> service.compareBundles(COMPANY_ID, List.of(BUNDLE_ID)));
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private Company makeCompany() {

@@ -56,6 +56,7 @@ class PromotionRuleControllerTest {
                         new PromotionRuleController(promotionRuleService, pricingReportService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
 
         authenticateAs(USER_ID);

@@ -6,6 +6,7 @@ import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.kafka.workers.IndexVersionManager;
 import backend.kafka.workers.ProductIndexingService;
+import backend.services.intf.RateLimitService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,11 +18,14 @@ public class SearchAdminController {
 
     private final IndexVersionManager indexVersionManager;
     private final ProductIndexingService productIndexingService;
+    private final RateLimitService rateLimitService;
 
     public SearchAdminController(IndexVersionManager indexVersionManager,
-                                  ProductIndexingService productIndexingService) {
+                                  ProductIndexingService productIndexingService,
+                                  RateLimitService rateLimitService) {
         this.indexVersionManager = indexVersionManager;
         this.productIndexingService = productIndexingService;
+        this.rateLimitService = rateLimitService;
     }
 
     /**
@@ -32,6 +36,10 @@ public class SearchAdminController {
     @PostMapping("/reindex")
     @RequireAuth(roles = {"ADMIN"})
     public ResponseEntity<MessageResponse> reindex() {
+        // Rate-limit to 1 reindex per hour globally — a full reindex is expensive and
+        // should not be triggered more than once per deployment window regardless of
+        // which admin account initiates it.
+        rateLimitService.enforce("admin:reindex", "global", 1, 3600);
         try {
             indexVersionManager.rolloverIndex("products");
             productIndexingService.reindexAll();

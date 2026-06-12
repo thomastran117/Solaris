@@ -128,6 +128,65 @@ class ActivePromotionLookupServiceTest {
         assertNull(result.get(PRODUCT_A).amountOff());
     }
 
+    @Test
+    void findForProducts_nullInput_returnsEmpty() {
+        assertTrue(service.findForProducts(null).isEmpty());
+    }
+
+    @Test
+    void findForProducts_noActiveCandidates_returnsEmpty() {
+        when(promotionRuleRepository.findActiveCandidates(any(), any())).thenReturn(List.of());
+
+        Map<UUID, ActivePromotionSummary> result = service.findForProducts(List.of(product(PRODUCT_A)));
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void findForProducts_productWithNullCompany_skipped() {
+        Product noCompany = new Product();
+        noCompany.setId(TestIds.uuid(99));
+        // company is null — should be silently ignored, leading to empty companyIdMap → empty result
+        assertTrue(service.findForProducts(List.of(noCompany)).isEmpty());
+    }
+
+    @Test
+    void findForProducts_bogoRule_summaryHasNullDiscountValues() {
+        Product first = product(PRODUCT_A);
+        PromotionRule bogoRule = baseRule(PromotionRuleType.BOGO, 10);
+        bogoRule.setConfigJson("{\"buyQty\":1,\"getQty\":1,\"maxRedemptions\":0}");
+
+        when(promotionRuleRepository.findActiveCandidates(eq(Set.of(COMPANY_ID)), any()))
+                .thenReturn(List.of(bogoRule));
+
+        Map<UUID, ActivePromotionSummary> result = service.findForProducts(List.of(first));
+
+        assertEquals(1, result.size());
+        ActivePromotionSummary summary = result.get(PRODUCT_A);
+        assertEquals(PromotionRuleType.BOGO, summary.ruleType());
+        assertNull(summary.percentOff());
+        assertNull(summary.amountOff());
+    }
+
+    @Test
+    void findForProducts_bogoAndFixedSamePriority_fixedWins() {
+        // When tie-breaking: BOGO nominalSaving = 0, FIXED_OFF = 5.00 → fixed wins
+        Product first = product(PRODUCT_A);
+        PromotionRule bogo = baseRule(PromotionRuleType.BOGO, 10);
+        bogo.setConfigJson("{\"buyQty\":1,\"getQty\":1,\"maxRedemptions\":0}");
+        bogo.setTargetProducts(new HashSet<>(Set.of(first)));
+
+        PromotionRule fixed = fixedRule("5.00", 10); // same priority
+        fixed.setTargetProducts(new HashSet<>(Set.of(first)));
+
+        when(promotionRuleRepository.findActiveCandidates(eq(Set.of(COMPANY_ID)), any()))
+                .thenReturn(List.of(bogo, fixed));
+
+        Map<UUID, ActivePromotionSummary> result = service.findForProducts(List.of(first));
+
+        assertEquals(PromotionRuleType.FIXED_OFF, result.get(PRODUCT_A).ruleType());
+    }
+
     private Product product(UUID id) {
         Company company = new Company();
         company.setId(COMPANY_ID);

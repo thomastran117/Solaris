@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import SearchBar from "../components/search/SearchBar";
@@ -10,18 +10,8 @@ import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel
 import ProductCard from "../components/product/ProductCard";
 import type { RootState } from "../stores";
 import type { SearchFacets } from "../types/search";
+import { useAnims } from "../hooks/useAnims";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.2 } } }
-    : { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.06 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 const SORT_OPTIONS = [
   { label: "Relevance", sort: "createdAt", direction: "desc" },

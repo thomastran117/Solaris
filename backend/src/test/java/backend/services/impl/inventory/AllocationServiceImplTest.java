@@ -67,6 +67,127 @@ class AllocationServiceImplTest {
         verify(locationStockRepository).restoreStock(STOCK_B, 1);
     }
 
+    @Test
+    void allocate_nearestWithBuyerCoords_usesDistanceSortedResults() {
+        when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 5)));
+        when(locationStockRepository.decrementStock(STOCK_A, 3)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 3, AllocationStrategy.NEAREST, 43.0, -79.0);
+
+        assertEquals(1, results.size());
+        assertEquals(3, results.get(0).allocatedQty());
+    }
+
+    @Test
+    void allocate_nearestWithCoords_emptyDistanceResult_fallsBackToHighestStock() {
+        when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
+                .thenReturn(List.of());
+        when(locationStockRepository.findTopByProductStockDesc(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 4)));
+        when(locationStockRepository.decrementStock(STOCK_A, 2)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 2, AllocationStrategy.NEAREST, 43.0, -79.0);
+
+        assertEquals(1, results.size());
+    }
+
+    @Test
+    void allocate_cheapestStrategy_usesProductCostSortedResults() {
+        when(locationStockRepository.findByProductOrderedByCost(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 10)));
+        when(locationStockRepository.decrementStock(STOCK_A, 4)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 4, AllocationStrategy.CHEAPEST, null, null);
+
+        assertEquals(1, results.size());
+        assertEquals(4, results.get(0).allocatedQty());
+    }
+
+    @Test
+    void allocate_cheapestStrategy_emptyResult_fallsBackToHighestStock() {
+        when(locationStockRepository.findByProductOrderedByCost(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of());
+        when(locationStockRepository.findTopByProductStockDesc(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 5)));
+        when(locationStockRepository.decrementStock(STOCK_A, 5)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 5, AllocationStrategy.CHEAPEST, null, null);
+
+        assertEquals(1, results.size());
+    }
+
+    @Test
+    void allocate_highestStockWithVariant_usesVariantQuery() {
+        UUID variantId = TestIds.uuid(10);
+        when(locationStockRepository.findTopByVariantStockDesc(eq(PRODUCT_ID), eq(variantId), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 3)));
+        when(locationStockRepository.decrementStock(STOCK_A, 3)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, variantId, 3, AllocationStrategy.HIGHEST_STOCK, null, null);
+
+        assertEquals(1, results.size());
+    }
+
+    @Test
+    void allocate_noCandidates_returnsEmpty() {
+        when(locationStockRepository.findTopByProductStockDesc(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of());
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 2, AllocationStrategy.HIGHEST_STOCK, null, null);
+
+        assertTrue(results.isEmpty());
+    }
+
+    @Test
+    void allocate_nearestWithVariantAndCoords_usesVariantDistanceQuery() {
+        UUID variantId = TestIds.uuid(11);
+        when(locationStockRepository.findByVariantOrderedByDistance(eq(PRODUCT_ID), eq(variantId), eq(43.0), eq(-79.0), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 6)));
+        when(locationStockRepository.decrementStock(STOCK_A, 2)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, variantId, 2, AllocationStrategy.NEAREST, 43.0, -79.0);
+
+        assertEquals(1, results.size());
+    }
+
+    @Test
+    void allocate_cheapestWithVariant_usesVariantCostQuery() {
+        UUID variantId = TestIds.uuid(12);
+        when(locationStockRepository.findByVariantOrderedByCost(eq(PRODUCT_ID), eq(variantId), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 8)));
+        when(locationStockRepository.decrementStock(STOCK_A, 3)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, variantId, 3, AllocationStrategy.CHEAPEST, null, null);
+
+        assertEquals(1, results.size());
+    }
+
+    @Test
+    void allocate_decrementReturnZero_skipsToNextCandidate() {
+        when(locationStockRepository.findTopByProductStockDesc(eq(PRODUCT_ID), any()))
+                .thenReturn(List.of(locationStock(STOCK_A, 3), locationStock(STOCK_B, 2)));
+        // STOCK_A decrement returns 0 → race condition, skip
+        when(locationStockRepository.decrementStock(STOCK_A, 3)).thenReturn(0);
+        when(locationStockRepository.decrementStock(STOCK_B, 2)).thenReturn(1);
+
+        List<AllocationResult> results = service.allocate(
+                PRODUCT_ID, null, 3, AllocationStrategy.HIGHEST_STOCK, null, null);
+
+        // STOCK_A skipped (decrementStock returns 0 — race condition); remaining stays 3
+        // STOCK_B provides 2 → remaining=1 → not fully satisfied → rollback
+        assertTrue(results.isEmpty());
+        verify(locationStockRepository).restoreStock(STOCK_B, 2);
+    }
+
     private LocationStock locationStock(UUID id, int stock) {
         LocationStock ls = new LocationStock();
         ls.setId(id);

@@ -3,29 +3,34 @@ package backend.controllers.impl.admin;
 import backend.configurations.application.GlobalExceptionHandler;
 import backend.kafka.workers.IndexVersionManager;
 import backend.kafka.workers.ProductIndexingService;
+import backend.services.intf.RateLimitService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class SearchAdminControllerTest {
 
     private IndexVersionManager indexVersionManager;
     private ProductIndexingService productIndexingService;
+    private RateLimitService rateLimitService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         indexVersionManager   = mock(IndexVersionManager.class);
         productIndexingService = mock(ProductIndexingService.class);
+        rateLimitService       = mock(RateLimitService.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new SearchAdminController(indexVersionManager, productIndexingService))
+                        new SearchAdminController(indexVersionManager, productIndexingService, rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
     }
 

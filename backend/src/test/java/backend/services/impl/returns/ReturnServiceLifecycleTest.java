@@ -78,6 +78,11 @@ class ReturnServiceLifecycleTest {
         loyaltyService = mock(LoyaltyService.class);
         activityEventPublisher = mock(ActivityEventPublisher.class);
 
+        RiskProperties riskProperties = mock(RiskProperties.class);
+        RiskProperties.ReturnPolicy returnPolicy = mock(RiskProperties.ReturnPolicy.class);
+        when(returnPolicy.getWindowDays()).thenReturn(30);
+        when(riskProperties.getReturnPolicy()).thenReturn(returnPolicy);
+
         service = new ReturnServiceImpl(
                 returnRepository,
                 returnItemRepository,
@@ -93,7 +98,7 @@ class ReturnServiceLifecycleTest {
                 mock(PaymentService.class),
                 mock(RiskEngine.class),
                 mock(RiskAssessmentRepository.class),
-                mock(RiskProperties.class),
+                riskProperties,
                 activityEventPublisher,
                 loyaltyService,
                 mock(AuthAuditLogger.class)

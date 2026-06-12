@@ -82,8 +82,8 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, UUID> {
                 p.stock                                     AS currentStock,
                 p.price                                     AS price,
                 p.currency                                  AS currency,
-                COALESCE(SUM(oi.quantity), 0)               AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.unit_price), 0.00) AS totalRevenue
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0)               AS totalUnitsSold,
+                COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity * oi.unit_price ELSE 0 END), 0.00) AS totalRevenue
             FROM products p
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
@@ -93,8 +93,8 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, UUID> {
               AND p.stock > 0
               AND p.status = 'ACTIVE'
             GROUP BY p.id, p.name, p.sku, p.stock, p.price, p.currency
-            HAVING COALESCE(SUM(oi.quantity), 0) / :windowDays < :maxVelocity
-            ORDER BY COALESCE(SUM(oi.quantity), 0) / :windowDays ASC
+            HAVING COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0) / :windowDays < :maxVelocity
+            ORDER BY COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0) / :windowDays ASC
             LIMIT :limitVal
             """)
     List<SlowMoverProjection> getSlowMovers(

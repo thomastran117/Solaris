@@ -133,6 +133,19 @@ class AbandonedCheckoutServiceImplTest {
     }
 
     @Test
+    void onReservationExpired_delegatesToHandleExpiredReservation() {
+        when(recoveryRepository.existsByUserIdAndSentDate(eq(USER_ID), any(LocalDate.class)))
+                .thenReturn(false);
+        when(recoveryRepository.save(any(AbandonedCartRecovery.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        service.onReservationExpired(event(new BigDecimal("9.99")));
+
+        verify(recoveryRepository).save(any(AbandonedCartRecovery.class));
+        verify(emailService).sendAbandonedCartEmail(any(), any(), any(), any(), anyList());
+    }
+
+    @Test
     void handleExpiredReservation_recoveryRowHasCorrectFields() {
         when(recoveryRepository.existsByUserIdAndSentDate(any(), any())).thenReturn(false);
         when(recoveryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

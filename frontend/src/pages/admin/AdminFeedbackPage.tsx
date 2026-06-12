@@ -1,20 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { MessageSquare, Star, ChevronLeft, ChevronRight, Eye, CheckCircle } from "lucide-react";
 import NavyGridGlowBackground from "../../components/layout/NavyGridGlowBackground";
 import { feedbackAdminApi } from "../../api/feedback";
 import type { Feedback, FeedbackCategory, FeedbackStatus } from "../../types/feedback";
 import { FEEDBACK_CATEGORIES } from "../../schemas/feedback";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
-    : { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45 } } };
-  const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-  return { fadeInUp, stagger };
-};
 
 const STATUS_FILTERS: { value: FeedbackStatus; label: string }[] = [
   { value: "OPEN",         label: "Open" },

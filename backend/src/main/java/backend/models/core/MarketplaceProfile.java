@@ -1,6 +1,7 @@
 package backend.models.core;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -44,7 +45,8 @@ public class MarketplaceProfile {
     @Column(nullable = false, length = 20)
     private PayoutSchedule payoutSchedule = PayoutSchedule.WEEKLY;
 
-    /** Number of days to hold vendor funds after order delivery before making available for payout. */
+    /** Number of days to hold vendor funds after order delivery before making available for payout. Zero = no hold. */
+    @Min(0)
     @Column(nullable = false)
     private int holdPeriodDays = 7;
 

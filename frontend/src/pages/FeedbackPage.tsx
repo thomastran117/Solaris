@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { Star, CheckCircle, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import type { RootState } from "../stores";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
@@ -13,6 +13,7 @@ import SectionFade from "../components/section/SectionFade";
 import SectionTitle from "../components/section/SectionTitle";
 import { feedbackApi } from "../api/feedback";
 import type { FeedbackStatus } from "../types/feedback";
+import { useAnims } from "../hooks/useAnims";
 import {
   feedbackFormSchema,
   feedbackFormDefaults,
@@ -20,17 +21,6 @@ import {
   type FeedbackFormValues,
 } from "../schemas/feedback";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  const stagger: Variants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: 0.08 } },
-  };
-  return { fadeInUp, stagger };
-};
 
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors";

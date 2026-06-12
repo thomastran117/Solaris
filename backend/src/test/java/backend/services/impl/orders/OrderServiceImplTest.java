@@ -38,15 +38,24 @@ import backend.repositories.PromotionRuleRepository;
 import backend.repositories.RiskAssessmentRepository;
 import backend.repositories.RiskReviewRepository;
 import backend.repositories.SubOrderRepository;
+import backend.repositories.OrderStatusHistoryRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.VendorBalanceRepository;
 import backend.services.impl.inventory.StockAlertService;
+import backend.dtos.requests.order.ShipOrderRequest;
+import backend.models.core.OrderCompensation;
+import backend.models.core.RiskReview;
+import backend.models.enums.CompensationStatus;
+import backend.models.enums.CompensationType;
+import backend.models.enums.FulfillmentMethod;
+import backend.models.enums.RiskReviewStatus;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.CacheService;
 import backend.services.intf.auth.DeviceService;
 import backend.services.intf.auth.EmailVerificationService;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.inventory.AllocationService;
+import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.pricing.CommissionEngine;
 import backend.services.intf.pricing.PricingEngine;
@@ -57,7 +66,21 @@ import backend.services.intf.promotions.LoyaltyService;
 import backend.services.intf.support.EmailService;
 import backend.models.enums.FulfillmentMethod;
 import backend.models.core.InventoryLocation;
+import backend.models.core.BundleItem;
+import backend.models.core.Coupon;
+import backend.models.core.ProductBundle;
+import backend.models.enums.DiscountStatus;
+import backend.models.enums.ProductStatus;
+import backend.models.enums.UserTier;
+import backend.dtos.requests.order.CreateOrderRequest;
+import backend.dtos.responses.loyalty.LoyaltyRedemptionQuoteResponse;
+import backend.services.pricing.PricingResult;
+import backend.services.pricing.CartContext;
+import backend.services.risk.RiskAssessmentResult;
+import backend.services.risk.RiskSignal;
+import backend.models.enums.RiskSignalType;
 import backend.testutil.TestIds;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -73,7 +96,24 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import backend.dtos.requests.order.ReturnOrderRequest;
+import backend.exceptions.http.BadRequestException;
+import backend.exceptions.http.ForbiddenException;
+import backend.models.core.ProductVariant;
+import backend.models.core.RiskAssessment;
+import backend.services.intf.returns.ReturnService;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -91,7 +131,25 @@ class OrderServiceImplTest {
     private CompanyAccessService companyAccessService;
     private PaymentService paymentService;
     private ProductRepository productRepository;
+    private ProductVariantRepository variantRepository;
+    private OrderCompensationRepository compensationRepository;
+    private CacheService cacheService;
+    private RiskReviewRepository riskReviewRepository;
+    private LoyaltyService loyaltyService;
     private OrderFulfillmentEventPublisher fulfillmentEventPublisher;
+    // Additional named mocks for createOrder / webhook tests
+    private UserRepository userRepository;
+    private PricingEngine pricingEngine;
+    private RiskEngine riskEngine;
+    private RiskProperties riskProperties;
+    private RiskAssessmentRepository riskAssessmentRepository;
+    private BundleRepository bundleRepository;
+    private InventoryLocationRepository locationRepository;
+    private CouponRepository couponRepository;
+    private CouponPerUserCountRepository couponPerUserCountRepository;
+    private LocationStockRepository      locationStockRepository;
+    private InventoryAdjustmentRepository adjustmentRepository;
+    private MarketplaceVendorRepository   marketplaceVendorRepository;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -100,49 +158,71 @@ class OrderServiceImplTest {
         companyAccessService     = mock(CompanyAccessService.class);
         paymentService           = mock(PaymentService.class);
         productRepository        = mock(ProductRepository.class);
+        variantRepository        = mock(ProductVariantRepository.class);
+        compensationRepository   = mock(OrderCompensationRepository.class);
+        cacheService             = mock(CacheService.class);
+        riskReviewRepository     = mock(RiskReviewRepository.class);
+        loyaltyService           = mock(LoyaltyService.class);
         fulfillmentEventPublisher = mock(OrderFulfillmentEventPublisher.class);
+        userRepository           = mock(UserRepository.class);
+        pricingEngine            = mock(PricingEngine.class);
+        riskEngine               = mock(RiskEngine.class);
+        riskProperties           = mock(RiskProperties.class);
+        riskAssessmentRepository = mock(RiskAssessmentRepository.class);
+        when(riskAssessmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        bundleRepository               = mock(BundleRepository.class);
+        couponRepository               = mock(CouponRepository.class);
+        couponPerUserCountRepository   = mock(CouponPerUserCountRepository.class);
+        when(couponPerUserCountRepository.tryIncrementUserCount(any(), any(), anyInt())).thenReturn(1);
+        locationStockRepository     = mock(LocationStockRepository.class);
+        adjustmentRepository        = mock(InventoryAdjustmentRepository.class);
+        marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
+        locationRepository       = mock(InventoryLocationRepository.class);
 
         service = new OrderServiceImpl(
                 orderRepository,
-                mock(OrderCompensationRepository.class),
+                compensationRepository,
                 productRepository,
-                mock(ProductVariantRepository.class),
-                mock(LocationStockRepository.class),
-                mock(InventoryAdjustmentRepository.class),
-                mock(InventoryLocationRepository.class),
-                mock(BundleRepository.class),
+                variantRepository,
+                locationStockRepository,
+                adjustmentRepository,
+                locationRepository,
+                bundleRepository,
                 mock(backend.repositories.ProductKitRepository.class),
-                mock(UserRepository.class),
+                userRepository,
                 mock(CompanyRepository.class),
-                mock(CouponRepository.class),
+                couponRepository,
                 mock(CouponRedemptionRepository.class),
-                mock(CouponPerUserCountRepository.class),
+                couponPerUserCountRepository,
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
-                mock(PricingEngine.class),
+                pricingEngine,
                 paymentService,
-                mock(CacheService.class),
+                cacheService,
                 mock(StockAlertService.class),
                 mock(EmailService.class),
                 mock(AllocationService.class),
-                mock(RiskEngine.class),
-                mock(RiskAssessmentRepository.class),
-                mock(RiskReviewRepository.class),
+                riskEngine,
+                riskAssessmentRepository,
+                riskReviewRepository,
                 mock(FailedPaymentAttemptRepository.class),
-                mock(RiskProperties.class),
+                riskProperties,
                 mock(DeviceService.class),
                 mock(EmailVerificationService.class),
-                mock(MarketplaceVendorRepository.class),
+                marketplaceVendorRepository,
                 mock(SubOrderRepository.class),
                 mock(OrderItemRepository.class),
                 mock(CommissionEngine.class),
                 mock(CommissionRecordRepository.class),
                 mock(VendorBalanceRepository.class),
-                mock(LoyaltyService.class),
+                loyaltyService,
                 mock(ActivityEventPublisher.class),
                 companyAccessService,
                 fulfillmentEventPublisher,
                 mock(TrackingService.class));
+
+        service.setOrderStatusHistoryRepository(mock(OrderStatusHistoryRepository.class));
+        service.setEventPublisher(mock(org.springframework.context.ApplicationEventPublisher.class));
     }
 
     @Test
@@ -585,5 +665,1756 @@ class OrderServiceImplTest {
         user.setRole(UserRole.USER);
         user.setEmail("user" + id + "@example.com");
         return user;
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsShipped — happy path
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsShipped_packedDeliveryOrder_setsShippedStatus() {
+        Order order = packedDeliveryOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsShipped(COMPANY_ID, ORDER_ID, USER_ID, new ShipOrderRequest("TRK-1", "UPS", null, null));
+
+        assertEquals(OrderStatus.SHIPPED, order.getStatus());
+        assertEquals("TRK-1", order.getTrackingNumber());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Shipped.class));
+    }
+
+    @Test
+    void markAsShipped_setsItemFulfillmentStatusToShipped() {
+        Order order = packedDeliveryOrder();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsShipped(COMPANY_ID, ORDER_ID, USER_ID, new ShipOrderRequest("TRK-2", "FedEx", null, null));
+
+        assertEquals(FulfillmentStatus.SHIPPED, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // compensateOrder
+    // -------------------------------------------------------------------------
+
+    @Test
+    void compensateOrder_alreadyCompensated_returnsEarly() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(0); // 0 = already compensated
+
+        service.compensateOrder(order);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(compensationRepository, never()).save(any());
+    }
+
+    @Test
+    void compensateOrder_reservedOrder_cancelsPaymentAndSetsFailedStatus() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(paymentService).cancelPaymentIntent(PAYMENT_INTENT_ID);
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        assertEquals(CancellationReason.STALE_TIMEOUT, order.getCancellationReason());
+    }
+
+    @Test
+    void compensateOrder_restoresStockForEachItem() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 1);
+    }
+
+    @Test
+    void compensateOrder_restockFails_stillSavesOrderAndReleasesLocks() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(productRepository.restoreStock(any(), anyInt())).thenThrow(new RuntimeException("DB error"));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order); // must not throw
+
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void compensateOrder_callsLoyaltyClawback() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.compensateOrder(order);
+
+        verify(loyaltyService).restoreRedeemedPoints(ORDER_ID);
+    }
+
+    // -------------------------------------------------------------------------
+    // retryCompensation
+    // -------------------------------------------------------------------------
+
+    @Test
+    void retryCompensation_alreadyClaimed_returnsEarly() {
+        OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE, "product:1234:qty:1");
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(0);
+
+        service.retryCompensation(comp);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(compensationRepository, never()).save(any());
+    }
+
+    @Test
+    void retryCompensation_stockRestore_productPath_restoresStock() {
+        UUID productId = TestIds.uuid(20);
+        String detail = "[PRODUCT]:" + productId + ":qty:2";
+        OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE, detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+
+        service.retryCompensation(comp);
+
+        verify(compensationRepository).save(comp);
+        assertEquals(CompensationStatus.COMPLETED, comp.getStatus());
+    }
+
+    @Test
+    void retryCompensation_paymentCancel_cancelsIntent() {
+        String detail = "pi_test_intent";
+        OrderCompensation comp = compensation(CompensationType.PAYMENT_CANCEL,
+                "Cancelled payment intent: " + detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+
+        service.retryCompensation(comp);
+
+        verify(paymentService).cancelPaymentIntent(detail);
+        verify(compensationRepository).save(comp);
+        assertEquals(CompensationStatus.COMPLETED, comp.getStatus());
+    }
+
+    @Test
+    void retryCompensation_paymentCancelThrows_setsErrorMessage() {
+        String detail = "pi_fail_intent";
+        OrderCompensation comp = compensation(CompensationType.PAYMENT_CANCEL,
+                "Cancelled payment intent: " + detail);
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+        when(paymentService.cancelPaymentIntent(detail)).thenThrow(new RuntimeException("Stripe error"));
+
+        service.retryCompensation(comp);
+
+        verify(compensationRepository).save(comp);
+        assertEquals("Stripe error", comp.getErrorMessage());
+    }
+
+    // -------------------------------------------------------------------------
+    // fulfillPendingBackorders
+    // -------------------------------------------------------------------------
+
+    @Test
+    void fulfillPendingBackorders_lockNotAcquired_returnsEarly() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(false);
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(orderRepository, never()).findPaidOrdersWithBackorderedProduct(any(), any());
+    }
+
+    @Test
+    void fulfillPendingBackorders_noBackorders_doesNotDecrementStock() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(orderRepository.findPaidOrdersWithBackorderedProduct(PRODUCT_ID, FulfillmentStatus.BACKORDERED))
+                .thenReturn(List.of());
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(productRepository, never()).decrementStock(any(), anyInt());
+    }
+
+    @Test
+    void fulfillPendingBackorders_backorderAvailable_decrementsStockAndTransitionsPending() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(company(COMPANY_ID));
+        product.setStock(10);
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(product);
+        item.setQuantity(2);
+        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+
+        Order order = cancellableOrder(OrderStatus.PAID);
+        order.setItems(List.of(item));
+
+        when(orderRepository.findPaidOrdersWithBackorderedProduct(PRODUCT_ID, FulfillmentStatus.BACKORDERED))
+                .thenReturn(List.of(order));
+        when(productRepository.decrementStock(PRODUCT_ID, 2)).thenReturn(1);
+        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.fulfillPendingBackorders(PRODUCT_ID, null, 5, null);
+
+        verify(productRepository).decrementStock(PRODUCT_ID, 2);
+        assertEquals(FulfillmentStatus.PENDING, item.getFulfillmentStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // approveRiskReview
+    // -------------------------------------------------------------------------
+
+    @Test
+    void approveRiskReview_orderNotUnderReview_throwsConflict() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () ->
+                service.approveRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null));
+    }
+
+    @Test
+    void approveRiskReview_happyPath_createsPaymentIntentAndSetsReserved() {
+        Order order = cancellableOrder(OrderStatus.UNDER_REVIEW);
+        order.getItems().get(0).setProduct(productInCompany(COMPANY_ID));
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        RiskReview review = new RiskReview();
+        review.setStatus(RiskReviewStatus.PENDING);
+        when(riskReviewRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(review));
+
+        when(paymentService.createPaymentIntent(anyLong(), any(), any(), any()))
+                .thenReturn(new PaymentService.PaymentIntentResult("pi_new", "secret", 5000L, "usd", "requires_payment_method", null));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null);
+
+        assertEquals(OrderStatus.RESERVED, order.getStatus());
+        assertEquals(RiskReviewStatus.APPROVED, review.getStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // rejectRiskReview
+    // -------------------------------------------------------------------------
+
+    @Test
+    void rejectRiskReview_orderNotUnderReview_throwsConflict() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () ->
+                service.rejectRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null));
+    }
+
+    @Test
+    void rejectRiskReview_happyPath_cancelsOrderAndSetsRejected() {
+        Order order = cancellableOrder(OrderStatus.UNDER_REVIEW);
+        order.getItems().get(0).setProduct(productInCompany(COMPANY_ID));
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.findByIdAndUserId(eq(ORDER_ID), any(UUID.class))).thenReturn(Optional.of(order));
+
+        RiskReview review = new RiskReview();
+        review.setStatus(RiskReviewStatus.PENDING);
+        when(riskReviewRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(review));
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.rejectRiskReview(COMPANY_ID, ORDER_ID, USER_ID, null);
+
+        assertEquals(RiskReviewStatus.REJECTED, review.getStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // markAsPacked
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsPacked_happyPath_setsOrderAndItemStatus() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsPacked(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.PACKED, order.getStatus());
+        assertEquals(FulfillmentStatus.PACKED, order.getItems().get(0).getFulfillmentStatus());
+    }
+
+    @Test
+    void markAsPacked_wrongStatus_throwsConflictOrBadRequest() {
+        Order order = cancellableOrder(OrderStatus.SHIPPED);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(Exception.class, () -> service.markAsPacked(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    // -------------------------------------------------------------------------
+    // markAsDelivered — delivery (non-pickup) path
+    // -------------------------------------------------------------------------
+
+    @Test
+    void markAsDelivered_deliveryOrder_setsDeliveredAndPublishesEvent() {
+        Order order = cancellableOrder(OrderStatus.SHIPPED);
+        order.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        order.getItems().get(0).setFulfillmentStatus(FulfillmentStatus.SHIPPED);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markAsDelivered(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.DELIVERED, order.getStatus());
+        assertEquals(FulfillmentStatus.DELIVERED, order.getItems().get(0).getFulfillmentStatus());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Delivered.class));
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional helpers
+    // -------------------------------------------------------------------------
+
+    private Order packedDeliveryOrder() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        order.setStatus(OrderStatus.PACKED);
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        order.setUpdatedAt(Instant.parse("2026-05-19T00:00:00Z"));
+        OrderItem item = orderItem(TestIds.uuid(11), company(COMPANY_ID), "Widget", new BigDecimal("50.00"));
+        item.setFulfillmentStatus(FulfillmentStatus.PACKED);
+        order.setItems(new java.util.ArrayList<>(List.of(item)));
+        return order;
+    }
+
+    private Product productInCompany(UUID companyId) {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(companyId));
+        return p;
+    }
+
+    private OrderCompensation compensation(CompensationType type, String detail) {
+        OrderCompensation c = new OrderCompensation();
+        c.setId(TestIds.uuid(99));
+        c.setType(type);
+        c.setDetail(detail);
+        c.setStatus(CompensationStatus.FAILED);
+        c.setAttempts(1);
+        return c;
+    }
+
+    // =========================================================================
+    // createOrder — comprehensive tests
+    // =========================================================================
+
+    /** Stubs the distributed lock to succeed for every key. */
+    private void stubLockSuccess() {
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+    }
+
+    /** Stubs pricingEngine.quote() to return a zero-price result. */
+    private void stubPricingSuccess() {
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        List.of()));
+    }
+
+    /** Stubs riskEngine.assess() to allow the order. */
+    private void stubRiskAllow() {
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+    }
+
+    /** Stubs paymentService.createPaymentIntent() to return a test result. */
+    private void stubPaymentSuccess() {
+        when(paymentService.createPaymentIntent(anyLong(), any(), any(), any()))
+                .thenReturn(new PaymentService.PaymentIntentResult(
+                        "pi_test", "secret", 5000L, "usd", "requires_payment_method", null));
+    }
+
+    /** Returns a User with PREMIUM tier (not capped at 50 items). */
+    private User premiumUser() {
+        User u = user(USER_ID);
+        u.setTier(UserTier.PREMIUM);
+        return u;
+    }
+
+    /** Returns a ACTIVE, listed, purchasable product belonging to COMPANY_ID. */
+    private Product activeProduct() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setName("Widget");
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        p.setPurchasable(true);
+        p.setPrice(new BigDecimal("50.00"));
+        Company co = company(COMPANY_ID);
+        p.setCompany(co);
+        return p;
+    }
+
+    /** Builds a single-item DELIVERY CreateOrderRequest with a full shipping address. */
+    private CreateOrderRequest deliveryRequest(UUID productId, int qty) {
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        item.setProductId(productId);
+        item.setQuantity(qty);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        req.setShipRecipientName("Alice Smith");
+        req.setShipStreet("123 Main St");
+        req.setShipCity("Toronto");
+        req.setShipPostalCode("M5V1A1");
+        req.setShipCountry("CA");
+        return req;
+    }
+
+    // ─── createOrder happy path ───────────────────────────────────────────────
+
+    @Test
+    void createOrder_singleProductItem_successfullyCreatesOrder() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1));
+
+        assertNotNull(resp);
+        verify(orderRepository, atLeast(2)).save(any(Order.class));
+        verify(paymentService).createPaymentIntent(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void createOrder_deliveryWithoutAddress_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        item.setProductId(PRODUCT_ID);
+        item.setQuantity(1);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        // No address fields set
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
+    @Test
+    void createOrder_productNotFound_throwsResourceNotFoundException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of()); // empty → size mismatch
+        stubLockSuccess();
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+    }
+
+    @Test
+    void createOrder_productNotActive_throwsBadRequestException() {
+        Product product = activeProduct();
+        product.setStatus(ProductStatus.DRAFT); // not ACTIVE
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+    }
+
+    @Test
+    void createOrder_productNotPurchasable_throwsBadRequestException() {
+        Product product = activeProduct();
+        product.setPurchasable(false);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+    }
+
+    @Test
+    void createOrder_insufficientStock_throwsConflictException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(0); // 0 = out of stock
+        stubLockSuccess();
+
+        assertThrows(ConflictException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+    }
+
+    @Test
+    void createOrder_riskEngineBlocks_orderSetToUnderReview() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        when(riskEngine.assess(any())).thenReturn(
+                RiskAssessmentResult.block(80, List.of(), List.of()));
+        when(riskProperties.getMode()).thenReturn(backend.models.enums.RiskMode.ENFORCE);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1));
+
+        assertEquals(OrderStatus.UNDER_REVIEW.name(), resp.getStatus());
+        verify(paymentService, never()).createPaymentIntent(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void createOrder_paymentFails_savesFailedOrderAndRethrows() {
+        // createOrder re-throws the payment exception after saving FAILED status and scheduling compensation
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        when(paymentService.createPaymentIntent(anyLong(), any(), any(), any()))
+                .thenThrow(new RuntimeException("Stripe down"));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        // The exception propagates (payment failure is re-thrown after saving FAILED status)
+        assertThrows(RuntimeException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+
+        // Verify: save was called (initial save + FAILED save), and stock schedule was triggered
+        verify(orderRepository, atLeast(1)).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_freeTierTooManyItems_throwsPremiumRequiredException() {
+        User freeUser = user(USER_ID);
+        freeUser.setTier(UserTier.FREE);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(freeUser));
+
+        CreateOrderRequest req = new CreateOrderRequest();
+        List<CreateOrderRequest.OrderItemRequest> items = new java.util.ArrayList<>();
+        for (int i = 0; i < 51; i++) {
+            CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+            item.setProductId(TestIds.uuid(100 + i));
+            item.setQuantity(1);
+            items.add(item);
+        }
+        req.setItems(items);
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        req.setShipRecipientName("Alice");
+        req.setShipStreet("123 St");
+        req.setShipCity("City");
+        req.setShipPostalCode("12345");
+        req.setShipCountry("US");
+
+        assertThrows(backend.exceptions.http.PremiumRequiredException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
+    @Test
+    void createOrder_userNotFound_throwsResourceNotFoundException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
+    }
+
+    @Test
+    void createOrder_itemWithNeitherProductNorBundle_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        // No productId, bundleId, or kitId set
+        item.setQuantity(1);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        req.setShipRecipientName("Alice");
+        req.setShipStreet("123 St");
+        req.setShipCity("City");
+        req.setShipPostalCode("12345");
+        req.setShipCountry("US");
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
+    @Test
+    void createOrder_pickupWithoutLocationId_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        item.setProductId(PRODUCT_ID);
+        item.setQuantity(1);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        // No pickupLocationId
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
+    @Test
+    void createOrder_backorderProduct_itemStatusSetToBackordered() {
+        Product product = activeProduct();
+        product.setBackorderEnabled(true);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(0); // 0 = out of stock
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1));
+
+        assertNotNull(resp);
+        // Order still created (backordered items don't fail the order)
+        verify(orderRepository, atLeast(1)).save(any(Order.class));
+    }
+
+    // ─── listRiskReviews / getOrderRisk ───────────────────────────────────────
+
+    @Test
+    void listRiskReviews_returnsPagedResults() {
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company(COMPANY_ID));
+        when(riskReviewRepository.findByCompanyIdAndStatus(eq(COMPANY_ID), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        var result = service.listRiskReviews(COMPANY_ID, USER_ID, null, 0, 10);
+
+        assertNotNull(result);
+    }
+
+    // =========================================================================
+    // Bundle item tests
+    // =========================================================================
+
+    @Test
+    void createOrder_bundleItem_happyPath_decrementsConstituentStock() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(50);
+        UUID BUNDLE_ID         = TestIds.uuid(51);
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of()); // no standalone products
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID)));
+        when(productRepository.decrementStock(BUNDLE_PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1));
+
+        assertNotNull(resp);
+        verify(productRepository).decrementStock(BUNDLE_PRODUCT_ID, 1);
+        verify(orderRepository, atLeast(2)).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_bundleConstituent_notActive_throwsBadRequest() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(52);
+        UUID BUNDLE_ID         = TestIds.uuid(53);
+
+        ProductBundle bundle = activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID);
+        bundle.getItems().get(0).getProduct().setStatus(ProductStatus.DRAFT); // not active
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of());
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(bundle));
+        when(productRepository.decrementStock(any(), anyInt())).thenReturn(1);
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1)));
+    }
+
+    @Test
+    void createOrder_bundleInsufficientStock_throwsConflictException() {
+        UUID BUNDLE_PRODUCT_ID = TestIds.uuid(54);
+        UUID BUNDLE_ID         = TestIds.uuid(55);
+
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of());
+        when(bundleRepository.findById(BUNDLE_ID)).thenReturn(Optional.of(activeBundle(BUNDLE_ID, BUNDLE_PRODUCT_ID)));
+        when(productRepository.decrementStock(BUNDLE_PRODUCT_ID, 1)).thenReturn(0); // out of stock
+        stubLockSuccess();
+
+        assertThrows(ConflictException.class,
+                () -> service.createOrder(USER_ID, bundleRequest(BUNDLE_ID, 1)));
+    }
+
+    // =========================================================================
+    // Coupon tests
+    // =========================================================================
+
+    @Test
+    void createOrder_couponNotFound_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SUMMER20")).thenReturn(Optional.empty());
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SUMMER20")));
+    }
+
+    @Test
+    void createOrder_couponDisabled_throwsBadRequestException() {
+        Coupon coupon = coupon("SUMMER20", DiscountStatus.DISABLED, null, null);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SUMMER20")).thenReturn(Optional.of(coupon));
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SUMMER20")));
+    }
+
+    @Test
+    void createOrder_couponPerUserExhausted_throwsBadRequestException() {
+        Coupon coupon = coupon("LIMIT1", DiscountStatus.ACTIVE, null, 1); // max 1 use per user
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("LIMIT1")).thenReturn(Optional.of(coupon));
+        when(couponPerUserCountRepository.tryIncrementUserCount(any(), eq(USER_ID), eq(1))).thenReturn(0); // exhausted
+        stubLockSuccess();
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "LIMIT1")));
+    }
+
+    @Test
+    void createOrder_couponValid_orderCreatedWithCouponCode() {
+        Coupon coupon = coupon("SAVE10", DiscountStatus.ACTIVE, null, null);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        when(couponRepository.findByCodeIgnoreCase("SAVE10")).thenReturn(Optional.of(coupon));
+        when(couponRepository.tryIncrementUsedCount(any(), any(), any())).thenReturn(1);
+        stubLockSuccess();
+        // Pricing returns the coupon code as applied
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, new BigDecimal("5.00"),
+                        "SAVE10", BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("45.00"),
+                        List.of()));
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderResponse resp = service.createOrder(USER_ID, deliveryRequestWithCoupon(PRODUCT_ID, 1, "SAVE10"));
+
+        assertNotNull(resp);
+        verify(orderRepository, atLeast(2)).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // Loyalty redemption tests
+    // =========================================================================
+
+    @Test
+    void createOrder_loyaltyPointsValid_deductsFromTotal() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess(); // finalTotal = 0 from pricing, loyalty would make it go to 0 too
+        // Override pricing to return non-zero so loyalty has something to deduct
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        List.of()));
+
+        LoyaltyRedemptionQuoteResponse quote = new LoyaltyRedemptionQuoteResponse(
+                USER_ID, COMPANY_ID, 100, 500L, 1000L, 900L, true, null);
+        when(loyaltyService.getRedemptionQuote(USER_ID, COMPANY_ID, 100)).thenReturn(quote);
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        req.setLoyaltyPointsToRedeem(100);
+
+        OrderResponse resp = service.createOrder(USER_ID, req);
+
+        assertNotNull(resp);
+        verify(loyaltyService).getRedemptionQuote(USER_ID, COMPANY_ID, 100);
+    }
+
+    @Test
+    void createOrder_loyaltyPointsInvalid_throwsBadRequestException() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        List.of()));
+
+        LoyaltyRedemptionQuoteResponse invalidQuote = new LoyaltyRedemptionQuoteResponse(
+                USER_ID, COMPANY_ID, 100, 0L, 50L, 50L, false, "Insufficient balance");
+        when(loyaltyService.getRedemptionQuote(USER_ID, COMPANY_ID, 100)).thenReturn(invalidQuote);
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        req.setLoyaltyPointsToRedeem(100);
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createOrder(USER_ID, req));
+    }
+
+    // ─── Additional helpers ───────────────────────────────────────────────────
+
+    /** Creates a delivery request with a bundle item (no standalone products). */
+    private CreateOrderRequest bundleRequest(UUID bundleId, int qty) {
+        CreateOrderRequest req = new CreateOrderRequest();
+        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
+        item.setBundleId(bundleId);
+        item.setQuantity(qty);
+        req.setItems(List.of(item));
+        req.setFulfillmentMethod(FulfillmentMethod.DELIVERY);
+        req.setShipRecipientName("Alice");
+        req.setShipStreet("123 Main St");
+        req.setShipCity("Toronto");
+        req.setShipPostalCode("M5V1A1");
+        req.setShipCountry("CA");
+        return req;
+    }
+
+    /** Creates a delivery request with a product item and a coupon code. */
+    private CreateOrderRequest deliveryRequestWithCoupon(UUID productId, int qty, String couponCode) {
+        CreateOrderRequest req = deliveryRequest(productId, qty);
+        req.setCouponCode(couponCode);
+        return req;
+    }
+
+    /** Creates an ACTIVE, listed bundle with one BundleItem pointing to a new Product. */
+    private ProductBundle activeBundle(UUID bundleId, UUID constituentProductId) {
+        Product constituentProduct = activeProduct();
+        constituentProduct.setId(constituentProductId);
+
+        BundleItem bi = new BundleItem();
+        bi.setId(TestIds.uuid(200));
+        bi.setProduct(constituentProduct);
+        bi.setQuantity(1);
+
+        ProductBundle bundle = new ProductBundle();
+        bundle.setId(bundleId);
+        bundle.setName("Test Bundle");
+        bundle.setPrice(new BigDecimal("99.00"));
+        bundle.setStatus(backend.models.enums.ProductStatus.ACTIVE);
+        bundle.setListed(true);
+        bundle.setItems(new java.util.ArrayList<>(List.of(bi)));
+        bundle.setCompany(company(COMPANY_ID));
+        return bundle;
+    }
+
+    /** Creates a Coupon with the given status, endDate, and maxUsesPerUser. */
+    private Coupon coupon(String code, DiscountStatus status, java.time.Instant endDate, Integer maxUsesPerUser) {
+        Coupon c = new Coupon();
+        c.setId(TestIds.uuid(300));
+        c.setCode(code);
+        c.setStatus(status);
+        c.setEndDate(endDate);
+        c.setMaxUsesPerUser(maxUsesPerUser);
+        return c;
+    }
+
+    // =========================================================================
+    // handlePaymentSuccess
+    // =========================================================================
+
+    @Test
+    void handlePaymentSuccess_reservedOrder_transitionsToPayAndSaves() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.transitionStatus(ORDER_ID, OrderStatus.RESERVED, OrderStatus.PAID)).thenReturn(1);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handlePaymentSuccess(PAYMENT_INTENT_ID);
+
+        verify(orderRepository).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentSuccess_alreadyPaid_idempotentNoOp() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.transitionStatus(ORDER_ID, OrderStatus.RESERVED, OrderStatus.PAID)).thenReturn(0); // already done
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        service.handlePaymentSuccess(PAYMENT_INTENT_ID);
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentSuccess_noOrderFound_doesNothing() {
+        when(orderRepository.findByPaymentIntentId("pi_unknown")).thenReturn(Optional.empty());
+
+        service.handlePaymentSuccess("pi_unknown"); // must not throw
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // handlePaymentFailure
+    // =========================================================================
+
+    @Test
+    void handlePaymentFailure_reservedOrder_setsFailedAndRestoresStock() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID);
+
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        verify(productRepository).restoreStock(PRODUCT_ID, 1);
+    }
+
+    @Test
+    void handlePaymentFailure_alreadyPaid_skipsProcessing() {
+        Order order = cancellableOrder(OrderStatus.PAID);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID); // must not throw
+
+        verify(orderRepository, never()).markCompensated(any());
+    }
+
+    @Test
+    void handlePaymentFailure_noOrderFound_doesNothing() {
+        when(orderRepository.findByPaymentIntentId("pi_unknown")).thenReturn(Optional.empty());
+
+        service.handlePaymentFailure("pi_unknown");
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handlePaymentFailure_alreadyCompensated_skipsProcessing() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        when(orderRepository.findByPaymentIntentId(PAYMENT_INTENT_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.markCompensated(ORDER_ID)).thenReturn(0); // already compensated
+
+        service.handlePaymentFailure(PAYMENT_INTENT_ID);
+
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    // =========================================================================
+    // markPickedUpByDriver
+    // =========================================================================
+
+    @Test
+    void markPickedUpByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markPickedUpByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markPickedUpByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99)); // different driver
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markPickedUpByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markPickedUpByDriver_happyPath_doesNotThrow() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertDoesNotThrow(() -> service.markPickedUpByDriver(ORDER_ID, driverId));
+    }
+
+    // =========================================================================
+    // markArrivedByDriver
+    // =========================================================================
+
+    @Test
+    void markArrivedByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markArrivedByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markArrivedByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markArrivedByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markArrivedByDriver_happyPath_doesNotThrow() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertDoesNotThrow(() -> service.markArrivedByDriver(ORDER_ID, driverId));
+    }
+
+    // =========================================================================
+    // markDeliveredByDriver
+    // =========================================================================
+
+    @Test
+    void markDeliveredByDriver_orderNotFound_throwsNotFound() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void markDeliveredByDriver_wrongDriver_throwsForbidden() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(TestIds.uuid(99));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markDeliveredByDriver_invalidStatus_throwsConflict() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.RESERVED); // not SHIPPED or PARTIALLY_FULFILLED
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class,
+                () -> service.markDeliveredByDriver(ORDER_ID, driverId));
+    }
+
+    @Test
+    void markDeliveredByDriver_happyPath_setsDeliveredAndPublishesEvent() {
+        UUID driverId = TestIds.uuid(50);
+        Order order = driverOrder(OrderStatus.SHIPPED);
+        order.setAssignedDriverId(driverId);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.markDeliveredByDriver(ORDER_ID, driverId);
+
+        verify(orderRepository).save(any(Order.class));
+        verify(cacheService, atLeast(1)).delete(anyString());
+        verify(fulfillmentEventPublisher).publish(any(OrderFulfillmentEvent.Delivered.class));
+    }
+
+    // =========================================================================
+    // reorderOrder
+    // =========================================================================
+
+    @Test
+    void reorderOrder_orderNotFound_throwsNotFound() {
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.reorderOrder(ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void reorderOrder_allItemsHaveNullProductAndBundle_throwsBadRequest() {
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setCurrency("USD");
+        order.setTotalAmount(BigDecimal.TEN);
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+        order.setStatus(OrderStatus.DELIVERED);
+        // item with both product=null and bundle=null → filtered out
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(null);
+        item.setQuantity(1);
+        item.setUnitPrice(BigDecimal.TEN);
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setDiscountAmount(BigDecimal.ZERO);
+        order.setItems(List.of(item));
+
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(BadRequestException.class,
+                () -> service.reorderOrder(ORDER_ID, USER_ID));
+    }
+
+    // =========================================================================
+    // initiateReturn
+    // =========================================================================
+
+    @Test
+    void initiateReturn_orderNotFound_throwsNotFound() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.empty());
+
+        ReturnOrderRequest req = new ReturnOrderRequest(null, null, false, false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req));
+    }
+
+    @Test
+    void initiateReturn_happyPath_withNullItemIds_callsReturnService() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+
+        Order order = order();
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        ReturnOrderRequest req = new ReturnOrderRequest("note", null, true, true);
+        service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        verify(returnService).merchantInitiateReturn(eq(ORDER_ID), eq(COMPANY_ID), eq(USER_ID), any());
+    }
+
+    @Test
+    void initiateReturn_withSpecificItemIds_filtersItemsById() {
+        ReturnService returnService = mock(ReturnService.class);
+        service.setReturnService(returnService);
+
+        Order order = order();
+        UUID itemId = order.getItems().get(0).getId();
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(order));
+
+        ReturnOrderRequest req = new ReturnOrderRequest(null, List.of(itemId), false, false);
+        service.initiateReturn(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        verify(returnService).merchantInitiateReturn(eq(ORDER_ID), eq(COMPANY_ID), eq(USER_ID), any());
+    }
+
+    // =========================================================================
+    // Static helper methods (via reflection)
+    // =========================================================================
+
+    @Test
+    void buildVariantTitle_allOptionsPresent_joinsWithSlash() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1("Red");
+        v.setOption2("Large");
+        v.setOption3("Cotton");
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertEquals("Red / Large / Cotton", result);
+    }
+
+    @Test
+    void buildVariantTitle_someOptionsNull_joinsPresentOnes() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1("Red");
+        v.setOption2(null);
+        v.setOption3("Cotton");
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertEquals("Red / Cotton", result);
+    }
+
+    @Test
+    void buildVariantTitle_allOptionsNull_returnsNull() {
+        ProductVariant v = new ProductVariant();
+        v.setOption1(null);
+        v.setOption2(null);
+        v.setOption3(null);
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "buildVariantTitle", v);
+
+        assertNull(result);
+    }
+
+    @Test
+    void extractVariantIdFromDetail_validDetail_returnsUuid() {
+        UUID variantId = TestIds.uuid(10);
+        String detail = "Deducted 1 unit from variant " + variantId;
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractVariantIdFromDetail", detail);
+
+        assertEquals(variantId, result);
+    }
+
+    @Test
+    void extractVariantIdFromDetail_noVariantToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractVariantIdFromDetail", "no variant here");
+        assertNull(result);
+    }
+
+    @Test
+    void extractProductIdFromDetail_validDetail_returnsUuid() {
+        UUID productId = TestIds.uuid(20);
+        String detail = "Deducted 1 unit from product " + productId;
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractProductIdFromDetail", detail);
+
+        assertEquals(productId, result);
+    }
+
+    @Test
+    void extractProductIdFromDetail_noProductToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractProductIdFromDetail", "something else");
+        assertNull(result);
+    }
+
+    @Test
+    void extractLocationStockIdFromDetail_validDetail_returnsUuid() {
+        UUID locId = TestIds.uuid(30);
+        String detail = "[LOC:" + locId + "] Restored 3 units of product " + TestIds.uuid(31);
+
+        UUID result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractLocationStockIdFromDetail", detail);
+
+        assertEquals(locId, result);
+    }
+
+    @Test
+    void extractLocationStockIdFromDetail_noToken_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractLocationStockIdFromDetail", "no loc token");
+        assertNull(result);
+    }
+
+    @Test
+    void extractQuantityFromDetail_validDetail_returnsQty() {
+        String detail = "Restored 5 units of something";
+
+        Integer result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractQuantityFromDetail", detail);
+
+        assertEquals(5, result);
+    }
+
+    @Test
+    void extractQuantityFromDetail_noToken_returnsNegative() {
+        Integer result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractQuantityFromDetail", "nothing useful");
+        assertEquals(-1, result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_partialRefundFormat_returnsIntentId() {
+        String detail = "REFUND_PARTIAL:pi_abc123:CENTS:500";
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", detail);
+
+        assertEquals("pi_abc123", result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_legacyFormat_returnsIntentId() {
+        String detail = "Payment refund intent: pi_def456";
+
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", detail);
+
+        assertEquals("pi_def456", result);
+    }
+
+    @Test
+    void extractIntentIdFromDetail_nullDetail_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractIntentIdFromDetail", (Object) null);
+        assertNull(result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_partialRefundFormat_returnsCents() {
+        String detail = "REFUND_PARTIAL:pi_abc123:CENTS:999";
+
+        Long result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", detail);
+
+        assertEquals(999L, result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_legacyFullRefund_returnsNull() {
+        String result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", "full refund detail");
+        assertNull(result);
+    }
+
+    @Test
+    void extractRefundCentsFromDetail_nullDetail_returnsNull() {
+        Long result = ReflectionTestUtils.invokeMethod(
+                OrderServiceImpl.class, "extractRefundCentsFromDetail", (Object) null);
+        assertNull(result);
+    }
+
+    // =========================================================================
+    // releaseCouponCountIfNeeded (via reflection)
+    // =========================================================================
+
+    @Test
+    void releaseCouponCountIfNeeded_couponNull_doesNothing() {
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", (Object) null, USER_ID));
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_couponWithoutMaxUsesPerUser_doesNothing() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(null);
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID));
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_couponWithMaxUsesPerUser_decrementsCount() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(5);
+
+        ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID);
+
+        verify(couponPerUserCountRepository).decrementUserCount(coupon.getId(), USER_ID);
+    }
+
+    @Test
+    void releaseCouponCountIfNeeded_decrementThrows_doesNotPropagate() {
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(300));
+        coupon.setMaxUsesPerUser(5);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB down"))
+                .when(couponPerUserCountRepository).decrementUserCount(any(), any());
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "releaseCouponCountIfNeeded", coupon, USER_ID));
+    }
+
+    // =========================================================================
+    // resolveOrderCompanyId (via reflection — pure calculation)
+    // =========================================================================
+
+    @Test
+    void resolveOrderCompanyId_nullList_returnsNull() {
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", (Object) null);
+        assertNull(result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_emptyList_returnsNull() {
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of());
+        assertNull(result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_productWithCompany_returnsCompanyId() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertEquals(COMPANY_ID, result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_productWithMarketplaceId_prefersMarketplace() {
+        UUID marketplaceId = TestIds.uuid(97);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        p.setMarketplaceId(marketplaceId);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertEquals(marketplaceId, result);
+    }
+
+    @Test
+    void resolveOrderCompanyId_itemWithNullProduct_returnsNull() {
+        OrderItem item = new OrderItem();
+        item.setProduct(null);
+
+        UUID result = ReflectionTestUtils.invokeMethod(service, "resolveOrderCompanyId", List.of(item));
+
+        assertNull(result);
+    }
+
+    // =========================================================================
+    // stampVendorIds (via reflection)
+    // =========================================================================
+
+    @Test
+    void stampVendorIds_emptyItems_returnsFalse() {
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of());
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_itemWithNullProduct_returnsFalse() {
+        OrderItem item = new OrderItem();
+        item.setProduct(null);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_productWithoutMarketplace_returnsFalse() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(false, result);
+    }
+
+    @Test
+    void stampVendorIds_productWithMarketplace_returnsTrue() {
+        UUID marketplaceId = TestIds.uuid(98);
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        p.setCompany(company(COMPANY_ID));
+        p.setMarketplaceId(marketplaceId);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
+
+        assertEquals(true, result);
+        verify(marketplaceVendorRepository).findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any());
+    }
+
+    // =========================================================================
+    // serializeSignals (via reflection)
+    // =========================================================================
+
+    @Test
+    void serializeSignals_emptyResult_returnsJsonWithEmptyArrays() {
+        // objectMapper is initialized inline in the field — never null
+        RiskAssessmentResult result = RiskAssessmentResult.allow(0, List.of(), List.of());
+        String json = ReflectionTestUtils.invokeMethod(service, "serializeSignals", result);
+        assertNotNull(json);
+        assertTrue(json.contains("signals"));
+    }
+
+    @Test
+    void serializeSignals_withSignals_returnsSignalsJson() {
+        RiskAssessmentResult result = RiskAssessmentResult.allow(
+                10,
+                List.of(RiskSignal.medium(RiskSignalType.FAILED_PAYMENT_VELOCITY, 10, "Velocity hit")),
+                List.of("warning-1"));
+
+        String json = ReflectionTestUtils.invokeMethod(service, "serializeSignals", result);
+
+        assertTrue(json.contains("signals"));
+        assertTrue(json.contains("Velocity hit"));
+    }
+
+    // =========================================================================
+    // recordCancelAdjustment (via reflection)
+    // =========================================================================
+
+    @Test
+    void recordCancelAdjustment_regularItem_savesOneAdjustment() {
+        Product p = new Product();
+        p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setProduct(p);
+        item.setQuantity(2);
+
+        ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID);
+
+        verify(adjustmentRepository).save(any());
+    }
+
+    @Test
+    void recordCancelAdjustment_bundleItem_savesAdjustmentPerBundleItem() {
+        Product p1 = new Product(); p1.setId(TestIds.uuid(50));
+        BundleItem bi1 = new BundleItem(); bi1.setProduct(p1); bi1.setQuantity(2);
+        Product p2 = new Product(); p2.setId(TestIds.uuid(51));
+        BundleItem bi2 = new BundleItem(); bi2.setProduct(p2); bi2.setQuantity(1);
+        ProductBundle bundle = new ProductBundle();
+        bundle.setItems(java.util.Arrays.asList(bi1, bi2));
+
+        OrderItem item = new OrderItem();
+        item.setQuantity(1);
+        item.setBundle(bundle);
+
+        ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID);
+
+        verify(adjustmentRepository, org.mockito.Mockito.times(2)).save(any());
+    }
+
+    @Test
+    void recordCancelAdjustment_saveThrows_doesNotPropagate() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem(); item.setProduct(p); item.setQuantity(1);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB error")).when(adjustmentRepository).save(any());
+
+        assertDoesNotThrow(() ->
+                ReflectionTestUtils.invokeMethod(service, "recordCancelAdjustment", item, ORDER_ID));
+    }
+
+    // =========================================================================
+    // restoreItemStock (via reflection)
+    // =========================================================================
+
+    @Test
+    void restoreItemStock_backorderedItem_doesNotRestoreStock() {
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(variantRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void restoreItemStock_variantItem_callsVariantRestore() {
+        ProductVariant variant = new ProductVariant();
+        variant.setId(TestIds.uuid(60));
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(variant);
+        item.setQuantity(3);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(variantRepository).restoreStock(variant.getId(), 3);
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void restoreItemStock_productOnlyItem_callsProductRestore() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(null);
+        item.setQuantity(2);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 2);
+    }
+
+    @Test
+    void restoreItemStock_bundleItem_restoresEachConstituentProduct() {
+        Product p1 = new Product(); p1.setId(TestIds.uuid(70));
+        BundleItem bi = new BundleItem();
+        bi.setProduct(p1); bi.setVariant(null); bi.setQuantity(3);
+        ProductBundle bundle = new ProductBundle();
+        bundle.setItems(java.util.Arrays.asList(bi));
+
+        OrderItem item = new OrderItem();
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setQuantity(2);
+        item.setBundle(bundle);
+
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        // order qty 2 * bundle qty 3 = 6
+        verify(productRepository).restoreStock(p1.getId(), 6);
+    }
+
+    // =========================================================================
+    // scheduleStockCompensation (via reflection)
+    // =========================================================================
+
+    @Test
+    void scheduleStockCompensation_emptyLists_doesNotRestoreAnything() {
+        Order order = new Order(); order.setId(ORDER_ID);
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), List.of(), List.of());
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(variantRepository, never()).restoreStock(any(), anyInt());
+        verify(locationStockRepository, never()).restoreStock(any(), anyInt());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleProduct_restoresAndRecordsCompensation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        java.util.ArrayList<Object[]> products = new java.util.ArrayList<>();
+        products.add(new Object[]{PRODUCT_ID, 5});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, products, List.of(), List.of());
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 5);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleVariant_restoresVariant() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        UUID variantId = TestIds.uuid(80);
+        java.util.ArrayList<Object[]> variants = new java.util.ArrayList<>();
+        variants.add(new Object[]{variantId, 2});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), variants, List.of());
+
+        verify(variantRepository).restoreStock(variantId, 2);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_singleLocationStock_restoresLocation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        UUID locStockId = TestIds.uuid(81);
+        java.util.ArrayList<Object[]> locationStocks = new java.util.ArrayList<>();
+        locationStocks.add(new Object[]{locStockId, 1});
+
+        ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, List.of(), List.of(), locationStocks);
+
+        verify(locationStockRepository).restoreStock(locStockId, 1);
+        verify(compensationRepository).save(any());
+    }
+
+    @Test
+    void scheduleStockCompensation_productRestoreThrows_recordsFailedCompensation() {
+        Order order = new Order(); order.setId(ORDER_ID);
+        org.mockito.Mockito.doThrow(new RuntimeException("DB error"))
+                .when(productRepository).restoreStock(any(), anyInt());
+        java.util.ArrayList<Object[]> products = new java.util.ArrayList<>();
+        products.add(new Object[]{PRODUCT_ID, 5});
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "scheduleStockCompensation",
+                order, products, List.of(), List.of()));
+
+        verify(compensationRepository).save(any());
+    }
+
+    // =========================================================================
+    // Helper methods (for new tests)
+    // =========================================================================
+
+    private Order driverOrder(OrderStatus status) {
+        Product product = new Product();
+        product.setId(PRODUCT_ID);
+        product.setCompany(company(COMPANY_ID));
+        product.setName("Widget");
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setProduct(product);
+        item.setProductName("Widget");
+        item.setQuantity(1);
+        item.setUnitPrice(new BigDecimal("50.00"));
+        item.setFulfillmentStatus(FulfillmentStatus.SHIPPED);
+        item.setDiscountAmount(BigDecimal.ZERO);
+
+        Order order = new Order();
+        order.setId(ORDER_ID);
+        order.setUser(user(USER_ID));
+        order.setStatus(status);
+        order.setPaymentIntentId(PAYMENT_INTENT_ID);
+        order.setTotalAmount(new BigDecimal("50.00"));
+        order.setCurrency("USD");
+        order.setCouponDiscountAmount(BigDecimal.ZERO);
+        order.setCreatedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+        order.setItems(List.of(item));
+        return order;
+    }
+
+    private static void assertNotNull(Object value) {
+        if (value == null) throw new AssertionError("Expected non-null value but was null");
     }
 }

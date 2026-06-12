@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Package, X } from "lucide-react";
 import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
@@ -13,20 +13,10 @@ import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import { ordersApi } from "../api/orders";
 import { useOrderStream } from "../hooks/useOrderStream";
+import { useAnims } from "../hooks/useAnims";
 import DriverLocationIndicator from "../components/order/DriverLocationIndicator";
 
 const CANCELLABLE = new Set(["RESERVED", "PAID", "PACKED"]);
-
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
-  return { fadeInUp, stagger };
-};
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,7 +38,10 @@ export default function OrderDetailPage() {
       qc.invalidateQueries({ queryKey: ["order", id] });
       navigate("/orders");
     },
-    onError: () => setCancelError("Failed to cancel order. Please try again."),
+    onError: () => {
+      setCancelError("Failed to cancel order. Please try again.");
+      cancel.reset();
+    },
   });
 
   const { connected, driverLocation } = useOrderStream(id);
@@ -204,8 +197,8 @@ export default function OrderDetailPage() {
 
       {/* Cancel confirmation modal */}
       {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowCancelModal(false)}>
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">Cancel this order?</h3>
               <button onClick={() => setShowCancelModal(false)} className="text-white/40 hover:text-white transition">
@@ -214,7 +207,7 @@ export default function OrderDetailPage() {
             </div>
             <p className="text-sm text-white/60">
               This will cancel your order and release any stock reservation.
-              {order && ["PAID", "PACKED"].includes(order.status) && " A full refund will be issued to your original payment method."}
+              {order && ["RESERVED", "PAID", "PACKED"].includes(order.status) && " A full refund will be issued to your original payment method if payment was already captured."}
             </p>
             {cancelError && <p className="text-sm text-red-400">{cancelError}</p>}
             <div className="flex gap-3">

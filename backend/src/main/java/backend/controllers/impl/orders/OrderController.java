@@ -252,7 +252,7 @@ public class OrderController {
                         returnService.handleRefundWebhookEvent(
                                 refundId,
                                 event.metadata().get("refundStatus"),
-                                Long.parseLong(event.metadata().getOrDefault("refundAmountCents", "0")));
+                                safeMetadataLong(event.metadata(), "refundAmountCents", 0L));
                     }
                 }
                 case "refund.updated" -> {
@@ -260,7 +260,7 @@ public class OrderController {
                         returnService.handleRefundWebhookEvent(
                                 event.objectId(),
                                 event.metadata().getOrDefault("refundStatus", "pending"),
-                                Long.parseLong(event.metadata().getOrDefault("refundAmountCents", "0")));
+                                safeMetadataLong(event.metadata(), "refundAmountCents", 0L));
                     }
                 }
                 case "customer.subscription.updated", "customer.subscription.deleted" -> {
@@ -270,7 +270,7 @@ public class OrderController {
                 }
                 case "invoice.paid" -> {
                     String subId = event.metadata().get("subscriptionId");
-                    long amountPaid = Long.parseLong(event.metadata().getOrDefault("amountPaidCents", "0"));
+                    long amountPaid = safeMetadataLong(event.metadata(), "amountPaidCents", 0L);
                     if (subId != null && event.objectId() != null) {
                         subscriptionService.handleInvoicePaid(event.objectId(), subId, amountPaid);
                     }
@@ -415,5 +415,22 @@ public class OrderController {
     private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return (UUID) auth.getPrincipal();
+    }
+
+    /**
+     * Parses a long from webhook metadata without throwing. Returns {@code defaultValue}
+     * when the field is absent or malformed. A NumberFormatException here would produce
+     * an HTTP 500, causing Stripe to retry the webhook indefinitely.
+     */
+    private static long safeMetadataLong(java.util.Map<String, String> metadata, String key, long defaultValue) {
+        String raw = metadata != null ? metadata.get(key) : null;
+        if (raw == null || raw.isBlank()) return defaultValue;
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            org.slf4j.LoggerFactory.getLogger(OrderController.class)
+                    .warn("[WEBHOOK] Malformed metadata field '{}' = '{}', using default {}", key, raw, defaultValue);
+            return defaultValue;
+        }
     }
 }

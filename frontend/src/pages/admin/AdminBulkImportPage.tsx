@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import axios from "axios";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileSpreadsheet, Upload, Download, Image as ImageIcon, ArrowRight, RefreshCw } from "lucide-react";
 import Papa from "papaparse";
@@ -12,19 +12,10 @@ import CsvEditorGrid, { CSV_COLUMNS, type CsvColumn, type CsvRow, validateRow } 
 import ImportJobProgress from "../../components/imports/ImportJobProgress";
 import BulkImageDropzone from "../../components/imports/BulkImageDropzone";
 import RecentImportsTable from "../../components/imports/RecentImportsTable";
+import { useAnims } from "../../hooks/useAnims";
 
 type Tab = "import" | "images" | "export";
 
-const useAnims = () => {
-  const prefersReducedMotion = useReducedMotion();
-  const fadeInUp: Variants = prefersReducedMotion
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55 } } };
-  const stagger: Variants = prefersReducedMotion
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
-  return { fadeInUp, stagger };
-};
 
 function isCsvColumn(s: string): s is CsvColumn {
   return (CSV_COLUMNS as readonly string[]).includes(s);

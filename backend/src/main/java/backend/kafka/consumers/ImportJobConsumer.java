@@ -32,7 +32,7 @@ public class ImportJobConsumer {
         this.importService = importService;
     }
 
-    @KafkaListener(topics = "${app.kafka.topics.import-jobs}", groupId = "imports-worker")
+    @KafkaListener(topics = "${app.kafka.topics.import-jobs}", groupId = "imports-worker", containerFactory = "importKafkaListenerContainerFactory")
     public void onImportJob(ImportJobMessage message) {
         try {
             importService.processJob(message.jobId());

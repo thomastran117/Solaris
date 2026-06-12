@@ -14,9 +14,13 @@ import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.Query;
 
+import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregation;
+import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregations;
+
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -220,6 +224,15 @@ class SearchSuggestionServiceImplTest {
         assertEquals(3, result.products().size());
     }
 
+    @Test
+    void getSuggestions_onlySpecialChars_returnsEmptyAfterSanitization() {
+        // After stripping Lucene operators the sanitized query is blank
+        SearchSuggestionsResponse result = service.getSuggestions(MARKETPLACE_ID, "()", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
+    }
+
     // ─── getCompanySuggestions ────────────────────────────────────────────────
 
     @Test
@@ -308,6 +321,22 @@ class SearchSuggestionServiceImplTest {
     }
 
     @Test
+    void getCompanySuggestions_onlySpecialChars_returnsEmptyAfterSanitization() {
+        SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "[]*?", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
+    }
+
+    @Test
+    void getCompanySuggestions_blankQuery_returnsEmptyImmediately() {
+        SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "  ", 8);
+
+        assertTrue(result.products().isEmpty());
+        verifyNoInteractions(singleFlightCache, elasticsearchOperations);
+    }
+
+    @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void getCompanySuggestions_capsProductsAt3() {
         ProductDocument[] docs = new ProductDocument[5];
@@ -322,5 +351,45 @@ class SearchSuggestionServiceImplTest {
         SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "item", 8);
 
         assertEquals(3, result.products().size());
+    }
+
+    // ─── aggregation paths ────────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void getSuggestions_nonNullAggregationsEmptyMap_returnsEmptyCollections() {
+        SearchHits<ProductDocument> hits = makeHitsWithAggs(Map.of());
+        when(elasticsearchOperations.search(any(Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        SearchSuggestionsResponse result = service.getSuggestions(MARKETPLACE_ID, "widget", 8);
+
+        assertTrue(result.categories().isEmpty());
+        assertTrue(result.brands().isEmpty());
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void getCompanySuggestions_nonNullAggregationsEmptyMap_returnsEmptyCollections() {
+        SearchHits<ProductDocument> hits = makeHitsWithAggs(Map.of());
+        when(elasticsearchOperations.search(any(Query.class), (Class) any()))
+                .thenReturn(hits);
+
+        SearchSuggestionsResponse result = service.getCompanySuggestions(COMPANY_ID, "laptop", 8);
+
+        assertTrue(result.categories().isEmpty());
+        assertTrue(result.brands().isEmpty());
+    }
+
+    // ─── helper for aggregation tests ─────────────────────────────────────────
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private SearchHits<ProductDocument> makeHitsWithAggs(Map<String, ElasticsearchAggregation> aggMap) {
+        SearchHits hits = mock(SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.empty());
+        ElasticsearchAggregations aggs = mock(ElasticsearchAggregations.class);
+        when(aggs.aggregationsAsMap()).thenReturn(aggMap);
+        when(hits.getAggregations()).thenReturn(aggs);
+        return hits;
     }
 }

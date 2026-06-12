@@ -1,18 +1,9 @@
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { ordersApi } from "../../api/orders";
 import type { OrderStatusHistoryEntry } from "../../types/order";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.25 } } }
-    : { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
-  return { fadeInUp, stagger };
-};
 
 function formatStatus(raw: string): string {
   return raw

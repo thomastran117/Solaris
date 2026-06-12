@@ -42,6 +42,7 @@ import backend.services.intf.inventory.InventoryService;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -545,7 +546,7 @@ public class InventoryServiceImpl implements InventoryService {
             stockValue = p.getPrice().multiply(BigDecimal.valueOf(p.getCurrentStock()));
         }
         return new ProductSalesMetricResponse(
-                p.getProductId(),
+                bytesToUuid(p.getProductId()),
                 p.getProductName(),
                 p.getSku(),
                 p.getCurrentStock(),
@@ -673,5 +674,10 @@ public class InventoryServiceImpl implements InventoryService {
                 }
             }
         }
+    }
+
+    private static UUID bytesToUuid(byte[] bytes) {
+        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        return new UUID(bb.getLong(), bb.getLong());
     }
 }

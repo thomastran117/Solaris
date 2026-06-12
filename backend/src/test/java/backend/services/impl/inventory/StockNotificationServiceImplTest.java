@@ -2,7 +2,9 @@ package backend.services.impl.inventory;
 
 import backend.dtos.requests.inventory.SubscribeBackInStockRequest;
 import backend.dtos.responses.inventory.StockNotificationResponse;
+import backend.events.inventory.StockRestoredEvent;
 import backend.exceptions.http.ForbiddenException;
+import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.core.StockNotification;
@@ -25,11 +27,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,6 +114,133 @@ class StockNotificationServiceImplTest {
                 "Black / XL",
                 "https://shopwave.test/products/" + PRODUCT_ID);
         assertEquals(NotificationStatus.NOTIFIED, notification.getStatus());
+    }
+
+    @Test
+    void subscribe_productNotFound_throwsResourceNotFoundException() {
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.empty());
+
+        SubscribeBackInStockRequest request = new SubscribeBackInStockRequest();
+        request.setProductId(PRODUCT_ID);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.subscribe(USER_ID, request));
+    }
+
+    @Test
+    void subscribe_newNotification_createsNew() {
+        Product product = product();
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product));
+        when(notificationRepository.findByUserIdAndProductIdAndVariantRef(USER_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(USER_ID)).thenReturn(user(USER_ID));
+
+        SubscribeBackInStockRequest request = new SubscribeBackInStockRequest();
+        request.setProductId(PRODUCT_ID);
+
+        StockNotificationResponse response = service.subscribe(USER_ID, request);
+
+        assertEquals("PENDING", response.status());
+        verify(notificationRepository).save(any(StockNotification.class));
+    }
+
+    @Test
+    void subscribe_withVariantId_loadsVariant() {
+        Product product = product();
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant()));
+        when(notificationRepository.findByUserIdAndProductIdAndVariantRef(USER_ID, PRODUCT_ID, VARIANT_ID))
+                .thenReturn(Optional.empty());
+        when(userRepository.getReferenceById(USER_ID)).thenReturn(user(USER_ID));
+
+        SubscribeBackInStockRequest request = new SubscribeBackInStockRequest();
+        request.setProductId(PRODUCT_ID);
+        request.setVariantId(VARIANT_ID);
+
+        StockNotificationResponse response = service.subscribe(USER_ID, request);
+
+        assertEquals("PENDING", response.status());
+        verify(variantRepository).findByIdAndProductId(VARIANT_ID, PRODUCT_ID);
+    }
+
+    @Test
+    void cancel_sameUser_setsStatusCancelled() {
+        StockNotification notification = notification(USER_ID);
+        when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.of(notification));
+
+        service.cancel(USER_ID, NOTIFICATION_ID);
+
+        assertEquals(NotificationStatus.CANCELLED, notification.getStatus());
+        verify(notificationRepository).save(notification);
+    }
+
+    @Test
+    void cancel_notificationNotFound_throwsResourceNotFoundException() {
+        when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.cancel(USER_ID, NOTIFICATION_ID));
+    }
+
+    @Test
+    void listByUser_returnsNonCancelledNotifications() {
+        StockNotification n = notification(USER_ID);
+        n.setStatus(NotificationStatus.PENDING);
+        when(notificationRepository.findAllByUserIdAndStatusNot(USER_ID, NotificationStatus.CANCELLED))
+                .thenReturn(List.of(n));
+
+        var responses = service.listByUser(USER_ID);
+
+        assertEquals(1, responses.size());
+        assertEquals("PENDING", responses.get(0).status());
+    }
+
+    @Test
+    void notifySubscribers_emptyPendingList_doesNothing() {
+        when(notificationRepository.findAllByProductIdAndVariantRefAndStatus(PRODUCT_ID, null, NotificationStatus.PENDING))
+                .thenReturn(List.of());
+
+        service.notifySubscribers(PRODUCT_ID, null);
+
+        verify(emailService, never()).sendBackInStockEmail(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void notifySubscribers_withNullVariant_sendsEmailWithNullVariantInfo() {
+        StockNotification notification = notification(USER_ID);
+        // no variant set
+        when(notificationRepository.findAllByProductIdAndVariantRefAndStatus(PRODUCT_ID, null, NotificationStatus.PENDING))
+                .thenReturn(List.of(notification));
+
+        service.notifySubscribers(PRODUCT_ID, null);
+
+        verify(emailService).sendBackInStockEmail(
+                "user@test.com", "Taylor", PRODUCT_ID, "Desk", null, null,
+                "https://shopwave.test/products/" + PRODUCT_ID);
+        assertEquals(NotificationStatus.NOTIFIED, notification.getStatus());
+    }
+
+    @Test
+    void notifySubscribers_emailThrows_continues() {
+        StockNotification n1 = notification(USER_ID);
+        org.mockito.Mockito.doThrow(new RuntimeException("SMTP failure"))
+                .when(emailService).sendBackInStockEmail(any(), any(), any(), any(), any(), any(), any());
+        when(notificationRepository.findAllByProductIdAndVariantRefAndStatus(PRODUCT_ID, null, NotificationStatus.PENDING))
+                .thenReturn(List.of(n1));
+
+        service.notifySubscribers(PRODUCT_ID, null);
+
+        // Should not throw; notification status unchanged
+        assertEquals(NotificationStatus.PENDING, n1.getStatus());
+    }
+
+    @Test
+    void onStockRestored_delegatesToNotifySubscribers() {
+        when(notificationRepository.findAllByProductIdAndVariantRefAndStatus(PRODUCT_ID, VARIANT_ID, NotificationStatus.PENDING))
+                .thenReturn(List.of());
+
+        service.onStockRestored(new StockRestoredEvent(PRODUCT_ID, VARIANT_ID));
+
+        verify(notificationRepository).findAllByProductIdAndVariantRefAndStatus(
+                PRODUCT_ID, VARIANT_ID, NotificationStatus.PENDING);
     }
 
     private User user(UUID id) {

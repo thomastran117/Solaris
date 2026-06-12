@@ -70,6 +70,11 @@ class ReturnServiceScopeTest {
         returnLocationRepository = mock(CompanyReturnLocationRepository.class);
         userRepository         = mock(UserRepository.class);
 
+        RiskProperties riskProperties = mock(RiskProperties.class);
+        RiskProperties.ReturnPolicy returnPolicy = mock(RiskProperties.ReturnPolicy.class);
+        when(returnPolicy.getWindowDays()).thenReturn(30);
+        when(riskProperties.getReturnPolicy()).thenReturn(returnPolicy);
+
         service = new ReturnServiceImpl(
                 returnRepository,
                 returnItemRepository,
@@ -85,7 +90,7 @@ class ReturnServiceScopeTest {
                 mock(PaymentService.class),
                 mock(RiskEngine.class),
                 mock(RiskAssessmentRepository.class),
-                mock(RiskProperties.class),
+                riskProperties,
                 mock(ActivityEventPublisher.class),
                 mock(LoyaltyService.class),
                 mock(AuthAuditLogger.class));

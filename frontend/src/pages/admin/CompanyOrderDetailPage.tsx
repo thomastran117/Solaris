@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Package, MapPin } from "lucide-react";
 import NavyGridGlowBackground from "../../components/layout/NavyGridGlowBackground";
@@ -11,17 +11,8 @@ import FulfillmentActionBar from "../../components/order/FulfillmentActionBar";
 import PickupPanel from "../../components/order/PickupPanel";
 import { companyOrdersApi } from "../../api/companyOrders";
 import type { RootState } from "../../stores";
+import { useAnims } from "../../hooks/useAnims";
 
-const useAnims = () => {
-  const reduced = useReducedMotion();
-  const fadeInUp: Variants = reduced
-    ? { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.35 } } }
-    : { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-  const stagger: Variants = reduced
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
-  return { fadeInUp, stagger };
-};
 
 export default function CompanyOrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
