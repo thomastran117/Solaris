@@ -57,7 +57,8 @@ class AvailabilityEstimateServiceImplTest {
     void estimateForMarketplace_returnsCachedValueWhenPresent() throws Exception {
         Product product = marketplaceProduct();
         AvailabilityEstimateResponse cached = AvailabilityEstimateResponse.outOfStock();
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(objectMapper.writeValueAsString(cached));
 
         AvailabilityEstimateResponse response = new AvailabilityEstimateServiceImpl(
@@ -87,7 +88,8 @@ class AvailabilityEstimateServiceImplTest {
         stock.setProduct(product);
         stock.setStock(5);
 
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.65), eq(-79.38), any()))
                 .thenReturn(List.of(stock));
@@ -111,7 +113,8 @@ class AvailabilityEstimateServiceImplTest {
     @Test
     void estimateForMarketplace_noStockedLocations_returnsOutOfStock() {
         Product product = marketplaceProduct();
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findStockedByProduct(PRODUCT_ID)).thenReturn(List.of());
 
@@ -133,7 +136,8 @@ class AvailabilityEstimateServiceImplTest {
         stock.setProduct(product);
         stock.setStock(10);
 
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findStockedByProduct(PRODUCT_ID)).thenReturn(List.of(stock));
 
@@ -162,7 +166,8 @@ class AvailabilityEstimateServiceImplTest {
         stock.setProduct(product);
         stock.setStock(3);
 
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
                 .thenReturn(List.of(stock));
@@ -184,7 +189,8 @@ class AvailabilityEstimateServiceImplTest {
         stock.setProduct(product);
         stock.setStock(7);
 
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.0), eq(-79.0), any()))
                 .thenReturn(List.of()); // empty → falls back
@@ -210,7 +216,8 @@ class AvailabilityEstimateServiceImplTest {
         stock.setProduct(product);
         stock.setStock(5);
 
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE)).thenReturn(Optional.of(product));
         when(cacheService.get(anyString())).thenReturn(null);
         when(locationStockRepository.findByProductOrderedByDistance(eq(PRODUCT_ID), eq(43.65), eq(-79.38), any()))
                 .thenReturn(List.of(stock));

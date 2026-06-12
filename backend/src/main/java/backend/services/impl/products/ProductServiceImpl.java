@@ -347,6 +347,13 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isPubliclyVisible(UUID companyId, UUID productId) {
+        return productRepository.existsByIdAndCompanyIdAndStatusAndListed(
+                productId, companyId, ProductStatus.ACTIVE, true);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids) {
         if (ids.size() > 1000) {
             throw new BadRequestException("Cannot fetch more than 1000 products at once");
@@ -1362,7 +1369,8 @@ public class ProductServiceImpl implements ProductService {
     public MarketplaceCatalogProductResponse getMarketplaceProduct(UUID marketplaceId, UUID productId) {
         String cacheKey = "marketplace:product:" + marketplaceId + ":" + productId;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-            Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
+            Product product = productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                            productId, marketplaceId, ProductStatus.ACTIVE)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
             Map<UUID, MarketplaceVendor> vendorMap = buildVendorMap(marketplaceId, List.of(product));
             ActivePromotionSummary promo = activePromotionLookupService

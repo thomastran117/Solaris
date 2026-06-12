@@ -549,28 +549,19 @@ public class OrderServiceImpl implements OrderService {
         }
         List<UUID> allProductIds = new ArrayList<>(allProductIdSet);
 
-        // Reject same productId with different variantIds — ambiguous, can't be safely merged
-        Map<UUID, UUID> seenProductVariant = new HashMap<>();
+        // Each order line is keyed by (productId, variantId): the same product may appear with
+        // different variants (e.g. a shirt in two sizes) as separate lines, while identical
+        // product+variant pairs are merged by summing quantity.
+        record LineKey(UUID productId, UUID variantId) {}
+        Map<LineKey, Integer> lineQuantities = new java.util.LinkedHashMap<>();
         for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
-            if (item.getProductId() == null) continue;
-            UUID existingVariant = seenProductVariant.put(item.getProductId(), item.getVariantId());
-            if (existingVariant != null && !Objects.equals(existingVariant, item.getVariantId())) {
-                throw new BadRequestException(
-                    "Product id " + item.getProductId() + " appears with multiple variants in the same order — submit as separate orders");
-            }
+            lineQuantities.merge(new LineKey(item.getProductId(), item.getVariantId()),
+                    item.getQuantity(), Integer::sum);
         }
 
-        Map<UUID, Integer> quantityMap = new HashMap<>();
-        Map<UUID, UUID> variantMap = new HashMap<>();  // productId -> variantId
-        for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
-            quantityMap.merge(item.getProductId(), item.getQuantity(), Integer::sum);
-            if (item.getVariantId() != null) {
-                variantMap.put(item.getProductId(), item.getVariantId());
-            }
-        }
-
-        // Collect variant IDs that need locks (sorted for deadlock prevention)
-        List<UUID> variantIdsToLock = variantMap.values().stream().sorted().toList();
+        // Collect variant IDs that need locks (distinct, sorted for deadlock prevention)
+        List<UUID> variantIdsToLock = lineQuantities.keySet().stream()
+                .map(LineKey::variantId).filter(Objects::nonNull).distinct().sorted().toList();
 
         String lockToken = UUID.randomUUID().toString();
         List<String> acquiredLocks = new ArrayList<>();
@@ -599,6 +590,11 @@ public class OrderServiceImpl implements OrderService {
             }
 
             for (Product product : products) {
+                // Purchasability for standalone products requires ACTIVE + purchasable only.
+                // product.isListed() is intentionally NOT checked here: for products, listed=false
+                // means "hidden from browse/search" but still buyable via a direct link (e.g. a
+                // shared product URL). This deliberately differs from bundles/kits, which DO require
+                // isListed() for purchase — see the bundle/kit resolution above.
                 if (product.getStatus() != ProductStatus.ACTIVE) {
                     throw new BadRequestException("Product '" + product.getName() + "' is not available for purchase");
                 }
@@ -606,11 +602,14 @@ public class OrderServiceImpl implements OrderService {
                     throw new BadRequestException("Product '" + product.getName() + "' is not available for purchase");
                 }
                 boolean hasVariants = variantRepository.existsByProductId(product.getId());
-                UUID requestedVariantId = variantMap.get(product.getId());
-                if (hasVariants && requestedVariantId == null) {
+                List<UUID> requestedVariantsForProduct = lineQuantities.keySet().stream()
+                        .filter(k -> k.productId().equals(product.getId()))
+                        .map(LineKey::variantId)
+                        .toList();
+                if (hasVariants && requestedVariantsForProduct.stream().anyMatch(Objects::isNull)) {
                     throw new BadRequestException("Product '" + product.getName() + "' has variants — specify a variantId");
                 }
-                if (!hasVariants && requestedVariantId != null) {
+                if (!hasVariants && requestedVariantsForProduct.stream().anyMatch(Objects::nonNull)) {
                     throw new BadRequestException("Product '" + product.getName() + "' has no variants");
                 }
             }
@@ -622,10 +621,11 @@ public class OrderServiceImpl implements OrderService {
 
             List<OrderItem> orderItems = new ArrayList<>();
 
-            for (UUID productId : productIds) {
+            for (Map.Entry<LineKey, Integer> lineEntry : lineQuantities.entrySet()) {
+                UUID productId = lineEntry.getKey().productId();
+                UUID variantId = lineEntry.getKey().variantId();
+                int qty = lineEntry.getValue();
                 Product product = productMap.get(productId);
-                int qty = quantityMap.get(productId);
-                UUID variantId = variantMap.get(productId);
 
                 OrderItem item = new OrderItem();
                 item.setProduct(product);

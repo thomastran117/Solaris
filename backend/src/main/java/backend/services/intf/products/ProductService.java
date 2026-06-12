@@ -38,6 +38,14 @@ import java.util.List;
 public interface ProductService {
     PagedResponse<ProductResponse> searchProducts(UUID companyId, String q, String category, String brand, BigDecimal minPrice, BigDecimal maxPrice, Boolean featured, ProductStatus status, Boolean listed, String discountCategory, Boolean hasDiscount, int page, int size, String sort, String direction);
     ProductResponse getProduct(UUID companyId, UUID productId);
+
+    /**
+     * Whether a product is visible to the public storefront (non-members): it must belong to the
+     * company, be ACTIVE, and be listed. Used to gate unauthenticated child reads so draft/unlisted
+     * products cannot be enumerated by UUID.
+     */
+    boolean isPubliclyVisible(UUID companyId, UUID productId);
+
     List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids);
     ProductResponse createProduct(UUID companyId, UUID ownerId, CreateProductRequest request);
     ProductResponse updateProduct(UUID companyId, UUID productId, UUID ownerId, UpdateProductRequest request);

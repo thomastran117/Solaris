@@ -1195,6 +1195,17 @@ class OrderServiceImplTest {
         return p;
     }
 
+    /** Builds a purchasable, untracked-stock variant of the given product. */
+    private backend.models.core.ProductVariant variant(UUID id, Product product) {
+        backend.models.core.ProductVariant v = new backend.models.core.ProductVariant();
+        v.setId(id);
+        v.setProduct(product);
+        v.setPurchasable(true);
+        v.setPrice(new BigDecimal("50.00"));
+        v.setStock(null); // untracked — skips purchase-record/alert bookkeeping
+        return v;
+    }
+
     /** Builds a single-item DELIVERY CreateOrderRequest with a full shipping address. */
     private CreateOrderRequest deliveryRequest(UUID productId, int qty) {
         CreateOrderRequest req = new CreateOrderRequest();
@@ -1233,6 +1244,46 @@ class OrderServiceImplTest {
         assertNotNull(resp);
         verify(orderRepository, atLeast(2)).save(any(Order.class));
         verify(paymentService).createPaymentIntent(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void createOrder_sameProductTwoVariants_decrementsBothVariants() {
+        // A single order may now contain two variants of the same product (e.g. two sizes);
+        // each (productId, variantId) line is reserved independently.
+        UUID variantA = TestIds.uuid(31);
+        UUID variantB = TestIds.uuid(32);
+        Product product = activeProduct();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        when(variantRepository.existsByProductId(PRODUCT_ID)).thenReturn(true);
+        when(variantRepository.findByIdAndProductId(variantA, PRODUCT_ID)).thenReturn(Optional.of(variant(variantA, product)));
+        when(variantRepository.findByIdAndProductId(variantB, PRODUCT_ID)).thenReturn(Optional.of(variant(variantB, product)));
+        when(variantRepository.decrementStock(variantA, 1)).thenReturn(1);
+        when(variantRepository.decrementStock(variantB, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        CreateOrderRequest.OrderItemRequest item1 = req.getItems().get(0);
+        item1.setVariantId(variantA);
+        CreateOrderRequest.OrderItemRequest item2 = new CreateOrderRequest.OrderItemRequest();
+        item2.setProductId(PRODUCT_ID);
+        item2.setVariantId(variantB);
+        item2.setQuantity(1);
+        req.setItems(List.of(item1, item2));
+
+        OrderResponse resp = service.createOrder(USER_ID, req);
+
+        assertNotNull(resp);
+        verify(variantRepository).decrementStock(variantA, 1);
+        verify(variantRepository).decrementStock(variantB, 1);
     }
 
     @Test

@@ -78,7 +78,8 @@ public class AvailabilityEstimateServiceImpl implements AvailabilityEstimateServ
     public AvailabilityEstimateResponse estimateForMarketplace(UUID marketplaceId, UUID productId,
                                                                UUID variantId, Double buyerLat,
                                                                Double buyerLng) {
-        Product product = productRepository.findByIdAndMarketplaceId(productId, marketplaceId)
+        Product product = productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                        productId, marketplaceId, backend.models.enums.ProductStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found in this marketplace"));
 
         UUID variantRef = variantId;

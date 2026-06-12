@@ -2040,7 +2040,8 @@ class ProductServiceImplTest {
 
     @Test
     void getMarketplaceProduct_notFound_throwsResourceNotFound() {
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE))
                 .thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID));
@@ -2050,7 +2051,8 @@ class ProductServiceImplTest {
     void getMarketplaceProduct_happyPath_returnsCatalogProduct() {
         Product p = makeProduct();
         p.setMarketplaceId(MARKETPLACE_ID);
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE))
                 .thenReturn(Optional.of(p));
         when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
                 .thenReturn(List.of());

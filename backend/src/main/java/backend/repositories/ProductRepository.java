@@ -28,6 +28,13 @@ import java.util.Optional;
 public interface ProductRepository extends JpaRepository<Product, java.util.UUID>, JpaSpecificationExecutor<Product> {
     Optional<Product> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
+    /**
+     * Public-storefront visibility check: a product is browsable by non-members only when it is
+     * ACTIVE and listed. Used to gate unauthenticated child reads (images/options/variants/etc.).
+     */
+    boolean existsByIdAndCompanyIdAndStatusAndListed(java.util.UUID id, java.util.UUID companyId,
+                                                     ProductStatus status, boolean listed);
+
     // -------------------------------------------------------------------------
     // Marketplace catalog queries
     // -------------------------------------------------------------------------
@@ -40,6 +47,14 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     Page<Product> findMarketplaceListedPaged(@Param("marketplaceId") java.util.UUID marketplaceId, Pageable pageable);
 
     Optional<Product> findByIdAndMarketplaceId(java.util.UUID id, java.util.UUID marketplaceId);
+
+    /**
+     * Public marketplace detail/availability lookup: only resolves a product that is actually
+     * surfaced in the marketplace (marketplaceListed) and ACTIVE, so delisted/draft/archived
+     * products can't be fetched by direct URL.
+     */
+    Optional<Product> findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+            java.util.UUID id, java.util.UUID marketplaceId, ProductStatus status);
 
     List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, java.util.UUID marketplaceId);
 
