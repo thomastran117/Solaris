@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   backend-tests:
+    name: Backend Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -43,7 +44,7 @@ jobs:
           path: backend/target/site/jacoco/
 
   backend-integration-tests:
-    name: Backend ITs ${{ matrix.shard }}/7 (${{ matrix.name }})
+    name: Backend Integration Tests ${{ matrix.shard }}/7 (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -99,6 +100,7 @@ jobs:
           --batch-mode
 
   frontend-tests:
+    name: Frontend Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
