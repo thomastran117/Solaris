@@ -43,7 +43,7 @@ jobs:
           path: backend/target/site/jacoco/
 
   backend-integration-tests:
-    name: Backend ITs (${{ matrix.name }})
+    name: Backend ITs ${{ matrix.shard }}/7 (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -53,18 +53,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: products
-            tests: BundleIT,ImportIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT,UploadIT
-          - name: orders-returns
-            tests: CompanyOrderIT,DeliveryWebSocketIT,OrderIssueIT,OrderIT,OrderSseIT,OrderStatusHistoryIT,SubOrderIT,TrackingWebhookIT,CompanyReturnIT,CompanyReturnLocationIT,ReturnIT
-          - name: auth-admin
-            tests: AuthDeviceIT,AuthLoginIT,AuthOAuthIT,AuthRefreshIT,AuthSignupIT,AuthTokenIT,AdminFeedbackIT,AdminReportControllerIT,ReviewAdminIT,SearchAdminIT,UserAdminIT
-          - name: company-customers
-            tests: AnnouncementIT,CompanyCatalogControllerIT,CompanyFollowIT,CompanyIT,TeamIT,CustomerAddressIT,CustomerCreditIT,CustomerFeedIT,CustomerSegmentIT,ProfileIT,UserPreferenceIT
-          - name: marketplace-vendors-inventory-analytics
-            tests: CommissionPolicyIT,MarketplaceCatalogControllerIT,MarketplaceCollectionIT,MarketplaceIT,VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,LocationInventoryIT,MarketplaceAvailabilityIT,StockNotificationIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,MarketplaceAnalyticsIT
-          - name: misc
-            tests: InternalNoteIT,SupportTicketIT,CouponIT,LoyaltyIT,SubscriptionIT,PremiumIT,SearchSuggestionIT,SavedListIT,ReportIT,PricingReportControllerIT,DeviceTokenIT,GiftCardIT,FeedbackIT,CollectionIT
+          - shard: 1
+            name: products-auth
+            tests: ProductSubResourcesIT,ProductIT,InventoryIT,RestockIT,AuthTokenIT,AuthRefreshIT,AuthOAuthIT,AuthSignupIT,AuthLoginIT,AuthDeviceIT
+          - shard: 2
+            name: products-extra
+            tests: BundleIT,ProductQAIT,ProductBatchIT,ReviewIT,PromotionRuleIT,KitIT,PriceWatchIT,UploadIT,PricingIT,GiftCardIT,PremiumIT,UserPreferenceIT
+          - shard: 3
+            name: marketplace-catalog
+            tests: MarketplaceAnalyticsIT,MarketplaceCatalogControllerIT,MarketplaceIT,MarketplaceCollectionIT,CommissionPolicyIT,CollectionIT,ImportIT
+          - shard: 4
+            name: orders-fulfillment
+            tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
+          - shard: 5
+            name: vendors-company
+            tests: VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,CompanyIT,TeamIT,AnnouncementIT,CompanyFollowIT,CompanyCatalogControllerIT,ProfileIT
+          - shard: 6
+            name: customers-admin-analytics
+            tests: CustomerSegmentIT,CustomerCreditIT,CustomerAddressIT,CustomerFeedIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,AdminReportControllerIT,AdminFeedbackIT,ReviewAdminIT,UserAdminIT,SearchAdminIT,PricingReportControllerIT,ReportIT
+          - shard: 7
+            name: subscriptions-returns-support
+            tests: SavedListIT,LoyaltyIT,CouponIT,SubscriptionIT,CompanyReturnLocationIT,CompanyReturnIT,ReturnIT,SupportTicketIT,InternalNoteIT,FeedbackIT
 
     steps:
       - name: Checkout
