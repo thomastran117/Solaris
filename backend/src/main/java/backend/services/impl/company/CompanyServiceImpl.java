@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import backend.annotations.retry.RetryOnConcurrency;
 import backend.dtos.requests.company.CreateCompanyRequest;
 import backend.dtos.requests.company.UpdateCompanyRequest;
 import backend.dtos.responses.company.CompanyResponse;
@@ -183,6 +184,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional
+    @RetryOnConcurrency
     public CompanyResponse updateCompany(UUID companyId, UUID userId, UpdateCompanyRequest request) {
         Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
 

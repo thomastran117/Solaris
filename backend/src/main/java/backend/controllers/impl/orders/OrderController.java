@@ -24,6 +24,7 @@ import backend.models.enums.OrderStatus;
 import backend.services.impl.orders.OrderSseService;
 import backend.services.intf.CacheService;
 import backend.services.intf.IdempotencyService;
+import backend.services.intf.RateLimitService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.orders.TrackingService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -60,6 +61,10 @@ public class OrderController {
      */
     private static final long STRIPE_EVENT_DEDUP_TTL_SECONDS = 31L * 24 * 60 * 60;
 
+    /** Per-user cap on order creation — guards payment-intent quota and DB connections from a runaway client. */
+    private static final int ORDER_CREATE_LIMIT = 10;
+    private static final int ORDER_CREATE_WINDOW_SECONDS = 60;
+
     private final OrderService orderService;
     private final PaymentService paymentService;
     private final ReturnService returnService;
@@ -72,6 +77,7 @@ public class OrderController {
     private final TrackingService trackingService;
     private final OrderSseService orderSseService;
     private final ObjectMapper objectMapper;
+    private final RateLimitService rateLimitService;
 
     private static final long TRACKING_CACHE_TTL_SECONDS = 60;
 
@@ -84,7 +90,8 @@ public class OrderController {
                            CacheService cacheService,
                            TrackingService trackingService,
                            OrderSseService orderSseService,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           RateLimitService rateLimitService) {
         this.orderService = orderService;
         this.paymentService = paymentService;
         this.returnService = returnService;
@@ -97,6 +104,7 @@ public class OrderController {
         this.trackingService = trackingService;
         this.orderSseService = orderSseService;
         this.objectMapper = objectMapper;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping
@@ -106,6 +114,11 @@ public class OrderController {
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
         try {
             UUID userId = resolveUserId();
+
+            // Cap order creation per user so a runaway/abusive client can't exhaust the
+            // payment-intent quota or DB connection pool. Fails open on Redis errors.
+            rateLimitService.enforce("order:create", userId.toString(),
+                    ORDER_CREATE_LIMIT, ORDER_CREATE_WINDOW_SECONDS);
 
             // Idempotency: if the caller already created an order under this key, return
             // it directly so a retried POST doesn't charge the customer twice. We only

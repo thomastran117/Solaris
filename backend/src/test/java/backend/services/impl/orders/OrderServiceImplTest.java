@@ -150,6 +150,7 @@ class OrderServiceImplTest {
     private LocationStockRepository      locationStockRepository;
     private InventoryAdjustmentRepository adjustmentRepository;
     private MarketplaceVendorRepository   marketplaceVendorRepository;
+    private SubOrderRepository            subOrderRepository;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -177,6 +178,7 @@ class OrderServiceImplTest {
         locationStockRepository     = mock(LocationStockRepository.class);
         adjustmentRepository        = mock(InventoryAdjustmentRepository.class);
         marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
+        subOrderRepository = mock(SubOrderRepository.class);
         locationRepository       = mock(InventoryLocationRepository.class);
 
         service = new OrderServiceImpl(
@@ -210,7 +212,7 @@ class OrderServiceImplTest {
                 mock(DeviceService.class),
                 mock(EmailVerificationService.class),
                 marketplaceVendorRepository,
-                mock(SubOrderRepository.class),
+                subOrderRepository,
                 mock(OrderItemRepository.class),
                 mock(CommissionEngine.class),
                 mock(CommissionRecordRepository.class),
@@ -535,6 +537,27 @@ class OrderServiceImplTest {
         service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
 
         verify(paymentService).refundPayment(PAYMENT_INTENT_ID, 5000L);
+    }
+
+    @Test
+    void cancelOrderByCompany_mixedVendorOrder_throwsAndDoesNotRefund() {
+        // Order contains an item owned by COMPANY_ID plus a foreign item owned by another
+        // company. The requesting company does not own the order exclusively, so cancellation
+        // (which would refund the whole order and restock the foreign item) must be rejected.
+        Order order = cancellableOrder(OrderStatus.PAID);
+        OrderItem foreignItem = orderItem(TestIds.uuid(11), company(TestIds.uuid(777)),
+                "Foreign", new BigDecimal("25.00"));
+        order.setItems(List.of(order.getItems().get(0), foreignItem));
+
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID));
+
+        verify(paymentService, never()).refundPayment(any(), anyLong());
+        verify(paymentService, never()).cancelPaymentIntent(any());
     }
 
     // -------------------------------------------------------------------------
@@ -2161,6 +2184,7 @@ class OrderServiceImplTest {
     @Test
     void stampVendorIds_productWithMarketplace_returnsTrue() {
         UUID marketplaceId = TestIds.uuid(98);
+        UUID vendorId = TestIds.uuid(99);
         Product p = new Product();
         p.setId(PRODUCT_ID);
         p.setCompany(company(COMPANY_ID));
@@ -2168,10 +2192,57 @@ class OrderServiceImplTest {
         OrderItem item = new OrderItem();
         item.setProduct(p);
 
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setVendorCompany(company(COMPANY_ID));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any()))
+                .thenReturn(List.of(vendor));
+
         Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
 
         assertEquals(true, result);
+        assertEquals(vendorId, item.getVendorId());
         verify(marketplaceVendorRepository).findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any());
+    }
+
+    @Test
+    void createSubOrders_marketplaceItems_createsSubOrderPerVendorWithNetSubtotal() {
+        UUID vendorId = TestIds.uuid(99);
+        UUID marketplaceId = TestIds.uuid(98);
+
+        Order order = new Order();
+        order.setId(TestIds.uuid(3));
+        order.setCurrency("USD");
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setQuantity(2);
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setDiscountAmount(new BigDecimal("1.00")); // per-unit discount → 2.00 off
+        item.setPromotionSavings(new BigDecimal("3.00"));
+        item.setVendorId(vendorId);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setMarketplace(company(marketplaceId));
+        when(marketplaceVendorRepository.findAllById(any())).thenReturn(List.of(vendor));
+        when(subOrderRepository.save(any(backend.models.core.SubOrder.class))).thenAnswer(inv -> {
+            backend.models.core.SubOrder s = inv.getArgument(0);
+            s.setId(TestIds.uuid(500));
+            return s;
+        });
+
+        ReflectionTestUtils.invokeMethod(service, "createSubOrders", order, List.of(item));
+
+        ArgumentCaptor<backend.models.core.SubOrder> captor =
+                ArgumentCaptor.forClass(backend.models.core.SubOrder.class);
+        verify(subOrderRepository).save(captor.capture());
+        backend.models.core.SubOrder created = captor.getValue();
+        assertEquals(vendorId, created.getMarketplaceVendor().getId());
+        assertEquals(marketplaceId, created.getMarketplaceId());
+        // gross 20.00 - discount 2.00 - promo 3.00 = 15.00
+        assertEquals(0, new BigDecimal("15.00").compareTo(created.getSubtotal()));
+        assertEquals(TestIds.uuid(500), item.getSubOrderId());
     }
 
     // =========================================================================
@@ -2289,6 +2360,27 @@ class OrderServiceImplTest {
         ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
 
         verify(productRepository).restoreStock(PRODUCT_ID, 2);
+    }
+
+    @Test
+    void restoreItemStock_missingLocationStockRow_restoresProductAndSkipsLocationGracefully() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        InventoryLocation loc = new InventoryLocation(); loc.setId(TestIds.uuid(60));
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(null);
+        item.setQuantity(2);
+        item.setFulfillmentLocation(loc);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(loc.getId(), PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+
+        // Must not throw even though the location-stock row is gone (logs a warning instead).
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 2);
+        verify(locationStockRepository, never()).restoreStock(any(), anyInt());
     }
 
     @Test

@@ -216,6 +216,8 @@ public class OrderServiceImpl implements OrderService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
+    /** Self-proxy for transactional self-invocation (createOrder orchestrates reserve/attach across separate transactions). */
+    private OrderServiceImpl self;
 
     public OrderServiceImpl(
             OrderRepository orderRepository,
@@ -316,6 +318,16 @@ public class OrderServiceImpl implements OrderService {
         this.promotionPerUserCountRepository = repo;
     }
 
+    /**
+     * Injects this bean's own proxy so {@code createOrder} can invoke its transactional
+     * helpers ({@code reserveOrder}, {@code attachPaymentIntent}, {@code failReservedOrder})
+     * across distinct transactions. {@code @Lazy} breaks the self-referential cycle at startup.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSelf(@org.springframework.context.annotation.Lazy OrderServiceImpl self) {
+        this.self = self;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
@@ -335,9 +347,71 @@ public class OrderServiceImpl implements OrderService {
         this.stringRedisTemplate = template;
     }
 
+    /**
+     * Orchestrates order creation across two transactions so the external Stripe call
+     * never runs inside the stock-reservation transaction (which would pin a DB connection
+     * and hold Redis stock locks across a network round-trip):
+     * <ol>
+     *   <li>{@code reserveOrder} (T1): validate, reserve stock, persist the RESERVED order.</li>
+     *   <li>create the Stripe PaymentIntent with no DB transaction or locks held.</li>
+     *   <li>{@code attachPaymentIntent} (T2): persist the intent id and send the receipt.</li>
+     * </ol>
+     * If the PaymentIntent call fails after T1 commits, {@code failReservedOrder} marks the
+     * order FAILED and restores the already-committed stock.
+     */
     @Override
-    @Transactional
     public OrderResponse createOrder(UUID userId, CreateOrderRequest request) {
+        OrderReservation reservation = self().reserveOrder(userId, request);
+        // Terminal outcome inside T1 (e.g. order parked UNDER_REVIEW) needs no PaymentIntent.
+        if (reservation.response() != null) {
+            return reservation.response();
+        }
+
+        Order reserved = reservation.order();
+        PaymentIntentResult paymentIntent;
+        try {
+            paymentIntent = paymentService.createPaymentIntent(
+                    reservation.amountInCents(),
+                    reservation.currency(),
+                    null,
+                    Map.of("user_id", String.valueOf(userId),
+                           "order_id", String.valueOf(reserved.getId()))
+            );
+        } catch (Exception e) {
+            // The reservation already committed, so rolling back is not an option — restore the
+            // committed stock and mark the order FAILED before surfacing the original error.
+            try {
+                self().failReservedOrder(reserved, "Payment intent creation failed: " + e.getMessage());
+            } catch (Exception compEx) {
+                log.error("[ORDER] Failed to compensate order {} after payment-intent failure: {}",
+                        reserved.getId(), compEx.getMessage());
+            }
+            throw e;
+        }
+
+        return self().attachPaymentIntent(reserved, paymentIntent,
+                reservation.email(), reservation.firstName());
+    }
+
+    /**
+     * Returns this bean's transactional proxy for self-invocation, falling back to {@code this}
+     * when no proxy was injected (e.g. plain unit tests with no Spring context). In production
+     * {@code self} is always wired by {@link #setSelf}, so the helper calls cross real
+     * transaction boundaries; in unit tests the fallback simply runs the logic inline.
+     */
+    private OrderServiceImpl self() {
+        return self != null ? self : this;
+    }
+
+    /**
+     * Transaction T1 of {@link #createOrder}: validates the request, reserves stock under
+     * Redis locks, and persists the order as RESERVED. Returns a {@link OrderReservation}
+     * describing whether the order is terminal (already has its final response) or pending
+     * a PaymentIntent. Never creates a PaymentIntent — that is done by the caller outside
+     * this transaction.
+     */
+    @Transactional
+    public OrderReservation reserveOrder(UUID userId, CreateOrderRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
@@ -1150,32 +1224,15 @@ public class OrderServiceImpl implements OrderService {
                 publishSseEvent(savedForReview, "Order held for review", "status_update");
                 OrderResponse response = toResponse(savedForReview);
                 emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
-                return response;
+                return OrderReservation.terminal(response);
             }
 
-            PaymentIntentResult paymentIntent;
-            try {
-                paymentIntent = paymentService.createPaymentIntent(
-                        amountInCents,
-                        currency,
-                        null,
-                        Map.of("user_id", String.valueOf(userId), "order_id", String.valueOf(order.getId()))
-                );
-            } catch (Exception e) {
-                order.setStatus(OrderStatus.FAILED);
-                order.setFailureReason("Payment intent creation failed: " + e.getMessage());
-                orderRepository.save(order);
-                releaseReservation(order.getId());
-                scheduleStockCompensation(order, decrementedProducts, decrementedVariants, decrementedLocationStocks);
-                throw e;
-            }
-
-            order.setPaymentIntentId(paymentIntent.id());
-            order.setPaymentClientSecret(paymentIntent.clientSecret());
-
-            OrderResponse response = toResponse(orderRepository.save(order));
-            emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
-            return response;
+            // Persist the RESERVED order (with risk fields) and hand back to the caller, which
+            // creates the Stripe PaymentIntent OUTSIDE this transaction so a slow external call
+            // never pins this DB connection or holds the stock locks.
+            order = orderRepository.save(order);
+            return OrderReservation.pending(order, amountInCents, currency,
+                    user.getEmail(), user.getFirstName());
         } catch (ConflictException | ResourceNotFoundException | BadRequestException e) {
             // appliedCoupon is set only after tryIncrementUserCount succeeds (claimed > 0).
             // If it is non-null here, the per-user counter was incremented and must be undone.
@@ -1213,6 +1270,89 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    /**
+     * Result of {@link #reserveOrder}. Exactly one of the two shapes is populated:
+     * <ul>
+     *   <li><b>terminal</b> — {@code response} is set; the order reached its final state inside
+     *       T1 (e.g. parked UNDER_REVIEW) and needs no PaymentIntent.</li>
+     *   <li><b>pending</b> — {@code orderId}/{@code amountInCents}/{@code currency} are set; the
+     *       caller must create a PaymentIntent and attach it via {@link #attachPaymentIntent}.</li>
+     * </ul>
+     */
+    public record OrderReservation(OrderResponse response, Order order, long amountInCents,
+                                   String currency, String email, String firstName) {
+        static OrderReservation terminal(OrderResponse response) {
+            return new OrderReservation(response, null, 0L, null, null, null);
+        }
+
+        static OrderReservation pending(Order order, long amountInCents, String currency,
+                                        String email, String firstName) {
+            return new OrderReservation(null, order, amountInCents, currency, email, firstName);
+        }
+    }
+
+    /**
+     * Transaction T2 of {@link #createOrder}: persists the PaymentIntent id/client-secret on
+     * the already-RESERVED order and sends the receipt email. Runs after the Stripe call has
+     * returned, so no external work happens inside this transaction.
+     */
+    @Transactional
+    public OrderResponse attachPaymentIntent(Order order, PaymentIntentResult paymentIntent,
+                                             String email, String firstName) {
+        order.setPaymentIntentId(paymentIntent.id());
+        order.setPaymentClientSecret(paymentIntent.clientSecret());
+        OrderResponse response = toResponse(orderRepository.save(order));
+        emailService.sendOrderReceiptEmail(email, firstName, response);
+        return response;
+    }
+
+    /**
+     * Compensation path when the PaymentIntent call fails after {@link #reserveOrder} has
+     * committed: marks the order FAILED, releases the Redis reservation, and restores the
+     * already-committed stock from the order's items (under product/variant locks).
+     * Mirrors {@link #compensateOrder} but sets a FAILED terminal status with a reason.
+     */
+    @Transactional
+    public void failReservedOrder(Order order, String reason) {
+        UUID orderId = order.getId();
+        order.setStatus(OrderStatus.FAILED);
+        order.setFailureReason(reason);
+        orderRepository.save(order);
+        releaseReservation(orderId);
+
+        java.util.TreeSet<UUID> productIdSet = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> variantIdSet = new java.util.TreeSet<>();
+        for (OrderItem item : order.getItems()) {
+            if (item.getBundle() != null) continue; // bundle constituent locks skipped — rare path
+            if (item.getProduct() != null) productIdSet.add(item.getProduct().getId());
+            if (item.getVariant() != null) variantIdSet.add(item.getVariant().getId());
+        }
+        String failLockToken = UUID.randomUUID().toString();
+        List<String> failLocks = new ArrayList<>();
+        try {
+            acquireLocks(new ArrayList<>(productIdSet), failLockToken, failLocks);
+            acquireVariantLocks(new ArrayList<>(variantIdSet), failLockToken, failLocks);
+        } catch (ConflictException e) {
+            // Atomic restoreStock SQL is safe without the lock; it only sharpens concurrent reads.
+            log.warn("failReservedOrder: could not acquire all locks for order {} — proceeding", orderId);
+        }
+        try {
+            for (OrderItem item : order.getItems()) {
+                try {
+                    restoreItemStock(item);
+                    recordCompensation(order, CompensationType.STOCK_RESTORE,
+                            buildRestoreDetail(item) + " restored after payment-intent failure", CompensationStatus.COMPLETED);
+                } catch (Exception e) {
+                    log.error("failReservedOrder: failed to restore stock for item on order {}: {}", orderId, e.getMessage());
+                    recordCompensation(order, CompensationType.STOCK_RESTORE,
+                            buildRestoreDetail(item) + " failed to restore", CompensationStatus.FAILED, e.getMessage());
+                }
+            }
+        } finally {
+            releaseLocks(failLocks, failLockToken);
+        }
+    }
+
     @Override
     public OrderResponse getOrder(UUID orderId, UUID userId) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
@@ -1229,8 +1369,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional
     public OrderResponse reorderOrder(UUID orderId, UUID userId) {
+        // Build the request in a read-only transaction (lazy item associations are touched),
+        // then create the order OUTSIDE any transaction so createOrder's own two-phase
+        // boundary (and its out-of-transaction Stripe call) applies unchanged.
+        CreateOrderRequest reorderRequest = self().buildReorderRequest(orderId, userId);
+        return createOrder(userId, reorderRequest);
+    }
+
+    @Transactional(readOnly = true)
+    public CreateOrderRequest buildReorderRequest(UUID orderId, UUID userId) {
         Order original = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
@@ -1259,7 +1407,7 @@ public class OrderServiceImpl implements OrderService {
         reorderRequest.setItems(itemRequests);
         reorderRequest.setCurrency(original.getCurrency());
 
-        return createOrder(userId, reorderRequest);
+        return reorderRequest;
     }
 
     @Override
@@ -1322,6 +1470,11 @@ public class OrderServiceImpl implements OrderService {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        // A merchant may only cancel an order it owns in full. Cancellation refunds the
+        // entire payment and restocks every line, so allowing it on a mixed-vendor
+        // marketplace order would let one company void another vendor's items. Mirrors
+        // the exclusivity guard already applied to returns and risk-review.
+        requireExclusiveCompanyOrder(order, orderId, companyId);
         doCancelOrder(order, backend.models.enums.CancellationReason.MERCHANT_CANCELLED, ownerId);
         return toCompanyOrderResponse(orderRepository.save(order), companyId);
     }
@@ -1904,7 +2057,12 @@ public class OrderServiceImpl implements OrderService {
             UUID variantRef = item.getVariant() != null ? item.getVariant().getId() : null;
             locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
                             item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
-                    .ifPresent(ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()));
+                    .ifPresentOrElse(
+                            ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()),
+                            () -> log.warn("Location stock row missing during restore — leaked {} units. "
+                                            + "location={} product={} variant={} item={}",
+                                    item.getQuantity(), item.getFulfillmentLocation().getId(),
+                                    item.getProduct().getId(), variantRef, item.getId()));
         }
     }
 
@@ -3331,16 +3489,33 @@ public class OrderServiceImpl implements OrderService {
         }
         if (marketplaceToCompanyIds.isEmpty()) return false;
 
-        // Batch-lookup vendors; key = "marketplaceId:companyId"
-        // vendorId on OrderItem is a loose FK still typed Long — skip stamping until entity migrates
+        // Batch-lookup vendors per marketplace, building a (marketplaceId:companyId) -> vendorId map.
+        Map<String, UUID> vendorIdByKey = new HashMap<>();
         for (Map.Entry<UUID, Set<UUID>> entry : marketplaceToCompanyIds.entrySet()) {
             UUID mId = entry.getKey();
-            marketplaceVendorRepository
-                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue());
-            // item.setVendorId(...) skipped — OrderItem.vendorId is still Long
+            for (MarketplaceVendor mv : marketplaceVendorRepository
+                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue())) {
+                vendorIdByKey.put(mId + ":" + mv.getVendorCompany().getId(), mv.getId());
+            }
         }
 
-        return true;
+        // Stamp each marketplace line with its owning MarketplaceVendor id so historic
+        // attribution survives later product ownership changes.
+        boolean anyStamped = false;
+        for (OrderItem item : items) {
+            if (item.getProduct() == null || item.getProduct().getMarketplaceId() == null) continue;
+            UUID vendorId = vendorIdByKey.get(
+                    item.getProduct().getMarketplaceId() + ":" + item.getProduct().getCompany().getId());
+            if (vendorId != null) {
+                item.setVendorId(vendorId);
+                anyStamped = true;
+            } else {
+                log.warn("[MARKETPLACE] No MarketplaceVendor for product {} (marketplace {} company {}) — line left unattributed",
+                        item.getProduct().getId(), item.getProduct().getMarketplaceId(),
+                        item.getProduct().getCompany().getId());
+            }
+        }
+        return anyStamped;
     }
 
     /**
@@ -3349,19 +3524,56 @@ public class OrderServiceImpl implements OrderService {
      * Items with no vendorId (standalone products in a mixed cart) are skipped.
      */
     private void createSubOrders(Order order, List<OrderItem> items) {
-        // OrderItem.vendorId is a loose FK still typed Long — grouping skipped until entity migrates.
-        // stampVendorIds does not populate vendorId yet, so byVendor will always be empty for now.
-        Map<Long, List<OrderItem>> byVendor = items.stream()
+        Map<UUID, List<OrderItem>> byVendor = items.stream()
                 .filter(i -> i.getVendorId() != null)
                 .collect(Collectors.groupingBy(OrderItem::getVendorId));
+        if (byVendor.isEmpty()) return;
 
-        for (Map.Entry<Long, List<OrderItem>> entry : byVendor.entrySet()) {
-            Long mvIdLong = entry.getKey();
+        Map<UUID, MarketplaceVendor> vendorById = marketplaceVendorRepository.findAllById(byVendor.keySet())
+                .stream().collect(Collectors.toMap(MarketplaceVendor::getId, v -> v));
+
+        String currency = order.getCurrency() != null ? order.getCurrency() : "USD";
+        for (Map.Entry<UUID, List<OrderItem>> entry : byVendor.entrySet()) {
+            UUID vendorId = entry.getKey();
             List<OrderItem> vendorItems = entry.getValue();
+            MarketplaceVendor vendor = vendorById.get(vendorId);
+            if (vendor == null) {
+                log.warn("[MARKETPLACE] createSubOrders: vendor {} not found — {} item(s) left unattributed",
+                        vendorId, vendorItems.size());
+                continue;
+            }
 
-            // vendorId is still Long in entity; cannot look up by UUID until entity migrates
-            log.warn("[MARKETPLACE] createSubOrders: vendorId {} is still Long type — SubOrder creation skipped", mvIdLong);
+            BigDecimal subtotal = vendorItems.stream()
+                    .map(this::lineNet)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            SubOrder subOrder = new SubOrder();
+            subOrder.setOrder(order);
+            subOrder.setMarketplaceVendor(vendor);
+            subOrder.setMarketplaceId(vendor.getMarketplace().getId());
+            subOrder.setStatus(SubOrderStatus.PENDING);
+            subOrder.setSubtotal(subtotal);
+            subOrder.setTotalAmount(subtotal);
+            subOrder.setCurrency(currency);
+            SubOrder saved = subOrderRepository.save(subOrder);
+
+            for (OrderItem item : vendorItems) {
+                item.setSubOrderId(saved.getId());
+            }
         }
+    }
+
+    /**
+     * Net contribution of a single line to its vendor's sub-order subtotal:
+     * gross (unitPrice × qty) minus per-unit discounts and any promotion savings,
+     * floored at zero so a fully-discounted line never produces a negative subtotal.
+     */
+    private BigDecimal lineNet(OrderItem item) {
+        BigDecimal qty = BigDecimal.valueOf(item.getQuantity());
+        BigDecimal gross = item.getUnitPrice().multiply(qty);
+        BigDecimal discount = item.getDiscountAmount().multiply(qty);
+        BigDecimal promo = item.getPromotionSavings() != null ? item.getPromotionSavings() : BigDecimal.ZERO;
+        return gross.subtract(discount).subtract(promo).max(BigDecimal.ZERO);
     }
 
     /**
@@ -3410,8 +3622,7 @@ public class OrderServiceImpl implements OrderService {
                 CommissionRecord record = new CommissionRecord();
                 record.setSubOrder(subOrder);
                 record.setVendorId(subOrder.getMarketplaceVendor().getId());
-                // SubOrder.marketplaceId is a loose FK still typed Long — not set on CommissionRecord until entity migrates
-                // record.setMarketplaceId(subOrder.getMarketplaceId());
+                record.setMarketplaceId(subOrder.getMarketplaceId());
                 record.setCommissionRate(result.commissionRate());
                 record.setGrossAmount(result.grossAmount());
                 record.setCommissionAmount(result.commissionAmount());
