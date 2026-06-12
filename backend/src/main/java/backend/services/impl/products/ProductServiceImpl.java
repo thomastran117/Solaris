@@ -352,6 +352,18 @@ public class ProductServiceImpl implements ProductService {
                 productId, companyId, ProductStatus.ACTIVE, true);
     }
 
+    /**
+     * Enforces the compare-at-price merchandising invariant on the final (merged) entity state:
+     * compareAtPrice, when set, must be strictly greater than price. DTO-level {@code @AssertTrue}
+     * only fires when both fields arrive in the same request, so partial PATCHes (e.g. setting only
+     * compareAtPrice, or raising price above an existing compareAtPrice) must be re-checked here.
+     */
+    private void validateCompareAtPriceInvariant(BigDecimal price, BigDecimal compareAtPrice) {
+        if (compareAtPrice != null && (price == null || compareAtPrice.compareTo(price) <= 0)) {
+            throw new BadRequestException("compareAtPrice must be greater than price");
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByIds(UUID companyId, List<UUID> ids) {
@@ -477,6 +489,10 @@ public class ProductServiceImpl implements ProductService {
         if ((activating || listing) && productImageRepository.countByProductId(productId) < 1) {
             throw new BadRequestException("Product must have at least one image before it can be made active or listed");
         }
+
+        // Validate the merged entity state, not just the request: a partial update that sets only
+        // compareAtPrice (or only price) can still break the compareAtPrice > price invariant.
+        validateCompareAtPriceInvariant(product.getPrice(), product.getCompareAtPrice());
 
         Product saved = productRepository.save(product);
         productChangeLogger.logUpdate(before, saved, ChangeSource.USER, null);
@@ -1043,7 +1059,14 @@ public class ProductServiceImpl implements ProductService {
         variant.setOption3(request.getOption3());
         variant.setDisplayOrder(request.getDisplayOrder());
 
-        ProductVariant savedVariant = productVariantRepository.save(variant);
+        ProductVariant savedVariant;
+        try {
+            savedVariant = productVariantRepository.save(variant);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Race backstop: a concurrent request created the same company-scoped SKU between our
+            // existsBy check and save. The (company_id, sku) unique index rejects the duplicate.
+            throw new ConflictException("A variant with this SKU already exists in this company");
+        }
         productChangeLogger.logVariantCreate(savedVariant, ChangeSource.USER);
         ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {
@@ -1085,7 +1108,18 @@ public class ProductServiceImpl implements ProductService {
         if (request.getOption3() != null) variant.setOption3(request.getOption3());
         if (request.getDisplayOrder() != null) variant.setDisplayOrder(request.getDisplayOrder());
 
-        ProductVariant savedVariant = productVariantRepository.save(variant);
+        // Validate merged entity state: a partial update touching only price or only compareAtPrice
+        // can still break compareAtPrice > price.
+        validateCompareAtPriceInvariant(variant.getPrice(), variant.getCompareAtPrice());
+
+        ProductVariant savedVariant;
+        try {
+            savedVariant = productVariantRepository.save(variant);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Race backstop: a concurrent request created the same company-scoped SKU between our
+            // existsBy check and save. The (company_id, sku) unique index rejects the duplicate.
+            throw new ConflictException("A variant with this SKU already exists in this company");
+        }
         productChangeLogger.logVariantUpdate(variantBefore, savedVariant, ChangeSource.USER, null);
         ProductVariantResponse result = toVariantResponse(savedVariant);
         evictAfterCommit(() -> {

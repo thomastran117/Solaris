@@ -307,6 +307,20 @@ class ProductServiceImplTest {
     }
 
     @Test
+    void updateProduct_partialCompareAtPriceBelowExistingPrice_throwsBadRequest() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setPrice(new BigDecimal("100.00"));
+        existing.setCompareAtPrice(null);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setCompareAtPrice(new BigDecimal("50.00")); // only compareAtPrice; below existing price
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
     void updateProduct_skuChange_conflict_throwsConflict() {
         Product existing = makeProduct(PRODUCT_ID);
         existing.setSku("OLD-SKU");
@@ -892,6 +906,38 @@ class ProductServiceImplTest {
         ProductVariantResponse result = service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req);
 
         assertEquals(new BigDecimal("24.99"), result.price());
+    }
+
+    @Test
+    void updateProductVariant_partialCompareAtPriceBelowExistingPrice_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        variant.setPrice(new BigDecimal("100.00"));
+        variant.setCompareAtPrice(null);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+
+        UpdateProductVariantRequest req = new UpdateProductVariantRequest();
+        req.setCompareAtPrice(new BigDecimal("50.00")); // only compareAtPrice; below existing price
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void createProductVariant_concurrentSkuRace_dbUniqueViolation_throwsConflict() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        // Pre-check passes (no existing SKU) but a concurrent insert wins the race; the DB unique
+        // index then rejects our insert and the service maps it to a clean 409.
+        when(productVariantRepository.existsBySkuAndProductCompanyId("RACE-SKU", COMPANY_ID)).thenReturn(false);
+        when(productVariantRepository.save(any(ProductVariant.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"));
+
+        CreateProductVariantRequest req = new CreateProductVariantRequest();
+        req.setSku("RACE-SKU");
+        req.setPrice(new BigDecimal("10.00"));
+
+        assertThrows(ConflictException.class,
+                () -> service.createProductVariant(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
     }
 
     @Test
