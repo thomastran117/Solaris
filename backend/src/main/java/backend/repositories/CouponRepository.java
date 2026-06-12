@@ -46,6 +46,15 @@ public interface CouponRepository extends JpaRepository<Coupon, java.util.UUID> 
                               @Param("activeStatus") DiscountStatus activeStatus);
 
     /**
+     * Reverses a previous {@link #tryIncrementUsedCount} when a coupon-bearing order is cancelled
+     * or fails before a completed sale. The {@code usedCount > 0} guard keeps the global usage
+     * counter from going negative under concurrent reversals.
+     */
+    @Modifying
+    @Query("UPDATE Coupon c SET c.usedCount = c.usedCount - 1 WHERE c.id = :id AND c.usedCount > 0")
+    void decrementUsedCount(@Param("id") java.util.UUID id);
+
+    /**
      * Bulk-deletes all coupons whose endDate has passed.
      * Called by CouponExpiryScheduler on a fixed interval.
      */

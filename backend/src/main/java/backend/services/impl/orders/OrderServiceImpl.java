@@ -1374,6 +1374,7 @@ public class OrderServiceImpl implements OrderService {
             for (OrderItem item : order.getItems()) {
                 try {
                     restoreItemStock(item);
+                    recordCancelAdjustment(item, orderId);
                     recordCompensation(order, CompensationType.STOCK_RESTORE,
                             buildRestoreDetail(item) + " restored after payment-intent failure", CompensationStatus.COMPLETED);
                 } catch (Exception e) {
@@ -1387,8 +1388,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Undo non-stock side effects committed by reserveOrder so a failed checkout does not
-        // consume the customer's coupon allowance or loyalty points (mirrors compensateOrder).
+        // consume the customer's coupon/promotion allowances or loyalty points (mirrors compensateOrder).
         releaseCouponUsage(order);
+        releasePromotionUsage(order);
         try {
             loyaltyService.restoreRedeemedPoints(orderId);
         } catch (Exception e) {
@@ -1612,6 +1614,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         releaseCouponUsage(order);
+        releasePromotionUsage(order);
         order.setCompensated(true);
 
         // Publish after the enclosing @Transactional commits — publisher registers an afterCommit hook
@@ -1708,6 +1711,7 @@ public class OrderServiceImpl implements OrderService {
             }
 
             releaseCouponUsage(order);
+            releasePromotionUsage(order);
             orderRepository.save(order);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment failed");
             publishSseEvent(order, "Payment failed", "status_update");
@@ -1796,6 +1800,7 @@ public class OrderServiceImpl implements OrderService {
             order.setCancellationReason(backend.models.enums.CancellationReason.STALE_TIMEOUT);
         }
         releaseCouponUsage(order);
+        releasePromotionUsage(order);
         orderRepository.save(order);
 
         if (order.getCancellationReason() == backend.models.enums.CancellationReason.STALE_TIMEOUT
@@ -1836,38 +1841,50 @@ public class OrderServiceImpl implements OrderService {
         try {
             switch (compensation.getType()) {
                 case STOCK_RESTORE -> {
+                    // Fail closed: if a concrete restore target cannot be parsed from the detail
+                    // string (malformed, or a multi-component [BUNDLE:]/[KIT:] line that the
+                    // string format cannot reconstruct), throw so the row stays FAILED and visible
+                    // rather than being silently marked COMPLETED without restoring any inventory.
                     String detail = compensation.getDetail();
                     int quantity = extractQuantityFromDetail(detail);
                     if (detail != null && detail.startsWith("[LOC:")) {
                         UUID locationStockId = extractLocationStockIdFromDetail(detail);
-                        if (locationStockId != null && quantity > 0) {
-                            locationStockRepository.restoreStock(locationStockId, quantity);
+                        if (locationStockId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable location stock-restore detail: " + detail);
                         }
+                        locationStockRepository.restoreStock(locationStockId, quantity);
                     } else if (detail != null && detail.startsWith("[VARIANT]")) {
                         UUID variantId = extractVariantIdFromDetail(detail);
-                        if (variantId != null && quantity > 0) {
-                            variantRepository.restoreStock(variantId, quantity);
+                        if (variantId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable variant stock-restore detail: " + detail);
                         }
+                        variantRepository.restoreStock(variantId, quantity);
+                    } else if (detail != null && (detail.startsWith("[BUNDLE:") || detail.startsWith("[KIT:"))) {
+                        throw new IllegalStateException(
+                                "Cannot reconstruct multi-component stock-restore from detail: " + detail);
                     } else {
                         UUID productId = extractProductIdFromDetail(detail);
-                        if (productId != null && quantity > 0) {
-                            productRepository.restoreStock(productId, quantity);
+                        if (productId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable product stock-restore detail: " + detail);
                         }
+                        productRepository.restoreStock(productId, quantity);
                     }
                 }
                 case PAYMENT_CANCEL -> {
                     String intentId = extractIntentIdFromDetail(compensation.getDetail());
-                    if (intentId != null) {
-                        paymentService.cancelPaymentIntent(intentId);
+                    if (intentId == null) {
+                        throw new IllegalStateException("No payment intent id in detail: " + compensation.getDetail());
                     }
+                    paymentService.cancelPaymentIntent(intentId);
                 }
                 case PAYMENT_REFUND -> {
                     String detail = compensation.getDetail();
                     String intentId = extractIntentIdFromDetail(detail);
                     Long centsToRefund = extractRefundCentsFromDetail(detail);
-                    if (intentId != null) {
-                        paymentService.refundPayment(intentId, centsToRefund);
+                    if (intentId == null) {
+                        throw new IllegalStateException("No payment intent id in detail: " + detail);
                     }
+                    paymentService.refundPayment(intentId, centsToRefund);
                 }
             }
             compensation.setStatus(CompensationStatus.COMPLETED);
@@ -1876,6 +1893,9 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception e) {
             log.error("Compensation retry failed for id={} type={}: {}",
                     compensation.getId(), compensation.getType(), e.getMessage());
+            // Reset from CLAIMED back to FAILED so the row is re-scanned on the next pass
+            // (until MAX attempts) instead of being stranded in the transient CLAIMED state.
+            compensation.setStatus(CompensationStatus.FAILED);
             compensation.setErrorMessage(e.getMessage());
         }
 
@@ -1962,12 +1982,47 @@ public class OrderServiceImpl implements OrderService {
      * Idempotent: safe to call even if the key has already expired or was never written.
      */
     private void releaseCouponUsage(Order order) {
-        if (order.getCoupon() != null && order.getCoupon().getMaxUsesPerUser() != null) {
+        Coupon coupon = order.getCoupon();
+        if (coupon == null) return;
+        // Reverse the global usedCount bumped in reserveOrder so a cancelled/failed checkout does
+        // not permanently consume the coupon's maxUses inventory.
+        try {
+            couponRepository.decrementUsedCount(coupon.getId());
+        } catch (Exception e) {
+            log.error("Failed to release global coupon usage for order {}: {}", order.getId(), e.getMessage());
+        }
+        if (coupon.getMaxUsesPerUser() != null && order.getUser() != null) {
             try {
-                couponPerUserCountRepository.decrementUserCount(
-                        order.getCoupon().getId(), order.getUser().getId());
+                couponPerUserCountRepository.decrementUserCount(coupon.getId(), order.getUser().getId());
             } catch (Exception e) {
-                log.error("Failed to release coupon usage for order {}: {}", order.getId(), e.getMessage());
+                log.error("Failed to release per-user coupon usage for order {}: {}", order.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Reverses the global and per-user promotion usage counters incremented in {@code reserveOrder}
+     * for a cancelled/failed order, using the order's PromotionRedemption rows as the source of
+     * truth. Each step is guarded so a single failure does not block the rest of the cleanup.
+     */
+    private void releasePromotionUsage(Order order) {
+        for (PromotionRedemption pr : promotionRedemptionRepository.findAllByOrderId(order.getId())) {
+            PromotionRule rule = pr.getRule();
+            if (rule == null) continue;
+            UUID ruleId = rule.getId();
+            try {
+                promotionRuleRepository.decrementUsedCount(ruleId);
+            } catch (Exception e) {
+                log.error("Failed to release global promotion usage for rule {} on order {}: {}",
+                        ruleId, order.getId(), e.getMessage());
+            }
+            if (rule.getMaxUsesPerUser() != null && order.getUser() != null) {
+                try {
+                    promotionPerUserCountRepository.decrementUserCount(ruleId, order.getUser().getId());
+                } catch (Exception e) {
+                    log.error("Failed to release per-user promotion usage for rule {} on order {}: {}",
+                            ruleId, order.getId(), e.getMessage());
+                }
             }
         }
     }
@@ -3239,13 +3294,39 @@ public class OrderServiceImpl implements OrderService {
             return self().completeRiskApproval(orderId, paymentIntent, ownerId, req);
         } catch (Exception e) {
             // Intent was created in Stripe but not attached; cancel it so no orphaned hold remains.
+            // Done in its own transaction so a failed cancel leaves a retryable PAYMENT_CANCEL row
+            // (mirrors the normal-order failReservedOrder path — logs alone are not durable).
             try {
-                paymentService.cancelPaymentIntent(paymentIntent.id());
+                self().cancelOrphanedIntent(orderId, paymentIntent.id());
             } catch (Exception ce) {
-                log.error("approveRiskReview: failed to cancel orphaned intent {} after completion failure: {}",
+                log.error("approveRiskReview: failed to record/cancel orphaned intent {} after completion failure: {}",
                         paymentIntent.id(), ce.getMessage());
             }
             throw e;
+        }
+    }
+
+    /**
+     * Cancels a PaymentIntent that was created at Stripe but never attached to its order, recording
+     * a {@link CompensationType#PAYMENT_CANCEL} row — COMPLETED on success, or FAILED (retryable by
+     * the compensation scheduler) if the cancel call itself fails.
+     */
+    @Transactional
+    public void cancelOrphanedIntent(UUID orderId, String intentId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        try {
+            paymentService.cancelPaymentIntent(intentId);
+            if (order != null) {
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancelled payment intent: " + intentId, CompensationStatus.COMPLETED);
+            }
+        } catch (Exception e) {
+            log.error("cancelOrphanedIntent: failed to cancel payment intent {} for order {}: {}",
+                    intentId, orderId, e.getMessage());
+            if (order != null) {
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancel payment intent: " + intentId, CompensationStatus.FAILED, e.getMessage());
+            }
         }
     }
 
@@ -3659,38 +3740,65 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal allLinesNet = items.stream().map(this::lineNet).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal collected = order.getTotalAmount() != null ? order.getTotalAmount() : allLinesNet;
         BigDecimal scale = (allLinesNet.signum() > 0 && collected.compareTo(allLinesNet) < 0)
-                ? collected.divide(allLinesNet, 6, RoundingMode.HALF_UP)
+                ? collected.divide(allLinesNet, 10, RoundingMode.HALF_UP)
                 : BigDecimal.ONE;
 
-        String currency = order.getCurrency() != null ? order.getCurrency() : "USD";
+        // Resolve vendors and their raw (pre-discount) subtotals, skipping unresolved vendors.
+        record VendorGroup(MarketplaceVendor vendor, List<OrderItem> items, BigDecimal subtotal) {}
+        List<VendorGroup> groups = new ArrayList<>();
         for (Map.Entry<UUID, List<OrderItem>> entry : byVendor.entrySet()) {
-            UUID vendorId = entry.getKey();
-            List<OrderItem> vendorItems = entry.getValue();
-            MarketplaceVendor vendor = vendorById.get(vendorId);
+            MarketplaceVendor vendor = vendorById.get(entry.getKey());
             if (vendor == null) {
                 log.warn("[MARKETPLACE] createSubOrders: vendor {} not found — {} item(s) left unattributed",
-                        vendorId, vendorItems.size());
+                        entry.getKey(), entry.getValue().size());
                 continue;
             }
+            BigDecimal subtotal = entry.getValue().stream()
+                    .map(this::lineNet).reduce(BigDecimal.ZERO, BigDecimal::add);
+            groups.add(new VendorGroup(vendor, entry.getValue(), subtotal));
+        }
+        if (groups.isEmpty()) return;
 
-            BigDecimal subtotal = vendorItems.stream()
-                    .map(this::lineNet)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal total = subtotal.multiply(scale).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal allocatedDiscount = subtotal.subtract(total).max(BigDecimal.ZERO);
+        // Largest-remainder allocation in integer cents. Independent per-vendor HALF_UP rounding
+        // could otherwise sum to a few cents above the collected total; flooring then handing the
+        // leftover cents to the largest fractional remainders keeps the exact-sum guarantee.
+        int n = groups.size();
+        long[] cents = new long[n];
+        BigDecimal[] remainder = new BigDecimal[n];
+        BigDecimal sumExact = BigDecimal.ZERO;
+        for (int i = 0; i < n; i++) {
+            BigDecimal exact = groups.get(i).subtotal().multiply(scale).movePointRight(2);
+            BigDecimal floor = exact.setScale(0, RoundingMode.FLOOR);
+            cents[i] = floor.longValueExact();
+            remainder[i] = exact.subtract(floor);
+            sumExact = sumExact.add(exact);
+        }
+        long sumFloor = 0;
+        for (long c : cents) sumFloor += c;
+        long leftover = sumExact.setScale(0, RoundingMode.HALF_UP).longValueExact() - sumFloor;
+        Integer[] byRemainderDesc = new Integer[n];
+        for (int i = 0; i < n; i++) byRemainderDesc[i] = i;
+        java.util.Arrays.sort(byRemainderDesc, (a, b) -> remainder[b].compareTo(remainder[a]));
+        for (int k = 0; k < leftover && k < n; k++) cents[byRemainderDesc[k]] += 1;
+
+        String currency = order.getCurrency() != null ? order.getCurrency() : "USD";
+        for (int i = 0; i < n; i++) {
+            VendorGroup g = groups.get(i);
+            BigDecimal total = BigDecimal.valueOf(cents[i]).movePointLeft(2);
+            BigDecimal allocatedDiscount = g.subtotal().subtract(total).max(BigDecimal.ZERO);
 
             SubOrder subOrder = new SubOrder();
             subOrder.setOrder(order);
-            subOrder.setMarketplaceVendor(vendor);
-            subOrder.setMarketplaceId(vendor.getMarketplace().getId());
+            subOrder.setMarketplaceVendor(g.vendor());
+            subOrder.setMarketplaceId(g.vendor().getMarketplace().getId());
             subOrder.setStatus(SubOrderStatus.PENDING);
-            subOrder.setSubtotal(subtotal);
+            subOrder.setSubtotal(g.subtotal());
             subOrder.setVendorDiscountAmount(allocatedDiscount);
             subOrder.setTotalAmount(total);
             subOrder.setCurrency(currency);
             SubOrder saved = subOrderRepository.save(subOrder);
 
-            for (OrderItem item : vendorItems) {
+            for (OrderItem item : g.items()) {
                 item.setSubOrderId(saved.getId());
             }
         }
