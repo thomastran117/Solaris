@@ -1317,6 +1317,10 @@ public class OrderServiceImpl implements OrderService {
         UUID orderId = order.getId();
         order.setStatus(OrderStatus.FAILED);
         order.setFailureReason(reason);
+        // Mark compensated here: we restore the stock inline below, so the stale-order
+        // scheduler (which scans FAILED + compensatedFalse) must not run compensateOrder
+        // again and restore the same items a second time.
+        order.setCompensated(true);
         orderRepository.save(order);
         releaseReservation(orderId);
 
@@ -3564,16 +3568,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Net contribution of a single line to its vendor's sub-order subtotal:
-     * gross (unitPrice × qty) minus per-unit discounts and any promotion savings,
-     * floored at zero so a fully-discounted line never produces a negative subtotal.
+     * Net contribution of a single line to its vendor's sub-order subtotal. {@code unitPrice}
+     * is already the promotion-discounted per-unit price (see the pricing map-back in
+     * {@code reserveOrder}, where {@code unitPrice = basePrice - perUnitSavings}); the line's
+     * {@code discountAmount}/{@code promotionSavings} encode that same savings, so they must
+     * NOT be subtracted again here. The net line revenue is simply unitPrice × quantity.
      */
     private BigDecimal lineNet(OrderItem item) {
-        BigDecimal qty = BigDecimal.valueOf(item.getQuantity());
-        BigDecimal gross = item.getUnitPrice().multiply(qty);
-        BigDecimal discount = item.getDiscountAmount().multiply(qty);
-        BigDecimal promo = item.getPromotionSavings() != null ? item.getPromotionSavings() : BigDecimal.ZERO;
-        return gross.subtract(discount).subtract(promo).max(BigDecimal.ZERO);
+        return item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
     }
 
     /**

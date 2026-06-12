@@ -1241,8 +1241,14 @@ class OrderServiceImplTest {
         assertThrows(RuntimeException.class,
                 () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
 
-        // Verify: save was called (initial save + FAILED save), and stock schedule was triggered
-        verify(orderRepository, atLeast(1)).save(any(Order.class));
+        // The order must be persisted FAILED *and* compensated=true: failReservedOrder restores
+        // stock inline, so the stale-order scheduler must not restore it a second time.
+        ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository, atLeast(1)).save(captor.capture());
+        boolean failedAndCompensated = captor.getAllValues().stream()
+                .anyMatch(o -> o.getStatus() == OrderStatus.FAILED && o.isCompensated());
+        org.junit.jupiter.api.Assertions.assertTrue(failedAndCompensated,
+                "failed order should be saved with status FAILED and compensated=true");
     }
 
     @Test
@@ -2217,8 +2223,10 @@ class OrderServiceImplTest {
         OrderItem item = new OrderItem();
         item.setId(TestIds.uuid(10));
         item.setQuantity(2);
+        // unitPrice is already the promotion-discounted net price; discountAmount/promotionSavings
+        // encode that same savings and must NOT be subtracted again into the sub-order subtotal.
         item.setUnitPrice(new BigDecimal("10.00"));
-        item.setDiscountAmount(new BigDecimal("1.00")); // per-unit discount → 2.00 off
+        item.setDiscountAmount(new BigDecimal("1.00"));
         item.setPromotionSavings(new BigDecimal("3.00"));
         item.setVendorId(vendorId);
 
@@ -2240,8 +2248,8 @@ class OrderServiceImplTest {
         backend.models.core.SubOrder created = captor.getValue();
         assertEquals(vendorId, created.getMarketplaceVendor().getId());
         assertEquals(marketplaceId, created.getMarketplaceId());
-        // gross 20.00 - discount 2.00 - promo 3.00 = 15.00
-        assertEquals(0, new BigDecimal("15.00").compareTo(created.getSubtotal()));
+        // net unitPrice (10.00, already discounted) × qty 2 = 20.00 — savings not re-subtracted
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getSubtotal()));
         assertEquals(TestIds.uuid(500), item.getSubOrderId());
     }
 
