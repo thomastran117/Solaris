@@ -54,6 +54,10 @@ class MarketplaceAvailabilityIT extends AbstractIntegrationIT {
         p.setMarketplaceId(marketplaceId);
         p.setName("Test Product");
         p.setPrice(new BigDecimal("29.99"));
+        // Availability is a public storefront endpoint: it only resolves products that are actually
+        // surfaced in the marketplace (ACTIVE + marketplaceListed). Entity defaults are DRAFT/false.
+        p.setStatus(backend.models.enums.ProductStatus.ACTIVE);
+        p.setMarketplaceListed(true);
         return productRepository.save(p);
     }
 
@@ -144,6 +148,23 @@ class MarketplaceAvailabilityIT extends AbstractIntegrationIT {
         UUID marketplaceId = UUID.randomUUID();
 
         mockMvc.perform(get(availabilityUrl(marketplaceId, UUID.randomUUID())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getAvailability_delistedProduct_returns404() throws Exception {
+        // A product in the marketplace but not marketplaceListed (delisted/hidden) must not leak
+        // availability data via direct URL.
+        User owner = createActiveUser("avail-delisted@example.com", "Password1!");
+        Company company = createCompany(owner);
+        UUID marketplaceId = UUID.randomUUID();
+        Product product = createProduct(company, marketplaceId);
+        product.setMarketplaceListed(false);
+        productRepository.save(product);
+        InventoryLocation location = createLocation(company, null, null);
+        createStock(location, product, 100);
+
+        mockMvc.perform(get(availabilityUrl(marketplaceId, product.getId())))
                 .andExpect(status().isNotFound());
     }
 
