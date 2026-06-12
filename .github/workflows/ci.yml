@@ -54,7 +54,7 @@ jobs:
       matrix:
         include:
           - name: products
-            tests: BundleIT,ImportIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT
+            tests: BundleIT,ImportIT,InventoryIT,KitIT,PriceWatchIT,PricingIT,ProductBatchIT,ProductIT,ProductQAIT,ProductSubResourcesIT,PromotionRuleIT,RestockIT,ReviewIT,UploadIT
           - name: orders-returns
             tests: CompanyOrderIT,DeliveryWebSocketIT,OrderIssueIT,OrderIT,OrderSseIT,OrderStatusHistoryIT,SubOrderIT,TrackingWebhookIT,CompanyReturnIT,CompanyReturnLocationIT,ReturnIT
           - name: auth-admin
