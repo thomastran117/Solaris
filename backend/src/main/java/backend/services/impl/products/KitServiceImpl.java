@@ -96,6 +96,7 @@ public class KitServiceImpl implements KitService {
         kit.setThumbnailUrl(request.getThumbnailUrl());
         kit.setCurrency(request.getCurrency() != null ? request.getCurrency() : "USD");
         kit.setListed(request.isListed());
+        rejectScheduledStatus(request.getStatus());
         kit.setStatus(request.getStatus() != null ? request.getStatus() : ProductStatus.DRAFT);
         if (request.getCompareAtPrice() != null) kit.setCompareAtPrice(request.getCompareAtPrice());
 
@@ -130,7 +131,10 @@ public class KitServiceImpl implements KitService {
         if (request.getCompareAtPrice() != null) kit.setCompareAtPrice(request.getCompareAtPrice());
         if (request.getCurrency() != null)     kit.setCurrency(request.getCurrency());
         if (request.getListed() != null)       kit.setListed(request.getListed());
-        if (request.getStatus() != null)       kit.setStatus(request.getStatus());
+        if (request.getStatus() != null) {
+            rejectScheduledStatus(request.getStatus());
+            kit.setStatus(request.getStatus());
+        }
 
         if (request.getSlots() != null) {
             if (request.getSlots().isEmpty()) {
@@ -259,6 +263,17 @@ public class KitServiceImpl implements KitService {
             });
         } else {
             eviction.run();
+        }
+    }
+
+    /**
+     * Kits have no scheduled-publish date or activation worker (unlike products), so SCHEDULED would
+     * strand a kit with no path to ACTIVE. Reject it outright on create/update.
+     */
+    private void rejectScheduledStatus(ProductStatus status) {
+        if (status == ProductStatus.SCHEDULED) {
+            throw new backend.exceptions.http.BadRequestException(
+                    "SCHEDULED status is not supported for kits — use DRAFT or ACTIVE");
         }
     }
 

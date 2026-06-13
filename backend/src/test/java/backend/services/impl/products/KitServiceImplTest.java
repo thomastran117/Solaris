@@ -112,6 +112,17 @@ class KitServiceImplTest {
     }
 
     @Test
+    void createKit_scheduledStatus_throwsBadRequest() {
+        // Kits have no scheduled-publish support — SCHEDULED must be rejected.
+        CreateKitRequest req = makeCreateRequest(
+                List.of(slotReq("CPU", true, 1, 1, List.of(choiceReq(PRODUCT_A, null, null, true)))));
+        req.setStatus(backend.models.enums.ProductStatus.SCHEDULED);
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.createKit(COMPANY_ID, OWNER_ID, req));
+    }
+
+    @Test
     void createKit_priceDeltaSurcharge_reflectedInEffectivePrice() {
         Product product = makeProduct(PRODUCT_A, new BigDecimal("100.00"));
         when(productRepository.findByIdAndCompanyId(PRODUCT_A, COMPANY_ID)).thenReturn(Optional.of(product));

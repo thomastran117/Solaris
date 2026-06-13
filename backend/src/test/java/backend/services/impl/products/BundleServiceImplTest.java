@@ -258,6 +258,19 @@ class BundleServiceImplTest {
     }
 
     @Test
+    void updateBundle_scheduledStatus_throwsBadRequest() {
+        // Bundles have no scheduled-publish support — SCHEDULED must be rejected.
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        UpdateBundleRequest req = new UpdateBundleRequest();
+        req.setStatus(backend.models.enums.ProductStatus.SCHEDULED);
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.updateBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID, req));
+    }
+
+    @Test
     void updateBundle_priceOnly_valid_updates() {
         ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
         Product bundleProduct = makeProduct(PRODUCT_ID, new BigDecimal("20.00"));

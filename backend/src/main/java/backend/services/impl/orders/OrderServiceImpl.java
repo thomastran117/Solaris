@@ -699,6 +699,15 @@ public class OrderServiceImpl implements OrderService {
                     List<AllocationService.AllocationResult> allocResults =
                             allocationService.allocate(productId, variantId, qty, strategy, buyerLat, buyerLng);
 
+                    // Compensation ownership on allocation failure:
+                    //   • AllocationService owns its OWN partial location decrements — it restores
+                    //     them before returning an empty result, so they are NOT in
+                    //     decrementedLocationStocks and must not be restored again here.
+                    //   • This @Transactional method's rollback is the authoritative undo for the
+                    //     product/variant/prior-location decrements below. safeRestoreAll is a
+                    //     belt-and-suspenders restore that, because it runs in the SAME transaction,
+                    //     is itself rolled back — so it can never cause net stock drift even though
+                    //     the throw will also roll everything back.
                     if (allocResults.isEmpty() && hasAnyLocationStock(productId, variantId)) {
                         safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                         throw new ConflictException("Insufficient location stock for product '" + product.getName() + "'");

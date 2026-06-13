@@ -143,7 +143,10 @@ public class BundleServiceImpl implements BundleService {
         if (request.getDescription() != null) bundle.setDescription(request.getDescription());
         if (request.getThumbnailUrl() != null) bundle.setThumbnailUrl(request.getThumbnailUrl());
         if (request.getCompareAtPrice() != null) bundle.setCompareAtPrice(request.getCompareAtPrice());
-        if (request.getStatus() != null) bundle.setStatus(request.getStatus());
+        if (request.getStatus() != null) {
+            rejectScheduledStatus(request.getStatus());
+            bundle.setStatus(request.getStatus());
+        }
         if (request.getListed() != null) bundle.setListed(request.getListed());
         if (request.getPreorderEnabled() != null) bundle.setPreorderEnabled(request.getPreorderEnabled());
         if (request.getPreorderExpectedDate() != null) bundle.setPreorderExpectedDate(request.getPreorderExpectedDate());
@@ -223,9 +226,7 @@ public class BundleServiceImpl implements BundleService {
     public List<BundleResponse> batchUpdateBundles(UUID companyId, UUID ownerId, BatchUpdateBundlesRequest request) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
-        if (request.getStatus() == ProductStatus.SCHEDULED) {
-            throw new BadRequestException("SCHEDULED status cannot be set in bulk — edit each bundle individually to set a publish date");
-        }
+        rejectScheduledStatus(request.getStatus());
 
         List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(request.getIds(), companyId);
         if (bundles.size() != request.getIds().size()) {
@@ -325,6 +326,17 @@ public class BundleServiceImpl implements BundleService {
             });
         } else {
             eviction.run();
+        }
+    }
+
+    /**
+     * Bundles have no scheduled-publish date or activation worker (unlike products), so SCHEDULED
+     * would strand a bundle with no path to ACTIVE. Reject it on update (individual and bulk).
+     */
+    private void rejectScheduledStatus(ProductStatus status) {
+        if (status == ProductStatus.SCHEDULED) {
+            throw new BadRequestException(
+                    "SCHEDULED status is not supported for bundles — use DRAFT or ACTIVE");
         }
     }
 

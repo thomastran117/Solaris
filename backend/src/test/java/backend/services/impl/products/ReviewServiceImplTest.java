@@ -130,6 +130,19 @@ class ReviewServiceImplTest {
     }
 
     @Test
+    void createReview_concurrentDuplicate_dbUniqueViolation_throwsConflict() {
+        // Pre-check passes but a concurrent submission wins the race; the unique (product_id,
+        // user_id) constraint rejects this save and the service maps it to a clean 409.
+        when(orderRepository.existsDeliveredOrShippedOrderForProduct(USER_ID, PRODUCT_ID)).thenReturn(true);
+        when(reviewRepository.existsByProductIdAndReviewerId(PRODUCT_ID, USER_ID)).thenReturn(false);
+        when(reviewRepository.save(any(ProductReview.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"));
+
+        assertThrows(ConflictException.class,
+                () -> service.createReview(COMPANY_ID, PRODUCT_ID, USER_ID, makeCreateReviewRequest(4)));
+    }
+
+    @Test
     void createReview_productNotFound_throwsResourceNotFound() {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
 

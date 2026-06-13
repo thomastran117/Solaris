@@ -148,10 +148,21 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     long countOrdersWithBackorderedItemsInWindow(@Param("companyId") java.util.UUID companyId,
                                                  @Param("from") Instant from, @Param("to") Instant to);
 
-    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items i " +
-           "WHERE o.user.id = :userId " +
-           "AND i.product.id = :productId " +
-           "AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)")
+    /**
+     * Review eligibility ("verified purchase"): true if the user has a SHIPPED/DELIVERED order
+     * containing the product as a direct line item, a constituent of a purchased bundle, or a
+     * selected component of a purchased kit.
+     */
+    @Query("""
+            SELECT COUNT(o) > 0 FROM Order o JOIN o.items i
+            WHERE o.user.id = :userId
+              AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)
+              AND (
+                    i.product.id = :productId
+                 OR EXISTS (SELECT 1 FROM BundleItem bi WHERE bi.bundle = i.bundle AND bi.product.id = :productId)
+                 OR EXISTS (SELECT 1 FROM OrderKitSelection ks WHERE ks.orderItem = i AND ks.product.id = :productId)
+              )
+            """)
     boolean existsDeliveredOrShippedOrderForProduct(@Param("userId") UUID userId,
                                                     @Param("productId") java.util.UUID productId);
 
