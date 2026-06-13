@@ -359,11 +359,11 @@ class BundleServiceImplTest {
     }
 
     @Test
-    void deleteBundle_activeOrderExists_throwsConflict() {
-        // H15: deletion must be blocked while active orders reference the bundle.
+    void deleteBundle_referencedByAnyOrder_throwsConflict() {
+        // Deletion is blocked while ANY order (including delivered/cancelled history) references it.
         ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
         when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
-        when(orderRepository.existsActiveOrderWithBundle(BUNDLE_ID)).thenReturn(true);
+        when(orderRepository.existsAnyOrderWithBundle(BUNDLE_ID)).thenReturn(true);
 
         assertThrows(backend.exceptions.http.ConflictException.class,
                 () -> service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID));
@@ -371,10 +371,10 @@ class BundleServiceImplTest {
     }
 
     @Test
-    void deleteBundle_noActiveOrders_proceeds() {
+    void deleteBundle_noOrderReferences_proceeds() {
         ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
         when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
-        when(orderRepository.existsActiveOrderWithBundle(BUNDLE_ID)).thenReturn(false);
+        when(orderRepository.existsAnyOrderWithBundle(BUNDLE_ID)).thenReturn(false);
 
         service.deleteBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID);
 

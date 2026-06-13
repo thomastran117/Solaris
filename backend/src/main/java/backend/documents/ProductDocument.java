@@ -31,9 +31,16 @@ public class ProductDocument {
     @Field(type = FieldType.Keyword)
     private UUID marketplaceId;
 
-    /** The owning vendor's company ID — populated when marketplaceId is set. */
+    /**
+     * The {@code MarketplaceVendor.id} — populated when marketplaceId is set. This is the id the
+     * public catalog API exposes and filters on, so it must match the response DTO's vendorId.
+     */
     @Field(type = FieldType.Keyword)
     private UUID vendorId;
+
+    /** The owning vendor's *company* id — populated when marketplaceId is set. Kept for joins/analytics. */
+    @Field(type = FieldType.Keyword)
+    private UUID vendorCompanyId;
 
     @Field(type = FieldType.Keyword)
     private String vendorName;

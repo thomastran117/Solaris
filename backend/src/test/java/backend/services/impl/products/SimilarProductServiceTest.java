@@ -106,6 +106,7 @@ class SimilarProductServiceTest {
                 productRelationshipRepository,
                 productSimilarityRepository,
                 mock(CompanyAccessService.class),
+                mock(backend.repositories.OrderItemRepository.class),
                 300L, 60L);
 
         when(productSimilarityRepository.findTop10ByIdSourceProductIdOrderByScoreDesc(any()))

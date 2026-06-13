@@ -109,6 +109,7 @@ class ProductServiceImplTest {
     private CompanyAccessService companyAccessService;
     private backend.repositories.ProductRelationshipRepository productRelationshipRepository;
     private backend.repositories.ProductSimilarityRepository productSimilarityRepository;
+    private backend.repositories.OrderItemRepository orderItemRepository;
 
     private ProductServiceImpl service;
 
@@ -136,6 +137,7 @@ class ProductServiceImplTest {
         companyAccessService          = mock(CompanyAccessService.class);
         productRelationshipRepository = mock(backend.repositories.ProductRelationshipRepository.class);
         productSimilarityRepository   = mock(backend.repositories.ProductSimilarityRepository.class);
+        orderItemRepository           = mock(backend.repositories.OrderItemRepository.class);
 
         service = new ProductServiceImpl(
                 productRepository, companyRepository,
@@ -151,6 +153,7 @@ class ProductServiceImplTest {
                 productRelationshipRepository,
                 productSimilarityRepository,
                 companyAccessService,
+                orderItemRepository,
                 300L, 60L);
 
         // Common stubs
@@ -472,6 +475,18 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteProduct_referencedByOrder_throwsConflict() {
+        Product product = makeProduct(PRODUCT_ID);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(bundleRepository.existsByItemsProductId(PRODUCT_ID)).thenReturn(false);
+        when(orderItemRepository.existsByProductId(PRODUCT_ID)).thenReturn(true);
+
+        assertThrows(ConflictException.class,
+                () -> service.deleteProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+        verify(productRepository, never()).delete(any(Product.class));
     }
 
     // ─── getProduct ───────────────────────────────────────────────────────────
@@ -1001,6 +1016,18 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteProductVariant_referencedByOrder_throwsConflict() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(orderItemRepository.existsByVariantId(VARIANT_ID)).thenReturn(true);
+
+        assertThrows(ConflictException.class,
+                () -> service.deleteProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID));
+        verify(productVariantRepository, never()).delete(any());
     }
 
     // ─── setProductAttributes ─────────────────────────────────────────────────

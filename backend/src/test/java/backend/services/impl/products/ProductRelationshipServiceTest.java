@@ -96,6 +96,7 @@ class ProductRelationshipServiceTest {
                 productRelationshipRepository,
                 mock(backend.repositories.ProductSimilarityRepository.class),
                 companyAccessService,
+                mock(backend.repositories.OrderItemRepository.class),
                 300L, 60L);
 
         when(companyRepository.existsById(COMPANY_ID)).thenReturn(true);

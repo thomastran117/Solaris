@@ -202,9 +202,12 @@ public class BundleServiceImpl implements BundleService {
         ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
 
-        if (orderRepository.existsActiveOrderWithBundle(bundleId)) {
+        // Block deletion when ANY order references the bundle — including delivered/cancelled
+        // history — since OrderItem keeps a bundle FK and a hard delete would fail the constraint
+        // or corrupt historical order/reporting data. Archive rather than delete.
+        if (orderRepository.existsAnyOrderWithBundle(bundleId)) {
             throw new backend.exceptions.http.ConflictException(
-                    "Bundle cannot be deleted while it is referenced by active orders");
+                    "Bundle cannot be deleted because it is referenced by one or more orders");
         }
 
         bundleRepository.delete(bundle);

@@ -157,9 +157,12 @@ public class KitServiceImpl implements KitService {
         ProductKit kit = kitRepository.findByIdAndCompanyId(kitId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Kit not found with id: " + kitId));
 
-        if (orderRepository.existsActiveOrderWithKit(kitId)) {
+        // Block deletion when ANY order references the kit — including delivered/cancelled history —
+        // since OrderItem keeps a kit FK and a hard delete would fail the constraint or corrupt
+        // historical order/reporting data. Archive rather than delete.
+        if (orderRepository.existsAnyOrderWithKit(kitId)) {
             throw new backend.exceptions.http.ConflictException(
-                    "Kit cannot be deleted while it is referenced by active orders");
+                    "Kit cannot be deleted because it is referenced by one or more orders");
         }
 
         kitRepository.delete(kit);

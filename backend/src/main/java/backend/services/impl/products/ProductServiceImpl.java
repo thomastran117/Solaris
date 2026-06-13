@@ -154,6 +154,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRelationshipRepository productRelationshipRepository;
     private final ProductSimilarityRepository productSimilarityRepository;
     private final CompanyAccessService companyAccessService;
+    private final backend.repositories.OrderItemRepository orderItemRepository;
     private final long cacheTtl;
     private final long cacheTtlShort;
 
@@ -180,6 +181,7 @@ public class ProductServiceImpl implements ProductService {
             ProductRelationshipRepository productRelationshipRepository,
             ProductSimilarityRepository productSimilarityRepository,
             CompanyAccessService companyAccessService,
+            backend.repositories.OrderItemRepository orderItemRepository,
             @Value("${app.product.cache-ttl-seconds:300}") long cacheTtl,
             @Value("${app.product.cache-ttl-short-seconds:60}") long cacheTtlShort) {
         this.productRepository = productRepository;
@@ -204,6 +206,7 @@ public class ProductServiceImpl implements ProductService {
         this.productRelationshipRepository = productRelationshipRepository;
         this.productSimilarityRepository = productSimilarityRepository;
         this.companyAccessService = companyAccessService;
+        this.orderItemRepository = orderItemRepository;
         this.cacheTtl = cacheTtl;
         this.cacheTtlShort = cacheTtlShort;
     }
@@ -525,6 +528,16 @@ public class ProductServiceImpl implements ProductService {
 
         if (bundleRepository.existsByItemsProductId(productId)) {
             throw new ConflictException("Product is part of one or more bundles. Remove it from all bundles before deleting.");
+        }
+
+        // Order lines (current or historical) keep nullable references to this product. Physically
+        // deleting it would fail the FK at the DB (generic 500) or orphan order/reporting data.
+        // Prefer archiving; block hard delete with a clear 409.
+        if (orderItemRepository.existsByProductId(productId)
+                || productVariantRepository.findAllByProductIdOrderByDisplayOrderAsc(productId).stream()
+                        .anyMatch(v -> orderItemRepository.existsByVariantId(v.getId()))) {
+            throw new ConflictException(
+                    "Product is referenced by one or more orders and cannot be deleted. Archive it instead.");
         }
 
         final UUID marketplaceId = product.getMarketplaceId();
@@ -1139,6 +1152,13 @@ public class ProductServiceImpl implements ProductService {
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
+
+        // Order lines (current or historical) reference this variant; hard-deleting it would fail
+        // the FK or break order-detail fidelity. Block with a 409 — disable the variant instead.
+        if (orderItemRepository.existsByVariantId(variantId)) {
+            throw new ConflictException(
+                    "Variant is referenced by one or more orders and cannot be deleted. Disable it instead.");
+        }
 
         productChangeLogger.logVariantDelete(variant);
         productChangeLogRepository.deleteAllByVariantId(variantId);

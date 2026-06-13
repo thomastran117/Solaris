@@ -318,11 +318,11 @@ class KitServiceImplTest {
     }
 
     @Test
-    void deleteKit_activeOrderExists_throwsConflict() {
-        // H15: deletion must be blocked while active orders reference the kit.
+    void deleteKit_referencedByAnyOrder_throwsConflict() {
+        // Deletion is blocked while ANY order (including delivered/cancelled history) references it.
         ProductKit kit = makeKit(KIT_ID);
         when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
-        when(orderRepository.existsActiveOrderWithKit(KIT_ID)).thenReturn(true);
+        when(orderRepository.existsAnyOrderWithKit(KIT_ID)).thenReturn(true);
 
         assertThrows(backend.exceptions.http.ConflictException.class,
                 () -> service.deleteKit(COMPANY_ID, KIT_ID, OWNER_ID));
@@ -330,10 +330,10 @@ class KitServiceImplTest {
     }
 
     @Test
-    void deleteKit_noActiveOrders_proceeds() {
+    void deleteKit_noOrderReferences_proceeds() {
         ProductKit kit = makeKit(KIT_ID);
         when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
-        when(orderRepository.existsActiveOrderWithKit(KIT_ID)).thenReturn(false);
+        when(orderRepository.existsAnyOrderWithKit(KIT_ID)).thenReturn(false);
 
         service.deleteKit(COMPANY_ID, KIT_ID, OWNER_ID);
 

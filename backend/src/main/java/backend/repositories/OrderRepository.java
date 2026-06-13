@@ -229,4 +229,12 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
               )
             """)
     boolean existsActiveOrderWithKit(@Param("kitId") java.util.UUID kitId);
+
+    /** True if ANY order (including delivered/cancelled/refunded/failed history) references this bundle. */
+    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi WHERE oi.bundle.id = :bundleId")
+    boolean existsAnyOrderWithBundle(@Param("bundleId") java.util.UUID bundleId);
+
+    /** True if ANY order (including delivered/cancelled/refunded/failed history) references this kit. */
+    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi WHERE oi.kit.id = :kitId")
+    boolean existsAnyOrderWithKit(@Param("kitId") java.util.UUID kitId);
 }
