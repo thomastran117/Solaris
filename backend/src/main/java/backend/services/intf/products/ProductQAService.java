@@ -13,7 +13,7 @@ import java.util.UUID;
 public interface ProductQAService {
     QuestionResponse askQuestion(UUID productId, UUID userId, AskQuestionRequest request);
     AnswerResponse answerQuestion(UUID questionId, UUID userId, SubmitAnswerRequest request);
-    void upvoteAnswer(UUID answerId, UUID userId);
+    void upvoteAnswer(UUID questionId, UUID answerId, UUID userId);
     void reportContent(QAReportType type, UUID targetId, UUID userId, ReportQAContentRequest request);
     PagedResponse<QuestionResponse> getQuestionsForProduct(UUID productId, int page, int size);
 }

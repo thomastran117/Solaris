@@ -79,41 +79,48 @@ public class GiftCardServiceImpl implements GiftCardService {
                 continue;
             }
 
-            // Idempotency: skip if a card was already issued for this order item
-            if (giftCardRepository.findByPurchasedOnOrderItemId(item.getId()).isPresent()) {
-                log.debug("[GIFT_CARD] Card already issued for orderItem {} — skipping", item.getId());
+            // Issue one card per purchased unit (a $25 gift card bought x3 yields three $25 cards).
+            // Idempotency: count cards already issued for this order item and only issue the rest,
+            // so a redelivered issuance event tops up to quantity without duplicating.
+            int quantity = Math.max(1, item.getQuantity());
+            long alreadyIssued = giftCardRepository.countByPurchasedOnOrderItemId(item.getId());
+            if (alreadyIssued >= quantity) {
+                log.debug("[GIFT_CARD] All {} card(s) already issued for orderItem {} — skipping", quantity, item.getId());
                 continue;
             }
 
-            String code = generateUniqueCode();
             long valueCents = item.getUnitPrice()
                     .multiply(java.math.BigDecimal.valueOf(100))
                     .longValue();
 
-            GiftCard card = new GiftCard();
-            card.setCompany(item.getProduct().getCompany());
-            card.setCode(code);
-            card.setOriginalValueCents(valueCents);
-            card.setRemainingBalanceCents(valueCents);
-            card.setPurchasedByUser(order.getUser());
-            card.setPurchasedOnOrderId(order.getId());
-            card.setPurchasedOnOrderItemId(item.getId());
-            card.setStatus(GiftCardStatus.ACTIVE);
-            giftCardRepository.save(card);
+            for (long n = alreadyIssued; n < quantity; n++) {
+                String code = generateUniqueCode();
+                GiftCard card = new GiftCard();
+                card.setCompany(item.getProduct().getCompany());
+                card.setCode(code);
+                card.setOriginalValueCents(valueCents);
+                card.setRemainingBalanceCents(valueCents);
+                card.setPurchasedByUser(order.getUser());
+                card.setPurchasedOnOrderId(order.getId());
+                card.setPurchasedOnOrderItemId(item.getId());
+                card.setStatus(GiftCardStatus.ACTIVE);
+                giftCardRepository.save(card);
 
-            log.info("[GIFT_CARD] Issued gift card {} for order {} item {}", code, order.getId(), item.getId());
+                log.info("[GIFT_CARD] Issued gift card {} for order {} item {} (unit {}/{})",
+                        code, order.getId(), item.getId(), n + 1, quantity);
 
-            try {
-                User buyer = order.getUser();
-                emailService.sendGiftCardIssuedEmail(
-                        buyer.getEmail(),
-                        buyer.getFirstName(),
-                        code,
-                        (int) valueCents,
-                        item.getProduct().getCompany().getName()
-                );
-            } catch (Exception e) {
-                log.error("[GIFT_CARD] Failed to send gift card email for card {}: {}", code, e.getMessage());
+                try {
+                    User buyer = order.getUser();
+                    emailService.sendGiftCardIssuedEmail(
+                            buyer.getEmail(),
+                            buyer.getFirstName(),
+                            code,
+                            (int) valueCents,
+                            item.getProduct().getCompany().getName()
+                    );
+                } catch (Exception e) {
+                    log.error("[GIFT_CARD] Failed to send gift card email for card {}: {}", code, e.getMessage());
+                }
             }
         }
     }

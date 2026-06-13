@@ -114,6 +114,15 @@ public interface PaymentService {
     RefundResult refundPayment(String paymentIntentId, Long amountInCents);
 
     /**
+     * Refunds the charge behind a subscription invoice (resolves the invoice's payment intent, then
+     * refunds it). Used to auto-refund a renewal whose items are no longer available.
+     *
+     * @param invoiceId     the Stripe invoice id
+     * @param amountInCents amount to refund; pass {@code null} for a full refund
+     */
+    RefundResult refundInvoice(String invoiceId, Long amountInCents);
+
+    /**
      * Creates a customer record in the payment provider.
      *
      * @param email    customer email address

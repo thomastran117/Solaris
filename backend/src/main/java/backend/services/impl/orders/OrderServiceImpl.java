@@ -3600,10 +3600,20 @@ public class OrderServiceImpl implements OrderService {
             log.warn("createRenewalOrder: could not acquire all locks for invoice {} — proceeding without full lock coverage", stripeInvoiceId);
         }
 
+        // Stripe already charged this invoice, so we can't reject the renewal outright. Instead we
+        // revalidate each product's current availability and, if anything was discontinued since the
+        // subscription was created, park the order UNDER_REVIEW for the merchant to fulfil-or-refund
+        // rather than silently shipping a no-longer-sold product.
+        List<String> unavailableReasons = new ArrayList<>();
         try {
             for (SubscriptionItem si : subscription.getItems()) {
                 Product product = si.getProduct();
                 int qty = si.getQuantity();
+
+                if (!product.isSubscribable() || product.getStatus() != ProductStatus.ACTIVE
+                        || !product.isListed() || !product.isPurchasable()) {
+                    unavailableReasons.add("product " + product.getId() + " (" + product.getName() + ")");
+                }
 
                 OrderItem item = new OrderItem();
                 item.setOrder(order);
@@ -3617,6 +3627,9 @@ public class OrderServiceImpl implements OrderService {
                     item.setVariant(variant);
                     item.setVariantTitle(buildVariantTitle(variant));
                     item.setVariantSku(variant.getSku());
+                    if (!variant.isPurchasable()) {
+                        unavailableReasons.add("variant " + variant.getId());
+                    }
 
                     int updated = variantRepository.decrementStock(variant.getId(), qty);
                     if (updated == 0) {
@@ -3633,6 +3646,38 @@ public class OrderServiceImpl implements OrderService {
             }
         } finally {
             releaseLocks(renewalLocks, renewalLockToken);
+        }
+
+        if (!unavailableReasons.isEmpty()) {
+            // A line was discontinued since the subscription was created. Restore the stock we just
+            // decremented and persist the renewal as CANCELLED. The caller (handleInvoicePaid) then
+            // refunds the already-charged invoice and cancels the subscription. We deliberately skip
+            // sub-order/commission creation for a cancelled renewal.
+            for (OrderItem item : order.getItems()) {
+                try {
+                    restoreItemStock(item);
+                    recordCancelAdjustment(item, order.getId());
+                } catch (Exception e) {
+                    log.error("[SUBSCRIPTION] Failed to restore stock for cancelled renewal item on invoice {}: {}",
+                            stripeInvoiceId, e.getMessage());
+                }
+            }
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setCancelledAt(Instant.now());
+            order.setCancellationReason(backend.models.enums.CancellationReason.OUT_OF_STOCK);
+            order.setFailureReason("Renewal auto-cancelled — items no longer available for sale: "
+                    + String.join(", ", unavailableReasons));
+            log.error("[SUBSCRIPTION] Renewal for invoice {} (subscription {}) auto-cancelled (unavailable: {}) "
+                            + "— caller will refund the invoice and cancel the subscription",
+                    stripeInvoiceId, subscription.getId(), unavailableReasons);
+            try {
+                return orderRepository.save(order);
+            } catch (DataIntegrityViolationException e) {
+                return orderRepository.findByStripeInvoiceId(stripeInvoiceId)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Cancelled renewal save failed on duplicate invoice but existing row not found: "
+                                        + stripeInvoiceId, e));
+            }
         }
 
         boolean hasMarketplaceItems = stampVendorIds(order.getItems());

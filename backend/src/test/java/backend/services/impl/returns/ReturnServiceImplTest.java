@@ -145,6 +145,14 @@ class ReturnServiceImplTest {
                 companyAccessService, returnLocationRepository, userRepository,
                 paymentService, riskEngine, riskAssessmentRepository,
                 riskProperties, activityEventPublisher, loyaltyService, auditLogger);
+
+        // requestReturn now locks the order, and inspectReturn now locks the return. Make the
+        // pessimistic-lock finders delegate to whatever the non-locking finders are stubbed to
+        // return, so existing per-test stubs keep working (lenient: not every test uses them).
+        org.mockito.Mockito.lenient().when(orderRepository.findByIdAndUserIdForUpdate(any(), any()))
+                .thenAnswer(inv -> orderRepository.findByIdAndUserId(inv.getArgument(0), inv.getArgument(1)));
+        org.mockito.Mockito.lenient().when(returnRepository.findByIdAndCompanyIdForUpdate(any(), any()))
+                .thenAnswer(inv -> returnRepository.findByIdAndCompanyId(inv.getArgument(0), inv.getArgument(1)));
     }
 
     // ─── requestReturn ────────────────────────────────────────────────────────
@@ -309,6 +317,9 @@ class ReturnServiceImplTest {
         when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
                 .thenReturn(Optional.of(location));
 
+        // Start from the pre-approval state so we can prove a rejected return doesn't flip it.
+        ret.getItems().forEach(ri -> ri.getOrderItem().setFulfillmentStatus(FulfillmentStatus.DELIVERED));
+
         RiskSignal blockSignal = RiskSignal.high(
                 backend.models.enums.RiskSignalType.RETURN_PATTERN, 80, "High return rate");
         RiskAssessmentResult blockResult = RiskAssessmentResult.block(80, List.of(blockSignal), List.of());
@@ -322,6 +333,9 @@ class ReturnServiceImplTest {
 
         assertEquals(ReturnStatus.REJECTED, captor.getValue().getStatus());
         verify(paymentService, never()).refundPayment(any(), anyLong());
+        // A risk-rejected return must NOT have flipped its order items to RETURNED.
+        ret.getItems().forEach(ri -> org.junit.jupiter.api.Assertions.assertNotEquals(
+                backend.models.enums.FulfillmentStatus.RETURNED, ri.getOrderItem().getFulfillmentStatus()));
     }
 
     @Test

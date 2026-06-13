@@ -75,8 +75,13 @@ public class ProductQAServiceImpl implements ProductQAService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<QuestionResponse> getQuestionsForProduct(UUID productId, int page, int size) {
-        productRepository.findById(productId)
+        Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+        // Q&A is a public storefront surface — only expose it for publicly visible (ACTIVE + listed)
+        // products so hidden/draft/unlisted products don't leak or accrue public Q&A.
+        if (product.getStatus() != ProductStatus.ACTIVE || !product.isListed()) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
 
         int clampedSize = Math.min(size, 50);
         Page<ProductQuestion> questionPage = questionRepository.findByProductIdAndStatus(
@@ -95,8 +100,8 @@ public class ProductQAServiceImpl implements ProductQAService {
     public QuestionResponse askQuestion(UUID productId, UUID userId, AskQuestionRequest request) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-        if (product.getStatus() != ProductStatus.ACTIVE) {
-            throw new BadRequestException("Questions can only be submitted on active products");
+        if (product.getStatus() != ProductStatus.ACTIVE || !product.isListed()) {
+            throw new BadRequestException("Questions can only be submitted on publicly listed, active products");
         }
         User asker = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
@@ -141,9 +146,15 @@ public class ProductQAServiceImpl implements ProductQAService {
 
     @Override
     @Transactional
-    public void upvoteAnswer(UUID answerId, UUID userId) {
+    public void upvoteAnswer(UUID questionId, UUID answerId, UUID userId) {
         ProductAnswer answer = answerRepository.findById(answerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Answer not found with id: " + answerId));
+        // Verify the answer actually belongs to the question in the request path — otherwise the
+        // route /questions/{questionId}/answers/{answerId}/upvote is only cosmetically scoped.
+        if (answer.getQuestion() == null || !answer.getQuestion().getId().equals(questionId)) {
+            throw new ResourceNotFoundException(
+                    "Answer " + answerId + " not found under question " + questionId);
+        }
         if (answer.getStatus() != QAStatus.VISIBLE) {
             throw new BadRequestException("This answer is not available for upvoting");
         }

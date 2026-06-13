@@ -104,16 +104,51 @@ class GiftCardServiceImplTest {
     @Test
     void issueCards_idempotent_skipsDuplicateIssuance() {
         Order order = makeOrder(USER_ID);
-        OrderItem item = makeGiftCardItem(ITEM_ID, 5000L);
+        OrderItem item = makeGiftCardItem(ITEM_ID, 5000L); // quantity 1
         order.getItems().add(item);
 
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(giftCardRepository.findByPurchasedOnOrderItemId(ITEM_ID))
-                .thenReturn(Optional.of(new GiftCard())); // already exists
+        when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(1L); // all already issued
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
         verify(giftCardRepository, never()).save(any());
+    }
+
+    @Test
+    void issueCards_quantityThree_issuesThreeCardsEachAtUnitPrice() {
+        Order order = makeOrder(USER_ID);
+        OrderItem item = makeGiftCardItem(ITEM_ID, 2500L);
+        item.setQuantity(3); // buying three $25 gift cards
+        order.getItems().add(item);
+
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(0L);
+        when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
+        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
+
+        ArgumentCaptor<GiftCard> captor = ArgumentCaptor.forClass(GiftCard.class);
+        verify(giftCardRepository, times(3)).save(captor.capture());
+        assertTrue(captor.getAllValues().stream().allMatch(c -> c.getOriginalValueCents() == 2500L));
+    }
+
+    @Test
+    void issueCards_quantityThree_partiallyIssued_topsUpRemaining() {
+        Order order = makeOrder(USER_ID);
+        OrderItem item = makeGiftCardItem(ITEM_ID, 2500L);
+        item.setQuantity(3);
+        order.getItems().add(item);
+
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(2L); // 2 already issued
+        when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
+        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
+
+        verify(giftCardRepository, times(1)).save(any()); // only the 3rd is issued
     }
 
     @Test

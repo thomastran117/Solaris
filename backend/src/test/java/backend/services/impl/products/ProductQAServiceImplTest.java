@@ -191,10 +191,20 @@ class ProductQAServiceImplTest {
         when(answerRepository.findById(ANSWER_ID)).thenReturn(Optional.of(makeAnswer()));
         when(upvoteRepository.existsByAnswerIdAndUserId(ANSWER_ID, USER_ID)).thenReturn(false);
 
-        service.upvoteAnswer(ANSWER_ID, USER_ID);
+        service.upvoteAnswer(QUESTION_ID, ANSWER_ID, USER_ID);
 
         verify(upvoteRepository).save(any(ProductAnswerUpvote.class));
         verify(answerRepository).incrementUpvoteCount(ANSWER_ID);
+    }
+
+    @Test
+    void upvoteAnswer_answerNotUnderQuestion_throwsResourceNotFound() {
+        // The answer belongs to QUESTION_ID; upvoting it under a different question path must 404.
+        when(answerRepository.findById(ANSWER_ID)).thenReturn(Optional.of(makeAnswer()));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.upvoteAnswer(TestIds.uuid(999), ANSWER_ID, USER_ID));
+        verify(upvoteRepository, never()).save(any());
     }
 
     @Test
@@ -202,7 +212,7 @@ class ProductQAServiceImplTest {
         when(answerRepository.findById(ANSWER_ID)).thenReturn(Optional.of(makeAnswer()));
         when(upvoteRepository.existsByAnswerIdAndUserId(ANSWER_ID, USER_ID)).thenReturn(true);
 
-        assertThrows(ConflictException.class, () -> service.upvoteAnswer(ANSWER_ID, USER_ID));
+        assertThrows(ConflictException.class, () -> service.upvoteAnswer(QUESTION_ID, ANSWER_ID, USER_ID));
         verify(upvoteRepository, never()).save(any());
     }
 
@@ -210,7 +220,7 @@ class ProductQAServiceImplTest {
     void upvoteAnswer_answerNotFound_throwsResourceNotFound() {
         when(answerRepository.findById(ANSWER_ID)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.upvoteAnswer(ANSWER_ID, USER_ID));
+        assertThrows(ResourceNotFoundException.class, () -> service.upvoteAnswer(QUESTION_ID, ANSWER_ID, USER_ID));
     }
 
     // ─── reportContent ────────────────────────────────────────────────────────

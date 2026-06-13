@@ -294,7 +294,12 @@ public class SavedListServiceImpl implements SavedListService {
     }
 
     private PublicSavedListResponse toPublicResponse(SavedList l) {
+        // Public rendering must not leak products that aren't publicly visible: a product saved while
+        // ACTIVE+listed may since have been unlisted/archived. Only expose ACTIVE + listed items.
         List<SavedListItemResponse> items = l.getItems().stream()
+                .filter(i -> i.getProduct() != null
+                        && i.getProduct().getStatus() == backend.models.enums.ProductStatus.ACTIVE
+                        && i.getProduct().isListed())
                 .map(this::toItemResponse).toList();
         User owner = l.getUser();
         String displayName = buildDisplayName(owner);

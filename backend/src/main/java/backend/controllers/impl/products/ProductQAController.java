@@ -104,7 +104,7 @@ public class ProductQAController {
             @PathVariable UUID answerId) {
         try {
             UUID userId = resolveUserId();
-            qaService.upvoteAnswer(answerId, userId);
+            qaService.upvoteAnswer(questionId, answerId, userId);
             return ResponseEntity.noContent().build();
         } catch (AppHttpException e) {
             throw e;

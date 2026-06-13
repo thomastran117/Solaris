@@ -23,6 +23,15 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     Page<Order> findAllByUserId(UUID userId, Pageable pageable);
     Optional<Order> findByIdAndUserId(java.util.UUID id, UUID userId);
+
+    /**
+     * Pessimistically locks the buyer's order row so concurrent return requests for the same order
+     * are serialized — without it, two requests can both read the same already-returned quantity and
+     * both pass the double-return guard, returning more than was ordered.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id AND o.user.id = :userId")
+    Optional<Order> findByIdAndUserIdForUpdate(@Param("id") java.util.UUID id, @Param("userId") UUID userId);
     Optional<Order> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
 
     @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.id = :id AND o.user.id = :userId")
