@@ -145,6 +145,14 @@ class ReturnServiceImplTest {
                 companyAccessService, returnLocationRepository, userRepository,
                 paymentService, riskEngine, riskAssessmentRepository,
                 riskProperties, activityEventPublisher, loyaltyService, auditLogger);
+
+        // requestReturn now locks the order, and inspectReturn now locks the return. Make the
+        // pessimistic-lock finders delegate to whatever the non-locking finders are stubbed to
+        // return, so existing per-test stubs keep working (lenient: not every test uses them).
+        org.mockito.Mockito.lenient().when(orderRepository.findByIdAndUserIdForUpdate(any(), any()))
+                .thenAnswer(inv -> orderRepository.findByIdAndUserId(inv.getArgument(0), inv.getArgument(1)));
+        org.mockito.Mockito.lenient().when(returnRepository.findByIdAndCompanyIdForUpdate(any(), any()))
+                .thenAnswer(inv -> returnRepository.findByIdAndCompanyId(inv.getArgument(0), inv.getArgument(1)));
     }
 
     // ─── requestReturn ────────────────────────────────────────────────────────
@@ -309,6 +317,9 @@ class ReturnServiceImplTest {
         when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
                 .thenReturn(Optional.of(location));
 
+        // Start from the pre-approval state so we can prove a rejected return doesn't flip it.
+        ret.getItems().forEach(ri -> ri.getOrderItem().setFulfillmentStatus(FulfillmentStatus.DELIVERED));
+
         RiskSignal blockSignal = RiskSignal.high(
                 backend.models.enums.RiskSignalType.RETURN_PATTERN, 80, "High return rate");
         RiskAssessmentResult blockResult = RiskAssessmentResult.block(80, List.of(blockSignal), List.of());
@@ -322,6 +333,9 @@ class ReturnServiceImplTest {
 
         assertEquals(ReturnStatus.REJECTED, captor.getValue().getStatus());
         verify(paymentService, never()).refundPayment(any(), anyLong());
+        // A risk-rejected return must NOT have flipped its order items to RETURNED.
+        ret.getItems().forEach(ri -> org.junit.jupiter.api.Assertions.assertNotEquals(
+                backend.models.enums.FulfillmentStatus.RETURNED, ri.getOrderItem().getFulfillmentStatus()));
     }
 
     @Test
@@ -364,6 +378,102 @@ class ReturnServiceImplTest {
 
         assertEquals(ReturnStatus.APPROVED.name(), resp.status());
         verify(paymentService).refundPayment(eq("pi_test"), anyLong());
+    }
+
+    @Test
+    void approveReturn_autoRefundProRatesOrderLevelDiscountAcrossLines() {
+        // Two $100 lines with a $100 order-level (loyalty) discount → $100 collected. Returning one
+        // line must refund its pro-rata share ($50), not the raw $100 line price.
+        riskProperties.setMode(RiskMode.SHADOW);
+
+        Company company = company();
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company);
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_test");
+        order.setTotalAmount(new BigDecimal("100.00")); // 2×$100 − $100 loyalty
+        order.setRefundedAmountCents(0L);
+        User buyer = user(BUYER_ID, UserRole.USER);
+        buyer.setEmail("b@b.com");
+        buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
+        order.setUser(buyer);
+
+        OrderItem item1 = orderItem();
+        item1.setQuantity(1);
+        item1.setUnitPrice(new BigDecimal("100.00"));
+        OrderItem item2 = new OrderItem();
+        item2.setId(TestIds.uuid(77));
+        item2.setQuantity(1);
+        item2.setUnitPrice(new BigDecimal("100.00"));
+        item2.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item2.setProduct(product());
+        order.setItems(List.of(item1, item2));
+
+        Return ret = minimalReturn(order);
+        ret.setRequestedBy(buyer);
+        ret.setItems(List.of(returnItem(ret, item1))); // only item1 is returned
+        when(returnRepository.findByIdAndCompanyIdForUpdate(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        CompanyReturnLocation location = returnLocation();
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(location));
+
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(eq("pi_test"), anyLong()))
+                .thenReturn(new PaymentService.RefundResult("re_1", 5000L, "usd", "pending", "pi_test"));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
+                new MerchantApproveReturnRequest("approved", null, null));
+
+        // Pro-rata: $100 line × (100 collected / 200 line-sum) = $50, not the raw $100.
+        verify(paymentService).refundPayment("pi_test", 5000L);
+    }
+
+    @Test
+    void approveReturn_autoRefundCappedAtRemainingRefundableBalance() {
+        // Backstop: even after pro-rata, the refund can't exceed what's left refundable on the order
+        // (e.g. a prior partial refund already consumed most of it).
+        riskProperties.setMode(RiskMode.SHADOW);
+
+        Company company = company();
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company);
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_test");
+        order.setTotalAmount(new BigDecimal("100.00")); // no order-level discount → scale 1.0
+        order.setRefundedAmountCents(9000L);            // $90 already refunded → $10 remaining
+        User buyer = user(BUYER_ID, UserRole.USER);
+        buyer.setEmail("b@b.com");
+        buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
+        order.setUser(buyer);
+
+        OrderItem item = orderItem();
+        item.setQuantity(1);
+        item.setUnitPrice(new BigDecimal("100.00")); // pro-rata would be $100, but only $10 remains
+        order.setItems(List.of(item));
+
+        Return ret = minimalReturn(order);
+        ret.setRequestedBy(buyer);
+        ret.setItems(List.of(returnItem(ret, item)));
+        when(returnRepository.findByIdAndCompanyIdForUpdate(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        CompanyReturnLocation location = returnLocation();
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(location));
+
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(eq("pi_test"), anyLong()))
+                .thenReturn(new PaymentService.RefundResult("re_1", 1000L, "usd", "pending", "pi_test"));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
+                new MerchantApproveReturnRequest("approved", null, null));
+
+        // Capped at the $10 remaining refundable, not the $100 pro-rata line value.
+        verify(paymentService).refundPayment("pi_test", 1000L);
     }
 
     @Test

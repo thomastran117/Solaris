@@ -51,8 +51,8 @@ public class SubOrder {
     private MarketplaceVendor marketplaceVendor;
 
     /** Denormalized from marketplaceVendor.marketplace.id for efficient filtering. */
-    @Column(nullable = false, name = "marketplace_id")
-    private Long marketplaceId;
+    @Column(nullable = false, name = "marketplace_id", columnDefinition = "BINARY(16)")
+    private java.util.UUID marketplaceId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -123,8 +123,8 @@ public class SubOrder {
     private String cancellationReason;
 
     /** Loose FK to VendorPayout.id — set when this sub-order is included in a payout batch (Phase 4). */
-    @Column(nullable = true)
-    private Long payoutId;
+    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID payoutId;
 
     // -------------------------------------------------------------------------
     // Audit

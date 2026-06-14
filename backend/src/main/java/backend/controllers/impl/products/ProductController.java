@@ -96,9 +96,12 @@ public class ProductController {
             @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
             @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
-            // Non-members can only browse ACTIVE products
-            ProductStatus effectiveStatus = isCompanyMember(companyId, resolveUserIdOptional()) ? status : ProductStatus.ACTIVE;
-            return ResponseEntity.ok(productService.searchProducts(companyId, q, category, brand, minPrice, maxPrice, featured, effectiveStatus, listed, discountCategory, hasDiscount, page, size, sort, direction));
+            // Non-members can only browse ACTIVE *and* listed products; force both filters so an
+            // omitted `listed` param cannot surface unlisted (hidden) active products.
+            boolean member = isCompanyMember(companyId, resolveUserIdOptional());
+            ProductStatus effectiveStatus = member ? status : ProductStatus.ACTIVE;
+            Boolean effectiveListed = member ? listed : Boolean.TRUE;
+            return ResponseEntity.ok(productService.searchProducts(companyId, q, category, brand, minPrice, maxPrice, featured, effectiveStatus, effectiveListed, discountCategory, hasDiscount, page, size, sort, direction));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -112,8 +115,10 @@ public class ProductController {
             @PathVariable UUID id) {
         try {
             ProductResponse product = productService.getProduct(companyId, id);
-            // Non-members can only see ACTIVE products; hide drafts/scheduled/archived
-            if (!"ACTIVE".equals(product.getStatus()) && !isCompanyMember(companyId, resolveUserIdOptional())) {
+            // Non-members can only see ACTIVE *and* listed products; hide drafts/scheduled/archived
+            // as well as unlisted (hidden) active products.
+            if ((!"ACTIVE".equals(product.getStatus()) || !product.isListed())
+                    && !isCompanyMember(companyId, resolveUserIdOptional())) {
                 throw new ResourceNotFoundException("Product not found with id: " + id);
             }
             return ResponseEntity.ok(product);
@@ -254,6 +259,7 @@ public class ProductController {
             @PathVariable UUID companyId,
             @PathVariable UUID productId) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductImages(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
@@ -320,6 +326,7 @@ public class ProductController {
             @PathVariable UUID companyId,
             @PathVariable UUID productId) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductOptions(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
@@ -388,6 +395,7 @@ public class ProductController {
             @PathVariable UUID companyId,
             @PathVariable UUID productId) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductVariants(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
@@ -402,6 +410,7 @@ public class ProductController {
             @PathVariable UUID productId,
             @PathVariable UUID variantId) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductVariant(companyId, productId, variantId));
         } catch (AppHttpException e) {
             throw e;
@@ -470,6 +479,7 @@ public class ProductController {
             @PathVariable UUID companyId,
             @PathVariable UUID productId) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductAttributes(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
@@ -503,6 +513,7 @@ public class ProductController {
             @PathVariable UUID productId,
             @RequestParam(required = false) ProductRelationshipType type) {
         try {
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getProductRelationships(companyId, productId, type));
         } catch (AppHttpException e) {
             throw e;
@@ -552,6 +563,9 @@ public class ProductController {
             @PathVariable UUID productId,
             @RequestParam(defaultValue = "8") @Min(1) @Max(20) int limit) {
         try {
+            // Non-members may only fetch similar products for a publicly-visible source product —
+            // otherwise a draft/unlisted id could be probed for existence and signal-based recs.
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getSimilarProducts(companyId, productId, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -633,7 +647,7 @@ public class ProductController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         try {
-            return ResponseEntity.ok(productService.getProductHistory(companyId, productId, page, size));
+            return ResponseEntity.ok(productService.getProductHistory(companyId, productId, resolveUserId(), page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -687,5 +701,18 @@ public class ProductController {
     private boolean isCompanyMember(UUID companyId, UUID userId) {
         if (userId == null) return false;
         return companyAccessService.resolveRole(companyId, userId).isPresent();
+    }
+
+    /**
+     * Guards the public (unauthenticated) child-read endpoints: a non-member may only read a
+     * product's images/options/variants/attributes/relationships when the product itself is
+     * publicly visible (ACTIVE + listed). Members fall through to the service's company-scoped
+     * checks. Prevents enumeration of draft/unlisted product metadata by guessing the UUID.
+     */
+    private void requirePublicChildReadAccess(UUID companyId, UUID productId) {
+        if (!isCompanyMember(companyId, resolveUserIdOptional())
+                && !productService.isPubliclyVisible(companyId, productId)) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
     }
 }

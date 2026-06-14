@@ -103,6 +103,10 @@ class ReturnServiceLifecycleTest {
                 loyaltyService,
                 mock(AuthAuditLogger.class)
         );
+
+        // requestReturn now locks the order — delegate the lock finder to the non-locking stub.
+        org.mockito.Mockito.lenient().when(orderRepository.findByIdAndUserIdForUpdate(any(), any()))
+                .thenAnswer(inv -> orderRepository.findByIdAndUserId(inv.getArgument(0), inv.getArgument(1)));
     }
 
     @Test

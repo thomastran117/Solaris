@@ -109,6 +109,7 @@ class ProductServiceImplTest {
     private CompanyAccessService companyAccessService;
     private backend.repositories.ProductRelationshipRepository productRelationshipRepository;
     private backend.repositories.ProductSimilarityRepository productSimilarityRepository;
+    private backend.repositories.OrderItemRepository orderItemRepository;
 
     private ProductServiceImpl service;
 
@@ -136,6 +137,7 @@ class ProductServiceImplTest {
         companyAccessService          = mock(CompanyAccessService.class);
         productRelationshipRepository = mock(backend.repositories.ProductRelationshipRepository.class);
         productSimilarityRepository   = mock(backend.repositories.ProductSimilarityRepository.class);
+        orderItemRepository           = mock(backend.repositories.OrderItemRepository.class);
 
         service = new ProductServiceImpl(
                 productRepository, companyRepository,
@@ -151,6 +153,7 @@ class ProductServiceImplTest {
                 productRelationshipRepository,
                 productSimilarityRepository,
                 companyAccessService,
+                orderItemRepository,
                 300L, 60L);
 
         // Common stubs
@@ -307,6 +310,20 @@ class ProductServiceImplTest {
     }
 
     @Test
+    void updateProduct_partialCompareAtPriceBelowExistingPrice_throwsBadRequest() {
+        Product existing = makeProduct(PRODUCT_ID);
+        existing.setPrice(new BigDecimal("100.00"));
+        existing.setCompareAtPrice(null);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
+
+        UpdateProductRequest req = new UpdateProductRequest();
+        req.setCompareAtPrice(new BigDecimal("50.00")); // only compareAtPrice; below existing price
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
     void updateProduct_skuChange_conflict_throwsConflict() {
         Product existing = makeProduct(PRODUCT_ID);
         existing.setSku("OLD-SKU");
@@ -458,6 +475,18 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteProduct_referencedByOrder_throwsConflict() {
+        Product product = makeProduct(PRODUCT_ID);
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(bundleRepository.existsByItemsProductId(PRODUCT_ID)).thenReturn(false);
+        when(orderItemRepository.existsByProductId(PRODUCT_ID)).thenReturn(true);
+
+        assertThrows(ConflictException.class,
+                () -> service.deleteProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID));
+        verify(productRepository, never()).delete(any(Product.class));
     }
 
     // ─── getProduct ───────────────────────────────────────────────────────────
@@ -895,6 +924,57 @@ class ProductServiceImplTest {
     }
 
     @Test
+    void updateProductVariant_marketplaceListedProduct_evictsMarketplaceCaches() {
+        // Variant edits change marketplace product-detail data, so the marketplace caches must be
+        // evicted too — not just the company-scoped ones.
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.findMarketplaceIdByProductId(PRODUCT_ID)).thenReturn(MARKETPLACE_ID);
+
+        UpdateProductVariantRequest req = new UpdateProductVariantRequest();
+        req.setPrice(new BigDecimal("24.99"));
+
+        service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req);
+
+        verify(singleFlightCache, atLeastOnce()).evict(contains("marketplace:product:"));
+        verify(singleFlightCache, atLeastOnce()).evictByPattern(contains("marketplace:search:"));
+    }
+
+    @Test
+    void updateProductVariant_partialCompareAtPriceBelowExistingPrice_throwsBadRequest() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        variant.setPrice(new BigDecimal("100.00"));
+        variant.setCompareAtPrice(null);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+
+        UpdateProductVariantRequest req = new UpdateProductVariantRequest();
+        req.setCompareAtPrice(new BigDecimal("50.00")); // only compareAtPrice; below existing price
+
+        assertThrows(backend.exceptions.http.BadRequestException.class,
+                () -> service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req));
+    }
+
+    @Test
+    void createProductVariant_concurrentSkuRace_dbUniqueViolation_throwsConflict() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        // Pre-check passes (no existing SKU) but a concurrent insert wins the race; the DB unique
+        // index then rejects our insert and the service maps it to a clean 409.
+        when(productVariantRepository.existsBySkuAndProductCompanyId("RACE-SKU", COMPANY_ID)).thenReturn(false);
+        when(productVariantRepository.save(any(ProductVariant.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"));
+
+        CreateProductVariantRequest req = new CreateProductVariantRequest();
+        req.setSku("RACE-SKU");
+        req.setPrice(new BigDecimal("10.00"));
+
+        assertThrows(ConflictException.class,
+                () -> service.createProductVariant(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+    }
+
+    @Test
     void updateProductVariant_skuConflict_throwsConflict() {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
         ProductVariant variant = makeVariant(VARIANT_ID);
@@ -955,6 +1035,18 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.deleteProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID));
+    }
+
+    @Test
+    void deleteProductVariant_referencedByOrder_throwsConflict() {
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(orderItemRepository.existsByVariantId(VARIANT_ID)).thenReturn(true);
+
+        assertThrows(ConflictException.class,
+                () -> service.deleteProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID));
+        verify(productVariantRepository, never()).delete(any());
     }
 
     // ─── setProductAttributes ─────────────────────────────────────────────────
@@ -1345,7 +1437,20 @@ class ProductServiceImplTest {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () ->
-                service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20));
+                service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20));
+    }
+
+    @Test
+    void getProductHistory_callerLacksCompanyAccess_throwsForbidden() {
+        // History (change logs + inventory adjustments) is private merchant data — a merely
+        // authenticated non-member must be rejected before any data is read.
+        UUID outsider = TestIds.uuid(77);
+        doThrow(new ForbiddenException("No access")).when(companyAccessService)
+                .require(COMPANY_ID, outsider, CompanyCapability.READ_PRODUCTS);
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getProductHistory(COMPANY_ID, PRODUCT_ID, outsider, 0, 20));
+        verify(productChangeLogRepository, never()).findAllByProductIdAndCompanyId(any(), any(), any());
     }
 
     @Test
@@ -1357,7 +1462,7 @@ class ProductServiceImplTest {
         when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20);
+        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20);
 
         assertEquals(0, result.getItems().size());
     }
@@ -1371,7 +1476,7 @@ class ProductServiceImplTest {
         when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 9999); // should clamp to 100
+        service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 9999); // should clamp to 100
 
         verify(productChangeLogRepository).findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any());
     }
@@ -1628,6 +1733,34 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class, () ->
                 service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, TestIds.uuid(31))));
+    }
+
+    @Test
+    void compareProducts_excludesNonPublicProducts() {
+        // Public endpoint: a DRAFT (or unlisted) product is omitted from the comparison so guessing
+        // its id can't disclose hidden metadata.
+        UUID draftId = TestIds.uuid(30);
+        Product active = makeProduct();          // ACTIVE + listed
+        Product draft = makeProduct(draftId);    // DRAFT
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(active, draft));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        var result = service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, draftId));
+
+        assertEquals(1, result.size());
+        assertEquals(PRODUCT_ID, result.get(0).getId());
+    }
+
+    @Test
+    void compareProducts_allNonPublic_throwsResourceNotFound() {
+        Product draft1 = makeProduct(TestIds.uuid(30));
+        Product draft2 = makeProduct(TestIds.uuid(31));
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(draft1, draft2));
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(TestIds.uuid(30), TestIds.uuid(31))));
     }
 
     // =========================================================================
@@ -2040,7 +2173,8 @@ class ProductServiceImplTest {
 
     @Test
     void getMarketplaceProduct_notFound_throwsResourceNotFound() {
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE))
                 .thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> service.getMarketplaceProduct(MARKETPLACE_ID, PRODUCT_ID));
@@ -2050,7 +2184,8 @@ class ProductServiceImplTest {
     void getMarketplaceProduct_happyPath_returnsCatalogProduct() {
         Product p = makeProduct();
         p.setMarketplaceId(MARKETPLACE_ID);
-        when(productRepository.findByIdAndMarketplaceId(PRODUCT_ID, MARKETPLACE_ID))
+        when(productRepository.findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+                PRODUCT_ID, MARKETPLACE_ID, backend.models.enums.ProductStatus.ACTIVE))
                 .thenReturn(Optional.of(p));
         when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(MARKETPLACE_ID), any()))
                 .thenReturn(List.of());

@@ -52,6 +52,7 @@ public class ProductIndexingService implements ApplicationRunner {
     private final BundleRepository bundleRepository;
     private final PromotionRuleRepository promotionRuleRepository;
     private final CollectionProductRepository collectionProductRepository;
+    private final backend.repositories.MarketplaceVendorRepository marketplaceVendorRepository;
     private final PromotionConfigValidator configValidator;
     private final IndexingFailureRepository failureRepository;
     private final IndexVersionManager indexVersionManager;
@@ -67,6 +68,7 @@ public class ProductIndexingService implements ApplicationRunner {
             BundleRepository bundleRepository,
             PromotionRuleRepository promotionRuleRepository,
             CollectionProductRepository collectionProductRepository,
+            backend.repositories.MarketplaceVendorRepository marketplaceVendorRepository,
             PromotionConfigValidator configValidator,
             IndexingFailureRepository failureRepository,
             IndexVersionManager indexVersionManager,
@@ -77,6 +79,7 @@ public class ProductIndexingService implements ApplicationRunner {
         this.bundleRepository = bundleRepository;
         this.promotionRuleRepository = promotionRuleRepository;
         this.collectionProductRepository = collectionProductRepository;
+        this.marketplaceVendorRepository = marketplaceVendorRepository;
         this.configValidator = configValidator;
         this.failureRepository = failureRepository;
         this.indexVersionManager = indexVersionManager;
@@ -337,6 +340,18 @@ public class ProductIndexingService implements ApplicationRunner {
         String vendorName = null;
         try { vendorName = p.getCompany().getName(); } catch (Exception ignored) {}
 
+        // Resolve the MarketplaceVendor.id for marketplace products so the indexed vendorId matches
+        // the id the public catalog API exposes and filters on (NOT the owning company id).
+        UUID marketplaceVendorId = null;
+        if (p.getMarketplaceId() != null) {
+            try {
+                marketplaceVendorId = marketplaceVendorRepository
+                        .findByMarketplaceIdAndVendorCompanyId(p.getMarketplaceId(), companyId)
+                        .map(mv -> mv.getId())
+                        .orElse(null);
+            } catch (Exception ignored) {}
+        }
+
         String nameCompletion = p.getName() != null
                 ? p.getName() + (p.getBrand() != null ? " " + p.getBrand() : "")
                 : null;
@@ -376,7 +391,8 @@ public class ProductIndexingService implements ApplicationRunner {
                 p.getId(),
                 companyId,
                 p.getMarketplaceId(),
-                companyId,
+                marketplaceVendorId,   // vendorId = MarketplaceVendor.id (matches catalog API/DTO)
+                companyId,             // vendorCompanyId = owning company id
                 vendorName,
                 p.isMarketplaceListed(),
                 p.getName(),

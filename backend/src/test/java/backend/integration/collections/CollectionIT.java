@@ -119,7 +119,8 @@ class CollectionIT extends AbstractIntegrationIT {
         User owner = createActiveUser("list-empty@example.com", "Password1!");
         Company company = createCompany(owner);
 
-        mockMvc.perform(get(base(company.getId())))
+        mockMvc.perform(get(base(company.getId()))
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty())
@@ -132,7 +133,8 @@ class CollectionIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
         createCollectionViaApi(owner, company, "Summer Sale", "summer-sale");
 
-        mockMvc.perform(get(base(company.getId())))
+        mockMvc.perform(get(base(company.getId()))
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].name").value("Summer Sale"))
@@ -141,9 +143,13 @@ class CollectionIT extends AbstractIntegrationIT {
     }
 
     @Test
-    void listCollections_unknownCompany_returns404() throws Exception {
-        mockMvc.perform(get("/companies/" + UUID.randomUUID() + "/collections"))
-                .andExpect(status().isNotFound());
+    void listCollections_unknownCompany_returns403() throws Exception {
+        // Admin route: an authenticated user with no role on the (unknown) company is rejected by
+        // the access check (Forbidden) before company existence is even evaluated.
+        User stranger = createActiveUser("list-unknown-co@example.com", "Password1!");
+        mockMvc.perform(get("/companies/" + UUID.randomUUID() + "/collections")
+                        .header("Authorization", bearer(accessTokenFor(stranger))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -152,6 +158,7 @@ class CollectionIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
 
         mockMvc.perform(get(base(company.getId()))
+                        .header("Authorization", bearer(accessTokenFor(owner)))
                         .param("page", "-1"))
                 .andExpect(status().isBadRequest());
     }
@@ -162,6 +169,7 @@ class CollectionIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
 
         mockMvc.perform(get(base(company.getId()))
+                        .header("Authorization", bearer(accessTokenFor(owner)))
                         .param("size", "51"))
                 .andExpect(status().isBadRequest());
     }
@@ -174,7 +182,8 @@ class CollectionIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
         UUID collectionId = createCollectionViaApi(owner, company, "Winter Collection", "winter-collection");
 
-        mockMvc.perform(get(base(company.getId()) + "/" + collectionId))
+        mockMvc.perform(get(base(company.getId()) + "/" + collectionId)
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(collectionId.toString()))
                 .andExpect(jsonPath("$.data.name").value("Winter Collection"))
@@ -191,14 +200,17 @@ class CollectionIT extends AbstractIntegrationIT {
         User owner = createActiveUser("get-404@example.com", "Password1!");
         Company company = createCompany(owner);
 
-        mockMvc.perform(get(base(company.getId()) + "/" + UUID.randomUUID()))
+        mockMvc.perform(get(base(company.getId()) + "/" + UUID.randomUUID())
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void getCollection_unknownCompany_returns404() throws Exception {
-        mockMvc.perform(get("/companies/" + UUID.randomUUID() + "/collections/" + UUID.randomUUID()))
-                .andExpect(status().isNotFound());
+    void getCollection_unknownCompany_returns403() throws Exception {
+        User stranger = createActiveUser("get-unknown-co@example.com", "Password1!");
+        mockMvc.perform(get("/companies/" + UUID.randomUUID() + "/collections/" + UUID.randomUUID())
+                        .header("Authorization", bearer(accessTokenFor(stranger))))
+                .andExpect(status().isForbidden());
     }
 
     // ── POST /companies/{companyId}/collections ───────────────────────────────
@@ -411,7 +423,8 @@ class CollectionIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get(base(company.getId()) + "/" + collectionId))
+        mockMvc.perform(get(base(company.getId()) + "/" + collectionId)
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNotFound());
     }
 
@@ -455,7 +468,8 @@ class CollectionIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
         UUID collectionId = createCollectionViaApi(owner, company, "Empty Coll", "empty-coll");
 
-        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products"))
+        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products")
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
@@ -475,7 +489,8 @@ class CollectionIT extends AbstractIntegrationIT {
                         .content(body))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products"))
+        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products")
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].productId").value(product.getId().toString()))
@@ -488,7 +503,8 @@ class CollectionIT extends AbstractIntegrationIT {
         User owner = createActiveUser("prods-404@example.com", "Password1!");
         Company company = createCompany(owner);
 
-        mockMvc.perform(get(base(company.getId()) + "/" + UUID.randomUUID() + "/products"))
+        mockMvc.perform(get(base(company.getId()) + "/" + UUID.randomUUID() + "/products")
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNotFound());
     }
 
@@ -713,7 +729,8 @@ class CollectionIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products"))
+        mockMvc.perform(get(base(company.getId()) + "/" + collectionId + "/products")
+                        .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
     }

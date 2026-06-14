@@ -18,6 +18,9 @@ public interface GiftCardRepository extends JpaRepository<GiftCard, UUID> {
 
     Optional<GiftCard> findByPurchasedOnOrderItemId(UUID orderItemId);
 
+    /** Count of cards already issued for an order item — drives per-unit, redelivery-safe issuance. */
+    long countByPurchasedOnOrderItemId(UUID orderItemId);
+
     Page<GiftCard> findAllByPurchasedByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

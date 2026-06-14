@@ -90,4 +90,8 @@ public class Company {
     @LastModifiedDate
     @Column(nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 }

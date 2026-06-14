@@ -53,6 +53,15 @@ public interface PromotionRuleRepository extends JpaRepository<PromotionRule, ja
     int tryIncrementUsedCount(@Param("id") java.util.UUID id);
 
     /**
+     * Reverses a previous {@link #tryIncrementUsedCount} when a promotion-bearing order is
+     * cancelled or fails before a completed sale. The {@code usedCount > 0} guard keeps the
+     * global usage counter from going negative under concurrent reversals.
+     */
+    @Modifying
+    @Query("UPDATE PromotionRule r SET r.usedCount = r.usedCount - 1 WHERE r.id = :id AND r.usedCount > 0")
+    void decrementUsedCount(@Param("id") java.util.UUID id);
+
+    /**
      * Active, in-window rules for a product: either explicitly targeting the product or
      * applying to the whole company catalogue (empty targetProducts and targetBundles).
      * Bundle-scoped rules are excluded so they don't surface as product-level discounts.

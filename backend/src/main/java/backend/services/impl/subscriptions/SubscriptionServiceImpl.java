@@ -69,6 +69,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final OrderRepository orderRepository;
     private final LoyaltyService loyaltyService;
     private final ActivityEventPublisher activityEventPublisher;
+    /** Self-proxy so create() can commit the PENDING row in its own transaction before the Stripe call. */
+    private SubscriptionServiceImpl self;
 
     public SubscriptionServiceImpl(
             SubscriptionRepository subscriptionRepository,
@@ -91,6 +93,16 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         this.orderRepository = orderRepository;
         this.loyaltyService = loyaltyService;
         this.activityEventPublisher = activityEventPublisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSelf(@org.springframework.context.annotation.Lazy SubscriptionServiceImpl self) {
+        this.self = self;
+    }
+
+    /** Self-proxy for transactional self-invocation; falls back to {@code this} in plain unit tests. */
+    private SubscriptionServiceImpl self() {
+        return self != null ? self : this;
     }
 
     // -------------------------------------------------------------------------
@@ -133,15 +145,26 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     // Subscription lifecycle
     // -------------------------------------------------------------------------
 
+    /**
+     * Local-first subscription creation: a PENDING (INCOMPLETE) local row is committed BEFORE the
+     * billing Stripe subscription is created, so an orphaned Stripe subscription (one the app has no
+     * record of) can't happen — the local row always exists for reconciliation. Flow:
+     * <ol>
+     *   <li>validate + create the recurring Price (a Price doesn't bill, so an orphaned Price is harmless);</li>
+     *   <li>{@code persistPendingSubscription} (T1, committed) — local row with status INCOMPLETE, no Stripe sub id;</li>
+     *   <li>create the Stripe subscription (carrying the local id in metadata);</li>
+     *   <li>{@code finalizeSubscription} (T2) — attach the Stripe ids and activate.</li>
+     * </ol>
+     * If step 3 fails the pending row is marked EXPIRED (no orphan); if step 4 fails the Stripe sub
+     * is best-effort cancelled and the row stays discoverable for reconciliation.
+     */
     @Override
-    @Transactional
     public SubscriptionResponse create(UUID userId, CreateSubscriptionRequest req) {
         User user = requireUser(userId);
 
         Product product = productRepository.findById(req.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + req.getProductId()));
         validateSubscriptionProduct(product);
-
         validateInterval(product, req.getBillingInterval(), req.getIntervalCount());
 
         ProductVariant variant = null;
@@ -187,26 +210,70 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 product.getName(),
                 stripeMeta);
 
-        SubscriptionResult stripeSub = paymentService.createSubscription(
-                customerId,
-                price.id(),
-                req.getQuantity(),
-                req.getPaymentMethodId(),
-                stripeMeta);
+        // T1: persist the PENDING local row (committed) before the billing subscription exists.
+        Subscription pending = self().persistPendingSubscription(
+                userId, product.getId(), variant != null ? variant.getId() : null,
+                customerId, price.id(), req, unitAmountCents);
+
+        // Create the Stripe subscription, linking it back to the local row for reconciliation.
+        if (pending.getId() != null) {
+            stripeMeta.put("local_subscription_id", pending.getId().toString());
+        }
+        SubscriptionResult stripeSub;
+        try {
+            stripeSub = paymentService.createSubscription(
+                    customerId, price.id(), req.getQuantity(), req.getPaymentMethodId(), stripeMeta);
+        } catch (Exception e) {
+            // No billing subscription was created — mark the pending row EXPIRED. No orphan exists.
+            safeMarkSetupFailed(pending, "Stripe createSubscription failed: " + e.getMessage());
+            throw e;
+        }
+
+        // T2: attach the Stripe ids and activate.
+        try {
+            return self().finalizeSubscription(pending, stripeSub);
+        } catch (Exception e) {
+            // The Stripe subscription exists but couldn't be finalized locally. Best-effort cancel so
+            // the customer isn't billed; the pending row (linked via metadata) remains for reconcile.
+            try {
+                paymentService.cancelSubscription(stripeSub.id(), false);
+            } catch (Exception cancelEx) {
+                log.error("[SUBSCRIPTION] Stripe subscription {} (local {}) finalize failed AND cancel failed "
+                                + "— manual reconciliation required: {}", stripeSub.id(), pending.getId(), cancelEx.getMessage());
+            }
+            safeMarkSetupFailed(pending, "Finalize failed: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private void safeMarkSetupFailed(Subscription pending, String reason) {
+        try {
+            self().markSubscriptionSetupFailed(pending, reason);
+        } catch (Exception ex) {
+            log.error("[SUBSCRIPTION] Failed to mark pending subscription {} as EXPIRED: {}",
+                    pending.getId(), ex.getMessage());
+        }
+    }
+
+    /** T1: persist the PENDING (INCOMPLETE) subscription with no Stripe subscription id yet. */
+    @Transactional
+    public Subscription persistPendingSubscription(UUID userId, UUID productId, UUID variantId, String customerId,
+                                                   String priceId, CreateSubscriptionRequest req, long unitAmountCents) {
+        User user = userRepository.getReferenceById(userId);
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
+        ProductVariant variant = variantId != null ? variantRepository.findById(variantId).orElse(null) : null;
 
         Subscription sub = new Subscription();
         sub.setUser(user);
         sub.setCompany(product.getCompany());
-        sub.setStripeSubscriptionId(stripeSub.id());
+        sub.setStripeSubscriptionId(null); // assigned at finalize
         sub.setStripeCustomerId(customerId);
-        sub.setStripePriceId(price.id());
+        sub.setStripePriceId(priceId);
         sub.setStripePaymentMethodId(req.getPaymentMethodId());
-        sub.setStatus(mapStripeStatus(stripeSub.status()));
+        sub.setStatus(SubscriptionStatus.INCOMPLETE);
         sub.setBillingInterval(req.getBillingInterval());
         sub.setIntervalCount(req.getIntervalCount());
-        sub.setCurrentPeriodStart(stripeSub.currentPeriodStart());
-        sub.setCurrentPeriodEnd(stripeSub.currentPeriodEnd());
-        sub.setNextBillingAt(stripeSub.currentPeriodEnd());
         sub.setCurrency(req.getCurrency());
         sub.setUnitAmountCents(Math.multiplyExact(unitAmountCents, req.getQuantity()));
         sub.setShippingAddress(toShippingAddress(req.getShippingAddress()));
@@ -217,8 +284,25 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         item.setVariant(variant);
         item.setQuantity(req.getQuantity());
         item.setUnitPriceCents(unitAmountCents);
-        item.setStripeSubscriptionItemId(stripeSub.firstSubscriptionItemId());
         sub.getItems().add(item);
+
+        return subscriptionRepository.save(sub);
+    }
+
+    /**
+     * T2: attach the Stripe subscription ids/period and activate, then publish create activity.
+     * Operates on the (committed, now-detached) pending entity from T1 — {@code save} merges it.
+     */
+    @Transactional
+    public SubscriptionResponse finalizeSubscription(Subscription sub, SubscriptionResult stripeSub) {
+        sub.setStripeSubscriptionId(stripeSub.id());
+        sub.setStatus(mapStripeStatus(stripeSub.status()));
+        sub.setCurrentPeriodStart(stripeSub.currentPeriodStart());
+        sub.setCurrentPeriodEnd(stripeSub.currentPeriodEnd());
+        sub.setNextBillingAt(stripeSub.currentPeriodEnd());
+        if (!sub.getItems().isEmpty()) {
+            sub.getItems().get(0).setStripeSubscriptionItemId(stripeSub.firstSubscriptionItemId());
+        }
 
         Subscription saved = subscriptionRepository.save(sub);
 
@@ -227,10 +311,21 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             UUID mkt = si.getProduct().getMarketplaceId();
             if (mkt == null) continue;
             activityEventPublisher.publish(new UserActivityEvent(
-                    userId, null, si.getProduct().getId(), mkt, ActivityType.SUBSCRIPTION_CREATE, Instant.now()));
+                    saved.getUser().getId(), null, si.getProduct().getId(), mkt,
+                    ActivityType.SUBSCRIPTION_CREATE, Instant.now()));
         }
 
         return toResponse(saved);
+    }
+
+    /** Marks a pending subscription EXPIRED when setup fails before/at finalize. */
+    @Transactional
+    public void markSubscriptionSetupFailed(Subscription sub, String reason) {
+        if (sub != null) {
+            sub.setStatus(SubscriptionStatus.EXPIRED);
+            subscriptionRepository.save(sub);
+            log.warn("[SUBSCRIPTION] Pending subscription {} marked EXPIRED: {}", sub.getId(), reason);
+        }
     }
 
     @Override
@@ -450,17 +545,41 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             return;
         }
 
+        backend.models.core.Order renewalOrder;
         try {
-            orderService.createRenewalOrder(sub, stripeInvoiceId, amountPaidCents);
+            renewalOrder = orderService.createRenewalOrder(sub, stripeInvoiceId, amountPaidCents);
         } catch (Exception e) {
             log.error("Failed to create renewal order for subscription {} invoice {}: {}",
                     sub.getId(), stripeInvoiceId, e.getMessage(), e);
             return;
         }
 
+        // The renewal contained a discontinued line: createRenewalOrder restocked and cancelled the
+        // order. Refund the already-charged invoice and cancel the subscription so no future renewals
+        // recur the problem. Each step is best-effort/logged; we never re-activate the subscription.
+        if (renewalOrder.getStatus() == backend.models.enums.OrderStatus.CANCELLED) {
+            try {
+                paymentService.refundInvoice(stripeInvoiceId, null);
+            } catch (Exception e) {
+                log.error("[SUBSCRIPTION] Failed to refund auto-cancelled renewal invoice {} (subscription {}): {}",
+                        stripeInvoiceId, sub.getId(), e.getMessage());
+            }
+            try {
+                paymentService.cancelSubscription(stripeSubscriptionId, false);
+            } catch (Exception e) {
+                log.error("[SUBSCRIPTION] Failed to cancel subscription {} after discontinued renewal: {}",
+                        sub.getId(), e.getMessage());
+            }
+            sub.setStatus(SubscriptionStatus.CANCELLED);
+            sub.setCancelAtPeriodEnd(false);
+            subscriptionRepository.save(sub);
+            log.warn("[SUBSCRIPTION] Subscription {} cancelled and invoice {} refunded — renewal contained discontinued items",
+                    sub.getId(), stripeInvoiceId);
+            return;
+        }
+
         try {
-            orderRepository.findByStripeInvoiceId(stripeInvoiceId).ifPresent(renewalOrder ->
-                    loyaltyService.recordOrderEarn(renewalOrder, resolveSubscriptionCompanyId(sub)));
+            loyaltyService.recordOrderEarn(renewalOrder, resolveSubscriptionCompanyId(sub));
         } catch (Exception e) {
             log.error("[LOYALTY] Failed to record earn for renewal (subscription {}, invoice {}): {}",
                     sub.getId(), stripeInvoiceId, e.getMessage());

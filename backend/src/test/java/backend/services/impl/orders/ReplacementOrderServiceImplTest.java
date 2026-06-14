@@ -9,6 +9,7 @@ import backend.models.core.Order;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.core.User;
+import backend.models.enums.FulfillmentStatus;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.UserRole;
 import backend.repositories.OrderRepository;
@@ -68,6 +69,49 @@ class ReplacementOrderServiceImplTest {
         assertEquals(TestIds.uuid(99), resp.getId());
         assertEquals(BigDecimal.ZERO, resp.getTotalAmount());
         assertEquals(OrderStatus.PAID.name(), resp.getStatus());
+    }
+
+    @Test
+    void createReplacement_decrementsVariantStock_pendingWhenAvailable() {
+        User staff = makeStaffUser(TestIds.uuid(2));
+        Order original = makeOrder(TestIds.uuid(10), makeUser(TestIds.uuid(1)));
+        ProductVariant variant = makeVariant(TestIds.uuid(5));
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(orderRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
+        when(variantRepository.findById(TestIds.uuid(5))).thenReturn(Optional.of(variant));
+        when(variantRepository.decrementStock(TestIds.uuid(5), 2)).thenReturn(1); // stock available
+        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
+                List.of(new ResolveWithReplacementRequest.ReplacementItem(TestIds.uuid(5), 2)),
+                "123 Main St", "Springfield", "US", "12345");
+
+        OrderResponse resp = service.createReplacement(TestIds.uuid(10), req, TestIds.uuid(2));
+
+        verify(variantRepository).decrementStock(TestIds.uuid(5), 2);
+        assertEquals(FulfillmentStatus.PENDING, resp.getItems().get(0).getFulfillmentStatus());
+    }
+
+    @Test
+    void createReplacement_outOfStock_marksLineBackordered() {
+        User staff = makeStaffUser(TestIds.uuid(2));
+        Order original = makeOrder(TestIds.uuid(10), makeUser(TestIds.uuid(1)));
+        ProductVariant variant = makeVariant(TestIds.uuid(5));
+
+        when(userRepository.findById(TestIds.uuid(2))).thenReturn(Optional.of(staff));
+        when(orderRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(original));
+        when(variantRepository.findById(TestIds.uuid(5))).thenReturn(Optional.of(variant));
+        when(variantRepository.decrementStock(TestIds.uuid(5), 1)).thenReturn(0); // insufficient stock
+        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ResolveWithReplacementRequest req = new ResolveWithReplacementRequest(
+                List.of(new ResolveWithReplacementRequest.ReplacementItem(TestIds.uuid(5), 1)),
+                "123 Main St", "Springfield", "US", "12345");
+
+        OrderResponse resp = service.createReplacement(TestIds.uuid(10), req, TestIds.uuid(2));
+
+        assertEquals(FulfillmentStatus.BACKORDERED, resp.getItems().get(0).getFulfillmentStatus());
     }
 
     @Test

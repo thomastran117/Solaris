@@ -28,6 +28,21 @@ import java.util.Optional;
 public interface ProductRepository extends JpaRepository<Product, java.util.UUID>, JpaSpecificationExecutor<Product> {
     Optional<Product> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
+    /**
+     * Public-storefront visibility check: a product is browsable by non-members only when it is
+     * ACTIVE and listed. Used to gate unauthenticated child reads (images/options/variants/etc.).
+     */
+    boolean existsByIdAndCompanyIdAndStatusAndListed(java.util.UUID id, java.util.UUID companyId,
+                                                     ProductStatus status, boolean listed);
+
+    /**
+     * Returns the product's {@code marketplaceId} (or null if not marketplace-listed) without
+     * loading the full entity. Used by child-mutation paths (variants/images/options/attributes)
+     * to evict the right marketplace caches when the product is listed on a marketplace.
+     */
+    @Query("SELECT p.marketplaceId FROM Product p WHERE p.id = :productId")
+    java.util.UUID findMarketplaceIdByProductId(@Param("productId") java.util.UUID productId);
+
     // -------------------------------------------------------------------------
     // Marketplace catalog queries
     // -------------------------------------------------------------------------
@@ -40,6 +55,14 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     Page<Product> findMarketplaceListedPaged(@Param("marketplaceId") java.util.UUID marketplaceId, Pageable pageable);
 
     Optional<Product> findByIdAndMarketplaceId(java.util.UUID id, java.util.UUID marketplaceId);
+
+    /**
+     * Public marketplace detail/availability lookup: only resolves a product that is actually
+     * surfaced in the marketplace (marketplaceListed) and ACTIVE, so delisted/draft/archived
+     * products can't be fetched by direct URL.
+     */
+    Optional<Product> findByIdAndMarketplaceIdAndMarketplaceListedTrueAndStatus(
+            java.util.UUID id, java.util.UUID marketplaceId, ProductStatus status);
 
     List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, java.util.UUID marketplaceId);
 

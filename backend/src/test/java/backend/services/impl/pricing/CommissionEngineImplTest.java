@@ -246,7 +246,7 @@ class CommissionEngineImplTest {
         subOrder.setTotalAmount(totalAmount);
         subOrder.setSubtotal(totalAmount);
         subOrder.setCurrency("USD");
-        subOrder.setMarketplaceId(1L);
+        subOrder.setMarketplaceId(MARKETPLACE_ID);
         return subOrder;
     }
 

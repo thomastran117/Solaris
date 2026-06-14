@@ -269,7 +269,7 @@ class SubOrderServiceImplTest {
         subOrder.setId(id);
         subOrder.setOrder(order);
         subOrder.setMarketplaceVendor(vendor);
-        subOrder.setMarketplaceId(12L);
+        subOrder.setMarketplaceId(TestIds.uuid(12));
         subOrder.setStatus(status);
         subOrder.setSubtotal(BigDecimal.TEN);
         subOrder.setTotalAmount(BigDecimal.TEN);

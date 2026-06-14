@@ -81,6 +81,12 @@ class SubscriptionServiceImplTest {
                 orderRepository,
                 loyaltyService,
                 activityEventPublisher);
+
+        // handleInvoicePaid now inspects the renewal order's status; default it to a PAID order so
+        // the happy paths proceed (tests for the discontinued case override with a CANCELLED order).
+        backend.models.core.Order defaultRenewal = new backend.models.core.Order();
+        defaultRenewal.setStatus(backend.models.enums.OrderStatus.PAID);
+        lenient().when(orderService.createRenewalOrder(any(), anyString(), anyLong())).thenReturn(defaultRenewal);
     }
 
     // ─── create ─────────────────────────────────────────────────────────────
@@ -159,7 +165,36 @@ class SubscriptionServiceImplTest {
         assertEquals(SubscriptionStatus.ACTIVE, res.getStatus());
         assertEquals(BillingInterval.MONTH, res.getBillingInterval());
         assertEquals(1, res.getItems().size());
-        verify(subscriptionRepository).save(any(Subscription.class));
+        // Local-first: one save for the PENDING row (T1) + one at finalize (T2).
+        verify(subscriptionRepository, times(2)).save(any(Subscription.class));
+    }
+
+    @Test
+    void create_stripeSubscriptionFails_marksPendingExpiredAndRethrows() {
+        // Local-first: the PENDING row is committed before the Stripe subscription. If Stripe fails,
+        // no orphan exists and the pending row is marked EXPIRED.
+        User user = makeUser(TestIds.uuid(1));
+        user.setStripeCustomerId("cus_123");
+        Product product = makeProduct(TestIds.uuid(10), true, "MONTH:1");
+        when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
+        when(paymentService.retrievePaymentMethod("pm_test"))
+                .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_123", "visa", "4242", 12, 2030));
+        when(paymentService.createRecurringPrice(anyLong(), anyString(), any(), anyInt(), anyString(), any()))
+                .thenReturn(new PaymentService.PriceResult("price_1", 1000L, "usd"));
+        when(paymentService.createSubscription(anyString(), anyString(), anyInt(), anyString(), any()))
+                .thenThrow(new RuntimeException("Stripe down"));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThrows(RuntimeException.class,
+                () -> service.create(TestIds.uuid(1), makeCreateRequest(TestIds.uuid(10))));
+
+        ArgumentCaptor<Subscription> captor = ArgumentCaptor.forClass(Subscription.class);
+        verify(subscriptionRepository, atLeast(2)).save(captor.capture());
+        assertTrue(captor.getAllValues().stream().anyMatch(s -> s.getStatus() == SubscriptionStatus.EXPIRED),
+                "pending subscription should be marked EXPIRED when Stripe creation fails");
+        // No billing subscription was created, so nothing to cancel.
+        verify(paymentService, never()).cancelSubscription(anyString(), anyBoolean());
     }
 
     @Test
@@ -347,6 +382,25 @@ class SubscriptionServiceImplTest {
     }
 
     @Test
+    void handleInvoicePaid_discontinuedRenewal_refundsAndCancelsSubscription() {
+        // createRenewalOrder returns a CANCELLED order (item discontinued) → auto-refund the invoice
+        // and cancel the subscription; do not record loyalty or re-activate.
+        Subscription sub = makeSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        backend.models.core.Order cancelled = new backend.models.core.Order();
+        cancelled.setStatus(backend.models.enums.OrderStatus.CANCELLED);
+        when(orderService.createRenewalOrder(eq(sub), eq("in_42"), eq(1500L))).thenReturn(cancelled);
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.handleInvoicePaid("in_42", "sub_1", 1500L);
+
+        verify(paymentService).refundInvoice("in_42", null);
+        verify(paymentService).cancelSubscription("sub_1", false);
+        assertEquals(SubscriptionStatus.CANCELLED, sub.getStatus());
+        verify(loyaltyService, never()).recordOrderEarn(any(), any());
+    }
+
+    @Test
     void handleInvoicePaid_unknownSubscriptionIsNoop() {
         when(subscriptionRepository.findByStripeSubscriptionId("sub_unknown")).thenReturn(Optional.empty());
 
@@ -433,6 +487,7 @@ class SubscriptionServiceImplTest {
         Product product = makeProduct(TestIds.uuid(10), true, null);
         product.setMarketplaceId(TestIds.uuid(99));
         when(userRepository.findById(TestIds.uuid(1))).thenReturn(Optional.of(user));
+        when(userRepository.getReferenceById(TestIds.uuid(1))).thenReturn(user); // persistPending links the user
         when(productRepository.findById(TestIds.uuid(10))).thenReturn(Optional.of(product));
         when(paymentService.retrievePaymentMethod("pm_test"))
                 .thenReturn(new PaymentService.PaymentMethodInfo("pm_test", "cus_123", "visa", "4242", 12, 2030));

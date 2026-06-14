@@ -90,6 +90,9 @@ class ProductControllerTest {
 
         // Default: not a company member
         when(companyAccessService.resolveRole(any(), any())).thenReturn(Optional.empty());
+        // Default: products are publicly visible (ACTIVE + listed) so public child-read endpoints
+        // resolve; individual tests override this to exercise the hidden-product 404 path.
+        when(productService.isPubliclyVisible(any(), any())).thenReturn(true);
     }
 
     @AfterEach
@@ -499,6 +502,31 @@ class ProductControllerTest {
     }
 
     @Test
+    void childRead_unauthenticated_hiddenProduct_returns404() throws Exception {
+        // Non-member + product not publicly visible (draft/unlisted) → child metadata must be hidden.
+        when(productService.isPubliclyVisible(COMPANY_ID, PRODUCT_ID)).thenReturn(false);
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/variants", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/images", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isNotFound());
+        verify(productService, never()).getProductVariants(any(), any());
+        verify(productService, never()).getProductImages(any(), any());
+    }
+
+    @Test
+    void childRead_member_hiddenProduct_isAllowed() throws Exception {
+        // A company member can read child data even for a non-public (draft/unlisted) product.
+        authenticateAs(USER_ID);
+        when(companyAccessService.resolveRole(COMPANY_ID, USER_ID)).thenReturn(Optional.of(CompanyRole.OWNER));
+        when(productService.isPubliclyVisible(COMPANY_ID, PRODUCT_ID)).thenReturn(false);
+        when(productService.getProductVariants(COMPANY_ID, PRODUCT_ID)).thenReturn(List.of());
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/variants", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void getRelationships_withTypeFilter_returnsFilteredList() throws Exception {
         backend.dtos.responses.product.ProductRelationshipResponse rel =
                 new backend.dtos.responses.product.ProductRelationshipResponse(
@@ -634,7 +662,7 @@ class ProductControllerTest {
                 new BigDecimal("29.99"), null, "USD", null, null, null, null,
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, null, null,
-                status, null, null, false, true, false, false, null,
+                status, null, null, false, true, true, false, null,
                 null, null, null, null, null, null, null, null);
     }
 

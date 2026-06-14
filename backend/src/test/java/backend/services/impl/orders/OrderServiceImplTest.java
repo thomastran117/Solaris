@@ -147,9 +147,12 @@ class OrderServiceImplTest {
     private InventoryLocationRepository locationRepository;
     private CouponRepository couponRepository;
     private CouponPerUserCountRepository couponPerUserCountRepository;
+    private PromotionRuleRepository promotionRuleRepository;
+    private PromotionRedemptionRepository promotionRedemptionRepository;
     private LocationStockRepository      locationStockRepository;
     private InventoryAdjustmentRepository adjustmentRepository;
     private MarketplaceVendorRepository   marketplaceVendorRepository;
+    private SubOrderRepository            subOrderRepository;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -172,11 +175,14 @@ class OrderServiceImplTest {
         when(riskAssessmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         bundleRepository               = mock(BundleRepository.class);
         couponRepository               = mock(CouponRepository.class);
+        promotionRuleRepository        = mock(PromotionRuleRepository.class);
+        promotionRedemptionRepository  = mock(PromotionRedemptionRepository.class);
         couponPerUserCountRepository   = mock(CouponPerUserCountRepository.class);
         when(couponPerUserCountRepository.tryIncrementUserCount(any(), any(), anyInt())).thenReturn(1);
         locationStockRepository     = mock(LocationStockRepository.class);
         adjustmentRepository        = mock(InventoryAdjustmentRepository.class);
         marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
+        subOrderRepository = mock(SubOrderRepository.class);
         locationRepository       = mock(InventoryLocationRepository.class);
 
         service = new OrderServiceImpl(
@@ -194,8 +200,8 @@ class OrderServiceImplTest {
                 couponRepository,
                 mock(CouponRedemptionRepository.class),
                 couponPerUserCountRepository,
-                mock(PromotionRuleRepository.class),
-                mock(PromotionRedemptionRepository.class),
+                promotionRuleRepository,
+                promotionRedemptionRepository,
                 pricingEngine,
                 paymentService,
                 cacheService,
@@ -210,7 +216,7 @@ class OrderServiceImplTest {
                 mock(DeviceService.class),
                 mock(EmailVerificationService.class),
                 marketplaceVendorRepository,
-                mock(SubOrderRepository.class),
+                subOrderRepository,
                 mock(OrderItemRepository.class),
                 mock(CommissionEngine.class),
                 mock(CommissionRecordRepository.class),
@@ -537,6 +543,103 @@ class OrderServiceImplTest {
         verify(paymentService).refundPayment(PAYMENT_INTENT_ID, 5000L);
     }
 
+    @Test
+    void cancelOrderByCompany_mixedVendorOrder_throwsAndDoesNotRefund() {
+        // Order contains an item owned by COMPANY_ID plus a foreign item owned by another
+        // company. The requesting company does not own the order exclusively, so cancellation
+        // (which would refund the whole order and restock the foreign item) must be rejected.
+        Order order = cancellableOrder(OrderStatus.PAID);
+        OrderItem foreignItem = orderItem(TestIds.uuid(11), company(TestIds.uuid(777)),
+                "Foreign", new BigDecimal("25.00"));
+        order.setItems(List.of(order.getItems().get(0), foreignItem));
+
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID));
+
+        verify(paymentService, never()).refundPayment(any(), anyLong());
+        verify(paymentService, never()).cancelPaymentIntent(any());
+    }
+
+    @Test
+    void cancelOrderByCompany_productPlusKitSameCompany_isOwnedExclusivelyAndCancels() {
+        // A mixed product + kit order entirely owned by the company must pass the exclusivity
+        // guard: findOwningCompanyId must recognise kit ownership (not just product/bundle).
+        Order order = cancellableOrder(OrderStatus.PAID);
+        backend.models.core.ProductKit kit = new backend.models.core.ProductKit();
+        kit.setId(TestIds.uuid(12));
+        kit.setCompany(company(COMPANY_ID));
+        OrderItem kitItem = new OrderItem();
+        kitItem.setId(TestIds.uuid(13));
+        kitItem.setKit(kit);
+        kitItem.setProduct(null);
+        kitItem.setQuantity(1);
+        kitItem.setUnitPrice(new BigDecimal("15.00"));
+        kitItem.setFulfillmentStatus(FulfillmentStatus.PENDING);
+        order.setItems(List.of(order.getItems().get(0), kitItem));
+
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelOrderByCompany(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(OrderStatus.CANCELLED, order.getStatus());
+    }
+
+    @Test
+    void failReservedOrder_withOrphanIntent_cancelsIntentRestoresLoyaltyAndMarksCompensated() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        stubLockSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.failReservedOrder(order, "attach failed", "pi_orphan");
+
+        assertEquals(OrderStatus.FAILED, order.getStatus());
+        assertTrue(order.isCompensated());
+        verify(paymentService).cancelPaymentIntent("pi_orphan");
+        verify(loyaltyService).restoreRedeemedPoints(ORDER_ID);
+    }
+
+    @Test
+    void failReservedOrder_withCoupon_reversesGlobalCouponUsage() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        Coupon coupon = new Coupon();
+        coupon.setId(TestIds.uuid(77));
+        order.setCoupon(coupon);
+        stubLockSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.failReservedOrder(order, "payment failed", null);
+
+        // A failed checkout must free the coupon's global usage, not just the per-user counter.
+        verify(couponRepository).decrementUsedCount(coupon.getId());
+    }
+
+    @Test
+    void failReservedOrder_withPromotion_reversesGlobalPromotionUsage() {
+        Order order = cancellableOrder(OrderStatus.RESERVED);
+        stubLockSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UUID ruleId = TestIds.uuid(88);
+        backend.models.core.PromotionRule rule = new backend.models.core.PromotionRule();
+        rule.setId(ruleId);
+        rule.setMaxUsesPerUser(null); // no per-user counter to reverse
+        backend.models.core.PromotionRedemption redemption = new backend.models.core.PromotionRedemption();
+        redemption.setRule(rule);
+        when(promotionRedemptionRepository.findAllByOrderId(ORDER_ID)).thenReturn(List.of(redemption));
+
+        service.failReservedOrder(order, "payment failed", null);
+
+        // A failed checkout must free the promotion's global usage so caps aren't consumed.
+        verify(promotionRuleRepository).decrementUsedCount(ruleId);
+    }
+
     // -------------------------------------------------------------------------
     // Builders
     // -------------------------------------------------------------------------
@@ -779,14 +882,32 @@ class OrderServiceImplTest {
     @Test
     void retryCompensation_stockRestore_productPath_restoresStock() {
         UUID productId = TestIds.uuid(20);
-        String detail = "[PRODUCT]:" + productId + ":qty:2";
+        // Real detail format produced by buildRestoreDetail/scheduleStockCompensation.
+        String detail = "Restored 2 units for product " + productId;
         OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE, detail);
         when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
 
         service.retryCompensation(comp);
 
+        verify(productRepository).restoreStock(productId, 2);
         verify(compensationRepository).save(comp);
         assertEquals(CompensationStatus.COMPLETED, comp.getStatus());
+    }
+
+    @Test
+    void retryCompensation_stockRestore_unparseableDetail_staysFailedAndDoesNotRestore() {
+        // Fail closed: an unreconstructable detail (e.g. a kit line) must not be marked COMPLETED
+        // without restoring anything — it stays FAILED for operator visibility / further retry.
+        OrderCompensation comp = compensation(CompensationType.STOCK_RESTORE,
+                "[KIT:" + TestIds.uuid(21) + "] 1 unit(s) of kit Starter Kit failed to restore");
+        when(compensationRepository.claimForRetry(comp.getId())).thenReturn(1);
+
+        service.retryCompensation(comp);
+
+        verify(productRepository, never()).restoreStock(any(), anyInt());
+        verify(variantRepository, never()).restoreStock(any(), anyInt());
+        assertEquals(CompensationStatus.FAILED, comp.getStatus());
+        org.junit.jupiter.api.Assertions.assertNotNull(comp.getErrorMessage());
     }
 
     @Test
@@ -1061,6 +1182,39 @@ class OrderServiceImplTest {
     }
 
     /** Returns a ACTIVE, listed, purchasable product belonging to COMPANY_ID. */
+    @Test
+    void createRenewalOrder_discontinuedItem_savesCancelledOrderBeforeRecordingAdjustments() {
+        // #5: recordCancelAdjustment must run AFTER the order is persisted so the @UuidGenerator-assigned
+        // id is available — recording before save would write audit rows with a null orderId.
+        User buyer = user(USER_ID);
+        Product discontinued = activeProduct();
+        discontinued.setStatus(ProductStatus.DRAFT); // no longer ACTIVE → renewal must auto-cancel
+
+        backend.models.core.Subscription sub = new backend.models.core.Subscription();
+        sub.setUser(buyer);
+        sub.setCurrency("usd");
+        backend.models.core.SubscriptionItem si = new backend.models.core.SubscriptionItem();
+        si.setProduct(discontinued);
+        si.setQuantity(2);
+        si.setUnitPriceCents(5000);
+        sub.getItems().add(si);
+
+        when(orderRepository.findByStripeInvoiceId("in_1")).thenReturn(Optional.empty());
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.decrementStock(PRODUCT_ID, 2)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Order result = service.createRenewalOrder(sub, "in_1", 10000L);
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        assertEquals(CancellationReason.OUT_OF_STOCK, result.getCancellationReason());
+        // Stock restored, then the cancelled order saved, then the adjustment recorded — in that order.
+        org.mockito.InOrder ordered = org.mockito.Mockito.inOrder(productRepository, orderRepository, adjustmentRepository);
+        ordered.verify(productRepository).restoreStock(PRODUCT_ID, 2);
+        ordered.verify(orderRepository).save(any(Order.class));
+        ordered.verify(adjustmentRepository).save(any());
+    }
+
     private Product activeProduct() {
         Product p = new Product();
         p.setId(PRODUCT_ID);
@@ -1072,6 +1226,17 @@ class OrderServiceImplTest {
         Company co = company(COMPANY_ID);
         p.setCompany(co);
         return p;
+    }
+
+    /** Builds a purchasable, untracked-stock variant of the given product. */
+    private backend.models.core.ProductVariant variant(UUID id, Product product) {
+        backend.models.core.ProductVariant v = new backend.models.core.ProductVariant();
+        v.setId(id);
+        v.setProduct(product);
+        v.setPurchasable(true);
+        v.setPrice(new BigDecimal("50.00"));
+        v.setStock(null); // untracked — skips purchase-record/alert bookkeeping
+        return v;
     }
 
     /** Builds a single-item DELIVERY CreateOrderRequest with a full shipping address. */
@@ -1112,6 +1277,46 @@ class OrderServiceImplTest {
         assertNotNull(resp);
         verify(orderRepository, atLeast(2)).save(any(Order.class));
         verify(paymentService).createPaymentIntent(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void createOrder_sameProductTwoVariants_decrementsBothVariants() {
+        // A single order may now contain two variants of the same product (e.g. two sizes);
+        // each (productId, variantId) line is reserved independently.
+        UUID variantA = TestIds.uuid(31);
+        UUID variantB = TestIds.uuid(32);
+        Product product = activeProduct();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        when(variantRepository.existsByProductId(PRODUCT_ID)).thenReturn(true);
+        when(variantRepository.findByIdAndProductId(variantA, PRODUCT_ID)).thenReturn(Optional.of(variant(variantA, product)));
+        when(variantRepository.findByIdAndProductId(variantB, PRODUCT_ID)).thenReturn(Optional.of(variant(variantB, product)));
+        when(variantRepository.decrementStock(variantA, 1)).thenReturn(1);
+        when(variantRepository.decrementStock(variantB, 1)).thenReturn(1);
+        stubLockSuccess();
+        stubPricingSuccess();
+        stubRiskAllow();
+        stubPaymentSuccess();
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        CreateOrderRequest.OrderItemRequest item1 = req.getItems().get(0);
+        item1.setVariantId(variantA);
+        CreateOrderRequest.OrderItemRequest item2 = new CreateOrderRequest.OrderItemRequest();
+        item2.setProductId(PRODUCT_ID);
+        item2.setVariantId(variantB);
+        item2.setQuantity(1);
+        req.setItems(List.of(item1, item2));
+
+        OrderResponse resp = service.createOrder(USER_ID, req);
+
+        assertNotNull(resp);
+        verify(variantRepository).decrementStock(variantA, 1);
+        verify(variantRepository).decrementStock(variantB, 1);
     }
 
     @Test
@@ -1218,8 +1423,14 @@ class OrderServiceImplTest {
         assertThrows(RuntimeException.class,
                 () -> service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1)));
 
-        // Verify: save was called (initial save + FAILED save), and stock schedule was triggered
-        verify(orderRepository, atLeast(1)).save(any(Order.class));
+        // The order must be persisted FAILED *and* compensated=true: failReservedOrder restores
+        // stock inline, so the stale-order scheduler must not restore it a second time.
+        ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository, atLeast(1)).save(captor.capture());
+        boolean failedAndCompensated = captor.getAllValues().stream()
+                .anyMatch(o -> o.getStatus() == OrderStatus.FAILED && o.isCompensated());
+        org.junit.jupiter.api.Assertions.assertTrue(failedAndCompensated,
+                "failed order should be saved with status FAILED and compensated=true");
     }
 
     @Test
@@ -2161,6 +2372,7 @@ class OrderServiceImplTest {
     @Test
     void stampVendorIds_productWithMarketplace_returnsTrue() {
         UUID marketplaceId = TestIds.uuid(98);
+        UUID vendorId = TestIds.uuid(99);
         Product p = new Product();
         p.setId(PRODUCT_ID);
         p.setCompany(company(COMPANY_ID));
@@ -2168,10 +2380,147 @@ class OrderServiceImplTest {
         OrderItem item = new OrderItem();
         item.setProduct(p);
 
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setVendorCompany(company(COMPANY_ID));
+        when(marketplaceVendorRepository.findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any()))
+                .thenReturn(List.of(vendor));
+
         Boolean result = ReflectionTestUtils.invokeMethod(service, "stampVendorIds", List.of(item));
 
         assertEquals(true, result);
+        assertEquals(vendorId, item.getVendorId());
         verify(marketplaceVendorRepository).findByMarketplaceIdAndVendorCompanyIdIn(eq(marketplaceId), any());
+    }
+
+    @Test
+    void createSubOrders_marketplaceItems_createsSubOrderPerVendorWithNetSubtotal() {
+        UUID vendorId = TestIds.uuid(99);
+        UUID marketplaceId = TestIds.uuid(98);
+
+        Order order = new Order();
+        order.setId(TestIds.uuid(3));
+        order.setCurrency("USD");
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setQuantity(2);
+        // unitPrice is already the promotion-discounted net price; discountAmount/promotionSavings
+        // encode that same savings and must NOT be subtracted again into the sub-order subtotal.
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setDiscountAmount(new BigDecimal("1.00"));
+        item.setPromotionSavings(new BigDecimal("3.00"));
+        item.setVendorId(vendorId);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setMarketplace(company(marketplaceId));
+        when(marketplaceVendorRepository.findAllById(any())).thenReturn(List.of(vendor));
+        when(subOrderRepository.save(any(backend.models.core.SubOrder.class))).thenAnswer(inv -> {
+            backend.models.core.SubOrder s = inv.getArgument(0);
+            s.setId(TestIds.uuid(500));
+            return s;
+        });
+
+        ReflectionTestUtils.invokeMethod(service, "createSubOrders", order, List.of(item));
+
+        ArgumentCaptor<backend.models.core.SubOrder> captor =
+                ArgumentCaptor.forClass(backend.models.core.SubOrder.class);
+        verify(subOrderRepository).save(captor.capture());
+        backend.models.core.SubOrder created = captor.getValue();
+        assertEquals(vendorId, created.getMarketplaceVendor().getId());
+        assertEquals(marketplaceId, created.getMarketplaceId());
+        // net unitPrice (10.00, already discounted) × qty 2 = 20.00 — savings not re-subtracted
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getSubtotal()));
+        // No order-level discount (totalAmount unset) → scale 1 → total == subtotal
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getTotalAmount()));
+        assertEquals(TestIds.uuid(500), item.getSubOrderId());
+    }
+
+    @Test
+    void createSubOrders_orderLevelDiscount_scalesVendorTotalDownProRata() {
+        UUID vendorId = TestIds.uuid(99);
+        UUID marketplaceId = TestIds.uuid(98);
+
+        Order order = new Order();
+        order.setId(TestIds.uuid(3));
+        order.setCurrency("USD");
+        // Lines net to 20.00 but only 15.00 was actually collected (e.g. a $5 coupon). The vendor's
+        // commissionable total must be scaled to 15.00 so payout is never based on more than charged.
+        order.setTotalAmount(new BigDecimal("15.00"));
+
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setQuantity(2);
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setDiscountAmount(BigDecimal.ZERO);
+        item.setPromotionSavings(BigDecimal.ZERO);
+        item.setVendorId(vendorId);
+
+        backend.models.core.MarketplaceVendor vendor = new backend.models.core.MarketplaceVendor();
+        vendor.setId(vendorId);
+        vendor.setMarketplace(company(marketplaceId));
+        when(marketplaceVendorRepository.findAllById(any())).thenReturn(List.of(vendor));
+        when(subOrderRepository.save(any(backend.models.core.SubOrder.class))).thenAnswer(inv -> {
+            backend.models.core.SubOrder s = inv.getArgument(0);
+            s.setId(TestIds.uuid(500));
+            return s;
+        });
+
+        ReflectionTestUtils.invokeMethod(service, "createSubOrders", order, List.of(item));
+
+        ArgumentCaptor<backend.models.core.SubOrder> captor =
+                ArgumentCaptor.forClass(backend.models.core.SubOrder.class);
+        verify(subOrderRepository).save(captor.capture());
+        backend.models.core.SubOrder created = captor.getValue();
+        assertEquals(0, new BigDecimal("20.00").compareTo(created.getSubtotal()));
+        assertEquals(0, new BigDecimal("15.00").compareTo(created.getTotalAmount()));
+        assertEquals(0, new BigDecimal("5.00").compareTo(created.getVendorDiscountAmount()));
+    }
+
+    @Test
+    void createSubOrders_rounding_sumOfTotalsNeverExceedsCollected() {
+        // Classic largest-remainder edge: three $0.01 lines, only $0.02 collected. Naive per-vendor
+        // rounding would yield 3×$0.01 = $0.03 > collected; allocation must sum to exactly $0.02.
+        UUID marketplaceId = TestIds.uuid(98);
+        List<OrderItem> items = new java.util.ArrayList<>();
+        List<backend.models.core.MarketplaceVendor> vendors = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            UUID vendorId = TestIds.uuid(200 + i);
+            OrderItem item = new OrderItem();
+            item.setId(TestIds.uuid(210 + i));
+            item.setQuantity(1);
+            item.setUnitPrice(new BigDecimal("0.01"));
+            item.setDiscountAmount(BigDecimal.ZERO);
+            item.setPromotionSavings(BigDecimal.ZERO);
+            item.setVendorId(vendorId);
+            items.add(item);
+
+            backend.models.core.MarketplaceVendor v = new backend.models.core.MarketplaceVendor();
+            v.setId(vendorId);
+            v.setMarketplace(company(marketplaceId));
+            vendors.add(v);
+        }
+
+        Order order = new Order();
+        order.setId(TestIds.uuid(3));
+        order.setCurrency("USD");
+        order.setTotalAmount(new BigDecimal("0.02")); // collected < sum of lines (0.03)
+
+        when(marketplaceVendorRepository.findAllById(any())).thenReturn(vendors);
+        when(subOrderRepository.save(any(backend.models.core.SubOrder.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        ReflectionTestUtils.invokeMethod(service, "createSubOrders", order, items);
+
+        ArgumentCaptor<backend.models.core.SubOrder> captor =
+                ArgumentCaptor.forClass(backend.models.core.SubOrder.class);
+        verify(subOrderRepository, org.mockito.Mockito.times(3)).save(captor.capture());
+        BigDecimal sum = captor.getAllValues().stream()
+                .map(backend.models.core.SubOrder::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, new BigDecimal("0.02").compareTo(sum),
+                "sum of sub-order totals must equal collected, not exceed it");
     }
 
     // =========================================================================
@@ -2289,6 +2638,27 @@ class OrderServiceImplTest {
         ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
 
         verify(productRepository).restoreStock(PRODUCT_ID, 2);
+    }
+
+    @Test
+    void restoreItemStock_missingLocationStockRow_restoresProductAndSkipsLocationGracefully() {
+        Product p = new Product(); p.setId(PRODUCT_ID);
+        InventoryLocation loc = new InventoryLocation(); loc.setId(TestIds.uuid(60));
+        OrderItem item = new OrderItem();
+        item.setId(TestIds.uuid(10));
+        item.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item.setProduct(p);
+        item.setVariant(null);
+        item.setQuantity(2);
+        item.setFulfillmentLocation(loc);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(loc.getId(), PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+
+        // Must not throw even though the location-stock row is gone (logs a warning instead).
+        ReflectionTestUtils.invokeMethod(service, "restoreItemStock", item);
+
+        verify(productRepository).restoreStock(PRODUCT_ID, 2);
+        verify(locationStockRepository, never()).restoreStock(any(), anyInt());
     }
 
     @Test

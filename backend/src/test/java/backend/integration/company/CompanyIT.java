@@ -330,4 +330,21 @@ class CompanyIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/companies/{id}", company.getId()))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── Optimistic locking (@Version) ───────────────────────────────────────────
+
+    @Test
+    void updatingCompany_incrementsOptimisticLockVersion() {
+        User owner = createActiveUser("co-version@example.com", "Password1!");
+        Company company = createCompany(owner, "Versioned Co");
+        Long initialVersion = company.getVersion();
+        org.junit.jupiter.api.Assertions.assertNotNull(initialVersion,
+                "@Version column should be populated on first save");
+
+        company.setIndustry("Logistics");
+        Company saved = companyRepository.saveAndFlush(company);
+
+        org.junit.jupiter.api.Assertions.assertEquals(initialVersion + 1, saved.getVersion(),
+                "saving a modified Company should bump the optimistic-lock version");
+    }
 }

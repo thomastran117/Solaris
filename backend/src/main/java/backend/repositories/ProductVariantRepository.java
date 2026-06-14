@@ -28,10 +28,13 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     int decrementStock(@Param("id") java.util.UUID id, @Param("qty") int qty);
 
     /**
-     * Restores variant stock unconditionally (used in compensation/cancel flows).
+     * Restores variant stock (used in compensation/cancel flows). Caps the result at maxStock when
+     * a ceiling is configured, mirroring {@code ProductRepository.restoreStock}, so compensation
+     * cannot over-restore a variant above its configured maximum. Untracked (null stock) variants
+     * are skipped.
      */
     @Modifying
-    @Query("UPDATE ProductVariant v SET v.stock = v.stock + :qty WHERE v.id = :id")
+    @Query("UPDATE ProductVariant v SET v.stock = CASE WHEN v.maxStock IS NOT NULL AND (v.stock + :qty) > v.maxStock THEN v.maxStock ELSE v.stock + :qty END WHERE v.id = :id AND v.stock IS NOT NULL")
     int restoreStock(@Param("id") java.util.UUID id, @Param("qty") int qty);
 
     /**

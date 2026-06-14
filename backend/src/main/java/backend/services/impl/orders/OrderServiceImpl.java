@@ -216,6 +216,8 @@ public class OrderServiceImpl implements OrderService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
+    /** Self-proxy for transactional self-invocation (createOrder orchestrates reserve/attach across separate transactions). */
+    private OrderServiceImpl self;
 
     public OrderServiceImpl(
             OrderRepository orderRepository,
@@ -316,6 +318,16 @@ public class OrderServiceImpl implements OrderService {
         this.promotionPerUserCountRepository = repo;
     }
 
+    /**
+     * Injects this bean's own proxy so {@code createOrder} can invoke its transactional
+     * helpers ({@code reserveOrder}, {@code attachPaymentIntent}, {@code failReservedOrder})
+     * across distinct transactions. {@code @Lazy} breaks the self-referential cycle at startup.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSelf(@org.springframework.context.annotation.Lazy OrderServiceImpl self) {
+        this.self = self;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
@@ -335,9 +347,99 @@ public class OrderServiceImpl implements OrderService {
         this.stringRedisTemplate = template;
     }
 
+    /**
+     * Orchestrates order creation across two transactions so the external Stripe call
+     * never runs inside the stock-reservation transaction (which would pin a DB connection
+     * and hold Redis stock locks across a network round-trip):
+     * <ol>
+     *   <li>{@code reserveOrder} (T1): validate, reserve stock, persist the RESERVED order.</li>
+     *   <li>create the Stripe PaymentIntent with no DB transaction or locks held.</li>
+     *   <li>{@code attachPaymentIntent} (T2): persist the intent id and send the receipt.</li>
+     * </ol>
+     * If the PaymentIntent call fails after T1 commits, {@code failReservedOrder} marks the
+     * order FAILED and restores the already-committed stock.
+     */
     @Override
-    @Transactional
     public OrderResponse createOrder(UUID userId, CreateOrderRequest request) {
+        OrderReservation reservation = self().reserveOrder(userId, request);
+        // Terminal outcome inside T1 (e.g. order parked UNDER_REVIEW) needs no PaymentIntent.
+        if (reservation.response() != null) {
+            return reservation.response();
+        }
+
+        Order reserved = reservation.order();
+        PaymentIntentResult paymentIntent;
+        try {
+            paymentIntent = paymentService.createPaymentIntent(
+                    reservation.amountInCents(),
+                    reservation.currency(),
+                    null,
+                    Map.of("user_id", String.valueOf(userId),
+                           "order_id", String.valueOf(reserved.getId()))
+            );
+        } catch (Exception e) {
+            // The reservation already committed, so rolling back is not an option — restore the
+            // committed stock, coupon/loyalty usage, and mark the order FAILED before surfacing the
+            // original error. No PaymentIntent exists yet, so there is nothing to cancel.
+            failReservedOrderQuietly(reserved, "Payment intent creation failed: " + e.getMessage(), null);
+            throw e;
+        }
+
+        OrderResponse response;
+        try {
+            response = self().attachPaymentIntent(reserved, paymentIntent);
+        } catch (Exception e) {
+            // The PaymentIntent exists at Stripe but could not be persisted on the order. Hand the
+            // orphaned intent id to failReservedOrder so it is cancelled (and recorded as a
+            // retryable PAYMENT_CANCEL compensation if the cancel itself fails) and the committed
+            // stock/coupon/loyalty are restored so the customer is never charged.
+            failReservedOrderQuietly(reserved,
+                    "Failed to attach payment intent: " + e.getMessage(), paymentIntent.id());
+            throw e;
+        }
+
+        // Receipt email is best-effort and runs AFTER the PaymentIntent is committed, so an email
+        // failure can never roll back the attachment or orphan the intent.
+        try {
+            emailService.sendOrderReceiptEmail(reservation.email(), reservation.firstName(), response);
+        } catch (Exception e) {
+            log.warn("[ORDER] Failed to send receipt email for order {}: {}", reserved.getId(), e.getMessage());
+        }
+        return response;
+    }
+
+    /**
+     * Invokes {@link #failReservedOrder} through the proxy, swallowing any compensation failure so
+     * the caller can still surface the original (payment) error.
+     */
+    private void failReservedOrderQuietly(Order reserved, String reason, String orphanPaymentIntentId) {
+        try {
+            self().failReservedOrder(reserved, reason, orphanPaymentIntentId);
+        } catch (Exception compEx) {
+            log.error("[ORDER] Failed to compensate order {} after payment failure: {}",
+                    reserved.getId(), compEx.getMessage());
+        }
+    }
+
+    /**
+     * Returns this bean's transactional proxy for self-invocation, falling back to {@code this}
+     * when no proxy was injected (e.g. plain unit tests with no Spring context). In production
+     * {@code self} is always wired by {@link #setSelf}, so the helper calls cross real
+     * transaction boundaries; in unit tests the fallback simply runs the logic inline.
+     */
+    private OrderServiceImpl self() {
+        return self != null ? self : this;
+    }
+
+    /**
+     * Transaction T1 of {@link #createOrder}: validates the request, reserves stock under
+     * Redis locks, and persists the order as RESERVED. Returns a {@link OrderReservation}
+     * describing whether the order is terminal (already has its final response) or pending
+     * a PaymentIntent. Never creates a PaymentIntent — that is done by the caller outside
+     * this transaction.
+     */
+    @Transactional
+    public OrderReservation reserveOrder(UUID userId, CreateOrderRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
@@ -447,28 +549,19 @@ public class OrderServiceImpl implements OrderService {
         }
         List<UUID> allProductIds = new ArrayList<>(allProductIdSet);
 
-        // Reject same productId with different variantIds — ambiguous, can't be safely merged
-        Map<UUID, UUID> seenProductVariant = new HashMap<>();
+        // Each order line is keyed by (productId, variantId): the same product may appear with
+        // different variants (e.g. a shirt in two sizes) as separate lines, while identical
+        // product+variant pairs are merged by summing quantity.
+        record LineKey(UUID productId, UUID variantId) {}
+        Map<LineKey, Integer> lineQuantities = new java.util.LinkedHashMap<>();
         for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
-            if (item.getProductId() == null) continue;
-            UUID existingVariant = seenProductVariant.put(item.getProductId(), item.getVariantId());
-            if (existingVariant != null && !Objects.equals(existingVariant, item.getVariantId())) {
-                throw new BadRequestException(
-                    "Product id " + item.getProductId() + " appears with multiple variants in the same order — submit as separate orders");
-            }
+            lineQuantities.merge(new LineKey(item.getProductId(), item.getVariantId()),
+                    item.getQuantity(), Integer::sum);
         }
 
-        Map<UUID, Integer> quantityMap = new HashMap<>();
-        Map<UUID, UUID> variantMap = new HashMap<>();  // productId -> variantId
-        for (CreateOrderRequest.OrderItemRequest item : productItemRequests) {
-            quantityMap.merge(item.getProductId(), item.getQuantity(), Integer::sum);
-            if (item.getVariantId() != null) {
-                variantMap.put(item.getProductId(), item.getVariantId());
-            }
-        }
-
-        // Collect variant IDs that need locks (sorted for deadlock prevention)
-        List<UUID> variantIdsToLock = variantMap.values().stream().sorted().toList();
+        // Collect variant IDs that need locks (distinct, sorted for deadlock prevention)
+        List<UUID> variantIdsToLock = lineQuantities.keySet().stream()
+                .map(LineKey::variantId).filter(Objects::nonNull).distinct().sorted().toList();
 
         String lockToken = UUID.randomUUID().toString();
         List<String> acquiredLocks = new ArrayList<>();
@@ -497,6 +590,11 @@ public class OrderServiceImpl implements OrderService {
             }
 
             for (Product product : products) {
+                // Purchasability for standalone products requires ACTIVE + purchasable only.
+                // product.isListed() is intentionally NOT checked here: for products, listed=false
+                // means "hidden from browse/search" but still buyable via a direct link (e.g. a
+                // shared product URL). This deliberately differs from bundles/kits, which DO require
+                // isListed() for purchase — see the bundle/kit resolution above.
                 if (product.getStatus() != ProductStatus.ACTIVE) {
                     throw new BadRequestException("Product '" + product.getName() + "' is not available for purchase");
                 }
@@ -504,11 +602,14 @@ public class OrderServiceImpl implements OrderService {
                     throw new BadRequestException("Product '" + product.getName() + "' is not available for purchase");
                 }
                 boolean hasVariants = variantRepository.existsByProductId(product.getId());
-                UUID requestedVariantId = variantMap.get(product.getId());
-                if (hasVariants && requestedVariantId == null) {
+                List<UUID> requestedVariantsForProduct = lineQuantities.keySet().stream()
+                        .filter(k -> k.productId().equals(product.getId()))
+                        .map(LineKey::variantId)
+                        .toList();
+                if (hasVariants && requestedVariantsForProduct.stream().anyMatch(Objects::isNull)) {
                     throw new BadRequestException("Product '" + product.getName() + "' has variants — specify a variantId");
                 }
-                if (!hasVariants && requestedVariantId != null) {
+                if (!hasVariants && requestedVariantsForProduct.stream().anyMatch(Objects::nonNull)) {
                     throw new BadRequestException("Product '" + product.getName() + "' has no variants");
                 }
             }
@@ -520,10 +621,11 @@ public class OrderServiceImpl implements OrderService {
 
             List<OrderItem> orderItems = new ArrayList<>();
 
-            for (UUID productId : productIds) {
+            for (Map.Entry<LineKey, Integer> lineEntry : lineQuantities.entrySet()) {
+                UUID productId = lineEntry.getKey().productId();
+                UUID variantId = lineEntry.getKey().variantId();
+                int qty = lineEntry.getValue();
                 Product product = productMap.get(productId);
-                int qty = quantityMap.get(productId);
-                UUID variantId = variantMap.get(productId);
 
                 OrderItem item = new OrderItem();
                 item.setProduct(product);
@@ -597,6 +699,15 @@ public class OrderServiceImpl implements OrderService {
                     List<AllocationService.AllocationResult> allocResults =
                             allocationService.allocate(productId, variantId, qty, strategy, buyerLat, buyerLng);
 
+                    // Compensation ownership on allocation failure:
+                    //   • AllocationService owns its OWN partial location decrements — it restores
+                    //     them before returning an empty result, so they are NOT in
+                    //     decrementedLocationStocks and must not be restored again here.
+                    //   • This @Transactional method's rollback is the authoritative undo for the
+                    //     product/variant/prior-location decrements below. safeRestoreAll is a
+                    //     belt-and-suspenders restore that, because it runs in the SAME transaction,
+                    //     is itself rolled back — so it can never cause net stock drift even though
+                    //     the throw will also roll everything back.
                     if (allocResults.isEmpty() && hasAnyLocationStock(productId, variantId)) {
                         safeRestoreAll(decrementedProducts, decrementedVariants, decrementedLocationStocks);
                         throw new ConflictException("Insufficient location stock for product '" + product.getName() + "'");
@@ -1150,32 +1261,15 @@ public class OrderServiceImpl implements OrderService {
                 publishSseEvent(savedForReview, "Order held for review", "status_update");
                 OrderResponse response = toResponse(savedForReview);
                 emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
-                return response;
+                return OrderReservation.terminal(response);
             }
 
-            PaymentIntentResult paymentIntent;
-            try {
-                paymentIntent = paymentService.createPaymentIntent(
-                        amountInCents,
-                        currency,
-                        null,
-                        Map.of("user_id", String.valueOf(userId), "order_id", String.valueOf(order.getId()))
-                );
-            } catch (Exception e) {
-                order.setStatus(OrderStatus.FAILED);
-                order.setFailureReason("Payment intent creation failed: " + e.getMessage());
-                orderRepository.save(order);
-                releaseReservation(order.getId());
-                scheduleStockCompensation(order, decrementedProducts, decrementedVariants, decrementedLocationStocks);
-                throw e;
-            }
-
-            order.setPaymentIntentId(paymentIntent.id());
-            order.setPaymentClientSecret(paymentIntent.clientSecret());
-
-            OrderResponse response = toResponse(orderRepository.save(order));
-            emailService.sendOrderReceiptEmail(user.getEmail(), user.getFirstName(), response);
-            return response;
+            // Persist the RESERVED order (with risk fields) and hand back to the caller, which
+            // creates the Stripe PaymentIntent OUTSIDE this transaction so a slow external call
+            // never pins this DB connection or holds the stock locks.
+            order = orderRepository.save(order);
+            return OrderReservation.pending(order, amountInCents, currency,
+                    user.getEmail(), user.getFirstName());
         } catch (ConflictException | ResourceNotFoundException | BadRequestException e) {
             // appliedCoupon is set only after tryIncrementUserCount succeeds (claimed > 0).
             // If it is non-null here, the per-user counter was incremented and must be undone.
@@ -1213,6 +1307,122 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    /**
+     * Result of {@link #reserveOrder}. Exactly one of the two shapes is populated:
+     * <ul>
+     *   <li><b>terminal</b> — {@code response} is set; the order reached its final state inside
+     *       T1 (e.g. parked UNDER_REVIEW) and needs no PaymentIntent.</li>
+     *   <li><b>pending</b> — {@code orderId}/{@code amountInCents}/{@code currency} are set; the
+     *       caller must create a PaymentIntent and attach it via {@link #attachPaymentIntent}.</li>
+     * </ul>
+     */
+    public record OrderReservation(OrderResponse response, Order order, long amountInCents,
+                                   String currency, String email, String firstName) {
+        static OrderReservation terminal(OrderResponse response) {
+            return new OrderReservation(response, null, 0L, null, null, null);
+        }
+
+        static OrderReservation pending(Order order, long amountInCents, String currency,
+                                        String email, String firstName) {
+            return new OrderReservation(null, order, amountInCents, currency, email, firstName);
+        }
+    }
+
+    /**
+     * Transaction T2 of {@link #createOrder}: persists the PaymentIntent id/client-secret on the
+     * already-RESERVED order. Runs after the Stripe call has returned, so no external work happens
+     * inside this transaction; the receipt email is sent best-effort by the caller after commit.
+     */
+    @Transactional
+    public OrderResponse attachPaymentIntent(Order order, PaymentIntentResult paymentIntent) {
+        order.setPaymentIntentId(paymentIntent.id());
+        order.setPaymentClientSecret(paymentIntent.clientSecret());
+        // Persist the intent only — the receipt email is sent best-effort by the caller after this
+        // transaction commits, so an email failure can never roll back the attachment.
+        return toResponse(orderRepository.save(order));
+    }
+
+    /**
+     * Compensation path when the payment step fails after {@link #reserveOrder} has committed:
+     * marks the order FAILED, releases the Redis reservation, restores the already-committed stock
+     * (under product/variant locks), and undoes the committed coupon and loyalty usage. If an
+     * orphaned PaymentIntent id is supplied (attach-failure path, where the id was never persisted
+     * on the order), it is cancelled and — on cancel failure — recorded as a retryable
+     * PAYMENT_CANCEL compensation. Mirrors the non-stock cleanup of {@link #compensateOrder} but
+     * sets a FAILED terminal status with a reason.
+     */
+    @Transactional
+    public void failReservedOrder(Order order, String reason, String orphanPaymentIntentId) {
+        UUID orderId = order.getId();
+        order.setStatus(OrderStatus.FAILED);
+        order.setFailureReason(reason);
+        // Mark compensated here: we restore the stock inline below, so the stale-order
+        // scheduler (which scans FAILED + compensatedFalse) must not run compensateOrder
+        // again and restore the same items a second time.
+        order.setCompensated(true);
+        orderRepository.save(order);
+        releaseReservation(orderId);
+
+        java.util.TreeSet<UUID> productIdSet = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> variantIdSet = new java.util.TreeSet<>();
+        for (OrderItem item : order.getItems()) {
+            if (item.getBundle() != null) continue; // bundle constituent locks skipped — rare path
+            if (item.getProduct() != null) productIdSet.add(item.getProduct().getId());
+            if (item.getVariant() != null) variantIdSet.add(item.getVariant().getId());
+        }
+        String failLockToken = UUID.randomUUID().toString();
+        List<String> failLocks = new ArrayList<>();
+        try {
+            acquireLocks(new ArrayList<>(productIdSet), failLockToken, failLocks);
+            acquireVariantLocks(new ArrayList<>(variantIdSet), failLockToken, failLocks);
+        } catch (ConflictException e) {
+            // Atomic restoreStock SQL is safe without the lock; it only sharpens concurrent reads.
+            log.warn("failReservedOrder: could not acquire all locks for order {} — proceeding", orderId);
+        }
+        try {
+            for (OrderItem item : order.getItems()) {
+                try {
+                    restoreItemStock(item);
+                    recordCancelAdjustment(item, orderId);
+                    recordCompensation(order, CompensationType.STOCK_RESTORE,
+                            buildRestoreDetail(item) + " restored after payment-intent failure", CompensationStatus.COMPLETED);
+                } catch (Exception e) {
+                    log.error("failReservedOrder: failed to restore stock for item on order {}: {}", orderId, e.getMessage());
+                    recordCompensation(order, CompensationType.STOCK_RESTORE,
+                            buildRestoreDetail(item) + " failed to restore", CompensationStatus.FAILED, e.getMessage());
+                }
+            }
+        } finally {
+            releaseLocks(failLocks, failLockToken);
+        }
+
+        // Undo non-stock side effects committed by reserveOrder so a failed checkout does not
+        // consume the customer's coupon/promotion allowances or loyalty points (mirrors compensateOrder).
+        releaseCouponUsage(order);
+        releasePromotionUsage(order);
+        try {
+            loyaltyService.restoreRedeemedPoints(orderId);
+        } catch (Exception e) {
+            log.error("failReservedOrder: failed to restore loyalty points for order {}: {}", orderId, e.getMessage());
+        }
+
+        // Cancel an orphaned PaymentIntent that was created at Stripe but never persisted on the
+        // order (attach-failure path). Record a retryable PAYMENT_CANCEL row if the cancel fails —
+        // the order is marked compensated, so the scheduler would not otherwise revisit it.
+        if (orphanPaymentIntentId != null) {
+            try {
+                paymentService.cancelPaymentIntent(orphanPaymentIntentId);
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancelled payment intent: " + orphanPaymentIntentId, CompensationStatus.COMPLETED);
+            } catch (Exception e) {
+                log.error("failReservedOrder: failed to cancel orphaned payment intent {} for order {}: {}",
+                        orphanPaymentIntentId, orderId, e.getMessage());
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancel payment intent: " + orphanPaymentIntentId, CompensationStatus.FAILED, e.getMessage());
+            }
+        }
+    }
+
     @Override
     public OrderResponse getOrder(UUID orderId, UUID userId) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
@@ -1229,8 +1439,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional
     public OrderResponse reorderOrder(UUID orderId, UUID userId) {
+        // Build the request in a read-only transaction (lazy item associations are touched),
+        // then create the order OUTSIDE any transaction so createOrder's own two-phase
+        // boundary (and its out-of-transaction Stripe call) applies unchanged.
+        CreateOrderRequest reorderRequest = self().buildReorderRequest(orderId, userId);
+        return createOrder(userId, reorderRequest);
+    }
+
+    @Transactional(readOnly = true)
+    public CreateOrderRequest buildReorderRequest(UUID orderId, UUID userId) {
         Order original = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
@@ -1259,7 +1477,7 @@ public class OrderServiceImpl implements OrderService {
         reorderRequest.setItems(itemRequests);
         reorderRequest.setCurrency(original.getCurrency());
 
-        return createOrder(userId, reorderRequest);
+        return reorderRequest;
     }
 
     @Override
@@ -1322,6 +1540,11 @@ public class OrderServiceImpl implements OrderService {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        // A merchant may only cancel an order it owns in full. Cancellation refunds the
+        // entire payment and restocks every line, so allowing it on a mixed-vendor
+        // marketplace order would let one company void another vendor's items. Mirrors
+        // the exclusivity guard already applied to returns and risk-review.
+        requireExclusiveCompanyOrder(order, orderId, companyId);
         doCancelOrder(order, backend.models.enums.CancellationReason.MERCHANT_CANCELLED, ownerId);
         return toCompanyOrderResponse(orderRepository.save(order), companyId);
     }
@@ -1400,6 +1623,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         releaseCouponUsage(order);
+        releasePromotionUsage(order);
         order.setCompensated(true);
 
         // Publish after the enclosing @Transactional commits — publisher registers an afterCommit hook
@@ -1496,6 +1720,7 @@ public class OrderServiceImpl implements OrderService {
             }
 
             releaseCouponUsage(order);
+            releasePromotionUsage(order);
             orderRepository.save(order);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment failed");
             publishSseEvent(order, "Payment failed", "status_update");
@@ -1584,6 +1809,7 @@ public class OrderServiceImpl implements OrderService {
             order.setCancellationReason(backend.models.enums.CancellationReason.STALE_TIMEOUT);
         }
         releaseCouponUsage(order);
+        releasePromotionUsage(order);
         orderRepository.save(order);
 
         if (order.getCancellationReason() == backend.models.enums.CancellationReason.STALE_TIMEOUT
@@ -1624,38 +1850,50 @@ public class OrderServiceImpl implements OrderService {
         try {
             switch (compensation.getType()) {
                 case STOCK_RESTORE -> {
+                    // Fail closed: if a concrete restore target cannot be parsed from the detail
+                    // string (malformed, or a multi-component [BUNDLE:]/[KIT:] line that the
+                    // string format cannot reconstruct), throw so the row stays FAILED and visible
+                    // rather than being silently marked COMPLETED without restoring any inventory.
                     String detail = compensation.getDetail();
                     int quantity = extractQuantityFromDetail(detail);
                     if (detail != null && detail.startsWith("[LOC:")) {
                         UUID locationStockId = extractLocationStockIdFromDetail(detail);
-                        if (locationStockId != null && quantity > 0) {
-                            locationStockRepository.restoreStock(locationStockId, quantity);
+                        if (locationStockId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable location stock-restore detail: " + detail);
                         }
+                        locationStockRepository.restoreStock(locationStockId, quantity);
                     } else if (detail != null && detail.startsWith("[VARIANT]")) {
                         UUID variantId = extractVariantIdFromDetail(detail);
-                        if (variantId != null && quantity > 0) {
-                            variantRepository.restoreStock(variantId, quantity);
+                        if (variantId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable variant stock-restore detail: " + detail);
                         }
+                        variantRepository.restoreStock(variantId, quantity);
+                    } else if (detail != null && (detail.startsWith("[BUNDLE:") || detail.startsWith("[KIT:"))) {
+                        throw new IllegalStateException(
+                                "Cannot reconstruct multi-component stock-restore from detail: " + detail);
                     } else {
                         UUID productId = extractProductIdFromDetail(detail);
-                        if (productId != null && quantity > 0) {
-                            productRepository.restoreStock(productId, quantity);
+                        if (productId == null || quantity <= 0) {
+                            throw new IllegalStateException("Unparseable product stock-restore detail: " + detail);
                         }
+                        productRepository.restoreStock(productId, quantity);
                     }
                 }
                 case PAYMENT_CANCEL -> {
                     String intentId = extractIntentIdFromDetail(compensation.getDetail());
-                    if (intentId != null) {
-                        paymentService.cancelPaymentIntent(intentId);
+                    if (intentId == null) {
+                        throw new IllegalStateException("No payment intent id in detail: " + compensation.getDetail());
                     }
+                    paymentService.cancelPaymentIntent(intentId);
                 }
                 case PAYMENT_REFUND -> {
                     String detail = compensation.getDetail();
                     String intentId = extractIntentIdFromDetail(detail);
                     Long centsToRefund = extractRefundCentsFromDetail(detail);
-                    if (intentId != null) {
-                        paymentService.refundPayment(intentId, centsToRefund);
+                    if (intentId == null) {
+                        throw new IllegalStateException("No payment intent id in detail: " + detail);
                     }
+                    paymentService.refundPayment(intentId, centsToRefund);
                 }
             }
             compensation.setStatus(CompensationStatus.COMPLETED);
@@ -1664,6 +1902,9 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception e) {
             log.error("Compensation retry failed for id={} type={}: {}",
                     compensation.getId(), compensation.getType(), e.getMessage());
+            // Reset from CLAIMED back to FAILED so the row is re-scanned on the next pass
+            // (until MAX attempts) instead of being stranded in the transient CLAIMED state.
+            compensation.setStatus(CompensationStatus.FAILED);
             compensation.setErrorMessage(e.getMessage());
         }
 
@@ -1750,12 +1991,47 @@ public class OrderServiceImpl implements OrderService {
      * Idempotent: safe to call even if the key has already expired or was never written.
      */
     private void releaseCouponUsage(Order order) {
-        if (order.getCoupon() != null && order.getCoupon().getMaxUsesPerUser() != null) {
+        Coupon coupon = order.getCoupon();
+        if (coupon == null) return;
+        // Reverse the global usedCount bumped in reserveOrder so a cancelled/failed checkout does
+        // not permanently consume the coupon's maxUses inventory.
+        try {
+            couponRepository.decrementUsedCount(coupon.getId());
+        } catch (Exception e) {
+            log.error("Failed to release global coupon usage for order {}: {}", order.getId(), e.getMessage());
+        }
+        if (coupon.getMaxUsesPerUser() != null && order.getUser() != null) {
             try {
-                couponPerUserCountRepository.decrementUserCount(
-                        order.getCoupon().getId(), order.getUser().getId());
+                couponPerUserCountRepository.decrementUserCount(coupon.getId(), order.getUser().getId());
             } catch (Exception e) {
-                log.error("Failed to release coupon usage for order {}: {}", order.getId(), e.getMessage());
+                log.error("Failed to release per-user coupon usage for order {}: {}", order.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Reverses the global and per-user promotion usage counters incremented in {@code reserveOrder}
+     * for a cancelled/failed order, using the order's PromotionRedemption rows as the source of
+     * truth. Each step is guarded so a single failure does not block the rest of the cleanup.
+     */
+    private void releasePromotionUsage(Order order) {
+        for (PromotionRedemption pr : promotionRedemptionRepository.findAllByOrderId(order.getId())) {
+            PromotionRule rule = pr.getRule();
+            if (rule == null) continue;
+            UUID ruleId = rule.getId();
+            try {
+                promotionRuleRepository.decrementUsedCount(ruleId);
+            } catch (Exception e) {
+                log.error("Failed to release global promotion usage for rule {} on order {}: {}",
+                        ruleId, order.getId(), e.getMessage());
+            }
+            if (rule.getMaxUsesPerUser() != null && order.getUser() != null) {
+                try {
+                    promotionPerUserCountRepository.decrementUserCount(ruleId, order.getUser().getId());
+                } catch (Exception e) {
+                    log.error("Failed to release per-user promotion usage for rule {} on order {}: {}",
+                            ruleId, order.getId(), e.getMessage());
+                }
             }
         }
     }
@@ -1904,7 +2180,12 @@ public class OrderServiceImpl implements OrderService {
             UUID variantRef = item.getVariant() != null ? item.getVariant().getId() : null;
             locationStockRepository.findByLocationIdAndProductIdAndVariantRef(
                             item.getFulfillmentLocation().getId(), item.getProduct().getId(), variantRef)
-                    .ifPresent(ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()));
+                    .ifPresentOrElse(
+                            ls -> locationStockRepository.restoreStock(ls.getId(), item.getQuantity()),
+                            () -> log.warn("Location stock row missing during restore — leaked {} units. "
+                                            + "location={} product={} variant={} item={}",
+                                    item.getQuantity(), item.getFulfillmentLocation().getId(),
+                                    item.getProduct().getId(), variantRef, item.getId()));
         }
     }
 
@@ -2061,6 +2342,13 @@ public class OrderServiceImpl implements OrderService {
     private static String buildRestoreDetail(OrderItem item) {
         if (item.getBundle() != null) {
             return "[BUNDLE:" + item.getBundle().getId() + "] " + item.getQuantity() + " unit(s) of bundle " + item.getBundleName();
+        }
+        // Kit lines have a null product; label them explicitly so a failed-restore row is not
+        // misrecorded as "product unknown". NOTE: kit/bundle restores are multi-component and the
+        // string-based retryCompensation() path cannot reconstruct them — restoreItemStock() must
+        // succeed on the first pass. Component-level compensation rows are a known follow-up.
+        if (item.getKit() != null) {
+            return "[KIT:" + item.getKit().getId() + "] " + item.getQuantity() + " unit(s) of kit " + item.getKitName();
         }
         if (item.getVariant() != null) {
             return "[VARIANT] " + item.getQuantity() + " units for variant " + item.getVariant().getId();
@@ -2986,9 +3274,74 @@ public class OrderServiceImpl implements OrderService {
         return toRiskAssessmentResponse(latest);
     }
 
+    /**
+     * Approving a held order charges the customer, so — like {@link #createOrder} — the Stripe
+     * PaymentIntent is created OUTSIDE any transaction: {@link #beginRiskApproval} validates in T1,
+     * the intent is created with no DB connection held, and {@link #completeRiskApproval} attaches
+     * it in T2. If T2 fails, the orphaned intent is cancelled.
+     */
     @Override
-    @Transactional
     public OrderResponse approveRiskReview(UUID companyId, UUID orderId, UUID ownerId, RiskDecisionRequest req) {
+        RiskApproval approval = self().beginRiskApproval(companyId, orderId, ownerId);
+
+        PaymentIntentResult paymentIntent;
+        try {
+            paymentIntent = paymentService.createPaymentIntent(
+                    approval.amountInCents(),
+                    approval.currency(),
+                    null,
+                    Map.of("user_id", String.valueOf(approval.userId()),
+                            "order_id", String.valueOf(orderId),
+                            "risk_reviewed_by", String.valueOf(ownerId))
+            );
+        } catch (Exception e) {
+            throw new backend.exceptions.http.BadGatewayException(
+                    "Failed to create payment intent: " + e.getMessage());
+        }
+
+        try {
+            return self().completeRiskApproval(orderId, paymentIntent, ownerId, req);
+        } catch (Exception e) {
+            // Intent was created in Stripe but not attached; cancel it so no orphaned hold remains.
+            // Done in its own transaction so a failed cancel leaves a retryable PAYMENT_CANCEL row
+            // (mirrors the normal-order failReservedOrder path — logs alone are not durable).
+            try {
+                self().cancelOrphanedIntent(orderId, paymentIntent.id());
+            } catch (Exception ce) {
+                log.error("approveRiskReview: failed to record/cancel orphaned intent {} after completion failure: {}",
+                        paymentIntent.id(), ce.getMessage());
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Cancels a PaymentIntent that was created at Stripe but never attached to its order, recording
+     * a {@link CompensationType#PAYMENT_CANCEL} row — COMPLETED on success, or FAILED (retryable by
+     * the compensation scheduler) if the cancel call itself fails.
+     */
+    @Transactional
+    public void cancelOrphanedIntent(UUID orderId, String intentId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        try {
+            paymentService.cancelPaymentIntent(intentId);
+            if (order != null) {
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancelled payment intent: " + intentId, CompensationStatus.COMPLETED);
+            }
+        } catch (Exception e) {
+            log.error("cancelOrphanedIntent: failed to cancel payment intent {} for order {}: {}",
+                    intentId, orderId, e.getMessage());
+            if (order != null) {
+                recordCompensation(order, CompensationType.PAYMENT_CANCEL,
+                        "Cancel payment intent: " + intentId, CompensationStatus.FAILED, e.getMessage());
+            }
+        }
+    }
+
+    /** T1 of {@link #approveRiskReview}: authorize, validate review state, and compute the charge. */
+    @Transactional(readOnly = true)
+    public RiskApproval beginRiskApproval(UUID companyId, UUID orderId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
@@ -3001,35 +3354,31 @@ public class OrderServiceImpl implements OrderService {
         if (review.getStatus() != RiskReviewStatus.PENDING) {
             throw new ConflictException("Review already decided (status=" + review.getStatus() + ")");
         }
-
         long amountInCents = order.getTotalAmount().multiply(BigDecimal.valueOf(100))
                 .setScale(0, RoundingMode.HALF_UP).longValueExact();
-        PaymentIntentResult paymentIntent;
-        try {
-            paymentIntent = paymentService.createPaymentIntent(
-                    amountInCents,
-                    order.getCurrency(),
-                    null,
-                    Map.of("user_id", String.valueOf(order.getUser().getId()),
-                            "order_id", String.valueOf(order.getId()),
-                            "risk_reviewed_by", String.valueOf(ownerId))
-            );
-        } catch (Exception e) {
-            throw new backend.exceptions.http.BadGatewayException(
-                    "Failed to create payment intent: " + e.getMessage());
+        return new RiskApproval(amountInCents, order.getCurrency(), order.getUser().getId());
+    }
+
+    /** T2 of {@link #approveRiskReview}: attach the intent, flip to RESERVED, and approve the review. */
+    @Transactional
+    public OrderResponse completeRiskApproval(UUID orderId, PaymentIntentResult paymentIntent,
+                                              UUID ownerId, RiskDecisionRequest req) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        // Re-check under the T2 transaction in case the review was decided concurrently between phases.
+        if (order.getStatus() != OrderStatus.UNDER_REVIEW) {
+            throw new ConflictException("Order is not under review (status=" + order.getStatus() + ")");
         }
+        RiskReview review = riskReviewRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("No pending review for order " + orderId));
+        if (review.getStatus() != RiskReviewStatus.PENDING) {
+            throw new ConflictException("Review already decided (status=" + review.getStatus() + ")");
+        }
+
         order.setPaymentIntentId(paymentIntent.id());
         order.setPaymentClientSecret(paymentIntent.clientSecret());
         order.setStatus(OrderStatus.RESERVED);
-        try {
-            orderRepository.save(order);
-        } catch (Exception e) {
-            // Intent was created in Stripe; cancel it immediately so no orphaned hold remains.
-            try { paymentService.cancelPaymentIntent(paymentIntent.id()); } catch (Exception ce) {
-                log.error("approveRiskReview: failed to cancel orphaned intent {} after order save failure: {}", paymentIntent.id(), ce.getMessage());
-            }
-            throw e;
-        }
+        orderRepository.save(order);
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, ownerId, "Risk review approved");
         publishSseEvent(order, "Risk review approved", "status_update");
 
@@ -3043,6 +3392,9 @@ public class OrderServiceImpl implements OrderService {
 
         return toResponse(order);
     }
+
+    /** Carries the validated charge details from {@link #beginRiskApproval} to the Stripe call. */
+    public record RiskApproval(long amountInCents, String currency, UUID userId) {}
 
     @Override
     @Transactional
@@ -3111,6 +3463,9 @@ public class OrderServiceImpl implements OrderService {
     private UUID findOwningCompanyId(OrderItem item) {
         if (item.getBundle() != null && item.getBundle().getCompany() != null) {
             return item.getBundle().getCompany().getId();
+        }
+        if (item.getKit() != null && item.getKit().getCompany() != null) {
+            return item.getKit().getCompany().getId();
         }
         if (item.getProduct() != null && item.getProduct().getCompany() != null) {
             return item.getProduct().getCompany().getId();
@@ -3245,10 +3600,20 @@ public class OrderServiceImpl implements OrderService {
             log.warn("createRenewalOrder: could not acquire all locks for invoice {} — proceeding without full lock coverage", stripeInvoiceId);
         }
 
+        // Stripe already charged this invoice, so we can't reject the renewal outright. Instead we
+        // revalidate each product's current availability and, if anything was discontinued since the
+        // subscription was created, park the order UNDER_REVIEW for the merchant to fulfil-or-refund
+        // rather than silently shipping a no-longer-sold product.
+        List<String> unavailableReasons = new ArrayList<>();
         try {
             for (SubscriptionItem si : subscription.getItems()) {
                 Product product = si.getProduct();
                 int qty = si.getQuantity();
+
+                if (!product.isSubscribable() || product.getStatus() != ProductStatus.ACTIVE
+                        || !product.isListed() || !product.isPurchasable()) {
+                    unavailableReasons.add("product " + product.getId() + " (" + product.getName() + ")");
+                }
 
                 OrderItem item = new OrderItem();
                 item.setOrder(order);
@@ -3262,6 +3627,9 @@ public class OrderServiceImpl implements OrderService {
                     item.setVariant(variant);
                     item.setVariantTitle(buildVariantTitle(variant));
                     item.setVariantSku(variant.getSku());
+                    if (!variant.isPurchasable()) {
+                        unavailableReasons.add("variant " + variant.getId());
+                    }
 
                     int updated = variantRepository.decrementStock(variant.getId(), qty);
                     if (updated == 0) {
@@ -3278,6 +3646,45 @@ public class OrderServiceImpl implements OrderService {
             }
         } finally {
             releaseLocks(renewalLocks, renewalLockToken);
+        }
+
+        if (!unavailableReasons.isEmpty()) {
+            // A line was discontinued since the subscription was created. Restore the stock we just
+            // decremented and persist the renewal as CANCELLED. The caller (handleInvoicePaid) then
+            // refunds the already-charged invoice and cancels the subscription. We deliberately skip
+            // sub-order/commission creation for a cancelled renewal.
+            for (OrderItem item : order.getItems()) {
+                try {
+                    restoreItemStock(item);
+                } catch (Exception e) {
+                    log.error("[SUBSCRIPTION] Failed to restore stock for cancelled renewal item on invoice {}: {}",
+                            stripeInvoiceId, e.getMessage());
+                }
+            }
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setCancelledAt(Instant.now());
+            order.setCancellationReason(backend.models.enums.CancellationReason.OUT_OF_STOCK);
+            order.setFailureReason("Renewal auto-cancelled — items no longer available for sale: "
+                    + String.join(", ", unavailableReasons));
+            log.error("[SUBSCRIPTION] Renewal for invoice {} (subscription {}) auto-cancelled (unavailable: {}) "
+                            + "— caller will refund the invoice and cancel the subscription",
+                    stripeInvoiceId, subscription.getId(), unavailableReasons);
+            Order savedCancelled;
+            try {
+                savedCancelled = orderRepository.save(order);
+            } catch (DataIntegrityViolationException e) {
+                return orderRepository.findByStripeInvoiceId(stripeInvoiceId)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Cancelled renewal save failed on duplicate invoice but existing row not found: "
+                                        + stripeInvoiceId, e));
+            }
+            // Record the inventory audit rows only after the order is persisted: the @UuidGenerator
+            // assigns the id at persist time, so order.getId() is null before save() and would
+            // otherwise produce "Order #null cancelled/failed" audit rows with no traceable link.
+            for (OrderItem item : savedCancelled.getItems()) {
+                recordCancelAdjustment(item, savedCancelled.getId());
+            }
+            return savedCancelled;
         }
 
         boolean hasMarketplaceItems = stampVendorIds(order.getItems());
@@ -3317,7 +3724,13 @@ public class OrderServiceImpl implements OrderService {
     /**
      * For each item whose product is listed on a marketplace, resolves the owning
      * MarketplaceVendor and stamps {@code item.vendorId}. Uses a single batch query
-     * per marketplace to avoid N+1 lookups. Returns true if any marketplace items exist.
+     * per marketplace to avoid N+1 lookups.
+     *
+     * <p>Returns true if at least one item was successfully attributed to a vendor — this drives
+     * the {@code marketplaceOrder} flag and sub-order creation. A product carrying a
+     * {@code marketplaceId} but with no matching MarketplaceVendor row is logged at ERROR (data
+     * corruption) and left unattributed rather than aborting the whole order; such a line simply
+     * won't produce a sub-order.
      */
     private boolean stampVendorIds(List<OrderItem> items) {
         // Group product company IDs by marketplace
@@ -3331,37 +3744,136 @@ public class OrderServiceImpl implements OrderService {
         }
         if (marketplaceToCompanyIds.isEmpty()) return false;
 
-        // Batch-lookup vendors; key = "marketplaceId:companyId"
-        // vendorId on OrderItem is a loose FK still typed Long — skip stamping until entity migrates
+        // Batch-lookup vendors per marketplace, building a (marketplaceId:companyId) -> vendorId map.
+        Map<String, UUID> vendorIdByKey = new HashMap<>();
         for (Map.Entry<UUID, Set<UUID>> entry : marketplaceToCompanyIds.entrySet()) {
             UUID mId = entry.getKey();
-            marketplaceVendorRepository
-                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue());
-            // item.setVendorId(...) skipped — OrderItem.vendorId is still Long
+            for (MarketplaceVendor mv : marketplaceVendorRepository
+                    .findByMarketplaceIdAndVendorCompanyIdIn(mId, entry.getValue())) {
+                vendorIdByKey.put(mId + ":" + mv.getVendorCompany().getId(), mv.getId());
+            }
         }
 
-        return true;
+        // Stamp each marketplace line with its owning MarketplaceVendor id so historic
+        // attribution survives later product ownership changes.
+        boolean anyStamped = false;
+        for (OrderItem item : items) {
+            if (item.getProduct() == null || item.getProduct().getMarketplaceId() == null) continue;
+            UUID vendorId = vendorIdByKey.get(
+                    item.getProduct().getMarketplaceId() + ":" + item.getProduct().getCompany().getId());
+            if (vendorId != null) {
+                item.setVendorId(vendorId);
+                anyStamped = true;
+            } else {
+                log.error("[MARKETPLACE] No MarketplaceVendor for product {} (marketplace {} company {}) — "
+                                + "line left unattributed; commission/payout will not be recorded for it",
+                        item.getProduct().getId(), item.getProduct().getMarketplaceId(),
+                        item.getProduct().getCompany().getId());
+            }
+        }
+        return anyStamped;
     }
 
     /**
      * Groups items by vendorId and creates one {@link SubOrder} per vendor.
-     * Updates each item's {@code subOrderId} via a batch repository call.
-     * Items with no vendorId (standalone products in a mixed cart) are skipped.
+     * Updates each item's {@code subOrderId}. Items with no vendorId (standalone products in a
+     * mixed cart) are skipped.
+     *
+     * <p>Order-level discounts (coupon, loyalty, premium) are not encoded per line, so each
+     * sub-order's commissionable {@code totalAmount} is the vendor's net line value scaled by
+     * {@code collected / allLinesNet} (capped at 1). This pro-rates those discounts across all
+     * lines by value, guaranteeing the sum of sub-order totals never exceeds what the platform
+     * actually collected — so vendor commission/payout is never computed on more than was charged.
      */
     private void createSubOrders(Order order, List<OrderItem> items) {
-        // OrderItem.vendorId is a loose FK still typed Long — grouping skipped until entity migrates.
-        // stampVendorIds does not populate vendorId yet, so byVendor will always be empty for now.
-        Map<Long, List<OrderItem>> byVendor = items.stream()
+        Map<UUID, List<OrderItem>> byVendor = items.stream()
                 .filter(i -> i.getVendorId() != null)
                 .collect(Collectors.groupingBy(OrderItem::getVendorId));
+        if (byVendor.isEmpty()) return;
 
-        for (Map.Entry<Long, List<OrderItem>> entry : byVendor.entrySet()) {
-            Long mvIdLong = entry.getKey();
-            List<OrderItem> vendorItems = entry.getValue();
+        Map<UUID, MarketplaceVendor> vendorById = marketplaceVendorRepository.findAllById(byVendor.keySet())
+                .stream().collect(Collectors.toMap(MarketplaceVendor::getId, v -> v));
 
-            // vendorId is still Long in entity; cannot look up by UUID until entity migrates
-            log.warn("[MARKETPLACE] createSubOrders: vendorId {} is still Long type — SubOrder creation skipped", mvIdLong);
+        // Distribute the actually-collected total across every line by value. allLinesNet is the
+        // post-promotion subtotal (pre order-level discount); order.getTotalAmount() is the charged
+        // amount after coupon/loyalty/premium. scale is in (0,1]; never scale up (tax/shipping could
+        // push the charged total above line value — vendors are not credited platform-collected tax).
+        BigDecimal allLinesNet = items.stream().map(this::lineNet).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal collected = order.getTotalAmount() != null ? order.getTotalAmount() : allLinesNet;
+        BigDecimal scale = (allLinesNet.signum() > 0 && collected.compareTo(allLinesNet) < 0)
+                ? collected.divide(allLinesNet, 10, RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
+
+        // Resolve vendors and their raw (pre-discount) subtotals, skipping unresolved vendors.
+        record VendorGroup(MarketplaceVendor vendor, List<OrderItem> items, BigDecimal subtotal) {}
+        List<VendorGroup> groups = new ArrayList<>();
+        for (Map.Entry<UUID, List<OrderItem>> entry : byVendor.entrySet()) {
+            MarketplaceVendor vendor = vendorById.get(entry.getKey());
+            if (vendor == null) {
+                log.warn("[MARKETPLACE] createSubOrders: vendor {} not found — {} item(s) left unattributed",
+                        entry.getKey(), entry.getValue().size());
+                continue;
+            }
+            BigDecimal subtotal = entry.getValue().stream()
+                    .map(this::lineNet).reduce(BigDecimal.ZERO, BigDecimal::add);
+            groups.add(new VendorGroup(vendor, entry.getValue(), subtotal));
         }
+        if (groups.isEmpty()) return;
+
+        // Largest-remainder allocation in integer cents. Independent per-vendor HALF_UP rounding
+        // could otherwise sum to a few cents above the collected total; flooring then handing the
+        // leftover cents to the largest fractional remainders keeps the exact-sum guarantee.
+        int n = groups.size();
+        long[] cents = new long[n];
+        BigDecimal[] remainder = new BigDecimal[n];
+        BigDecimal sumExact = BigDecimal.ZERO;
+        for (int i = 0; i < n; i++) {
+            BigDecimal exact = groups.get(i).subtotal().multiply(scale).movePointRight(2);
+            BigDecimal floor = exact.setScale(0, RoundingMode.FLOOR);
+            cents[i] = floor.longValueExact();
+            remainder[i] = exact.subtract(floor);
+            sumExact = sumExact.add(exact);
+        }
+        long sumFloor = 0;
+        for (long c : cents) sumFloor += c;
+        long leftover = sumExact.setScale(0, RoundingMode.HALF_UP).longValueExact() - sumFloor;
+        Integer[] byRemainderDesc = new Integer[n];
+        for (int i = 0; i < n; i++) byRemainderDesc[i] = i;
+        java.util.Arrays.sort(byRemainderDesc, (a, b) -> remainder[b].compareTo(remainder[a]));
+        for (int k = 0; k < leftover && k < n; k++) cents[byRemainderDesc[k]] += 1;
+
+        String currency = order.getCurrency() != null ? order.getCurrency() : "USD";
+        for (int i = 0; i < n; i++) {
+            VendorGroup g = groups.get(i);
+            BigDecimal total = BigDecimal.valueOf(cents[i]).movePointLeft(2);
+            BigDecimal allocatedDiscount = g.subtotal().subtract(total).max(BigDecimal.ZERO);
+
+            SubOrder subOrder = new SubOrder();
+            subOrder.setOrder(order);
+            subOrder.setMarketplaceVendor(g.vendor());
+            subOrder.setMarketplaceId(g.vendor().getMarketplace().getId());
+            subOrder.setStatus(SubOrderStatus.PENDING);
+            subOrder.setSubtotal(g.subtotal());
+            subOrder.setVendorDiscountAmount(allocatedDiscount);
+            subOrder.setTotalAmount(total);
+            subOrder.setCurrency(currency);
+            SubOrder saved = subOrderRepository.save(subOrder);
+
+            for (OrderItem item : g.items()) {
+                item.setSubOrderId(saved.getId());
+            }
+        }
+    }
+
+    /**
+     * Net contribution of a single line to its vendor's sub-order subtotal. {@code unitPrice}
+     * is already the promotion-discounted per-unit price (see the pricing map-back in
+     * {@code reserveOrder}, where {@code unitPrice = basePrice - perUnitSavings}); the line's
+     * {@code discountAmount}/{@code promotionSavings} encode that same savings, so they must
+     * NOT be subtracted again here. The net line revenue is simply unitPrice × quantity.
+     */
+    private BigDecimal lineNet(OrderItem item) {
+        return item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
     }
 
     /**
@@ -3393,55 +3905,74 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Computes and persists a {@link CommissionRecord} for each sub-order on a
-     * just-paid marketplace order. Failures are logged but do not abort the transaction.
+     * Computes and persists a {@link CommissionRecord} for each sub-order on a just-paid
+     * marketplace order. Each sub-order is processed in its own {@code REQUIRES_NEW} transaction
+     * ({@link #recordOneSubOrderCommission}) so the record and the vendor-balance credit either
+     * both commit or both roll back — a failure can never leave a CommissionRecord without its
+     * matching pending-balance credit. Per-sub-order failures are logged but do not abort the
+     * surrounding payment-confirmation transaction.
      */
     private void recordSubOrderCommission(Order order) {
-        List<SubOrder> subOrders = subOrderRepository.findAllByOrderId(order.getId());
         Instant paidAt = order.getPaidAt();
-        for (SubOrder subOrder : subOrders) {
-            subOrder.setPaidAt(paidAt);
+        for (SubOrder subOrder : subOrderRepository.findAllByOrderId(order.getId())) {
             try {
-                CommissionEngine.CommissionResult result = commissionEngine.compute(subOrder);
-                subOrder.setCommissionAmount(result.commissionAmount());
-                subOrder.setNetVendorAmount(result.netVendorAmount());
-                subOrderRepository.save(subOrder);
-
-                CommissionRecord record = new CommissionRecord();
-                record.setSubOrder(subOrder);
-                record.setVendorId(subOrder.getMarketplaceVendor().getId());
-                // SubOrder.marketplaceId is a loose FK still typed Long — not set on CommissionRecord until entity migrates
-                // record.setMarketplaceId(subOrder.getMarketplaceId());
-                record.setCommissionRate(result.commissionRate());
-                record.setGrossAmount(result.grossAmount());
-                record.setCommissionAmount(result.commissionAmount());
-                record.setNetVendorAmount(result.netVendorAmount());
-                record.setCurrency(result.currency());
-                commissionRecordRepository.save(record);
-
-                // Credit VendorBalance.pendingCents atomically (hold period releases via scheduler).
-                // R2-H5: clamp netVendor to >= 0. If a refund cycle pushes the engine to
-                // return a negative net (refund > commission), we DO NOT debit the vendor's
-                // balance via this path — the refund's own compensation pipeline handles
-                // balance adjustments. Persisting a negative pending would silently put
-                // the vendor in the red.
-                long pendingCents = Math.max(0L, result.netVendorAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                long grossCents = Math.max(0L, result.grossAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                long commissionCents = Math.max(0L, result.commissionAmount()
-                        .multiply(BigDecimal.valueOf(100)).longValue());
-                if (result.netVendorAmount().signum() < 0) {
-                    log.warn("[COMMISSION] Negative netVendor {} for sub_order {} on order {} — capping at 0; refund accounting must handle the debit",
-                            result.netVendorAmount(), subOrder.getId(), order.getId());
-                }
-                vendorBalanceRepository.upsertPending(
-                        subOrder.getMarketplaceVendor().getId(),
-                        pendingCents, grossCents, commissionCents, result.currency());
+                self().recordOneSubOrderCommission(subOrder.getId(), paidAt, order.getId());
             } catch (Exception e) {
                 log.warn("[COMMISSION] Failed to record commission for sub_order {} on order {}: {}",
                         subOrder.getId(), order.getId(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * Records commission for a single sub-order atomically: sub-order snapshot, CommissionRecord,
+     * and the VendorBalance pending credit all commit together (or roll back together) in a
+     * dedicated transaction. Idempotent — if a CommissionRecord already exists for the sub-order
+     * (unique per {@code sub_order_id}) the method returns without re-crediting the balance.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordOneSubOrderCommission(UUID subOrderId, Instant paidAt, UUID orderId) {
+        if (commissionRecordRepository.findBySubOrderId(subOrderId).isPresent()) {
+            return; // already processed — do not credit the vendor balance a second time
+        }
+        SubOrder subOrder = subOrderRepository.findById(subOrderId)
+                .orElseThrow(() -> new ResourceNotFoundException("SubOrder not found: " + subOrderId));
+        subOrder.setPaidAt(paidAt);
+
+        CommissionEngine.CommissionResult result = commissionEngine.compute(subOrder);
+        subOrder.setCommissionAmount(result.commissionAmount());
+        subOrder.setNetVendorAmount(result.netVendorAmount());
+        subOrderRepository.save(subOrder);
+
+        CommissionRecord record = new CommissionRecord();
+        record.setSubOrder(subOrder);
+        record.setVendorId(subOrder.getMarketplaceVendor().getId());
+        record.setMarketplaceId(subOrder.getMarketplaceId());
+        record.setCommissionRate(result.commissionRate());
+        record.setGrossAmount(result.grossAmount());
+        record.setCommissionAmount(result.commissionAmount());
+        record.setNetVendorAmount(result.netVendorAmount());
+        record.setCurrency(result.currency());
+        commissionRecordRepository.save(record);
+
+        // Credit VendorBalance.pendingCents (hold period releases via scheduler).
+        // R2-H5: clamp netVendor to >= 0. If a refund cycle pushes the engine to
+        // return a negative net (refund > commission), we DO NOT debit the vendor's
+        // balance via this path — the refund's own compensation pipeline handles
+        // balance adjustments. Persisting a negative pending would silently put
+        // the vendor in the red.
+        long pendingCents = Math.max(0L, result.netVendorAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        long grossCents = Math.max(0L, result.grossAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        long commissionCents = Math.max(0L, result.commissionAmount()
+                .multiply(BigDecimal.valueOf(100)).longValue());
+        if (result.netVendorAmount().signum() < 0) {
+            log.warn("[COMMISSION] Negative netVendor {} for sub_order {} on order {} — capping at 0; refund accounting must handle the debit",
+                    result.netVendorAmount(), subOrderId, orderId);
+        }
+        vendorBalanceRepository.upsertPending(
+                subOrder.getMarketplaceVendor().getId(),
+                pendingCents, grossCents, commissionCents, result.currency());
     }
 }

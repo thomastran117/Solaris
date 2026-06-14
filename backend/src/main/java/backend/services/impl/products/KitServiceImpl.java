@@ -81,7 +81,14 @@ public class KitServiceImpl implements KitService {
     @Transactional(readOnly = true)
     public PagedResponse<KitResponse> listKits(UUID companyId, UUID ownerId, ProductStatus status, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
-        return listKits(companyId, status, page, size);
+        final int clampedSize = Math.min(size, 50);
+        Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // Owner/admin read honors the requested status (or returns every status when none is given).
+        // Not served from the public list cache — drafts/inactive kits must never leak there.
+        org.springframework.data.domain.Page<ProductKit> kits = (status != null)
+                ? kitRepository.findAllByCompanyIdAndStatus(companyId, status, pageable)
+                : kitRepository.findAllByCompanyId(companyId, pageable);
+        return new PagedResponse<>(kits.map(this::toResponse));
     }
 
     @Override
@@ -96,6 +103,7 @@ public class KitServiceImpl implements KitService {
         kit.setThumbnailUrl(request.getThumbnailUrl());
         kit.setCurrency(request.getCurrency() != null ? request.getCurrency() : "USD");
         kit.setListed(request.isListed());
+        rejectScheduledStatus(request.getStatus());
         kit.setStatus(request.getStatus() != null ? request.getStatus() : ProductStatus.DRAFT);
         if (request.getCompareAtPrice() != null) kit.setCompareAtPrice(request.getCompareAtPrice());
 
@@ -130,7 +138,10 @@ public class KitServiceImpl implements KitService {
         if (request.getCompareAtPrice() != null) kit.setCompareAtPrice(request.getCompareAtPrice());
         if (request.getCurrency() != null)     kit.setCurrency(request.getCurrency());
         if (request.getListed() != null)       kit.setListed(request.getListed());
-        if (request.getStatus() != null)       kit.setStatus(request.getStatus());
+        if (request.getStatus() != null) {
+            rejectScheduledStatus(request.getStatus());
+            kit.setStatus(request.getStatus());
+        }
 
         if (request.getSlots() != null) {
             if (request.getSlots().isEmpty()) {
@@ -157,9 +168,12 @@ public class KitServiceImpl implements KitService {
         ProductKit kit = kitRepository.findByIdAndCompanyId(kitId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Kit not found with id: " + kitId));
 
-        if (orderRepository.existsActiveOrderWithKit(kitId)) {
+        // Block deletion when ANY order references the kit — including delivered/cancelled history —
+        // since OrderItem keeps a kit FK and a hard delete would fail the constraint or corrupt
+        // historical order/reporting data. Archive rather than delete.
+        if (orderRepository.existsAnyOrderWithKit(kitId)) {
             throw new backend.exceptions.http.ConflictException(
-                    "Kit cannot be deleted while it is referenced by active orders");
+                    "Kit cannot be deleted because it is referenced by one or more orders");
         }
 
         kitRepository.delete(kit);
@@ -227,8 +241,10 @@ public class KitServiceImpl implements KitService {
         String cacheKey = "kits:list:" + companyId + ":" + page + ":" + clampedSize;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+            // Public endpoint — restrict to ACTIVE + listed kits regardless of requested status,
+            // matching the product visibility model and checkout availability (ACTIVE + listed).
             return new PagedResponse<>(
-                    kitRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable)
+                    kitRepository.findAllByCompanyIdAndStatusAndListed(companyId, ProductStatus.ACTIVE, true, pageable)
                             .map(this::toResponse));
         }, new TypeReference<PagedResponse<KitResponse>>() {});
     }
@@ -240,7 +256,9 @@ public class KitServiceImpl implements KitService {
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             ProductKit kit = kitRepository.findByIdAndCompanyId(kitId, companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Kit not found with id: " + kitId));
-            if (kit.getStatus() != ProductStatus.ACTIVE) {
+            // Public read requires ACTIVE + listed — an unlisted kit is hidden from the storefront
+            // even when ACTIVE (matches checkout, which requires both).
+            if (kit.getStatus() != ProductStatus.ACTIVE || !kit.isListed()) {
                 throw new ResourceNotFoundException("Kit not found with id: " + kitId);
             }
             return toResponse(kit);
@@ -256,6 +274,17 @@ public class KitServiceImpl implements KitService {
             });
         } else {
             eviction.run();
+        }
+    }
+
+    /**
+     * Kits have no scheduled-publish date or activation worker (unlike products), so SCHEDULED would
+     * strand a kit with no path to ACTIVE. Reject it outright on create/update.
+     */
+    private void rejectScheduledStatus(ProductStatus status) {
+        if (status == ProductStatus.SCHEDULED) {
+            throw new backend.exceptions.http.BadRequestException(
+                    "SCHEDULED status is not supported for kits — use DRAFT or ACTIVE");
         }
     }
 
@@ -294,6 +323,12 @@ public class KitServiceImpl implements KitService {
 
         List<KitSlotChoice> choices = new ArrayList<>();
         for (KitSlotChoiceRequest cr : choiceRequests) {
+            // Choice products are validated for company ownership only — NOT for listed/ACTIVE. This is
+            // intentional: the project's model is "listed=false means hidden-but-buyable via a direct
+            // link", and a public kit is exactly such a link, so a kit may legitimately offer unlisted
+            // ("kit-only") choice products. Checkout still enforces ACTIVE + purchasable per selected
+            // choice. If the policy ever changes to "unlisted = invisible everywhere", add a gate here
+            // (and in checkout) — see audit round 12 #7.
             Product product = productRepository.findByIdAndCompanyId(cr.getProductId(), companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + cr.getProductId()));
 

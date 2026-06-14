@@ -17,6 +17,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, java.util.
 
     List<OrderItem> findAllBySubOrderId(java.util.UUID subOrderId);
 
+    // Referential-integrity guards for deletion: an entity referenced by any order line (current
+    // or historical) cannot be physically deleted without orphaning order/reporting data.
+    boolean existsByProductId(java.util.UUID productId);
+
+    boolean existsByVariantId(java.util.UUID variantId);
+
     @Modifying
     @Query("UPDATE OrderItem i SET i.subOrderId = :subOrderId WHERE i.id IN :itemIds")
     void setSubOrderId(@Param("subOrderId") java.util.UUID subOrderId, @Param("itemIds") Collection<java.util.UUID> itemIds);

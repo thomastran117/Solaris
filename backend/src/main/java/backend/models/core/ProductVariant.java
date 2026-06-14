@@ -17,7 +17,11 @@ import java.util.UUID;
 @Entity
 @Table(name = "product_variants", indexes = {
         @Index(name = "idx_variant_product", columnList = "product_id"),
-        @Index(name = "idx_variant_sku", columnList = "sku")
+        @Index(name = "idx_variant_sku", columnList = "sku"),
+        // Enforces company-scoped SKU uniqueness at the DB so a concurrent create cannot slip a
+        // duplicate past the service-level existsBy check. NULL skus are exempt (MySQL/H2 treat
+        // NULLs in a unique index as distinct), so variants without a SKU are unaffected.
+        @Index(name = "uq_variant_company_sku", columnList = "company_id, sku", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)
 @Getter
@@ -33,6 +37,14 @@ public class ProductVariant {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    /**
+     * Denormalized owning-company id, kept in sync from {@link #product} by {@link #syncCompanyId()}.
+     * Exists solely to back the {@code (company_id, sku)} unique index — variants are always scoped
+     * to their product's company.
+     */
+    @Column(name = "company_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID companyId;
 
     @Column(nullable = true, length = 100)
     private String sku;
@@ -108,4 +120,17 @@ public class ProductVariant {
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
+
+    /**
+     * Keeps the denormalized {@link #companyId} consistent with the owning product on every
+     * persist/update. {@code product.getCompany().getId()} reads the FK from the lazy proxy
+     * without forcing a full load.
+     */
+    @PrePersist
+    @PreUpdate
+    void syncCompanyId() {
+        if (product != null && product.getCompany() != null) {
+            this.companyId = product.getCompany().getId();
+        }
+    }
 }

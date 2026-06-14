@@ -67,7 +67,7 @@ class SubOrderIT extends AbstractIntegrationIT {
         SubOrder so = new SubOrder();
         so.setOrder(order);
         so.setMarketplaceVendor(vendor);
-        so.setMarketplaceId(1L);
+        so.setMarketplaceId(vendor.getMarketplace().getId());
         so.setSubtotal(BigDecimal.valueOf(100.00));
         so.setTotalAmount(BigDecimal.valueOf(100.00));
         so.setStatus(status);

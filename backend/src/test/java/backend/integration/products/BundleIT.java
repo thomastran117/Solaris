@@ -481,6 +481,17 @@ class BundleIT extends AbstractIntegrationIT {
         String bundleId1 = createBundleAndGetId(company, owner, "Compare Bundle A", p1.getId());
         String bundleId2 = createBundleAndGetId(company, owner, "Compare Bundle B", p2.getId());
 
+        // Bundles are created as DRAFT; compare is a public endpoint that only returns ACTIVE+listed
+        // bundles, so publish both before comparing.
+        for (String bundleId : List.of(bundleId1, bundleId2)) {
+            mockMvc.perform(patch("/companies/{companyId}/bundles/{bundleId}", company.getId(), bundleId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"ACTIVE\"}")
+                            .header("Authorization", bearer(accessTokenFor(owner)))
+                            .header("User-Agent", TEST_USER_AGENT))
+                    .andExpect(status().isOk());
+        }
+
         // compareBundles requires 2–4 IDs
         mockMvc.perform(get("/companies/{companyId}/bundles/compare", company.getId())
                         .param("ids", bundleId1)

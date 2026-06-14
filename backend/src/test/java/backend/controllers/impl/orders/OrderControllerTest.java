@@ -71,6 +71,7 @@ class OrderControllerTest {
     private VendorOnboardingService vendorOnboardingService;
     private IdempotencyService idempotencyService;
     private CacheService cacheService;
+    private backend.services.intf.RateLimitService rateLimitService;
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
@@ -85,6 +86,7 @@ class OrderControllerTest {
         vendorOnboardingService = mock(VendorOnboardingService.class);
         idempotencyService = mock(IdempotencyService.class);
         cacheService = mock(CacheService.class);
+        rateLimitService = mock(backend.services.intf.RateLimitService.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(
                         orderService,
@@ -98,7 +100,8 @@ class OrderControllerTest {
                         cacheService,
                         mock(TrackingService.class),
                         mock(OrderSseService.class),
-                        new ObjectMapper().findAndRegisterModules()))
+                        new ObjectMapper().findAndRegisterModules(),
+                        rateLimitService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
@@ -133,6 +136,26 @@ class OrderControllerTest {
 
         verify(orderService).createOrder(eq(USER_ID), any());
         verify(idempotencyService).store("order:create", USER_ID, "idem-1", ORDER_ID);
+    }
+
+    @Test
+    void createOrder_rateLimited_returns429AndDoesNotCreateOrder() throws Exception {
+        authenticateAs(USER_ID);
+        org.mockito.Mockito.doThrow(new backend.exceptions.http.TooManyRequestException("slow down"))
+                .when(rateLimitService).enforce(eq("order:create"), eq(USER_ID.toString()),
+                        org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+
+        mockMvc.perform(post("/orders")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of(
+                                        "productId", TestIds.uuid(20),
+                                        "quantity", 1
+                                ))
+                        ))))
+                .andExpect(status().isTooManyRequests());
+
+        verify(orderService, never()).createOrder(eq(USER_ID), any());
     }
 
     @Test

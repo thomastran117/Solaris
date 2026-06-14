@@ -157,6 +157,18 @@ public class StripePaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    public RefundResult refundInvoice(String invoiceId, Long amountInCents) {
+        String paymentIntentId = executeWithRetry(() -> {
+            Invoice invoice = Invoice.retrieve(invoiceId);
+            return invoice.getPaymentIntent();
+        });
+        if (paymentIntentId == null || paymentIntentId.isBlank()) {
+            throw new IllegalStateException("Invoice " + invoiceId + " has no payment intent to refund");
+        }
+        return refundPayment(paymentIntentId, amountInCents);
+    }
+
+    @Override
     public CustomerResult createCustomer(String email, String name, Map<String, String> metadata) {
         return executeWithRetry(() -> {
             CustomerCreateParams.Builder params = CustomerCreateParams.builder()

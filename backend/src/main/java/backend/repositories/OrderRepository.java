@@ -23,6 +23,15 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     Page<Order> findAllByUserId(UUID userId, Pageable pageable);
     Optional<Order> findByIdAndUserId(java.util.UUID id, UUID userId);
+
+    /**
+     * Pessimistically locks the buyer's order row so concurrent return requests for the same order
+     * are serialized — without it, two requests can both read the same already-returned quantity and
+     * both pass the double-return guard, returning more than was ordered.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id AND o.user.id = :userId")
+    Optional<Order> findByIdAndUserIdForUpdate(@Param("id") java.util.UUID id, @Param("userId") UUID userId);
     Optional<Order> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
 
     @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.id = :id AND o.user.id = :userId")
@@ -148,10 +157,21 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     long countOrdersWithBackorderedItemsInWindow(@Param("companyId") java.util.UUID companyId,
                                                  @Param("from") Instant from, @Param("to") Instant to);
 
-    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items i " +
-           "WHERE o.user.id = :userId " +
-           "AND i.product.id = :productId " +
-           "AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)")
+    /**
+     * Review eligibility ("verified purchase"): true if the user has a SHIPPED/DELIVERED order
+     * containing the product as a direct line item, a constituent of a purchased bundle, or a
+     * selected component of a purchased kit.
+     */
+    @Query("""
+            SELECT COUNT(o) > 0 FROM Order o JOIN o.items i
+            WHERE o.user.id = :userId
+              AND o.status IN (backend.models.enums.OrderStatus.SHIPPED, backend.models.enums.OrderStatus.DELIVERED)
+              AND (
+                    i.product.id = :productId
+                 OR EXISTS (SELECT 1 FROM BundleItem bi WHERE bi.bundle = i.bundle AND bi.product.id = :productId)
+                 OR EXISTS (SELECT 1 FROM OrderKitSelection ks WHERE ks.orderItem = i AND ks.product.id = :productId)
+              )
+            """)
     boolean existsDeliveredOrShippedOrderForProduct(@Param("userId") UUID userId,
                                                     @Param("productId") java.util.UUID productId);
 
@@ -229,4 +249,12 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
               )
             """)
     boolean existsActiveOrderWithKit(@Param("kitId") java.util.UUID kitId);
+
+    /** True if ANY order (including delivered/cancelled/refunded/failed history) references this bundle. */
+    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi WHERE oi.bundle.id = :bundleId")
+    boolean existsAnyOrderWithBundle(@Param("bundleId") java.util.UUID bundleId);
+
+    /** True if ANY order (including delivered/cancelled/refunded/failed history) references this kit. */
+    @Query("SELECT COUNT(o) > 0 FROM Order o JOIN o.items oi WHERE oi.kit.id = :kitId")
+    boolean existsAnyOrderWithKit(@Param("kitId") java.util.UUID kitId);
 }

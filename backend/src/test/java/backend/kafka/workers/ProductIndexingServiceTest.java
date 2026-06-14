@@ -75,6 +75,7 @@ class ProductIndexingServiceTest {
                 bundleRepository,
                 promotionRuleRepository,
                 collectionProductRepository,
+                mock(backend.repositories.MarketplaceVendorRepository.class),
                 configValidator,
                 failureRepository,
                 indexVersionManager,

@@ -179,7 +179,14 @@ public class ReviewServiceImpl implements ReviewService {
         review.setBody(request.getBody());
         review.setVerifiedPurchase(true);
 
-        ProductReview saved = reviewRepository.save(review);
+        ProductReview saved;
+        try {
+            saved = reviewRepository.save(review);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Race backstop: a concurrent submission won between our existsBy check and save; the
+            // unique (product_id, user_id) constraint rejects this one. Map to the same 409.
+            throw new ConflictException("You have already reviewed this product. Please update your existing review instead.");
+        }
         ReviewResponse response = toResponse(saved);
 
         UUID marketplaceId = product.getMarketplaceId();

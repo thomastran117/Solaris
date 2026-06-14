@@ -175,7 +175,9 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public ReturnResponse requestReturn(UUID orderId, UUID buyerUserId, BuyerInitiateReturnRequest request) {
-        Order order = orderRepository.findByIdAndUserId(orderId, buyerUserId)
+        // Lock the order so concurrent return requests are serialized — the double-return guard in
+        // buildReturnItems reads the aggregate already-returned quantity, which would otherwise race.
+        Order order = orderRepository.findByIdAndUserIdForUpdate(orderId, buyerUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
         if (order.getStatus() != OrderStatus.DELIVERED) {
@@ -282,13 +284,10 @@ public class ReturnServiceImpl implements ReturnService {
         ret.setApprovedAt(Instant.now());
         ret.setMerchantNote(request.merchantNote());
 
-        // Mark items RETURNED so order status can advance — stock restoration is deferred to inspectReturn()
-        for (ReturnItem ri : ret.getItems()) {
-            ri.getOrderItem().setFulfillmentStatus(FulfillmentStatus.RETURNED);
-        }
-
         // Risk check on the return itself (abuse / serial-returner detection). VERIFY and BLOCK both
         // collapse to "reject the return" on this path — there is no mid-flow buyer step-up here.
+        // This MUST run before any order-item mutation: the order items are managed entities, so
+        // marking them RETURNED before the check would flush even when the return is rejected.
         RiskAssessmentResult riskResult = assessReturn(ret);
         if (riskProperties.getMode() == RiskMode.ENFORCE
                 && (riskResult.action() == RiskAction.BLOCK || riskResult.action() == RiskAction.VERIFY)) {
@@ -300,6 +299,12 @@ public class ReturnServiceImpl implements ReturnService {
             ret.setStatus(ReturnStatus.REJECTED);
             ret.setMerchantNote("Auto-rejected by risk engine: " + topReason);
             return toReturnResponse(returnRepository.save(ret));
+        }
+
+        // Approved: mark items RETURNED so order status can advance — stock restoration is deferred
+        // to inspectReturn().
+        for (ReturnItem ri : ret.getItems()) {
+            ri.getOrderItem().setFulfillmentStatus(FulfillmentStatus.RETURNED);
         }
 
         issueRefundAtApproval(ret, request.refundAmountOverrideCents());
@@ -383,7 +388,7 @@ public class ReturnServiceImpl implements ReturnService {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         Return ret = requireCompanyScopedReturn(
-                returnRepository.findByIdAndCompanyId(returnId, companyId),
+                returnRepository.findByIdAndCompanyIdForUpdate(returnId, companyId),
                 returnId,
                 companyId);
 
@@ -404,7 +409,9 @@ public class ReturnServiceImpl implements ReturnService {
                             "Return item " + ir.returnItemId() + " not found in return " + returnId));
 
             ri.setCondition(ir.condition());
-            if (ir.restock()) {
+            // Guard on isStockRestored so a duplicate/retried inspection can't restore the same
+            // item twice (the FOR UPDATE lock above serializes concurrent inspections).
+            if (ir.restock() && !ri.isStockRestored()) {
                 try {
                     restoreReturnedItemStock(ri);
                     ri.setStockRestored(true);
@@ -692,18 +699,27 @@ public class ReturnServiceImpl implements ReturnService {
      * Marks order items as RETURNED and optionally restores inventory for each ReturnItem.
      */
     private void processReturnItems(Return ret, boolean restockItems) {
+        boolean anyRestockFailed = false;
         for (ReturnItem ri : ret.getItems()) {
             ri.getOrderItem().setFulfillmentStatus(FulfillmentStatus.RETURNED);
 
-            if (restockItems) {
+            if (restockItems && !ri.isStockRestored()) {
                 try {
                     restoreReturnedItemStock(ri);
                     ri.setStockRestored(true);
                 } catch (Exception e) {
                     log.error("Failed to restore stock for return item {} (order item {}): {}",
                             ri.getId(), ri.getOrderItem().getId(), e.getMessage());
+                    anyRestockFailed = true;
                 }
             }
+        }
+        // Do NOT finalize/refund a restock-requested return when restoration failed — abort so the
+        // enclosing transaction rolls back and the merchant can retry after fixing the inventory issue.
+        if (anyRestockFailed) {
+            throw new ConflictException(
+                    "Return could not be completed: one or more items could not be restocked. "
+                    + "Retry after resolving the inventory issue.");
         }
     }
 
@@ -799,12 +815,40 @@ public class ReturnServiceImpl implements ReturnService {
             }
             return refundAmountOverrideCents;
         }
-        BigDecimal total = BigDecimal.ZERO;
+        Order order = ret.getOrder();
+
+        // Line unit prices already include promotion/coupon savings, but order-level loyalty and
+        // premium discounts are applied to the order total only — never pushed back onto line items.
+        // Refunding raw line prices would (a) over-refund in aggregate and (b) let the first partial
+        // return drain the whole balance, leaving later returns under-refunded. So pro-rate the
+        // order-level discount across every line by value: scale = collected / sum(all line values),
+        // capped at 1 (tax/shipping must not inflate a refund above line value — same conservative
+        // pro-rata used for marketplace sub-orders). Each returned line then refunds its fair share.
+        BigDecimal orderLineSum = BigDecimal.ZERO;
+        for (OrderItem oi : order.getItems()) {
+            if (oi.getUnitPrice() != null) {
+                orderLineSum = orderLineSum.add(
+                        oi.getUnitPrice().multiply(BigDecimal.valueOf(oi.getQuantity())));
+            }
+        }
+        BigDecimal collected = order.getTotalAmount() != null ? order.getTotalAmount() : orderLineSum;
+        BigDecimal scale = (orderLineSum.signum() > 0 && collected.compareTo(orderLineSum) < 0)
+                ? collected.divide(orderLineSum, 10, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
+
+        BigDecimal returnedValue = BigDecimal.ZERO;
         for (ReturnItem ri : ret.getItems()) {
-            total = total.add(ri.getOrderItem().getUnitPrice()
+            returnedValue = returnedValue.add(ri.getOrderItem().getUnitPrice()
                     .multiply(BigDecimal.valueOf(ri.getQuantityReturned())));
         }
-        return total.multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+        long computed = returnedValue.multiply(scale)
+                .multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+
+        // Final safety net: never exceed the order's remaining refundable balance (also guards
+        // cumulative drift across multiple partial returns) — the same ceiling the override path uses.
+        long alreadyRefunded = java.util.Objects.requireNonNullElse(order.getRefundedAmountCents(), 0L);
+        long maxRefundable = Math.max(0L, orderTotalCents(order) - alreadyRefunded);
+        return Math.min(computed, maxRefundable);
     }
 
     /**

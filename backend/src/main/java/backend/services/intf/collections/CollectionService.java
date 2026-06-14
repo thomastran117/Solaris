@@ -17,13 +17,14 @@ public interface CollectionService {
 
     PagedResponse<CollectionResponse> listCollections(
             UUID companyId,
+            UUID ownerId,
             CollectionType type,
             CollectionStatus status,
             Boolean featured,
             int page,
             int size);
 
-    CollectionResponse getCollection(UUID companyId, UUID collectionId);
+    CollectionResponse getCollection(UUID companyId, UUID collectionId, UUID ownerId);
 
     CollectionResponse createCollection(UUID companyId, UUID ownerId, CreateCollectionRequest request);
 
@@ -33,7 +34,7 @@ public interface CollectionService {
     void deleteCollection(UUID companyId, UUID collectionId, UUID ownerId);
 
     PagedResponse<CollectionProductResponse> listCollectionProducts(UUID companyId, UUID collectionId,
-                                                                    int page, int size);
+                                                                    UUID ownerId, int page, int size);
 
     CollectionProductResponse addCollectionProduct(UUID companyId, UUID collectionId, UUID ownerId,
                                                    AddCollectionProductRequest request);

@@ -19,7 +19,10 @@ import backend.dtos.responses.review.ReviewSearchHit;
 import backend.dtos.responses.review.ReviewSummaryResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
+import backend.exceptions.http.ResourceNotFoundException;
 import backend.services.intf.RateLimitService;
+import backend.services.intf.company.CompanyAccessService;
+import backend.services.intf.products.ProductService;
 import backend.services.intf.products.ReviewMediaService;
 import backend.services.intf.products.ReviewSearchService;
 import backend.services.intf.products.ReviewService;
@@ -49,15 +52,20 @@ public class ReviewController {
     private final ReviewMediaService reviewMediaService;
     private final ReviewSearchService reviewSearchService;
     private final RateLimitService rateLimitService;
+    private final ProductService productService;
+    private final CompanyAccessService companyAccessService;
 
     public ReviewController(ReviewService reviewService, ReviewVoteService reviewVoteService,
                             ReviewMediaService reviewMediaService,
-                            ReviewSearchService reviewSearchService, RateLimitService rateLimitService) {
+                            ReviewSearchService reviewSearchService, RateLimitService rateLimitService,
+                            ProductService productService, CompanyAccessService companyAccessService) {
         this.reviewService = reviewService;
         this.reviewVoteService = reviewVoteService;
         this.reviewMediaService = reviewMediaService;
         this.reviewSearchService = reviewSearchService;
         this.rateLimitService = rateLimitService;
+        this.productService = productService;
+        this.companyAccessService = companyAccessService;
     }
 
     @GetMapping
@@ -72,6 +80,7 @@ public class ReviewController {
             @RequestParam(required = false) Boolean verifiedOnly,
             @RequestParam(required = false) Boolean hasMedia) {
         try {
+            requirePublicReadAccess(companyId, productId);
             return ResponseEntity.ok(
                     reviewService.getReviews(companyId, productId, page, size, sort, direction, rating, verifiedOnly, hasMedia));
         } catch (AppHttpException e) {
@@ -92,6 +101,7 @@ public class ReviewController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
+            requirePublicReadAccess(companyId, productId);
             return ResponseEntity.ok(
                     reviewSearchService.search(companyId, productId, q, rating, verifiedOnly, sort, page, size));
         } catch (AppHttpException e) {
@@ -106,6 +116,7 @@ public class ReviewController {
             @PathVariable UUID companyId,
             @PathVariable UUID productId) {
         try {
+            requirePublicReadAccess(companyId, productId);
             return ResponseEntity.ok(reviewService.getReviewSummary(companyId, productId));
         } catch (AppHttpException e) {
             throw e;
@@ -252,5 +263,27 @@ public class ReviewController {
     private UUID resolveUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return (UUID) auth.getPrincipal();
+    }
+
+    private UUID resolveUserIdOptional() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return (UUID) auth.getPrincipal();
+    }
+
+    /**
+     * Guards the public (unauthenticated) review read endpoints (list, summary, search): a non-member
+     * may only read reviews when the product itself is publicly visible (ACTIVE + listed). Members
+     * fall through to their company-scoped views. Prevents enumeration of reviews/ratings for
+     * draft/unlisted products by guessing the UUID — mirrors the product child-read guard.
+     */
+    private void requirePublicReadAccess(UUID companyId, UUID productId) {
+        UUID userId = resolveUserIdOptional();
+        boolean member = userId != null && companyAccessService.resolveRole(companyId, userId).isPresent();
+        if (!member && !productService.isPubliclyVisible(companyId, productId)) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
     }
 }

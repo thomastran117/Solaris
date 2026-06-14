@@ -141,8 +141,8 @@ public class OrderItem {
      * Null for standalone (non-marketplace) orders. Set at order creation time from
      * product.company so historic attribution survives product ownership changes.
      */
-    @Column(name = "vendor_id", nullable = true)
-    private Long vendorId;
+    @Column(name = "vendor_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID vendorId;
 
     /** FK to the SubOrder this item belongs to. Null for non-marketplace orders. */
     @Column(name = "sub_order_id", nullable = true, columnDefinition = "BINARY(16)")
