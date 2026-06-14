@@ -815,19 +815,37 @@ public class ReturnServiceImpl implements ReturnService {
             }
             return refundAmountOverrideCents;
         }
-        BigDecimal total = BigDecimal.ZERO;
+        Order order = ret.getOrder();
+
+        // Line unit prices already include promotion/coupon savings, but order-level loyalty and
+        // premium discounts are applied to the order total only — never pushed back onto line items.
+        // Refunding raw line prices would (a) over-refund in aggregate and (b) let the first partial
+        // return drain the whole balance, leaving later returns under-refunded. So pro-rate the
+        // order-level discount across every line by value: scale = collected / sum(all line values),
+        // capped at 1 (tax/shipping must not inflate a refund above line value — same conservative
+        // pro-rata used for marketplace sub-orders). Each returned line then refunds its fair share.
+        BigDecimal orderLineSum = BigDecimal.ZERO;
+        for (OrderItem oi : order.getItems()) {
+            if (oi.getUnitPrice() != null) {
+                orderLineSum = orderLineSum.add(
+                        oi.getUnitPrice().multiply(BigDecimal.valueOf(oi.getQuantity())));
+            }
+        }
+        BigDecimal collected = order.getTotalAmount() != null ? order.getTotalAmount() : orderLineSum;
+        BigDecimal scale = (orderLineSum.signum() > 0 && collected.compareTo(orderLineSum) < 0)
+                ? collected.divide(orderLineSum, 10, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
+
+        BigDecimal returnedValue = BigDecimal.ZERO;
         for (ReturnItem ri : ret.getItems()) {
-            total = total.add(ri.getOrderItem().getUnitPrice()
+            returnedValue = returnedValue.add(ri.getOrderItem().getUnitPrice()
                     .multiply(BigDecimal.valueOf(ri.getQuantityReturned())));
         }
-        long computed = total.multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+        long computed = returnedValue.multiply(scale)
+                .multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
 
-        // Line unit prices carry only promotion/coupon savings; order-level loyalty and premium
-        // discounts are applied to the order total and are NOT prorated back onto line items. Summing
-        // line prices for a full return can therefore exceed what the customer actually paid. Cap the
-        // auto-calculated amount at the order's remaining refundable balance — the same ceiling the
-        // manual-override path enforces above — so we never refund more than was collected.
-        Order order = ret.getOrder();
+        // Final safety net: never exceed the order's remaining refundable balance (also guards
+        // cumulative drift across multiple partial returns) — the same ceiling the override path uses.
         long alreadyRefunded = java.util.Objects.requireNonNullElse(order.getRefundedAmountCents(), 0L);
         long maxRefundable = Math.max(0L, orderTotalCents(order) - alreadyRefunded);
         return Math.min(computed, maxRefundable);

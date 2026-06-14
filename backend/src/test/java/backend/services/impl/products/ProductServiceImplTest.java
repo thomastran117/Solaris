@@ -924,6 +924,25 @@ class ProductServiceImplTest {
     }
 
     @Test
+    void updateProductVariant_marketplaceListedProduct_evictsMarketplaceCaches() {
+        // Variant edits change marketplace product-detail data, so the marketplace caches must be
+        // evicted too — not just the company-scoped ones.
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
+        ProductVariant variant = makeVariant(VARIANT_ID);
+        when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.findMarketplaceIdByProductId(PRODUCT_ID)).thenReturn(MARKETPLACE_ID);
+
+        UpdateProductVariantRequest req = new UpdateProductVariantRequest();
+        req.setPrice(new BigDecimal("24.99"));
+
+        service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req);
+
+        verify(singleFlightCache, atLeastOnce()).evict(contains("marketplace:product:"));
+        verify(singleFlightCache, atLeastOnce()).evictByPattern(contains("marketplace:search:"));
+    }
+
+    @Test
     void updateProductVariant_partialCompareAtPriceBelowExistingPrice_throwsBadRequest() {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
         ProductVariant variant = makeVariant(VARIANT_ID);

@@ -74,18 +74,19 @@ class GiftCardServiceImplTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(giftCardRepository.findByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(Optional.empty());
         when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
-        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(giftCardRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
         ArgumentCaptor<GiftCard> captor = ArgumentCaptor.forClass(GiftCard.class);
-        verify(giftCardRepository).save(captor.capture());
+        verify(giftCardRepository).saveAndFlush(captor.capture());
         GiftCard saved = captor.getValue();
         assertEquals(5000L, saved.getOriginalValueCents());
         assertEquals(5000L, saved.getRemainingBalanceCents());
         assertEquals(GiftCardStatus.ACTIVE, saved.getStatus());
         assertEquals(ORDER_ID, saved.getPurchasedOnOrderId());
         assertEquals(ITEM_ID, saved.getPurchasedOnOrderItemId());
+        assertEquals(0, saved.getUnitIndex()); // single unit → ordinal 0
     }
 
     @Test
@@ -98,7 +99,7 @@ class GiftCardServiceImplTest {
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
-        verify(giftCardRepository, never()).save(any());
+        verify(giftCardRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -112,7 +113,7 @@ class GiftCardServiceImplTest {
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
-        verify(giftCardRepository, never()).save(any());
+        verify(giftCardRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -125,13 +126,16 @@ class GiftCardServiceImplTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(0L);
         when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
-        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(giftCardRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
         ArgumentCaptor<GiftCard> captor = ArgumentCaptor.forClass(GiftCard.class);
-        verify(giftCardRepository, times(3)).save(captor.capture());
+        verify(giftCardRepository, times(3)).saveAndFlush(captor.capture());
         assertTrue(captor.getAllValues().stream().allMatch(c -> c.getOriginalValueCents() == 2500L));
+        // Each unit gets a distinct 0-based ordinal (the per-unit unique-index key).
+        assertEquals(java.util.List.of(0, 1, 2),
+                captor.getAllValues().stream().map(GiftCard::getUnitIndex).sorted().toList());
     }
 
     @Test
@@ -144,11 +148,13 @@ class GiftCardServiceImplTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(2L); // 2 already issued
         when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
-        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(giftCardRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
-        verify(giftCardRepository, times(1)).save(any()); // only the 3rd is issued
+        ArgumentCaptor<GiftCard> captor = ArgumentCaptor.forClass(GiftCard.class);
+        verify(giftCardRepository, times(1)).saveAndFlush(captor.capture()); // only the 3rd is issued
+        assertEquals(2, captor.getValue().getUnitIndex()); // resumes at ordinal 2
     }
 
     @Test
@@ -157,7 +163,7 @@ class GiftCardServiceImplTest {
 
         assertDoesNotThrow(() ->
                 service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID)));
-        verify(giftCardRepository, never()).save(any());
+        verify(giftCardRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -169,11 +175,30 @@ class GiftCardServiceImplTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(giftCardRepository.findByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(Optional.empty());
         when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
-        when(giftCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(giftCardRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID));
 
-        verify(giftCardRepository, times(1)).save(any());
+        verify(giftCardRepository, times(1)).saveAndFlush(any());
+    }
+
+    @Test
+    void issueCards_concurrentUnit_uniqueViolation_skipsWithoutDoubleIssueOrEmail() {
+        Order order = makeOrder(USER_ID);
+        OrderItem item = makeGiftCardItem(ITEM_ID, 5000L);
+        order.getItems().add(item);
+
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(giftCardRepository.countByPurchasedOnOrderItemId(ITEM_ID)).thenReturn(0L);
+        when(giftCardRepository.findByCode(anyString())).thenReturn(Optional.empty());
+        // The per-unit unique index rejects this unit — a concurrent handler already issued it.
+        when(giftCardRepository.saveAndFlush(any()))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate unit"));
+
+        assertDoesNotThrow(() -> service.issueCardsForOrder(new GiftCardIssueRequestedEvent(ORDER_ID)));
+
+        // No email for a card that was never persisted.
+        verify(emailService, never()).sendGiftCardIssuedEmail(any(), any(), any(), anyInt(), any());
     }
 
     // ─── redeemCode ───────────────────────────────────────────────────────────

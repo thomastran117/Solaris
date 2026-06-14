@@ -381,10 +381,9 @@ class ReturnServiceImplTest {
     }
 
     @Test
-    void approveReturn_autoRefundCappedAtRemainingOrderTotal() {
-        // Order-level loyalty/premium discounts are not prorated onto line unit prices, so a full
-        // return's summed line value can exceed what was charged. The auto-calculated refund must be
-        // capped at (orderTotal - alreadyRefunded) so we never refund more than collected.
+    void approveReturn_autoRefundProRatesOrderLevelDiscountAcrossLines() {
+        // Two $100 lines with a $100 order-level (loyalty) discount → $100 collected. Returning one
+        // line must refund its pro-rata share ($50), not the raw $100 line price.
         riskProperties.setMode(RiskMode.SHADOW);
 
         Company company = company();
@@ -392,15 +391,67 @@ class ReturnServiceImplTest {
 
         Order order = deliveredOrder();
         order.setPaymentIntentId("pi_test");
-        order.setTotalAmount(new BigDecimal("30.00")); // charged total after a big loyalty discount
+        order.setTotalAmount(new BigDecimal("100.00")); // 2×$100 − $100 loyalty
         order.setRefundedAmountCents(0L);
         User buyer = user(BUYER_ID, UserRole.USER);
         buyer.setEmail("b@b.com");
         buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
         order.setUser(buyer);
 
+        OrderItem item1 = orderItem();
+        item1.setQuantity(1);
+        item1.setUnitPrice(new BigDecimal("100.00"));
+        OrderItem item2 = new OrderItem();
+        item2.setId(TestIds.uuid(77));
+        item2.setQuantity(1);
+        item2.setUnitPrice(new BigDecimal("100.00"));
+        item2.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
+        item2.setProduct(product());
+        order.setItems(List.of(item1, item2));
+
+        Return ret = minimalReturn(order);
+        ret.setRequestedBy(buyer);
+        ret.setItems(List.of(returnItem(ret, item1))); // only item1 is returned
+        when(returnRepository.findByIdAndCompanyIdForUpdate(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        CompanyReturnLocation location = returnLocation();
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(location));
+
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(eq("pi_test"), anyLong()))
+                .thenReturn(new PaymentService.RefundResult("re_1", 5000L, "usd", "pending", "pi_test"));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
+                new MerchantApproveReturnRequest("approved", null, null));
+
+        // Pro-rata: $100 line × (100 collected / 200 line-sum) = $50, not the raw $100.
+        verify(paymentService).refundPayment("pi_test", 5000L);
+    }
+
+    @Test
+    void approveReturn_autoRefundCappedAtRemainingRefundableBalance() {
+        // Backstop: even after pro-rata, the refund can't exceed what's left refundable on the order
+        // (e.g. a prior partial refund already consumed most of it).
+        riskProperties.setMode(RiskMode.SHADOW);
+
+        Company company = company();
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company);
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_test");
+        order.setTotalAmount(new BigDecimal("100.00")); // no order-level discount → scale 1.0
+        order.setRefundedAmountCents(9000L);            // $90 already refunded → $10 remaining
+        User buyer = user(BUYER_ID, UserRole.USER);
+        buyer.setEmail("b@b.com");
+        buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
+        order.setUser(buyer);
+
         OrderItem item = orderItem();
-        item.setUnitPrice(new BigDecimal("50.00")); // line value (5000c) exceeds remaining (3000c)
+        item.setQuantity(1);
+        item.setUnitPrice(new BigDecimal("100.00")); // pro-rata would be $100, but only $10 remains
         order.setItems(List.of(item));
 
         Return ret = minimalReturn(order);
@@ -414,15 +465,15 @@ class ReturnServiceImplTest {
 
         when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
         when(paymentService.refundPayment(eq("pi_test"), anyLong()))
-                .thenReturn(new PaymentService.RefundResult("re_1", 3000L, "usd", "pending", "pi_test"));
+                .thenReturn(new PaymentService.RefundResult("re_1", 1000L, "usd", "pending", "pi_test"));
         when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
                 new MerchantApproveReturnRequest("approved", null, null));
 
-        // Capped at remaining order total (3000c), not the summed line value (5000c).
-        verify(paymentService).refundPayment("pi_test", 3000L);
+        // Capped at the $10 remaining refundable, not the $100 pro-rata line value.
+        verify(paymentService).refundPayment("pi_test", 1000L);
     }
 
     @Test

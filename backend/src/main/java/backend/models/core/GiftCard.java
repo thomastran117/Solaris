@@ -21,7 +21,12 @@ import java.util.UUID;
 @Table(name = "gift_cards", indexes = {
         @Index(name = "idx_gift_card_code",          columnList = "code", unique = true),
         @Index(name = "idx_gift_card_purchased_by",  columnList = "purchased_by_user_id"),
-        @Index(name = "idx_gift_card_order_item",    columnList = "purchased_on_order_item_id")
+        @Index(name = "idx_gift_card_order_item",    columnList = "purchased_on_order_item_id"),
+        // Per-unit issuance guard: at most one card per (order item, unit ordinal). Rows with a
+        // null order-item id (e.g. admin-issued cards) are exempt — NULLs are distinct in a unique
+        // index — so this only constrains order-driven issuance.
+        @Index(name = "uq_gift_card_order_item_unit",
+               columnList = "purchased_on_order_item_id, unit_index", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)
 public class GiftCard {
@@ -67,6 +72,14 @@ public class GiftCard {
     /** Loose FK to order_items.id — used as idempotency key in issueCardsForOrder. */
     @Column(nullable = true, columnDefinition = "BINARY(16)")
     private UUID purchasedOnOrderItemId;
+
+    /**
+     * 0-based ordinal of this card within its order item's issuance batch (a quantity-3 line yields
+     * units 0, 1, 2). Combined with {@link #purchasedOnOrderItemId} in a unique index so a duplicated
+     * or concurrent issuance handler cannot issue the same unit twice. Null for non-order issuance.
+     */
+    @Column(name = "unit_index", nullable = true)
+    private Integer unitIndex;
 
     @Column(nullable = true)
     private Instant redeemedAt;

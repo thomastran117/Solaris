@@ -23,6 +23,7 @@ import backend.services.intf.giftcards.GiftCardService;
 import backend.services.intf.support.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -103,8 +104,18 @@ public class GiftCardServiceImpl implements GiftCardService {
                 card.setPurchasedByUser(order.getUser());
                 card.setPurchasedOnOrderId(order.getId());
                 card.setPurchasedOnOrderItemId(item.getId());
+                card.setUnitIndex((int) n);
                 card.setStatus(GiftCardStatus.ACTIVE);
-                giftCardRepository.save(card);
+                try {
+                    giftCardRepository.saveAndFlush(card);
+                } catch (DataIntegrityViolationException e) {
+                    // Unique (purchased_on_order_item_id, unit_index) rejected this unit — another
+                    // (concurrent or redelivered) issuance handler already created it. Skip without
+                    // double-issuing or sending a duplicate email.
+                    log.info("[GIFT_CARD] Unit {} of order item {} already issued (concurrent handler) — skipping",
+                            n, item.getId());
+                    continue;
+                }
 
                 log.info("[GIFT_CARD] Issued gift card {} for order {} item {} (unit {}/{})",
                         code, order.getId(), item.getId(), n + 1, quantity);

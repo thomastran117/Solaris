@@ -86,7 +86,14 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
             item.setDiscountAmount(BigDecimal.ZERO);
             item.setPromotionSavings(BigDecimal.ZERO);
             item.setProductName(variant.getProduct().getName());
-            item.setFulfillmentStatus(FulfillmentStatus.PENDING);
+
+            // A replacement ships a real physical unit, so it must consume inventory — otherwise
+            // fulfillment can oversell. Use the same atomic conditional decrement (WHERE stock >= qty)
+            // as paid orders. If stock is insufficient, mark the line BACKORDERED rather than blocking
+            // the staff-authorised replacement (mirrors the subscription-renewal path). The decrement
+            // runs inside this @Transactional method, so a later failure rolls it back.
+            int decremented = variantRepository.decrementStock(variant.getId(), ri.quantity());
+            item.setFulfillmentStatus(decremented == 0 ? FulfillmentStatus.BACKORDERED : FulfillmentStatus.PENDING);
             items.add(item);
         }
         replacement.setItems(items);

@@ -35,6 +35,14 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     boolean existsByIdAndCompanyIdAndStatusAndListed(java.util.UUID id, java.util.UUID companyId,
                                                      ProductStatus status, boolean listed);
 
+    /**
+     * Returns the product's {@code marketplaceId} (or null if not marketplace-listed) without
+     * loading the full entity. Used by child-mutation paths (variants/images/options/attributes)
+     * to evict the right marketplace caches when the product is listed on a marketplace.
+     */
+    @Query("SELECT p.marketplaceId FROM Product p WHERE p.id = :productId")
+    java.util.UUID findMarketplaceIdByProductId(@Param("productId") java.util.UUID productId);
+
     // -------------------------------------------------------------------------
     // Marketplace catalog queries
     // -------------------------------------------------------------------------

@@ -861,11 +861,7 @@ public class ProductServiceImpl implements ProductService {
             productRepository.save(product);
         }
 
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return toImageResponse(saved);
     }
 
@@ -885,11 +881,7 @@ public class ProductServiceImpl implements ProductService {
         List<ProductImage> remaining = productImageRepository.findAllByProductIdOrderByDisplayOrderAsc(productId);
         product.setThumbnailUrl(remaining.isEmpty() ? null : remaining.get(0).getImageUrl());
         productRepository.save(product);
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
     }
 
     @Override
@@ -935,11 +927,7 @@ public class ProductServiceImpl implements ProductService {
         }
         productRepository.save(product);
 
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return reordered.stream()
                 .map(this::toImageResponse)
                 .toList();
@@ -978,11 +966,7 @@ public class ProductServiceImpl implements ProductService {
         option.setPosition(optionCount);
 
         ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return result;
     }
 
@@ -999,11 +983,7 @@ public class ProductServiceImpl implements ProductService {
         if (request.getName() != null) option.setName(request.getName());
 
         ProductOptionResponse result = toOptionResponse(productOptionRepository.save(option));
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return result;
     }
 
@@ -1018,11 +998,7 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Option not found with id: " + optionId));
 
         productOptionRepository.delete(option);
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
     }
 
     // --- Variants ---
@@ -1082,11 +1058,7 @@ public class ProductServiceImpl implements ProductService {
         }
         productChangeLogger.logVariantCreate(savedVariant, ChangeSource.USER);
         ProductVariantResponse result = toVariantResponse(savedVariant);
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return result;
     }
 
@@ -1135,11 +1107,7 @@ public class ProductServiceImpl implements ProductService {
         }
         productChangeLogger.logVariantUpdate(variantBefore, savedVariant, ChangeSource.USER, null);
         ProductVariantResponse result = toVariantResponse(savedVariant);
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return result;
     }
 
@@ -1163,11 +1131,7 @@ public class ProductServiceImpl implements ProductService {
         productChangeLogger.logVariantDelete(variant);
         productChangeLogRepository.deleteAllByVariantId(variantId);
         productVariantRepository.delete(variant);
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
     }
 
     // --- Attributes ---
@@ -1207,11 +1171,7 @@ public class ProductServiceImpl implements ProductService {
                 .stream()
                 .map(this::toAttrResponse)
                 .toList();
-        evictAfterCommit(() -> {
-            singleFlightCache.evict("product:" + companyId + ":" + productId);
-            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
-            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
-        });
+        evictProductCaches(companyId, productId, productRepository.findMarketplaceIdByProductId(productId));
         return result;
     }
 
@@ -1601,6 +1561,26 @@ public class ProductServiceImpl implements ProductService {
         } else {
             eviction.run();
         }
+    }
+
+    /**
+     * Evicts every cache that surfaces a single product's data after a mutation: the company-scoped
+     * product/search/batch caches and — when the product is listed on a marketplace — the public
+     * marketplace product-detail, search, and storefront caches. Child mutations (variants, images,
+     * options, attributes) all feed the {@code marketplace:product} detail cache, so they must evict
+     * the marketplace keys too, not just the company ones.
+     */
+    private void evictProductCaches(UUID companyId, UUID productId, UUID marketplaceId) {
+        evictAfterCommit(() -> {
+            singleFlightCache.evict("product:" + companyId + ":" + productId);
+            singleFlightCache.evictByPattern("products:search:" + companyId + ":*");
+            singleFlightCache.evictByPattern("products:batch:" + companyId + ":*");
+            if (marketplaceId != null) {
+                singleFlightCache.evict("marketplace:product:" + marketplaceId + ":" + productId);
+                singleFlightCache.evictByPattern("marketplace:search:" + marketplaceId + ":*");
+                singleFlightCache.evictByPattern("marketplace:storefront:" + marketplaceId + ":*");
+            }
+        });
     }
 
     // -------------------------------------------------------------------------
