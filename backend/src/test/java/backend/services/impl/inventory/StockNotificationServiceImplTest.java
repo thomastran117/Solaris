@@ -127,6 +127,33 @@ class StockNotificationServiceImplTest {
     }
 
     @Test
+    void subscribe_nonPublicProduct_throwsResourceNotFoundAndDoesNotPersist() {
+        // A DRAFT (or unlisted) product must not be subscribable — 404 so its existence isn't leaked.
+        Product hidden = product();
+        hidden.setStatus(backend.models.enums.ProductStatus.DRAFT);
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(hidden));
+
+        SubscribeBackInStockRequest request = new SubscribeBackInStockRequest();
+        request.setProductId(PRODUCT_ID);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.subscribe(USER_ID, request));
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void subscribe_activeButUnlistedProduct_throwsResourceNotFound() {
+        Product unlisted = product();
+        unlisted.setListed(false);
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(unlisted));
+
+        SubscribeBackInStockRequest request = new SubscribeBackInStockRequest();
+        request.setProductId(PRODUCT_ID);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.subscribe(USER_ID, request));
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
     void subscribe_newNotification_createsNew() {
         Product product = product();
         when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product));
@@ -257,6 +284,8 @@ class StockNotificationServiceImplTest {
         product.setName("Desk");
         product.setPrice(BigDecimal.TEN);
         product.setCurrency("USD");
+        product.setStatus(backend.models.enums.ProductStatus.ACTIVE);
+        product.setListed(true); // publicly subscribable
         return product;
     }
 

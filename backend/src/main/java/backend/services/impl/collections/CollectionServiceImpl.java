@@ -103,9 +103,11 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CollectionResponse> listCollections(
-            UUID companyId, CollectionType type, CollectionStatus status, Boolean featured,
+            UUID companyId, UUID ownerId, CollectionType type, CollectionStatus status, Boolean featured,
             int page, int size) {
-        assertCompanyExists(companyId);
+        // Admin route: collections (incl. drafts and internal rulesJson) are private merchant data.
+        // Public storefront browsing goes through GET /marketplaces/{id}/collections instead.
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         Pageable pageable = PageRequest.of(page, Math.min(size, 50),
                 Sort.by(Sort.Direction.DESC, "updatedAt"));
 
@@ -128,8 +130,8 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     @Transactional(readOnly = true)
-    public CollectionResponse getCollection(UUID companyId, UUID collectionId) {
-        assertCompanyExists(companyId);
+    public CollectionResponse getCollection(UUID companyId, UUID collectionId, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
         return toResponse(collection);
@@ -260,8 +262,8 @@ public class CollectionServiceImpl implements CollectionService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CollectionProductResponse> listCollectionProducts(
-            UUID companyId, UUID collectionId, int page, int size) {
-        assertCompanyExists(companyId);
+            UUID companyId, UUID collectionId, UUID ownerId, int page, int size) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         Collection collection = collectionRepository.findByIdAndCompanyId(collectionId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found"));
 

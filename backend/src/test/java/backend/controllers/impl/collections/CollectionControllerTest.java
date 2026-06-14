@@ -70,8 +70,9 @@ class CollectionControllerTest {
 
     @Test
     void listCollections_returns200WithPagedResponse() throws Exception {
+        authenticateAs(USER_ID);
         CollectionResponse resp = makeCollectionResponse(COLL_ID, COMPANY_ID);
-        when(collectionService.listCollections(eq(COMPANY_ID), any(), any(), any(), anyInt(), anyInt()))
+        when(collectionService.listCollections(eq(COMPANY_ID), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(makePagedResponse(List.of(resp)));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections"))
@@ -82,7 +83,8 @@ class CollectionControllerTest {
 
     @Test
     void listCollections_withTypeParam_passesTypeToService() throws Exception {
-        when(collectionService.listCollections(any(), any(), any(), any(), anyInt(), anyInt()))
+        authenticateAs(USER_ID);
+        when(collectionService.listCollections(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(makePagedResponse(List.of()));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections").param("type", "DYNAMIC"))
@@ -90,25 +92,28 @@ class CollectionControllerTest {
 
         verify(collectionService).listCollections(
                 eq(COMPANY_ID),
+                eq(USER_ID),
                 eq(backend.models.enums.CollectionType.DYNAMIC),
                 isNull(), isNull(), eq(0), eq(20));
     }
 
     @Test
     void listCollections_withFeaturedParam_passesParamToService() throws Exception {
-        when(collectionService.listCollections(any(), any(), any(), any(), anyInt(), anyInt()))
+        authenticateAs(USER_ID);
+        when(collectionService.listCollections(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(makePagedResponse(List.of()));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections").param("featured", "true"))
                 .andExpect(status().isOk());
 
         verify(collectionService).listCollections(
-                eq(COMPANY_ID), isNull(), isNull(), eq(true), anyInt(), anyInt());
+                eq(COMPANY_ID), eq(USER_ID), isNull(), isNull(), eq(true), anyInt(), anyInt());
     }
 
     @Test
     void listCollections_serviceThrows404_returns404() throws Exception {
-        when(collectionService.listCollections(any(), any(), any(), any(), anyInt(), anyInt()))
+        authenticateAs(USER_ID);
+        when(collectionService.listCollections(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenThrow(new ResourceNotFoundException("Company not found"));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections"))
@@ -119,8 +124,9 @@ class CollectionControllerTest {
 
     @Test
     void getCollection_returns200() throws Exception {
+        authenticateAs(USER_ID);
         CollectionResponse resp = makeCollectionResponse(COLL_ID, COMPANY_ID);
-        when(collectionService.getCollection(COMPANY_ID, COLL_ID)).thenReturn(resp);
+        when(collectionService.getCollection(COMPANY_ID, COLL_ID, USER_ID)).thenReturn(resp);
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections/" + COLL_ID))
                 .andExpect(status().isOk())
@@ -129,7 +135,8 @@ class CollectionControllerTest {
 
     @Test
     void getCollection_notFound_returns404() throws Exception {
-        when(collectionService.getCollection(any(), any()))
+        authenticateAs(USER_ID);
+        when(collectionService.getCollection(any(), any(), any()))
                 .thenThrow(new ResourceNotFoundException("Collection not found"));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections/" + COLL_ID))
@@ -240,8 +247,9 @@ class CollectionControllerTest {
 
     @Test
     void listCollectionProducts_returns200() throws Exception {
+        authenticateAs(USER_ID);
         CollectionProductResponse pr = makeProductResponse(TestIds.uuid(10), COLL_ID, PRODUCT_ID);
-        when(collectionService.listCollectionProducts(eq(COMPANY_ID), eq(COLL_ID), anyInt(), anyInt()))
+        when(collectionService.listCollectionProducts(eq(COMPANY_ID), eq(COLL_ID), any(), anyInt(), anyInt()))
                 .thenReturn(makeProductPagedResponse(List.of(pr)));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections/" + COLL_ID + "/products"))
@@ -251,7 +259,8 @@ class CollectionControllerTest {
 
     @Test
     void listCollectionProducts_notFound_returns404() throws Exception {
-        when(collectionService.listCollectionProducts(any(), any(), anyInt(), anyInt()))
+        authenticateAs(USER_ID);
+        when(collectionService.listCollectionProducts(any(), any(), any(), anyInt(), anyInt()))
                 .thenThrow(new ResourceNotFoundException("Collection not found"));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/collections/" + COLL_ID + "/products"))

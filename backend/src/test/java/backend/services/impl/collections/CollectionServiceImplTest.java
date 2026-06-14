@@ -94,11 +94,14 @@ class CollectionServiceImplTest {
     // ─── listCollections ─────────────────────────────────────────────────────
 
     @Test
-    void listCollections_companyNotFound_throwsResourceNotFound() {
-        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+    void listCollections_callerLacksAccess_throwsForbidden() {
+        // Admin route now: a non-member is rejected by the access check before any repo query.
+        doThrow(new backend.exceptions.http.ForbiddenException("No access"))
+                .when(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.READ_PRODUCTS);
 
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.listCollections(COMPANY_ID, null, null, null, 0, 20));
+        assertThrows(backend.exceptions.http.ForbiddenException.class,
+                () -> service.listCollections(COMPANY_ID, OWNER_ID, null, null, null, 0, 20));
+        verify(collectionRepository, never()).findAllByCompanyId(any(), any());
     }
 
     @Test
@@ -106,7 +109,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listCollections(COMPANY_ID, null, null, null, 0, 20);
+        service.listCollections(COMPANY_ID, OWNER_ID, null, null, null, 0, 20);
 
         verify(collectionRepository).findAllByCompanyId(eq(COMPANY_ID), any());
         verify(collectionRepository, never()).findAllByCompanyIdAndType(any(), any(), any());
@@ -117,7 +120,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findAllByCompanyIdAndType(eq(COMPANY_ID), eq(CollectionType.DYNAMIC), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listCollections(COMPANY_ID, CollectionType.DYNAMIC, null, null, 0, 20);
+        service.listCollections(COMPANY_ID, OWNER_ID, CollectionType.DYNAMIC, null, null, 0, 20);
 
         verify(collectionRepository).findAllByCompanyIdAndType(eq(COMPANY_ID), eq(CollectionType.DYNAMIC), any());
     }
@@ -127,7 +130,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(CollectionStatus.ACTIVE), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listCollections(COMPANY_ID, null, CollectionStatus.ACTIVE, null, 0, 20);
+        service.listCollections(COMPANY_ID, OWNER_ID, null, CollectionStatus.ACTIVE, null, 0, 20);
 
         verify(collectionRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(CollectionStatus.ACTIVE), any());
     }
@@ -142,7 +145,7 @@ class CollectionServiceImplTest {
                 .thenReturn(new PageImpl<>(List.of(featured, nonFeatured)));
 
         PagedResponse<CollectionResponse> result =
-                service.listCollections(COMPANY_ID, null, null, true, 0, 20);
+                service.listCollections(COMPANY_ID, OWNER_ID, null, null, true, 0, 20);
 
         assertEquals(1, result.getItems().size());
         assertTrue(result.getItems().get(0).featured());
@@ -153,7 +156,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findAllByCompanyId(eq(COMPANY_ID), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listCollections(COMPANY_ID, null, null, null, 0, 200);
+        service.listCollections(COMPANY_ID, OWNER_ID, null, null, null, 0, 200);
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(collectionRepository).findAllByCompanyId(eq(COMPANY_ID), captor.capture());
@@ -163,11 +166,13 @@ class CollectionServiceImplTest {
     // ─── getCollection ───────────────────────────────────────────────────────
 
     @Test
-    void getCollection_companyNotFound_throwsResourceNotFound() {
-        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+    void getCollection_callerLacksAccess_throwsForbidden() {
+        doThrow(new backend.exceptions.http.ForbiddenException("No access"))
+                .when(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.READ_PRODUCTS);
 
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.getCollection(COMPANY_ID, COLL_ID));
+        assertThrows(backend.exceptions.http.ForbiddenException.class,
+                () -> service.getCollection(COMPANY_ID, COLL_ID, OWNER_ID));
+        verify(collectionRepository, never()).findByIdAndCompanyId(any(), any());
     }
 
     @Test
@@ -175,7 +180,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> service.getCollection(COMPANY_ID, COLL_ID));
+                () -> service.getCollection(COMPANY_ID, COLL_ID, OWNER_ID));
     }
 
     @Test
@@ -183,7 +188,7 @@ class CollectionServiceImplTest {
         Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
 
-        CollectionResponse resp = service.getCollection(COMPANY_ID, COLL_ID);
+        CollectionResponse resp = service.getCollection(COMPANY_ID, COLL_ID, OWNER_ID);
 
         assertEquals(COLL_ID, resp.id());
         assertEquals("STATIC", resp.type());
@@ -814,11 +819,13 @@ class CollectionServiceImplTest {
     // ─── listCollectionProducts ───────────────────────────────────────────────
 
     @Test
-    void listCollectionProducts_companyNotFound_throwsResourceNotFound() {
-        when(companyRepository.existsById(COMPANY_ID)).thenReturn(false);
+    void listCollectionProducts_callerLacksAccess_throwsForbidden() {
+        doThrow(new backend.exceptions.http.ForbiddenException("No access"))
+                .when(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.READ_PRODUCTS);
 
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+        assertThrows(backend.exceptions.http.ForbiddenException.class,
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, OWNER_ID, 0, 20));
+        verify(collectionRepository, never()).findByIdAndCompanyId(any(), any());
     }
 
     @Test
@@ -826,7 +833,7 @@ class CollectionServiceImplTest {
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20));
+                () -> service.listCollectionProducts(COMPANY_ID, COLL_ID, OWNER_ID, 0, 20));
     }
 
     @Test
@@ -840,7 +847,7 @@ class CollectionServiceImplTest {
         when(collectionProductRepository.findAllByCollectionIdRanked(eq(COLL_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(cp)));
 
-        var result = service.listCollectionProducts(COMPANY_ID, COLL_ID, 0, 20);
+        var result = service.listCollectionProducts(COMPANY_ID, COLL_ID, OWNER_ID, 0, 20);
 
         assertEquals(1, result.getItems().size());
         assertEquals(PRODUCT_ID, result.getItems().get(0).productId());
@@ -949,7 +956,7 @@ class CollectionServiceImplTest {
         Collection c = makeCollection(COLL_ID, CollectionType.STATIC, CollectionStatus.ACTIVE);
         when(collectionRepository.findByIdAndCompanyId(COLL_ID, COMPANY_ID)).thenReturn(Optional.of(c));
 
-        var result = service.getCollection(COMPANY_ID, COLL_ID);
+        var result = service.getCollection(COMPANY_ID, COLL_ID, OWNER_ID);
 
         assertEquals(0L, result.productCount());
     }

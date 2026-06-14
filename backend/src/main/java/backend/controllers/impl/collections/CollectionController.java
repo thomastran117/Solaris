@@ -36,6 +36,7 @@ public class CollectionController {
     }
 
     @GetMapping
+    @RequireAuth
     public ResponseEntity<PagedResponse<CollectionResponse>> listCollections(
             @PathVariable UUID companyId,
             @RequestParam(required = false) CollectionType type,
@@ -44,7 +45,7 @@ public class CollectionController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            return ResponseEntity.ok(collectionService.listCollections(companyId, type, status, featured, page, size));
+            return ResponseEntity.ok(collectionService.listCollections(companyId, resolveUserId(), type, status, featured, page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -53,11 +54,12 @@ public class CollectionController {
     }
 
     @GetMapping("/{collectionId}")
+    @RequireAuth
     public ResponseEntity<CollectionResponse> getCollection(
             @PathVariable UUID companyId,
             @PathVariable UUID collectionId) {
         try {
-            return ResponseEntity.ok(collectionService.getCollection(companyId, collectionId));
+            return ResponseEntity.ok(collectionService.getCollection(companyId, collectionId, resolveUserId()));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -116,13 +118,14 @@ public class CollectionController {
     // --- Membership ---
 
     @GetMapping("/{collectionId}/products")
+    @RequireAuth
     public ResponseEntity<PagedResponse<CollectionProductResponse>> listProducts(
             @PathVariable UUID companyId,
             @PathVariable UUID collectionId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         try {
-            return ResponseEntity.ok(collectionService.listCollectionProducts(companyId, collectionId, page, size));
+            return ResponseEntity.ok(collectionService.listCollectionProducts(companyId, collectionId, resolveUserId(), page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

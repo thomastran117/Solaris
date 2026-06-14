@@ -11,6 +11,7 @@ import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.core.StockNotification;
 import backend.models.enums.NotificationStatus;
+import backend.models.enums.ProductStatus;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.StockNotificationRepository;
@@ -67,6 +68,14 @@ public class StockNotificationServiceImpl implements StockNotificationService {
     public StockNotificationResponse subscribe(UUID userId, SubscribeBackInStockRequest request) {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
+
+        // Only allow back-in-stock subscriptions for publicly-visible products. Without this, any
+        // authenticated user could subscribe by guessing a UUID and thereby confirm a hidden/draft
+        // product exists (and later receive its name/variant details in the notification). 404 (not
+        // 403) so a non-public id is indistinguishable from a non-existent one.
+        if (product.getStatus() != ProductStatus.ACTIVE || !product.isListed()) {
+            throw new ResourceNotFoundException("Product not found with id: " + request.getProductId());
+        }
 
         ProductVariant variant = null;
         UUID variantRef = null;
