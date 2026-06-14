@@ -419,6 +419,17 @@ class BundleServiceImplTest {
     }
 
     @Test
+    void getBundle_activeButUnlisted_throwsResourceNotFound() {
+        ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
+        bundle.setStatus(ProductStatus.ACTIVE);
+        bundle.setListed(false); // hidden from storefront even though ACTIVE
+        when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getBundle(COMPANY_ID, BUNDLE_ID));
+    }
+
+    @Test
     void getBundle_notFound_throwsResourceNotFound() {
         when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.empty());
 
@@ -429,24 +440,24 @@ class BundleServiceImplTest {
     // ─── listBundles (public) ─────────────────────────────────────────────────
 
     @Test
-    void listBundles_alwaysRestrictsToActive() {
-        when(bundleRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+    void listBundles_alwaysRestrictsToActiveAndListed() {
+        when(bundleRepository.findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        // caller requests DRAFT — public endpoint should still only return ACTIVE
+        // caller requests DRAFT — public endpoint should still only return ACTIVE + listed
         service.listBundles(COMPANY_ID, ProductStatus.DRAFT, 0, 20);
 
-        verify(bundleRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+        verify(bundleRepository).findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class));
     }
 
     @Test
     void listBundles_clampsPageSizeTo50() {
-        when(bundleRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+        when(bundleRepository.findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         service.listBundles(COMPANY_ID, null, 0, 200);
 
-        verify(bundleRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE),
+        verify(bundleRepository).findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true),
                 argThat(p -> p.getPageSize() == 50));
     }
 
@@ -466,6 +477,44 @@ class BundleServiceImplTest {
         List<BundleResponse> result = service.compareBundles(COMPANY_ID, List.of(bid1, bid2));
 
         assertEquals(2, result.size());
+    }
+
+    @Test
+    void compareBundles_excludesNonPublicBundles() {
+        // One ACTIVE+listed, one ACTIVE-but-unlisted, one DRAFT → only the public one is returned,
+        // so guessing a non-public id can't disclose its metadata.
+        UUID publicId = TestIds.uuid(10);
+        UUID unlistedId = TestIds.uuid(11);
+        UUID draftId = TestIds.uuid(12);
+        ProductBundle pub = makeBundle(publicId, new BigDecimal("10.00"));
+        pub.setStatus(ProductStatus.ACTIVE);
+        pub.setListed(true);
+        ProductBundle unlisted = makeBundle(unlistedId, new BigDecimal("20.00"));
+        unlisted.setStatus(ProductStatus.ACTIVE);
+        unlisted.setListed(false);
+        ProductBundle draft = makeBundle(draftId, new BigDecimal("30.00"));
+        draft.setStatus(ProductStatus.DRAFT);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(pub, unlisted, draft));
+
+        List<BundleResponse> result = service.compareBundles(COMPANY_ID, List.of(publicId, unlistedId, draftId));
+
+        assertEquals(1, result.size());
+        assertEquals(publicId, result.get(0).getId());
+    }
+
+    @Test
+    void compareBundles_allNonPublic_throwsResourceNotFound() {
+        ProductBundle draft = makeBundle(TestIds.uuid(10), new BigDecimal("10.00"));
+        draft.setStatus(ProductStatus.DRAFT);
+        ProductBundle unlisted = makeBundle(TestIds.uuid(11), new BigDecimal("20.00"));
+        unlisted.setStatus(ProductStatus.ACTIVE);
+        unlisted.setListed(false);
+        when(bundleRepository.findAllByIdInAndCompanyId(anyList(), eq(COMPANY_ID)))
+                .thenReturn(List.of(draft, unlisted));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.compareBundles(COMPANY_ID, List.of(TestIds.uuid(10), TestIds.uuid(11))));
     }
 
     @Test
@@ -644,20 +693,35 @@ class BundleServiceImplTest {
     // ─── listBundles / getBundle (authenticated owner API) ────────────────────
 
     @Test
-    void listBundles_authenticatedOwner_delegatesToPublicListing() {
-        when(bundleRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+    void listBundles_authenticatedOwner_noStatus_returnsAllStatuses() {
+        // Owner read with no status filter returns every status (not just ACTIVE) and does not go
+        // through the public ACTIVE+listed query.
+        when(bundleRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         service.listBundles(COMPANY_ID, OWNER_ID, null, 0, 10);
 
         verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
-        verify(bundleRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+        verify(bundleRepository).findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class));
+        verify(bundleRepository, never()).findAllByCompanyIdAndStatusAndListed(any(), any(), anyBoolean(), any());
     }
 
     @Test
-    void getBundle_authenticatedOwner_delegatesToPublicMethod() {
+    void listBundles_authenticatedOwner_honorsRequestedStatus() {
+        when(bundleRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.DRAFT), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listBundles(COMPANY_ID, OWNER_ID, ProductStatus.DRAFT, 0, 10);
+
+        verify(bundleRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.DRAFT), any(Pageable.class));
+    }
+
+    @Test
+    void getBundle_authenticatedOwner_returnsDraftBundle() {
+        // Owner read returns a bundle at any status (here DRAFT) — no public ACTIVE+listed gate.
         ProductBundle bundle = makeBundle(BUNDLE_ID, new BigDecimal("20.00"));
-        bundle.setStatus(ProductStatus.ACTIVE);
+        bundle.setStatus(ProductStatus.DRAFT);
+        bundle.setListed(false);
         when(bundleRepository.findByIdAndCompanyId(BUNDLE_ID, COMPANY_ID)).thenReturn(Optional.of(bundle));
 
         BundleResponse result = service.getBundle(COMPANY_ID, BUNDLE_ID, OWNER_ID);
@@ -665,6 +729,7 @@ class BundleServiceImplTest {
         verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
         assertNotNull(result);
         assertEquals(BUNDLE_ID, result.getId());
+        assertEquals(ProductStatus.DRAFT.name(), result.getStatus());
     }
 
     // ─── buildVariantTitle — non-null options ─────────────────────────────────

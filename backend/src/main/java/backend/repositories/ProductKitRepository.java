@@ -15,4 +15,6 @@ public interface ProductKitRepository extends JpaRepository<ProductKit, UUID> {
     List<ProductKit> findAllByIdInAndCompanyId(List<UUID> ids, UUID companyId);
     Page<ProductKit> findAllByCompanyId(UUID companyId, Pageable pageable);
     Page<ProductKit> findAllByCompanyIdAndStatus(UUID companyId, ProductStatus status, Pageable pageable);
+    /** Public storefront listing: only ACTIVE + listed kits are browsable by non-members. */
+    Page<ProductKit> findAllByCompanyIdAndStatusAndListed(UUID companyId, ProductStatus status, boolean listed, Pageable pageable);
 }

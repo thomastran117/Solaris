@@ -15,5 +15,7 @@ public interface BundleRepository extends JpaRepository<ProductBundle, java.util
     List<ProductBundle> findAllByCompanyId(java.util.UUID companyId);
     Page<ProductBundle> findAllByCompanyId(java.util.UUID companyId, Pageable pageable);
     Page<ProductBundle> findAllByCompanyIdAndStatus(java.util.UUID companyId, ProductStatus status, Pageable pageable);
+    /** Public storefront listing: only ACTIVE + listed bundles are browsable by non-members. */
+    Page<ProductBundle> findAllByCompanyIdAndStatusAndListed(java.util.UUID companyId, ProductStatus status, boolean listed, Pageable pageable);
     boolean existsByItemsProductId(java.util.UUID productId);
 }

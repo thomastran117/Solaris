@@ -80,9 +80,17 @@ public class BundleServiceImpl implements BundleService {
     // --- Owner-authenticated CRUD ---
 
     @Override
+    @Transactional(readOnly = true)
     public PagedResponse<BundleResponse> listBundles(UUID companyId, UUID ownerId, ProductStatus status, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
-        return listBundles(companyId, status, page, size);
+        final int clampedSize = Math.min(size, 50);
+        Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // Owner/admin read honors the requested status (or returns every status when none is given).
+        // Not served from the public list cache — drafts/inactive bundles must never leak there.
+        org.springframework.data.domain.Page<ProductBundle> bundles = (status != null)
+                ? bundleRepository.findAllByCompanyIdAndStatus(companyId, status, pageable)
+                : bundleRepository.findAllByCompanyId(companyId, pageable);
+        return new PagedResponse<>(bundles.map(this::toResponse));
     }
 
     @Override
@@ -126,9 +134,13 @@ public class BundleServiceImpl implements BundleService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BundleResponse getBundle(UUID companyId, UUID bundleId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
-        return getBundle(companyId, bundleId);
+        // Owner/admin read returns the bundle at any status (no public ACTIVE+listed gate).
+        ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
+        return toResponse(bundle);
     }
 
     @Override
@@ -283,7 +295,11 @@ public class BundleServiceImpl implements BundleService {
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "bundles:compare:" + companyId + ":" + sortedIds;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-            List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(ids, companyId);
+            // Public, unauthenticated endpoint: only compare ACTIVE + listed bundles. Non-public ids
+            // (draft/inactive/unlisted) are omitted so guessing an id can't disclose hidden bundles.
+            List<ProductBundle> bundles = bundleRepository.findAllByIdInAndCompanyId(ids, companyId).stream()
+                    .filter(b -> b.getStatus() == ProductStatus.ACTIVE && b.isListed())
+                    .toList();
             if (bundles.isEmpty()) {
                 throw new ResourceNotFoundException("No bundles found for the given IDs in this company");
             }
@@ -297,9 +313,10 @@ public class BundleServiceImpl implements BundleService {
         String cacheKey = "bundles:list:" + companyId + ":" + page + ":" + clampedSize;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-            // Public endpoint — always restrict to ACTIVE bundles regardless of requested status.
+            // Public endpoint — restrict to ACTIVE + listed bundles regardless of requested status,
+            // matching the product visibility model and checkout availability (ACTIVE + listed).
             return new PagedResponse<>(
-                    bundleRepository.findAllByCompanyIdAndStatus(companyId, ProductStatus.ACTIVE, pageable)
+                    bundleRepository.findAllByCompanyIdAndStatusAndListed(companyId, ProductStatus.ACTIVE, true, pageable)
                             .map(this::toResponse));
         }, new TypeReference<PagedResponse<BundleResponse>>() {});
     }
@@ -310,7 +327,9 @@ public class BundleServiceImpl implements BundleService {
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
             ProductBundle bundle = bundleRepository.findByIdAndCompanyId(bundleId, companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Bundle not found with id: " + bundleId));
-            if (bundle.getStatus() != ProductStatus.ACTIVE) {
+            // Public read requires ACTIVE + listed — an unlisted bundle is hidden from the storefront
+            // even when ACTIVE (matches checkout, which requires both).
+            if (bundle.getStatus() != ProductStatus.ACTIVE || !bundle.isListed()) {
                 throw new ResourceNotFoundException("Bundle not found with id: " + bundleId);
             }
             return toResponse(bundle);
@@ -357,6 +376,12 @@ public class BundleServiceImpl implements BundleService {
 
         List<BundleItem> items = new ArrayList<>();
         for (BundleItemRequest ir : itemRequests) {
+            // Constituents are validated for company ownership only — NOT for listed/ACTIVE. This is
+            // intentional: the project's model is "listed=false means hidden-but-buyable via a direct
+            // link", and a public bundle is exactly such a link. So a bundle may legitimately surface
+            // and sell unlisted ("bundle-only") products. Checkout still enforces ACTIVE + purchasable
+            // on each constituent. If the policy ever changes to "unlisted = invisible everywhere",
+            // add a listed/ACTIVE gate here (and in checkout) — see audit round 12 #6.
             Product product = productRepository.findByIdAndCompanyId(ir.getProductId(), companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + ir.getProductId()));
 

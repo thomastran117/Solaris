@@ -383,24 +383,34 @@ class KitServiceImplTest {
     // ─── listKits (public) ────────────────────────────────────────────────────
 
     @Test
-    void listKits_alwaysRestrictsToActive() {
-        when(kitRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+    void listKits_alwaysRestrictsToActiveAndListed() {
+        when(kitRepository.findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         service.listKits(COMPANY_ID, ProductStatus.DRAFT, 0, 20);
 
-        verify(kitRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+        verify(kitRepository).findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class));
     }
 
     @Test
     void listKits_clampsPageSizeTo50() {
-        when(kitRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+        when(kitRepository.findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         service.listKits(COMPANY_ID, null, 0, 200);
 
-        verify(kitRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE),
+        verify(kitRepository).findAllByCompanyIdAndStatusAndListed(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), eq(true),
                 argThat(p -> p.getPageSize() == 50));
+    }
+
+    @Test
+    void getKit_activeButUnlisted_throwsResourceNotFound() {
+        ProductKit kit = makeKit(KIT_ID);
+        kit.setStatus(ProductStatus.ACTIVE);
+        kit.setListed(false); // hidden from storefront even though ACTIVE
+        when(kitRepository.findByIdAndCompanyId(KIT_ID, COMPANY_ID)).thenReturn(Optional.of(kit));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getKit(COMPANY_ID, KIT_ID));
     }
 
     // ─── importChoicesFromCollection ──────────────────────────────────────────
@@ -470,14 +480,27 @@ class KitServiceImplTest {
     // ─── listKits / getKit (authenticated owner API) ─────────────────────────
 
     @Test
-    void listKits_authenticatedOwner_delegatesToPublicListing() {
-        when(kitRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class)))
+    void listKits_authenticatedOwner_noStatus_returnsAllStatuses() {
+        // Owner read with no status filter returns every status and bypasses the public
+        // ACTIVE+listed query so merchants can manage draft/inactive kits.
+        when(kitRepository.findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         service.listKits(COMPANY_ID, OWNER_ID, null, 0, 10);
 
         verify(companyAccessService).require(eq(COMPANY_ID), eq(OWNER_ID), any());
-        verify(kitRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.ACTIVE), any(Pageable.class));
+        verify(kitRepository).findAllByCompanyId(eq(COMPANY_ID), any(Pageable.class));
+        verify(kitRepository, never()).findAllByCompanyIdAndStatusAndListed(any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void listKits_authenticatedOwner_honorsRequestedStatus() {
+        when(kitRepository.findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.DRAFT), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listKits(COMPANY_ID, OWNER_ID, ProductStatus.DRAFT, 0, 10);
+
+        verify(kitRepository).findAllByCompanyIdAndStatus(eq(COMPANY_ID), eq(ProductStatus.DRAFT), any(Pageable.class));
     }
 
     @Test
