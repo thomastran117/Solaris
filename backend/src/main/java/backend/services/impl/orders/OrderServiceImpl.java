@@ -3656,7 +3656,6 @@ public class OrderServiceImpl implements OrderService {
             for (OrderItem item : order.getItems()) {
                 try {
                     restoreItemStock(item);
-                    recordCancelAdjustment(item, order.getId());
                 } catch (Exception e) {
                     log.error("[SUBSCRIPTION] Failed to restore stock for cancelled renewal item on invoice {}: {}",
                             stripeInvoiceId, e.getMessage());
@@ -3670,14 +3669,22 @@ public class OrderServiceImpl implements OrderService {
             log.error("[SUBSCRIPTION] Renewal for invoice {} (subscription {}) auto-cancelled (unavailable: {}) "
                             + "— caller will refund the invoice and cancel the subscription",
                     stripeInvoiceId, subscription.getId(), unavailableReasons);
+            Order savedCancelled;
             try {
-                return orderRepository.save(order);
+                savedCancelled = orderRepository.save(order);
             } catch (DataIntegrityViolationException e) {
                 return orderRepository.findByStripeInvoiceId(stripeInvoiceId)
                         .orElseThrow(() -> new IllegalStateException(
                                 "Cancelled renewal save failed on duplicate invoice but existing row not found: "
                                         + stripeInvoiceId, e));
             }
+            // Record the inventory audit rows only after the order is persisted: the @UuidGenerator
+            // assigns the id at persist time, so order.getId() is null before save() and would
+            // otherwise produce "Order #null cancelled/failed" audit rows with no traceable link.
+            for (OrderItem item : savedCancelled.getItems()) {
+                recordCancelAdjustment(item, savedCancelled.getId());
+            }
+            return savedCancelled;
         }
 
         boolean hasMarketplaceItems = stampVendorIds(order.getItems());

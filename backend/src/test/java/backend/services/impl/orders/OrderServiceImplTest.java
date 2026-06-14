@@ -1182,6 +1182,39 @@ class OrderServiceImplTest {
     }
 
     /** Returns a ACTIVE, listed, purchasable product belonging to COMPANY_ID. */
+    @Test
+    void createRenewalOrder_discontinuedItem_savesCancelledOrderBeforeRecordingAdjustments() {
+        // #5: recordCancelAdjustment must run AFTER the order is persisted so the @UuidGenerator-assigned
+        // id is available — recording before save would write audit rows with a null orderId.
+        User buyer = user(USER_ID);
+        Product discontinued = activeProduct();
+        discontinued.setStatus(ProductStatus.DRAFT); // no longer ACTIVE → renewal must auto-cancel
+
+        backend.models.core.Subscription sub = new backend.models.core.Subscription();
+        sub.setUser(buyer);
+        sub.setCurrency("usd");
+        backend.models.core.SubscriptionItem si = new backend.models.core.SubscriptionItem();
+        si.setProduct(discontinued);
+        si.setQuantity(2);
+        si.setUnitPriceCents(5000);
+        sub.getItems().add(si);
+
+        when(orderRepository.findByStripeInvoiceId("in_1")).thenReturn(Optional.empty());
+        when(cacheService.tryLock(any(), any(), anyLong())).thenReturn(true);
+        when(productRepository.decrementStock(PRODUCT_ID, 2)).thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Order result = service.createRenewalOrder(sub, "in_1", 10000L);
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        assertEquals(CancellationReason.OUT_OF_STOCK, result.getCancellationReason());
+        // Stock restored, then the cancelled order saved, then the adjustment recorded — in that order.
+        org.mockito.InOrder ordered = org.mockito.Mockito.inOrder(productRepository, orderRepository, adjustmentRepository);
+        ordered.verify(productRepository).restoreStock(PRODUCT_ID, 2);
+        ordered.verify(orderRepository).save(any(Order.class));
+        ordered.verify(adjustmentRepository).save(any());
+    }
+
     private Product activeProduct() {
         Product p = new Product();
         p.setId(PRODUCT_ID);

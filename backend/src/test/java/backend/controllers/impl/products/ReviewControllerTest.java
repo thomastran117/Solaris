@@ -12,6 +12,8 @@ import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.exceptions.http.TooManyRequestException;
 import backend.services.intf.RateLimitService;
+import backend.services.intf.company.CompanyAccessService;
+import backend.services.intf.products.ProductService;
 import backend.services.intf.products.ReviewMediaService;
 import backend.services.intf.products.ReviewSearchService;
 import backend.services.intf.products.ReviewService;
@@ -53,6 +55,8 @@ class ReviewControllerTest {
     private ReviewMediaService reviewMediaService;
     private ReviewSearchService reviewSearchService;
     private RateLimitService rateLimitService;
+    private ProductService productService;
+    private CompanyAccessService companyAccessService;
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -64,10 +68,16 @@ class ReviewControllerTest {
         reviewMediaService   = mock(ReviewMediaService.class);
         reviewSearchService  = mock(ReviewSearchService.class);
         rateLimitService     = mock(RateLimitService.class);
+        productService       = mock(ProductService.class);
+        companyAccessService = mock(CompanyAccessService.class);
+
+        // Default: product is publicly visible so the public read-guard lets anonymous callers through.
+        when(productService.isPubliclyVisible(any(), any())).thenReturn(true);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ReviewController(reviewService, reviewVoteService,
-                                reviewMediaService, reviewSearchService, rateLimitService))
+                                reviewMediaService, reviewSearchService, rateLimitService,
+                                productService, companyAccessService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
@@ -109,6 +119,32 @@ class ReviewControllerTest {
         mockMvc.perform(get("/companies/{cid}/products/{pid}/reviews/summary", COMPANY_ID, PRODUCT_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(10));
+    }
+
+    @Test
+    void getReviews_unlistedProductAnonymous_returns404() throws Exception {
+        // Non-member (anonymous) + product not publicly visible → 404 (enumeration guard).
+        when(productService.isPubliclyVisible(COMPANY_ID, PRODUCT_ID)).thenReturn(false);
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/reviews", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isNotFound());
+
+        verify(reviewService, never())
+                .getReviews(any(), any(), anyInt(), anyInt(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void getSummary_unlistedProductButMember_returns200() throws Exception {
+        // Company member bypasses the public-visibility gate even for a hidden product.
+        authenticateAs(USER_ID);
+        when(productService.isPubliclyVisible(COMPANY_ID, PRODUCT_ID)).thenReturn(false);
+        when(companyAccessService.resolveRole(COMPANY_ID, USER_ID))
+                .thenReturn(java.util.Optional.of(backend.models.enums.CompanyRole.OWNER));
+        when(reviewService.getReviewSummary(COMPANY_ID, PRODUCT_ID))
+                .thenReturn(new ReviewSummaryResponse(PRODUCT_ID, 4.5, 10L, 7L, Map.of(5, 7L, 4, 3L)));
+
+        mockMvc.perform(get("/companies/{cid}/products/{pid}/reviews/summary", COMPANY_ID, PRODUCT_ID))
+                .andExpect(status().isOk());
     }
 
     // ─── GET /companies/{companyId}/products/{productId}/reviews/me ──────────

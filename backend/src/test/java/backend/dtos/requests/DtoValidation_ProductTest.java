@@ -4,6 +4,7 @@ import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.CreateProductRequest;
 import backend.dtos.requests.product.CreateProductVariantRequest;
 import backend.dtos.requests.product.UpdateProductRequest;
+import backend.dtos.requests.product.UpdateProductVariantRequest;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -192,6 +193,14 @@ class DtoValidation_ProductTest extends AbstractDtoValidationTest {
     }
 
     @Test
+    void createVariant_negativeLowStockThreshold_violation() {
+        CreateProductVariantRequest req = new CreateProductVariantRequest();
+        req.setPrice(new BigDecimal("9.99"));
+        req.setLowStockThreshold(-1);
+        assertViolation(req, "lowStockThreshold");
+    }
+
+    @Test
     void createVariant_option1WithHtml_violation() {
         CreateProductVariantRequest req = new CreateProductVariantRequest();
         req.setPrice(new BigDecimal("9.99"));
@@ -213,6 +222,13 @@ class DtoValidation_ProductTest extends AbstractDtoValidationTest {
         req.setPrice(new BigDecimal("20.00"));
         req.setCompareAtPrice(new BigDecimal("5.00"));
         assertViolation(req, "compareAtPriceValid");
+    }
+
+    @Test
+    void updateVariant_negativeLowStockThreshold_violation() {
+        UpdateProductVariantRequest req = new UpdateProductVariantRequest();
+        req.setLowStockThreshold(-1);
+        assertViolation(req, "lowStockThreshold");
     }
 
     // ─── UpdateProductRequest ─────────────────────────────────────────────────

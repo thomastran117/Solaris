@@ -381,6 +381,51 @@ class ReturnServiceImplTest {
     }
 
     @Test
+    void approveReturn_autoRefundCappedAtRemainingOrderTotal() {
+        // Order-level loyalty/premium discounts are not prorated onto line unit prices, so a full
+        // return's summed line value can exceed what was charged. The auto-calculated refund must be
+        // capped at (orderTotal - alreadyRefunded) so we never refund more than collected.
+        riskProperties.setMode(RiskMode.SHADOW);
+
+        Company company = company();
+        when(companyAccessService.require(eq(COMPANY_ID), eq(USER_ID), any())).thenReturn(company);
+
+        Order order = deliveredOrder();
+        order.setPaymentIntentId("pi_test");
+        order.setTotalAmount(new BigDecimal("30.00")); // charged total after a big loyalty discount
+        order.setRefundedAmountCents(0L);
+        User buyer = user(BUYER_ID, UserRole.USER);
+        buyer.setEmail("b@b.com");
+        buyer.setCreatedAt(Instant.now().minus(90, ChronoUnit.DAYS));
+        order.setUser(buyer);
+
+        OrderItem item = orderItem();
+        item.setUnitPrice(new BigDecimal("50.00")); // line value (5000c) exceeds remaining (3000c)
+        order.setItems(List.of(item));
+
+        Return ret = minimalReturn(order);
+        ret.setRequestedBy(buyer);
+        ret.setItems(List.of(returnItem(ret, item)));
+        when(returnRepository.findByIdAndCompanyIdForUpdate(RETURN_ID, COMPANY_ID)).thenReturn(Optional.of(ret));
+
+        CompanyReturnLocation location = returnLocation();
+        when(returnLocationRepository.findFirstByCompanyIdOrderByPrimaryDescIdAsc(COMPANY_ID))
+                .thenReturn(Optional.of(location));
+
+        when(riskEngine.assess(any())).thenReturn(RiskAssessmentResult.allow(0, List.of(), List.of()));
+        when(paymentService.refundPayment(eq("pi_test"), anyLong()))
+                .thenReturn(new PaymentService.RefundResult("re_1", 3000L, "usd", "pending", "pi_test"));
+        when(returnRepository.save(any(Return.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.approveReturn(RETURN_ID, COMPANY_ID, USER_ID,
+                new MerchantApproveReturnRequest("approved", null, null));
+
+        // Capped at remaining order total (3000c), not the summed line value (5000c).
+        verify(paymentService).refundPayment("pi_test", 3000L);
+    }
+
+    @Test
     void approveReturn_refundThrows_setsFailedAndRecordsCompensation() {
         riskProperties.setMode(RiskMode.SHADOW);
 

@@ -820,7 +820,17 @@ public class ReturnServiceImpl implements ReturnService {
             total = total.add(ri.getOrderItem().getUnitPrice()
                     .multiply(BigDecimal.valueOf(ri.getQuantityReturned())));
         }
-        return total.multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+        long computed = total.multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+
+        // Line unit prices carry only promotion/coupon savings; order-level loyalty and premium
+        // discounts are applied to the order total and are NOT prorated back onto line items. Summing
+        // line prices for a full return can therefore exceed what the customer actually paid. Cap the
+        // auto-calculated amount at the order's remaining refundable balance — the same ceiling the
+        // manual-override path enforces above — so we never refund more than was collected.
+        Order order = ret.getOrder();
+        long alreadyRefunded = java.util.Objects.requireNonNullElse(order.getRefundedAmountCents(), 0L);
+        long maxRefundable = Math.max(0L, orderTotalCents(order) - alreadyRefunded);
+        return Math.min(computed, maxRefundable);
     }
 
     /**

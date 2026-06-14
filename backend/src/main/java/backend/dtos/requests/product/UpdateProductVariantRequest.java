@@ -31,6 +31,7 @@ public class UpdateProductVariantRequest {
     @Min(value = 0, message = "Stock cannot be negative")
     private Integer stock;
 
+    @Min(value = 0, message = "Low stock threshold must be 0 or greater")
     private Integer lowStockThreshold;
 
     private Boolean purchasable;
