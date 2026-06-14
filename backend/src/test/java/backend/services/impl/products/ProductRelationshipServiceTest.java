@@ -4,6 +4,7 @@ import backend.dtos.requests.product.AddProductRelationshipRequest;
 import backend.dtos.responses.product.ProductRelationshipResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
+import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
 import backend.models.core.Product;
@@ -174,6 +175,32 @@ class ProductRelationshipServiceTest {
         assertEquals(TARGET_ID, result.targetProductId());
         assertEquals(ProductRelationshipType.UPGRADE, result.type());
         assertEquals("Premium version", result.note());
+    }
+
+    @Test
+    void addRelationship_callerLacksCompanyAccess_throwsForbiddenAndDoesNotPersist() {
+        // A merely-authenticated user (not a member with MANAGE_PRODUCTS) must be rejected before
+        // any product lookup or write.
+        doThrow(new ForbiddenException("No access")).when(companyAccessService)
+                .require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_PRODUCTS);
+
+        AddProductRelationshipRequest req = new AddProductRelationshipRequest();
+        req.setTargetProductId(TARGET_ID);
+        req.setType(ProductRelationshipType.UPGRADE);
+
+        assertThrows(ForbiddenException.class,
+                () -> service.addProductRelationship(COMPANY_ID, PRODUCT_ID, OWNER_ID, req));
+        verify(productRelationshipRepository, never()).save(any());
+    }
+
+    @Test
+    void removeRelationship_callerLacksCompanyAccess_throwsForbiddenAndDoesNotDelete() {
+        doThrow(new ForbiddenException("No access")).when(companyAccessService)
+                .require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_PRODUCTS);
+
+        assertThrows(ForbiddenException.class,
+                () -> service.removeProductRelationship(COMPANY_ID, PRODUCT_ID, TARGET_ID, ProductRelationshipType.UPGRADE, OWNER_ID));
+        verify(productRelationshipRepository, never()).deleteBySourceProductIdAndTargetProductIdAndType(any(), any(), any());
     }
 
     @Test

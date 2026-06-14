@@ -132,7 +132,7 @@ public interface ProductService {
      * {@code InventoryAdjustment} (stock movements), ordered by occurrence desc.
      */
     PagedResponse<ProductHistoryEntryResponse> getProductHistory(
-            UUID companyId, UUID productId, int page, int size);
+            UUID companyId, UUID productId, UUID ownerId, int page, int size);
 
     /**
      * Reverts one or more field-change log entries by id. Stock-related entries are

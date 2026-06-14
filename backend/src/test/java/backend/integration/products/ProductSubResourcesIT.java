@@ -537,7 +537,9 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
     }
 
     @Test
-    void addProductRelationship_returns201ForEmployee() throws Exception {
+    void addProductRelationship_returns403ForEmployee() throws Exception {
+        // Relationship writes require MANAGE_PRODUCTS, like every other product-write op — an
+        // EMPLOYEE (read-only product access) must be rejected.
         User owner = createActiveUser("sub-rel-emp-owner@example.com", "Password1!");
         User employee = createActiveUser("sub-rel-emp@example.com", "Password1!");
         Company company = createCompany(owner);
@@ -555,7 +557,7 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(body))
                         .header("Authorization", bearer(accessTokenFor(employee)))
                         .header("User-Agent", TEST_USER_AGENT))
-                .andExpect(status().isCreated());
+                .andExpect(status().isForbidden());
     }
 
     // ── DELETE /relationships/{targetProductId} ───────────────────────────────

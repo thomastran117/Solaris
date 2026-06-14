@@ -1600,6 +1600,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductRelationshipResponse addProductRelationship(UUID companyId, UUID productId, UUID ownerId, AddProductRelationshipRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
         assertProductBelongsToCompany(companyId, productId);
         if (productId.equals(request.getTargetProductId())) {
             throw new BadRequestException("A product cannot have a relationship with itself");
@@ -1622,6 +1623,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void removeProductRelationship(UUID companyId, UUID productId, UUID targetProductId, ProductRelationshipType type, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
         assertProductBelongsToCompany(companyId, productId);
         if (!productRelationshipRepository.existsBySourceProductIdAndTargetProductIdAndType(productId, targetProductId, type)) {
             throw new ResourceNotFoundException("Relationship not found");
@@ -1669,9 +1671,14 @@ public class ProductServiceImpl implements ProductService {
                 List<UUID> manualTargetIds = manualRels.stream()
                         .map(r -> r.getTargetProduct().getId())
                         .toList();
+                // Public endpoint: only surface ACTIVE + listed targets. Manual SIMILAR relationships
+                // are the highest-risk path — without this filter they'd return any same-company
+                // product regardless of status/listing.
                 Map<UUID, Product> manualProductMap = productRepository
                         .findAllByIdInAndCompanyId(manualTargetIds, companyId)
-                        .stream().collect(Collectors.toMap(Product::getId, p -> p));
+                        .stream()
+                        .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isListed())
+                        .collect(Collectors.toMap(Product::getId, p -> p));
                 Map<UUID, double[]> manualRatings = buildRatingMap(manualTargetIds);
 
                 for (ProductRelationship rel : manualRels) {
@@ -1700,7 +1707,7 @@ public class ProductServiceImpl implements ProductService {
                                 .collect(Collectors.toMap(r -> r.getId().getTargetProductId(), r -> r));
                         List<Product> preProducts = productRepository.findAllByIdInAndCompanyId(preIds, companyId)
                                 .stream()
-                                .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
+                                .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isListed())
                                 .toList();
                         Map<UUID, double[]> preRatings = buildRatingMap(preIds);
                         for (Product p : preProducts) {
@@ -1721,7 +1728,11 @@ public class ProductServiceImpl implements ProductService {
             if (remaining > 0) {
                 List<UUID> autoIds = findAutoSimilarIds(source, remaining, excludeIds);
                 if (!autoIds.isEmpty()) {
-                    List<Product> autoProducts = productRepository.findAllByIdInAndCompanyId(autoIds, companyId);
+                    // ES results can be stale; re-filter against the DB to ACTIVE + listed so an
+                    // un-reindexed draft/unlisted product never leaks into recommendations.
+                    List<Product> autoProducts = productRepository.findAllByIdInAndCompanyId(autoIds, companyId).stream()
+                            .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isListed())
+                            .toList();
                     Map<UUID, double[]> autoRatings = buildRatingMap(autoIds);
                     for (Product p : autoProducts) {
                         results.add(toSimilarResponse(p, "AUTO", autoRatings, List.of()));
@@ -1755,7 +1766,9 @@ public class ProductServiceImpl implements ProductService {
         String companyIdStr = source.getCompany().getId().toString();
         BoolQuery.Builder bq = new BoolQuery.Builder()
                 .filter(TermQuery.of(t -> t.field("companyId").value(companyIdStr))._toQuery())
-                .filter(TermQuery.of(t -> t.field("status").value(ProductStatus.ACTIVE.name()))._toQuery());
+                .filter(TermQuery.of(t -> t.field("status").value(ProductStatus.ACTIVE.name()))._toQuery())
+                // Only recommend publicly-visible products (the DB re-filter below is authoritative).
+                .filter(TermQuery.of(t -> t.field("listed").value(true))._toQuery());
 
         if (source.getCategory() != null) {
             final String cat = source.getCategory();
@@ -2103,7 +2116,12 @@ public class ProductServiceImpl implements ProductService {
         String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "products:compare:" + companyId + ":" + sortedIds;
         return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
-            List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId);
+            // Public, unauthenticated endpoint — only compare ACTIVE + listed products, matching
+            // GET /products and GET /products/{id}. Non-public ids (draft/inactive/unlisted) are
+            // omitted so guessing an id can't disclose hidden product metadata.
+            List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId).stream()
+                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isListed())
+                    .toList();
             if (products.isEmpty()) {
                 throw new ResourceNotFoundException("No products found for the given IDs in this company");
             }
@@ -2147,7 +2165,10 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<ProductHistoryEntryResponse> getProductHistory(
-            UUID companyId, UUID productId, int page, int size) {
+            UUID companyId, UUID productId, UUID ownerId, int page, int size) {
+        // Change logs + inventory adjustments are private merchant data — require company access,
+        // not just authentication, before returning them.
+        companyAccessService.require(companyId, ownerId, CompanyCapability.READ_PRODUCTS);
         productRepository.findByIdAndCompanyId(productId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 

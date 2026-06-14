@@ -563,6 +563,9 @@ public class ProductController {
             @PathVariable UUID productId,
             @RequestParam(defaultValue = "8") @Min(1) @Max(20) int limit) {
         try {
+            // Non-members may only fetch similar products for a publicly-visible source product —
+            // otherwise a draft/unlisted id could be probed for existence and signal-based recs.
+            requirePublicChildReadAccess(companyId, productId);
             return ResponseEntity.ok(productService.getSimilarProducts(companyId, productId, limit));
         } catch (AppHttpException e) {
             throw e;
@@ -644,7 +647,7 @@ public class ProductController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         try {
-            return ResponseEntity.ok(productService.getProductHistory(companyId, productId, page, size));
+            return ResponseEntity.ok(productService.getProductHistory(companyId, productId, resolveUserId(), page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

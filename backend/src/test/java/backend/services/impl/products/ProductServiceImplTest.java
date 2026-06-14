@@ -1437,7 +1437,20 @@ class ProductServiceImplTest {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () ->
-                service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20));
+                service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20));
+    }
+
+    @Test
+    void getProductHistory_callerLacksCompanyAccess_throwsForbidden() {
+        // History (change logs + inventory adjustments) is private merchant data — a merely
+        // authenticated non-member must be rejected before any data is read.
+        UUID outsider = TestIds.uuid(77);
+        doThrow(new ForbiddenException("No access")).when(companyAccessService)
+                .require(COMPANY_ID, outsider, CompanyCapability.READ_PRODUCTS);
+
+        assertThrows(ForbiddenException.class,
+                () -> service.getProductHistory(COMPANY_ID, PRODUCT_ID, outsider, 0, 20));
+        verify(productChangeLogRepository, never()).findAllByProductIdAndCompanyId(any(), any(), any());
     }
 
     @Test
@@ -1449,7 +1462,7 @@ class ProductServiceImplTest {
         when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 20);
+        var result = service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 20);
 
         assertEquals(0, result.getItems().size());
     }
@@ -1463,7 +1476,7 @@ class ProductServiceImplTest {
         when(inventoryAdjustmentRepository.findAllByProductIdAndProductCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.getProductHistory(COMPANY_ID, PRODUCT_ID, 0, 9999); // should clamp to 100
+        service.getProductHistory(COMPANY_ID, PRODUCT_ID, OWNER_ID, 0, 9999); // should clamp to 100
 
         verify(productChangeLogRepository).findAllByProductIdAndCompanyId(eq(PRODUCT_ID), eq(COMPANY_ID), any());
     }
@@ -1720,6 +1733,34 @@ class ProductServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class, () ->
                 service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, TestIds.uuid(31))));
+    }
+
+    @Test
+    void compareProducts_excludesNonPublicProducts() {
+        // Public endpoint: a DRAFT (or unlisted) product is omitted from the comparison so guessing
+        // its id can't disclose hidden metadata.
+        UUID draftId = TestIds.uuid(30);
+        Product active = makeProduct();          // ACTIVE + listed
+        Product draft = makeProduct(draftId);    // DRAFT
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(active, draft));
+        when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
+
+        var result = service.compareProducts(COMPANY_ID, List.of(PRODUCT_ID, draftId));
+
+        assertEquals(1, result.size());
+        assertEquals(PRODUCT_ID, result.get(0).getId());
+    }
+
+    @Test
+    void compareProducts_allNonPublic_throwsResourceNotFound() {
+        Product draft1 = makeProduct(TestIds.uuid(30));
+        Product draft2 = makeProduct(TestIds.uuid(31));
+        when(productRepository.findAllByIdInAndCompanyId(any(), eq(COMPANY_ID)))
+                .thenReturn(List.of(draft1, draft2));
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                service.compareProducts(COMPANY_ID, List.of(TestIds.uuid(30), TestIds.uuid(31))));
     }
 
     // =========================================================================
