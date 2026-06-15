@@ -1,10 +1,14 @@
 import { z } from "zod";
 
-/** Local YYYY-MM-DD string for `today + n` days, matching the backend's allowed window. */
+/**
+ * UTC YYYY-MM-DD string for `today + n` days. Computed entirely in UTC so the picker's
+ * bounds match the backend, which resolves "today" via LocalDate.now(ZoneOffset.UTC).
+ * (Using local setHours/setDate here would drift by a day for users ahead of UTC.)
+ */
 function isoDay(offsetDays: number): string {
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + offsetDays);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
 }
 

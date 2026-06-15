@@ -1,6 +1,7 @@
 package backend.dtos.responses.order;
 
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -28,6 +29,9 @@ public class OrderResponse {
     private String pickupLocationName;
     private Instant pickupReadyAt;
     // Scheduled delivery slot (DELIVERY orders)
+    // Calendar date (not a zoned instant); pinned to an ISO-8601 string so output never
+    // drifts to Jackson's default array form if global date config changes.
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private LocalDate preferredDeliveryDate;
     private String preferredDeliveryWindow;
     private String deliverySlotStatus;

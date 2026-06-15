@@ -65,7 +65,7 @@ jobs:
             tests: MarketplaceAnalyticsIT,MarketplaceCatalogControllerIT,MarketplaceIT,MarketplaceCollectionIT,CommissionPolicyIT,CollectionIT,ImportIT
           - shard: 4
             name: orders-fulfillment
-            tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
+            tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,DeliverySlotIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
           - shard: 5
             name: vendors-company
             tests: VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,CompanyIT,TeamIT,AnnouncementIT,CompanyFollowIT,CompanyCatalogControllerIT,ProfileIT

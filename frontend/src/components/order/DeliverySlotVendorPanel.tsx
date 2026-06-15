@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CheckCircle, Loader2, X } from "lucide-react";
 import { companyOrdersApi } from "../../api/companyOrders";
 import { DELIVERY_WINDOWS, type CompanyOrder } from "../../types/order";
+import { markSlotUnavailableSchema, type MarkSlotUnavailableValues } from "../../schemas/order";
 import DeliverySlotStatusBadge from "./DeliverySlotStatusBadge";
 
 interface Props {
@@ -22,8 +25,17 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }: Props) {
   const qc = useQueryClient();
   const [showUnavailableModal, setShowUnavailableModal] = useState(false);
-  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<MarkSlotUnavailableValues>({
+    resolver: zodResolver(markSlotUnavailableSchema),
+    defaultValues: { reason: "" },
+  });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["company-orders", companyId] });
@@ -38,17 +50,23 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
   });
 
   const markUnavailable = useMutation({
-    mutationFn: () =>
+    mutationFn: (reason?: string) =>
       companyOrdersApi.markDeliverySlotUnavailable(companyId, order.orderId, {
-        reason: reason.trim() || undefined,
+        reason: reason?.trim() || undefined,
       }),
     onSuccess: () => {
       setShowUnavailableModal(false);
-      setReason("");
+      reset({ reason: "" });
       invalidate();
     },
     onError: (err) => setError(extractErrorMessage(err, "Failed to update slot")),
   });
+
+  const openUnavailableModal = () => {
+    setError(null);
+    reset({ reason: "" });
+    setShowUnavailableModal(true);
+  };
 
   if (!order.deliverySlotStatus) return null;
 
@@ -97,7 +115,7 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
           )}
           {canMarkUnavailable && (
             <button
-              onClick={() => { setError(null); setShowUnavailableModal(true); }}
+              onClick={openUnavailableModal}
               className="flex items-center gap-2 rounded-full border border-white/20 hover:bg-white/10 px-4 py-2 text-sm text-white/70 hover:text-white transition"
             >
               <X className="h-4 w-4" /> Mark Unavailable
@@ -108,10 +126,13 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
 
       {showUnavailableModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4">
+          <form
+            onSubmit={handleSubmit((values) => { setError(null); markUnavailable.mutate(values.reason); })}
+            className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4"
+          >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">Mark slot unavailable?</h3>
-              <button onClick={() => setShowUnavailableModal(false)} className="text-white/40 hover:text-white transition">
+              <button type="button" onClick={() => setShowUnavailableModal(false)} className="text-white/40 hover:text-white transition">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -123,26 +144,27 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
               placeholder="Reason (optional)"
               rows={3}
               maxLength={500}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              {...register("reason")}
             />
+            {errors.reason && <p className="text-sm text-red-400">{errors.reason.message}</p>}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={() => setShowUnavailableModal(false)}
                 className="flex-1 rounded-full border border-white/20 py-2 text-sm text-white/70 hover:bg-white/10 transition"
               >
                 Go back
               </button>
               <button
-                onClick={() => markUnavailable.mutate()}
+                type="submit"
                 disabled={markUnavailable.isPending}
                 className="flex-1 rounded-full bg-red-600 hover:bg-red-500 disabled:opacity-50 py-2 text-sm text-white font-medium transition"
               >
                 {markUnavailable.isPending ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm"}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

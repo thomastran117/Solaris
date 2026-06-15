@@ -1,6 +1,7 @@
 package backend.dtos.responses.order;
 
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,8 +20,8 @@ public record CompanyOrderResponse(
         UUID pickupLocationId,
         String pickupLocationName,
         Instant pickupReadyAt,
-        // Scheduled delivery slot
-        LocalDate preferredDeliveryDate,
+        // Scheduled delivery slot (calendar date — pinned to ISO-8601 string output)
+        @JsonFormat(shape = JsonFormat.Shape.STRING) LocalDate preferredDeliveryDate,
         String preferredDeliveryWindow,
         String deliverySlotStatus,
         // Shipping address

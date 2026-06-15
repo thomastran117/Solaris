@@ -2683,7 +2683,10 @@ public class OrderServiceImpl implements OrderService {
         }
 
         LocalDate date = request.getPreferredDeliveryDate();
-        LocalDate today = LocalDate.now();
+        // Resolve "today" in UTC so the allowed range matches the UTC-based bounds the
+        // frontend date picker enforces — avoids a picker offering a date the server then
+        // rejects (and vice-versa) when the JVM/browser timezones differ.
+        LocalDate today = LocalDate.now(java.time.ZoneOffset.UTC);
         if (date.isBefore(today.plusDays(1)) || date.isAfter(today.plusDays(DELIVERY_SLOT_MAX_DAYS_AHEAD))) {
             throw new BadRequestException("Delivery date must be between tomorrow and "
                     + DELIVERY_SLOT_MAX_DAYS_AHEAD + " days from today");

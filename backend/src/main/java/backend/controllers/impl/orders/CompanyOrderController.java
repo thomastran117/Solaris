@@ -153,6 +153,9 @@ public class CompanyOrderController {
         }
     }
 
+    // The body is optional by design: MarkSlotUnavailableRequest carries only an optional
+    // free-text reason, so a vendor may flag a slot unavailable without sending one. When a
+    // body IS supplied, @Valid still enforces its @Size constraint; the service null-checks it.
     @PatchMapping("/{orderId}/delivery-slot/unavailable")
     public ResponseEntity<CompanyOrderResponse> markDeliverySlotUnavailable(
             @PathVariable UUID companyId,
