@@ -28,8 +28,28 @@ public interface OrderService {
     CompanyOrderResponse cancelOrderByCompany(UUID companyId, UUID orderId, UUID ownerId);
     void handlePaymentSuccess(String paymentIntentId);
     void handlePaymentFailure(String paymentIntentId);
-    PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status, int page, int size);
+    PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status,
+                                                         java.time.LocalDate deliveryDate, int page, int size);
     CompanyOrderResponse getCompanyOrder(UUID companyId, UUID orderId, UUID ownerId);
+
+    // -------------------------------------------------------------------------
+    // Scheduled delivery slot (Feature 06)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Customer sets or updates the preferred delivery slot on their own order. Allowed only on
+     * DELIVERY orders in RESERVED or PAID status; date must be between tomorrow and today + 14 days.
+     * Sets {@code deliverySlotStatus = REQUESTED}.
+     */
+    OrderResponse requestSlot(UUID orderId, UUID userId,
+                              backend.dtos.requests.order.SetDeliverySlotRequest request);
+
+    /** Vendor confirms they can meet the requested slot — transitions slot status to CONFIRMED. */
+    CompanyOrderResponse confirmSlot(UUID companyId, UUID orderId, UUID ownerId);
+
+    /** Vendor cannot meet the slot — transitions slot status to UNAVAILABLE and notifies the customer. */
+    CompanyOrderResponse markSlotUnavailable(UUID companyId, UUID orderId, UUID ownerId,
+                                             backend.dtos.requests.order.MarkSlotUnavailableRequest request);
 
     void fulfillPendingBackorders(UUID productId, UUID variantId, int availableQty, UUID fulfillmentLocationId);
 

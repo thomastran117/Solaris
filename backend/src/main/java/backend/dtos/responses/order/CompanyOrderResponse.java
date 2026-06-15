@@ -3,6 +3,7 @@ package backend.dtos.responses.order;
 import java.util.UUID;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public record CompanyOrderResponse(
@@ -18,6 +19,10 @@ public record CompanyOrderResponse(
         UUID pickupLocationId,
         String pickupLocationName,
         Instant pickupReadyAt,
+        // Scheduled delivery slot
+        LocalDate preferredDeliveryDate,
+        String preferredDeliveryWindow,
+        String deliverySlotStatus,
         // Shipping address
         String shipRecipientName,
         String shipStreet,

@@ -226,6 +226,21 @@ public class OrderController {
         }
     }
 
+    @PatchMapping("/{id}/delivery-slot")
+    @RequireAuth
+    public ResponseEntity<OrderResponse> setDeliverySlot(
+            @PathVariable UUID id,
+            @Valid @RequestBody backend.dtos.requests.order.SetDeliverySlotRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.requestSlot(id, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @PostMapping("/{id}/reorder")
     @RequireAuth
     public ResponseEntity<OrderResponse> reorderOrder(@PathVariable UUID id) {

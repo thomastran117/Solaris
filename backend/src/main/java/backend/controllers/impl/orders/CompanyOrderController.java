@@ -7,6 +7,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import backend.annotations.requireAuth.RequireAuth;
+import backend.dtos.requests.order.MarkSlotUnavailableRequest;
 import backend.dtos.requests.order.ReturnOrderRequest;
 import backend.dtos.requests.order.ShipOrderRequest;
 import backend.dtos.requests.return_.MerchantInitiateReturnRequest;
@@ -52,11 +53,14 @@ public class CompanyOrderController {
     public ResponseEntity<PagedResponse<CompanyOrderResponse>> getCompanyOrders(
             @PathVariable UUID companyId,
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate deliveryDate,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
             UUID userId = resolveUserId();
-            return ResponseEntity.ok(orderService.getCompanyOrders(companyId, userId, status, page, size));
+            return ResponseEntity.ok(orderService.getCompanyOrders(companyId, userId, status, deliveryDate, page, size));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
@@ -128,6 +132,35 @@ public class CompanyOrderController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.markAsDelivered(companyId, orderId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{orderId}/delivery-slot/confirm")
+    public ResponseEntity<CompanyOrderResponse> confirmDeliverySlot(
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.confirmSlot(companyId, orderId, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{orderId}/delivery-slot/unavailable")
+    public ResponseEntity<CompanyOrderResponse> markDeliverySlotUnavailable(
+            @PathVariable UUID companyId,
+            @PathVariable UUID orderId,
+            @RequestBody(required = false) @Valid MarkSlotUnavailableRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            return ResponseEntity.ok(orderService.markSlotUnavailable(companyId, orderId, userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

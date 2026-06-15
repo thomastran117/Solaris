@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @Getter
@@ -26,6 +27,10 @@ public class OrderResponse {
     // Pickup fields (PICKUP orders)
     private String pickupLocationName;
     private Instant pickupReadyAt;
+    // Scheduled delivery slot (DELIVERY orders)
+    private LocalDate preferredDeliveryDate;
+    private String preferredDeliveryWindow;
+    private String deliverySlotStatus;
     // Shipping address (DELIVERY orders)
     private String shipRecipientName;
     private String shipStreet;

@@ -10,12 +10,15 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import backend.models.enums.CancellationReason;
+import backend.models.enums.DeliverySlotStatus;
+import backend.models.enums.DeliveryWindow;
 import backend.models.enums.FulfillmentMethod;
 import backend.models.enums.OrderStatus;
 import backend.models.enums.RiskAction;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.List;
@@ -31,7 +34,8 @@ import java.util.List;
         @Index(name = "idx_order_replacement_of", columnList = "replacement_of_order_id"),
         @Index(name = "idx_order_stripe_invoice", columnList = "stripe_invoice_id"),
         @Index(name = "idx_order_subscription", columnList = "subscription_id"),
-        @Index(name = "idx_order_pickup_location", columnList = "pickup_location_id")
+        @Index(name = "idx_order_pickup_location", columnList = "pickup_location_id"),
+        @Index(name = "idx_order_delivery_date", columnList = "preferred_delivery_date")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_order_payment_intent_id", columnNames = "payment_intent_id"),
         @UniqueConstraint(name = "uq_order_stripe_invoice_id", columnNames = "stripe_invoice_id")
@@ -152,6 +156,25 @@ public class Order {
     /** Timestamp when the merchant marked all PICKUP items as PICKUP_READY. */
     @Column(nullable = true)
     private Instant pickupReadyAt;
+
+    // -------------------------------------------------------------------------
+    // Scheduled delivery slot (DELIVERY orders only — preference capture, v1)
+    // All nullable: an order without a requested slot flows through fulfillment unchanged.
+    // -------------------------------------------------------------------------
+
+    /** Customer's preferred delivery date. Null until a slot is requested. */
+    @Column(name = "preferred_delivery_date", nullable = true)
+    private LocalDate preferredDeliveryDate;
+
+    /** Customer's preferred time window. Null if none chosen. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true, length = 20)
+    private DeliveryWindow preferredDeliveryWindow;
+
+    /** Slot lifecycle: REQUESTED → CONFIRMED / UNAVAILABLE. Null until a slot is requested. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true, length = 20)
+    private DeliverySlotStatus deliverySlotStatus;
 
     // -------------------------------------------------------------------------
     // Shipping address snapshot (DELIVERY orders only)

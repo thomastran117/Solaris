@@ -73,6 +73,8 @@ public class EmailSender {
                 sendGiftCardIssuedEmail(e.toEmail(), e.firstName(), e.giftCardCode(), e.originalValueCents(), e.companyName());
             case EmailEvent.PriceDropEmail e ->
                 sendPriceDropEmail(e.recipientEmail(), e.productName(), e.productUrl(), e.oldPriceCents(), e.newPriceCents());
+            case EmailEvent.DeliverySlotUnavailableEmail e ->
+                sendDeliverySlotUnavailableEmail(e.recipientEmail(), e.orderReference(), e.requestedDate(), e.vendorReason());
             default -> {}
         }
     }
@@ -254,6 +256,38 @@ public class EmailSender {
             """.formatted(greeting, formatted, reasonLine);
         sendMimeMessage(toEmail, "You've received " + formatted + " in store credit — ShopWave",
                 wrapInShell("Store Credit", body));
+    }
+
+    private void sendDeliverySlotUnavailableEmail(String toEmail, String orderReference,
+                                                  java.time.LocalDate requestedDate, String vendorReason) {
+        String orderRef = orderReference != null ? HtmlUtils.htmlEscape(orderReference) : "your order";
+        String dateLabel = requestedDate != null
+                ? requestedDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy"))
+                : "the requested date";
+        String reasonLine = vendorReason != null && !vendorReason.isBlank()
+                ? "<p style=\"margin:12px 0 0 0;font-size:14px;color:#475569;line-height:1.7;\">"
+                    + "Reason: " + HtmlUtils.htmlEscape(vendorReason) + "</p>"
+                : "";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              We can't make your requested delivery slot
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Unfortunately the seller is unable to deliver order <strong>%s</strong> on your requested date.
+            </p>
+            <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.06em;
+                         text-transform:uppercase;color:#F87171;">Requested delivery date</p>
+              <p style="margin:6px 0 0 0;font-size:16px;color:#0F172A;font-weight:600;line-height:1.4;">%s</p>
+              %s
+            </div>
+            <p style="margin:16px 0 0 0;font-size:14px;color:#475569;line-height:1.7;">
+              No action is required — your order will still be delivered as soon as possible. You can request a
+              new preferred slot from your order page at any time.
+            </p>
+            """.formatted(orderRef, dateLabel, reasonLine);
+        sendMimeMessage(toEmail, "Update on your delivery slot for " + orderRef + " — ShopWave",
+                wrapInShell("Delivery Slot", body));
     }
 
     private void sendBackInStockEmail(String toEmail, String firstName,

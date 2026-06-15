@@ -108,6 +108,8 @@ public class NotificationDispatchWorker {
             case NotificationEvent.OrderDelivered e -> e.userId();
             case NotificationEvent.OrderCancelled e -> e.userId();
             case NotificationEvent.BackInStock e    -> e.userId();
+            case NotificationEvent.DeliverySlotConfirmed e   -> e.userId();
+            case NotificationEvent.DeliverySlotUnavailable e -> e.userId();
         };
     }
 
@@ -117,6 +119,8 @@ public class NotificationDispatchWorker {
             case NotificationEvent.OrderDelivered e -> "Your order has been delivered";
             case NotificationEvent.OrderCancelled e -> "Order cancelled";
             case NotificationEvent.BackInStock e    -> e.productName() + " is back in stock";
+            case NotificationEvent.DeliverySlotConfirmed e   -> "Delivery slot confirmed";
+            case NotificationEvent.DeliverySlotUnavailable e -> "Delivery slot unavailable";
         };
     }
 
@@ -135,6 +139,12 @@ public class NotificationDispatchWorker {
                 e.productName()
                     + (e.variantTitle() != null ? " (" + e.variantTitle() + ")" : "")
                     + " is now available. Shop now: " + e.productUrl();
+            case NotificationEvent.DeliverySlotConfirmed e ->
+                "Hi " + e.firstName() + ", the seller confirmed your requested delivery slot"
+                    + (e.date() != null ? " for " + e.date() : "") + ".";
+            case NotificationEvent.DeliverySlotUnavailable e ->
+                "Hi " + e.firstName() + ", the seller can't make your requested delivery slot."
+                    + (e.reason() != null && !e.reason().isBlank() ? " Reason: " + e.reason() : "");
         };
     }
 }

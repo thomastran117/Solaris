@@ -131,4 +131,17 @@ public interface EmailService {
 
     void sendPriceDropEmail(String toEmail, UUID userId, String productName,
                             String productUrl, int oldPriceCents, int newPriceCents);
+
+    /**
+     * Notifies the customer that the vendor cannot fulfil their requested delivery slot.
+     * Sent asynchronously with exponential backoff retries.
+     *
+     * @param userId         the customer's user ID
+     * @param recipientEmail the customer's email address
+     * @param orderReference short, human-readable order reference (e.g. first 8 chars of the order ID)
+     * @param requestedDate  the delivery date the customer had requested
+     * @param vendorReason   optional vendor-supplied reason; may be null
+     */
+    void sendDeliverySlotUnavailableEmail(UUID userId, String recipientEmail, String orderReference,
+                                          java.time.LocalDate requestedDate, String vendorReason);
 }
