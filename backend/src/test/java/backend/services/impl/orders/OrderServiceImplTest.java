@@ -87,8 +87,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import backend.dtos.requests.order.MarkSlotUnavailableRequest;
+import backend.dtos.requests.order.SetDeliverySlotRequest;
+import backend.events.notification.NotificationEvent;
+import backend.models.enums.DeliverySlotStatus;
+import backend.models.enums.DeliveryWindow;
+
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -153,6 +160,8 @@ class OrderServiceImplTest {
     private InventoryAdjustmentRepository adjustmentRepository;
     private MarketplaceVendorRepository   marketplaceVendorRepository;
     private SubOrderRepository            subOrderRepository;
+    private EmailService                  emailService;
+    private backend.kafka.producers.NotificationEventPublisher notificationEventPublisher;
     private OrderServiceImpl service;
 
     @BeforeEach
@@ -184,6 +193,8 @@ class OrderServiceImplTest {
         marketplaceVendorRepository = mock(MarketplaceVendorRepository.class);
         subOrderRepository = mock(SubOrderRepository.class);
         locationRepository       = mock(InventoryLocationRepository.class);
+        emailService             = mock(EmailService.class);
+        notificationEventPublisher = mock(backend.kafka.producers.NotificationEventPublisher.class);
 
         service = new OrderServiceImpl(
                 orderRepository,
@@ -206,7 +217,7 @@ class OrderServiceImplTest {
                 paymentService,
                 cacheService,
                 mock(StockAlertService.class),
-                mock(EmailService.class),
+                emailService,
                 mock(AllocationService.class),
                 riskEngine,
                 riskAssessmentRepository,
@@ -229,6 +240,7 @@ class OrderServiceImplTest {
 
         service.setOrderStatusHistoryRepository(mock(OrderStatusHistoryRepository.class));
         service.setEventPublisher(mock(org.springframework.context.ApplicationEventPublisher.class));
+        service.setNotificationEventPublisher(notificationEventPublisher);
     }
 
     @Test
@@ -287,7 +299,7 @@ class OrderServiceImplTest {
         when(orderRepository.findAllByProductCompanyId(eq(COMPANY_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(mixedCompanyOrder())));
 
-        PagedResponse<CompanyOrderResponse> response = service.getCompanyOrders(COMPANY_ID, USER_ID, null, 0, 99);
+        PagedResponse<CompanyOrderResponse> response = service.getCompanyOrders(COMPANY_ID, USER_ID, null, null, 0, 99);
 
         assertEquals(1, response.getItems().size());
         CompanyOrderResponse order = response.getItems().get(0);
@@ -307,6 +319,117 @@ class OrderServiceImplTest {
         assertEquals(ORDER_ID, response.orderId());
         assertEquals(new BigDecimal("10.00"), response.companyItemsTotal());
         assertEquals("USD", response.currency());
+    }
+
+    // -------------------------------------------------------------------------
+    // Scheduled delivery slot (Feature 06)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void shouldThrowBadRequestWhenDeliveryDateInPast() {
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order()));
+        SetDeliverySlotRequest req = slotRequest(LocalDate.now().minusDays(1), DeliveryWindow.MORNING);
+
+        assertThrows(BadRequestException.class, () -> service.requestSlot(ORDER_ID, USER_ID, req));
+    }
+
+    @Test
+    void shouldThrowBadRequestWhenDeliveryDateBeyond14Days() {
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order()));
+        SetDeliverySlotRequest req = slotRequest(LocalDate.now().plusDays(15), DeliveryWindow.AFTERNOON);
+
+        assertThrows(BadRequestException.class, () -> service.requestSlot(ORDER_ID, USER_ID, req));
+    }
+
+    @Test
+    void shouldThrowBadRequestWhenSlotRequestedOnPickupOrder() {
+        Order order = order();
+        order.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        SetDeliverySlotRequest req = slotRequest(LocalDate.now().plusDays(2), DeliveryWindow.MORNING);
+
+        assertThrows(BadRequestException.class, () -> service.requestSlot(ORDER_ID, USER_ID, req));
+    }
+
+    @Test
+    void shouldSetSlotStatusRequestedWhenValid() {
+        Order order = order();
+        when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        LocalDate date = LocalDate.now().plusDays(3);
+        SetDeliverySlotRequest req = slotRequest(date, DeliveryWindow.EVENING);
+
+        OrderResponse response = service.requestSlot(ORDER_ID, USER_ID, req);
+
+        assertEquals(DeliverySlotStatus.REQUESTED, order.getDeliverySlotStatus());
+        assertEquals(date, order.getPreferredDeliveryDate());
+        assertEquals(DeliveryWindow.EVENING, order.getPreferredDeliveryWindow());
+        assertEquals("REQUESTED", response.getDeliverySlotStatus());
+    }
+
+    @Test
+    void shouldTransitionToConfirmedWhenVendorConfirms() {
+        Order order = order();
+        order.setDeliverySlotStatus(DeliverySlotStatus.REQUESTED);
+        order.setPreferredDeliveryDate(LocalDate.now().plusDays(4));
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmSlot(COMPANY_ID, ORDER_ID, USER_ID);
+
+        assertEquals(DeliverySlotStatus.CONFIRMED, order.getDeliverySlotStatus());
+        verify(notificationEventPublisher).publish(any(NotificationEvent.DeliverySlotConfirmed.class));
+    }
+
+    @Test
+    void shouldRejectConfirmingSlotOnMixedVendorOrder() {
+        // mixedCompanyOrder() contains items from COMPANY_ID and another company, so a single
+        // vendor must not be able to act on the order-level slot.
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(mixedCompanyOrder()));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.confirmSlot(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void shouldThrowBadRequestWhenConfirmingOrderWithoutSlot() {
+        Order order = order();
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(BadRequestException.class, () -> service.confirmSlot(COMPANY_ID, ORDER_ID, USER_ID));
+    }
+
+    @Test
+    void shouldTransitionToUnavailableAndSendEmailWhenVendorMarksUnavailable() {
+        Order order = order();
+        order.setDeliverySlotStatus(DeliverySlotStatus.REQUESTED);
+        order.setPreferredDeliveryDate(LocalDate.now().plusDays(5));
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        MarkSlotUnavailableRequest req = new MarkSlotUnavailableRequest();
+        req.setReason("Out of delivery zone");
+
+        service.markSlotUnavailable(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        assertEquals(DeliverySlotStatus.UNAVAILABLE, order.getDeliverySlotStatus());
+        verify(emailService).sendDeliverySlotUnavailableEmail(
+                eq(USER_ID), anyString(), anyString(), any(LocalDate.class), eq("Out of delivery zone"));
+        verify(notificationEventPublisher).publish(any(NotificationEvent.DeliverySlotUnavailable.class));
+    }
+
+    private SetDeliverySlotRequest slotRequest(LocalDate date, DeliveryWindow window) {
+        SetDeliverySlotRequest req = new SetDeliverySlotRequest();
+        req.setPreferredDeliveryDate(date);
+        req.setPreferredDeliveryWindow(window);
+        return req;
     }
 
     // -------------------------------------------------------------------------
