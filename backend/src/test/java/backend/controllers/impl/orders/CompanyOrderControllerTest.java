@@ -81,7 +81,7 @@ class CompanyOrderControllerTest {
     @Test
     void getCompanyOrders_returnsPagedResults() throws Exception {
         authenticateAs(USER_ID);
-        when(orderService.getCompanyOrders(COMPANY_ID, USER_ID, OrderStatus.PAID, 1, 10))
+        when(orderService.getCompanyOrders(COMPANY_ID, USER_ID, OrderStatus.PAID, null, 1, 10))
                 .thenReturn(new PagedResponse<>(new PageImpl<>(
                         List.of(companyOrderResponse()),
                         PageRequest.of(1, 10),
@@ -239,6 +239,10 @@ class CompanyOrderControllerTest {
                 null,
                 null,
                 null,
+                // scheduled delivery slot
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -312,6 +316,10 @@ class CompanyOrderControllerTest {
                 null,
                 BigDecimal.ZERO,
                 "DELIVERY",
+                null,
+                null,
+                // scheduled delivery slot
+                null,
                 null,
                 null,
                 null,

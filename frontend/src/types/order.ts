@@ -13,6 +13,16 @@ export type OrderStatus =
 
 export type FulfillmentMethod = "DELIVERY" | "PICKUP";
 
+export type DeliveryWindow = "MORNING" | "AFTERNOON" | "EVENING";
+
+export type DeliverySlotStatus = "REQUESTED" | "CONFIRMED" | "UNAVAILABLE";
+
+export const DELIVERY_WINDOWS: Record<DeliveryWindow, string> = {
+  MORNING: "Morning (8am–12pm)",
+  AFTERNOON: "Afternoon (12pm–5pm)",
+  EVENING: "Evening (5pm–9pm)",
+};
+
 export type FulfillmentStatus =
   | "PENDING"
   | "BACKORDERED"
@@ -94,6 +104,9 @@ export interface Order {
   shipPhoneNumber: string | null;
   pickupLocationName: string | null;
   pickupReadyAt: string | null;
+  preferredDeliveryDate: string | null;
+  preferredDeliveryWindow: DeliveryWindow | null;
+  deliverySlotStatus: DeliverySlotStatus | null;
   couponCode: string | null;
   couponDiscountAmount: number;
   refundedAmountCents: number;
@@ -117,6 +130,9 @@ export interface CompanyOrder {
   pickupLocationId: string | null;
   pickupLocationName: string | null;
   pickupReadyAt: string | null;
+  preferredDeliveryDate: string | null;
+  preferredDeliveryWindow: DeliveryWindow | null;
+  deliverySlotStatus: DeliverySlotStatus | null;
   shipRecipientName: string | null;
   shipStreet: string | null;
   shipStreet2: string | null;

@@ -65,6 +65,14 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId AND o.status = :status")
     Page<Order> findAllByProductCompanyIdAndStatus(@Param("companyId") java.util.UUID companyId, @Param("status") OrderStatus status, Pageable pageable);
 
+    /** Fulfillment queue filtered by requested delivery date (scheduled-delivery feature). */
+    @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId AND o.preferredDeliveryDate = :date")
+    Page<Order> findAllByProductCompanyIdAndPreferredDeliveryDate(@Param("companyId") java.util.UUID companyId, @Param("date") java.time.LocalDate date, Pageable pageable);
+
+    /** Fulfillment queue filtered by both status and requested delivery date. */
+    @Query("SELECT DISTINCT o FROM Order o JOIN o.items oi WHERE oi.product.company.id = :companyId AND o.status = :status AND o.preferredDeliveryDate = :date")
+    Page<Order> findAllByProductCompanyIdAndStatusAndPreferredDeliveryDate(@Param("companyId") java.util.UUID companyId, @Param("status") OrderStatus status, @Param("date") java.time.LocalDate date, Pageable pageable);
+
     @Query("SELECT o FROM Order o JOIN o.items oi WHERE o.id = :orderId AND oi.product.company.id = :companyId")
     Optional<Order> findByIdAndProductCompanyId(@Param("orderId") java.util.UUID orderId, @Param("companyId") java.util.UUID companyId);
 

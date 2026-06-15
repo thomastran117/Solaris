@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.requests.order.CreateOrderRequest;
+import backend.dtos.requests.order.SetDeliverySlotRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.order.OrderStatusHistoryResponse;
@@ -64,6 +65,10 @@ public class OrderController {
     /** Per-user cap on order creation — guards payment-intent quota and DB connections from a runaway client. */
     private static final int ORDER_CREATE_LIMIT = 10;
     private static final int ORDER_CREATE_WINDOW_SECONDS = 60;
+
+    /** Per-user cap on delivery-slot updates — each call writes the order + a history row, so cap churn. */
+    private static final int DELIVERY_SLOT_LIMIT = 20;
+    private static final int DELIVERY_SLOT_WINDOW_SECONDS = 60;
 
     private final OrderService orderService;
     private final PaymentService paymentService;
@@ -219,6 +224,25 @@ public class OrderController {
         try {
             UUID userId = resolveUserId();
             return ResponseEntity.ok(orderService.cancelOrder(id, userId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{id}/delivery-slot")
+    @RequireAuth
+    public ResponseEntity<OrderResponse> setDeliverySlot(
+            @PathVariable UUID id,
+            @Valid @RequestBody SetDeliverySlotRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            // Cap slot churn per user — each call persists the order and a history row.
+            // Fails open on Redis errors (same posture as order creation).
+            rateLimitService.enforce("order:slot", userId.toString(),
+                    DELIVERY_SLOT_LIMIT, DELIVERY_SLOT_WINDOW_SECONDS);
+            return ResponseEntity.ok(orderService.requestSlot(id, userId, request));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

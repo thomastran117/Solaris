@@ -118,6 +118,14 @@ public class EmailServiceImpl implements EmailService {
                 oldPriceCents, newPriceCents));
     }
 
+    @Override
+    public void sendDeliverySlotUnavailableEmail(java.util.UUID userId, String recipientEmail,
+                                                 String orderReference, java.time.LocalDate requestedDate,
+                                                 String vendorReason) {
+        publish(new EmailEvent.DeliverySlotUnavailableEmail(userId, recipientEmail, orderReference,
+                requestedDate, vendorReason));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

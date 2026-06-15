@@ -8,6 +8,7 @@ import SectionGlow from "../../components/section/SectionGlow";
 import SectionFade from "../../components/section/SectionFade";
 import OrderStatusTimeline from "../../components/order/OrderStatusTimeline";
 import FulfillmentActionBar from "../../components/order/FulfillmentActionBar";
+import DeliverySlotVendorPanel from "../../components/order/DeliverySlotVendorPanel";
 import PickupPanel from "../../components/order/PickupPanel";
 import { companyOrdersApi } from "../../api/companyOrders";
 import type { RootState } from "../../stores";
@@ -76,6 +77,13 @@ export default function CompanyOrderDetailPage() {
             <motion.div variants={fadeInUp}>
               <FulfillmentActionBar order={order} companyId={companyId!} onRefresh={refetch} />
             </motion.div>
+
+            {/* Delivery slot (DELIVERY orders with a requested slot) */}
+            {order.fulfillmentMethod === "DELIVERY" && order.deliverySlotStatus && (
+              <motion.div variants={fadeInUp}>
+                <DeliverySlotVendorPanel order={order} companyId={companyId!} onRefresh={refetch} />
+              </motion.div>
+            )}
 
             {/* Status timeline */}
             <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">

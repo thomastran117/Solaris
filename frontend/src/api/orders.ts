@@ -1,5 +1,5 @@
 import api from "../api";
-import type { DriverLocation, Order, OrderStatusHistoryEntry, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
+import type { DeliveryWindow, DriverLocation, Order, OrderStatusHistoryEntry, PagedOrders, TrackingEvent, OrderStatus } from "../types/order";
 
 export interface ShipOrderRequest {
   trackingNumber: string;
@@ -30,6 +30,11 @@ export const ordersApi = {
 
   cancel: (orderId: string) =>
     api.post<Order>(`/orders/${orderId}/cancel`),
+
+  setDeliverySlot: (
+    orderId: string,
+    body: { preferredDeliveryDate: string; preferredDeliveryWindow: DeliveryWindow },
+  ) => api.patch<Order>(`/orders/${orderId}/delivery-slot`, body),
 
   reorder: (orderId: string) =>
     api.post<Order>(`/orders/${orderId}/reorder`),

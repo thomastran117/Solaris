@@ -52,8 +52,11 @@ import backend.models.core.PromotionRedemption;
 import backend.models.core.PromotionRule;
 import backend.models.core.RiskAssessment;
 import backend.models.core.RiskReview;
+import backend.dtos.requests.order.MarkSlotUnavailableRequest;
 import backend.dtos.requests.order.ReturnOrderRequest;
+import backend.dtos.requests.order.SetDeliverySlotRequest;
 import backend.dtos.requests.order.ShipOrderRequest;
+import backend.models.enums.DeliverySlotStatus;
 import backend.models.enums.AdjustmentReason;
 import backend.models.enums.CompensationStatus;
 import backend.models.enums.CompensationType;
@@ -152,6 +155,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -2613,11 +2617,29 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status, int page, int size) {
+    public PagedResponse<CompanyOrderResponse> getCompanyOrders(UUID companyId, UUID ownerId, OrderStatus status,
+                                                                java.time.LocalDate deliveryDate, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
 
         if (size > 50) size = 50;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        // When filtering the fulfillment queue by requested delivery date, surface orders in date
+        // order (earliest slot first); otherwise keep the default newest-first ordering.
+        Sort sort = deliveryDate != null
+                ? Sort.by(Sort.Direction.ASC, "preferredDeliveryDate")
+                : Sort.by(Sort.Direction.DESC, "createdAt");
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        if (deliveryDate != null) {
+            if (status != null) {
+                return new PagedResponse<>(
+                        orderRepository.findAllByProductCompanyIdAndStatusAndPreferredDeliveryDate(companyId, status, deliveryDate, pageable)
+                                .map(o -> toCompanyOrderResponse(o, companyId)));
+            }
+            return new PagedResponse<>(
+                    orderRepository.findAllByProductCompanyIdAndPreferredDeliveryDate(companyId, deliveryDate, pageable)
+                            .map(o -> toCompanyOrderResponse(o, companyId)));
+        }
 
         if (status != null) {
             return new PagedResponse<>(
@@ -2637,6 +2659,130 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
         return toCompanyOrderResponse(order, companyId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Scheduled delivery slot (Feature 06)
+    // -------------------------------------------------------------------------
+
+    /** Allowed lead time for a requested delivery slot, measured from "today" (server clock). */
+    private static final int DELIVERY_SLOT_MAX_DAYS_AHEAD = 14;
+
+    @Override
+    @Transactional
+    @RetryOnConcurrency
+    public OrderResponse requestSlot(UUID orderId, UUID userId, SetDeliverySlotRequest request) {
+        Order order = orderRepository.findByIdAndUserId(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+        if (order.getFulfillmentMethod() == FulfillmentMethod.PICKUP) {
+            throw new BadRequestException("Delivery slots are not available for pickup orders");
+        }
+        if (order.getStatus() != OrderStatus.RESERVED && order.getStatus() != OrderStatus.PAID) {
+            throw new BadRequestException("A delivery slot can only be set while the order is reserved or paid");
+        }
+
+        LocalDate date = request.getPreferredDeliveryDate();
+        // Resolve "today" in UTC so the allowed range matches the UTC-based bounds the
+        // frontend date picker enforces — avoids a picker offering a date the server then
+        // rejects (and vice-versa) when the JVM/browser timezones differ.
+        LocalDate today = LocalDate.now(java.time.ZoneOffset.UTC);
+        if (date.isBefore(today.plusDays(1)) || date.isAfter(today.plusDays(DELIVERY_SLOT_MAX_DAYS_AHEAD))) {
+            throw new BadRequestException("Delivery date must be between tomorrow and "
+                    + DELIVERY_SLOT_MAX_DAYS_AHEAD + " days from today");
+        }
+
+        order.setPreferredDeliveryDate(date);
+        order.setPreferredDeliveryWindow(request.getPreferredDeliveryWindow());
+        order.setDeliverySlotStatus(DeliverySlotStatus.REQUESTED);
+        Order saved = orderRepository.save(order);
+
+        String window = saved.getPreferredDeliveryWindow() != null
+                ? " (" + saved.getPreferredDeliveryWindow().name() + ")" : "";
+        String note = "Delivery slot requested for " + date + window;
+        recordHistory(saved, OrderHistoryEventType.NOTE, userId, note);
+        publishSseEvent(saved, note, "delivery_slot");
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    @RetryOnConcurrency
+    public CompanyOrderResponse confirmSlot(UUID companyId, UUID orderId, UUID ownerId) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
+
+        Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+        // The slot is an order-level delivery preference; a single vendor must not act on it
+        // for an order that also contains another vendor's items. Mirrors the cancel/return guard.
+        requireExclusiveCompanyOrder(order, orderId, companyId);
+
+        DeliverySlotStatus current = order.getDeliverySlotStatus();
+        if (current == null) {
+            throw new BadRequestException("This order has no requested delivery slot");
+        }
+        // Only a still-REQUESTED slot may be confirmed. Rejecting other states stops a stale
+        // or duplicate PATCH from flipping a CONFIRMED/UNAVAILABLE slot and re-notifying the customer.
+        if (current != DeliverySlotStatus.REQUESTED) {
+            throw new ConflictException("Delivery slot is already " + current.name().toLowerCase()
+                    + " and can no longer be confirmed");
+        }
+
+        order.setDeliverySlotStatus(DeliverySlotStatus.CONFIRMED);
+        Order saved = orderRepository.save(order);
+
+        String note = "Delivery slot confirmed for " + saved.getPreferredDeliveryDate();
+        recordHistory(saved, OrderHistoryEventType.NOTE, ownerId, note);
+        publishSseEvent(saved, note, "delivery_slot");
+        if (notificationEventPublisher != null) {
+            notificationEventPublisher.publish(new NotificationEvent.DeliverySlotConfirmed(
+                    saved.getUser().getId(), saved.getId(), saved.getUser().getFirstName(),
+                    saved.getPreferredDeliveryDate()));
+        }
+        return toCompanyOrderResponse(saved, companyId);
+    }
+
+    @Override
+    @Transactional
+    @RetryOnConcurrency
+    public CompanyOrderResponse markSlotUnavailable(UUID companyId, UUID orderId, UUID ownerId,
+                                                    MarkSlotUnavailableRequest request) {
+        companyAccessService.require(companyId, ownerId, CompanyCapability.FULFILL_ORDERS);
+
+        Order order = orderRepository.findByIdAndProductCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+        requireExclusiveCompanyOrder(order, orderId, companyId);
+
+        DeliverySlotStatus current = order.getDeliverySlotStatus();
+        if (current == null) {
+            throw new BadRequestException("This order has no requested delivery slot");
+        }
+        // Idempotent: a retried request or a stale modal submitted after the slot was already
+        // marked unavailable must return cleanly without sending the customer another email/push.
+        if (current == DeliverySlotStatus.UNAVAILABLE) {
+            return toCompanyOrderResponse(order, companyId);
+        }
+
+        String reason = request != null ? request.getReason() : null;
+        order.setDeliverySlotStatus(DeliverySlotStatus.UNAVAILABLE);
+        Order saved = orderRepository.save(order);
+
+        String note = "Delivery slot marked unavailable"
+                + (reason != null && !reason.isBlank() ? ": " + reason : "");
+        recordHistory(saved, OrderHistoryEventType.NOTE, ownerId, note);
+        publishSseEvent(saved, note, "delivery_slot");
+
+        String orderReference = "#" + saved.getId().toString().substring(0, 8).toUpperCase();
+        emailService.sendDeliverySlotUnavailableEmail(
+                saved.getUser().getId(), saved.getUser().getEmail(), orderReference,
+                saved.getPreferredDeliveryDate(), reason);
+        if (notificationEventPublisher != null) {
+            notificationEventPublisher.publish(new NotificationEvent.DeliverySlotUnavailable(
+                    saved.getUser().getId(), saved.getId(), saved.getUser().getFirstName(), reason));
+        }
+        return toCompanyOrderResponse(saved, companyId);
     }
 
     private CompanyOrderResponse toCompanyOrderResponse(Order order, UUID companyId) {
@@ -2665,6 +2811,9 @@ public class OrderServiceImpl implements OrderService {
                 order.getPickupLocation() != null ? order.getPickupLocation().getId() : null,
                 order.getPickupLocationName(),
                 order.getPickupReadyAt(),
+                order.getPreferredDeliveryDate(),
+                order.getPreferredDeliveryWindow() != null ? order.getPreferredDeliveryWindow().name() : null,
+                order.getDeliverySlotStatus() != null ? order.getDeliverySlotStatus().name() : null,
                 order.getShipRecipientName(),
                 order.getShipStreet(),
                 order.getShipStreet2(),
@@ -2703,6 +2852,9 @@ public class OrderServiceImpl implements OrderService {
                 order.getFulfillmentMethod() != null ? order.getFulfillmentMethod().name() : FulfillmentMethod.DELIVERY.name(),
                 order.getPickupLocationName(),
                 order.getPickupReadyAt(),
+                order.getPreferredDeliveryDate(),
+                order.getPreferredDeliveryWindow() != null ? order.getPreferredDeliveryWindow().name() : null,
+                order.getDeliverySlotStatus() != null ? order.getDeliverySlotStatus().name() : null,
                 order.getShipRecipientName(),
                 order.getShipStreet(),
                 order.getShipStreet2(),

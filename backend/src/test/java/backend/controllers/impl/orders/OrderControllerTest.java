@@ -331,6 +331,10 @@ class OrderControllerTest {
                 "DELIVERY",
                 null,
                 null,
+                // scheduled delivery slot
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

@@ -11,6 +11,7 @@ import OrderStatusHistoryTimeline from "../components/order/OrderStatusHistoryTi
 import TrackingPanel from "../components/order/TrackingPanel";
 import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
+import DeliverySlotPanel from "../components/order/DeliverySlotPanel";
 import { ordersApi } from "../api/orders";
 import { useOrderStream } from "../hooks/useOrderStream";
 import { useAnims } from "../hooks/useAnims";
@@ -146,6 +147,13 @@ export default function OrderDetailPage() {
             {order.fulfillmentMethod === "PICKUP" && (
               <motion.div variants={fadeInUp}>
                 <PickupPanel order={order} />
+              </motion.div>
+            )}
+
+            {/* Scheduled delivery slot */}
+            {order.fulfillmentMethod === "DELIVERY" && (
+              <motion.div variants={fadeInUp}>
+                <DeliverySlotPanel order={order} />
               </motion.div>
             )}
 
