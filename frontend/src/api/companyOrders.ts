@@ -9,8 +9,10 @@ export interface ShipOrderRequest {
 }
 
 export const companyOrdersApi = {
-  list: (companyId: string, params?: { status?: OrderStatus; page?: number; size?: number }) =>
-    api.get<PagedCompanyOrders>(`/companies/${companyId}/orders`, { params }),
+  list: (
+    companyId: string,
+    params?: { status?: OrderStatus; deliveryDate?: string; page?: number; size?: number },
+  ) => api.get<PagedCompanyOrders>(`/companies/${companyId}/orders`, { params }),
 
   get: (companyId: string, orderId: string) =>
     api.get<CompanyOrder>(`/companies/${companyId}/orders/${orderId}`),
@@ -32,4 +34,10 @@ export const companyOrdersApi = {
 
   assignDriver: (companyId: string, orderId: string, driverUserId: string) =>
     api.post<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/assign-driver`, { driverUserId }),
+
+  confirmDeliverySlot: (companyId: string, orderId: string) =>
+    api.patch<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/delivery-slot/confirm`),
+
+  markDeliverySlotUnavailable: (companyId: string, orderId: string, data: { reason?: string }) =>
+    api.patch<CompanyOrder>(`/companies/${companyId}/orders/${orderId}/delivery-slot/unavailable`, data),
 };

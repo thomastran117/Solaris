@@ -28,11 +28,15 @@ export default function CompanyOrdersPage() {
   const navigate = useNavigate();
   const { companyId } = useSelector((state: RootState) => state.auth);
   const [activeTab, setActiveTab] = useState<OrderStatus | undefined>(undefined);
+  const [deliveryDate, setDeliveryDate] = useState<string>("");
   const [page, setPage] = useState(0);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["company-orders", companyId, { status: activeTab, page }],
-    queryFn: () => companyOrdersApi.list(companyId!, { status: activeTab, page, size: 20 }).then((r) => r.data),
+    queryKey: ["company-orders", companyId, { status: activeTab, deliveryDate, page }],
+    queryFn: () =>
+      companyOrdersApi
+        .list(companyId!, { status: activeTab, deliveryDate: deliveryDate || undefined, page, size: 20 })
+        .then((r) => r.data),
     enabled: !!companyId,
   });
 
@@ -62,6 +66,27 @@ export default function CompanyOrdersPage() {
                 {tab.label}
               </button>
             ))}
+          </motion.div>
+
+          <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-3">
+            <label htmlFor="deliveryDate" className="text-xs font-medium text-white/60">
+              Delivery date
+            </label>
+            <input
+              id="deliveryDate"
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => { setDeliveryDate(e.target.value); setPage(0); }}
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white focus:outline-none focus:border-white/20 transition-colors"
+            />
+            {deliveryDate && (
+              <button
+                onClick={() => { setDeliveryDate(""); setPage(0); }}
+                className="text-xs text-white/60 hover:text-white underline underline-offset-2 transition"
+              >
+                Clear
+              </button>
+            )}
           </motion.div>
 
           {isLoading ? (

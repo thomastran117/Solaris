@@ -69,6 +69,14 @@ export function useOrderStream(orderId: string | undefined): {
           return;
         }
 
+        if (msg.event === "delivery_slot") {
+          // A vendor confirmed or rejected the requested slot — refetch the order so
+          // the customer sees the new deliverySlotStatus, plus the history entry.
+          qc.invalidateQueries({ queryKey: ["order", orderId] });
+          qc.invalidateQueries({ queryKey: ["order-history", orderId] });
+          return;
+        }
+
         if (msg.event === "driver_checkpoint") {
           qc.invalidateQueries({ queryKey: ["order-history", orderId] });
           return;
