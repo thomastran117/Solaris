@@ -237,6 +237,45 @@ class DeliverySlotIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.deliverySlotStatus").value("UNAVAILABLE"));
     }
 
+    @Test
+    void shouldReturn409WhenConfirmingAnAlreadyUnavailableSlot() throws Exception {
+        User owner = createActiveUser("slot-confirm-conflict-owner@example.com", "Password1!");
+        User customer = createActiveUser("slot-confirm-conflict-cust@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        Product product = createProduct(company);
+        Order order = createOrder(customer, product, OrderStatus.PAID, FulfillmentMethod.DELIVERY);
+        order.setPreferredDeliveryDate(LocalDate.now().plusDays(4));
+        order.setDeliverySlotStatus(DeliverySlotStatus.UNAVAILABLE);
+        orderRepository.save(order);
+
+        mockMvc.perform(patch("/companies/{cid}/orders/{oid}/delivery-slot/confirm", company.getId(), order.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldBeIdempotentWhenMarkingAnAlreadyUnavailableSlot() throws Exception {
+        User owner = createActiveUser("slot-unavail-idem-owner@example.com", "Password1!");
+        User customer = createActiveUser("slot-unavail-idem-cust@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        Product product = createProduct(company);
+        Order order = createOrder(customer, product, OrderStatus.PAID, FulfillmentMethod.DELIVERY);
+        order.setPreferredDeliveryDate(LocalDate.now().plusDays(4));
+        order.setDeliverySlotStatus(DeliverySlotStatus.UNAVAILABLE);
+        orderRepository.save(order);
+
+        mockMvc.perform(patch("/companies/{cid}/orders/{oid}/delivery-slot/unavailable", company.getId(), order.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"retry\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deliverySlotStatus").value("UNAVAILABLE"));
+    }
+
     // ── GET /companies/{companyId}/orders?deliveryDate= ───────────────────────
 
     @Test

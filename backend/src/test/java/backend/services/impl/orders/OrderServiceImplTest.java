@@ -396,6 +396,38 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void shouldRejectConfirmingSlotThatIsNotRequested() {
+        Order order = order();
+        order.setDeliverySlotStatus(DeliverySlotStatus.UNAVAILABLE);
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+
+        assertThrows(ConflictException.class, () -> service.confirmSlot(COMPANY_ID, ORDER_ID, USER_ID));
+        verify(notificationEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    void shouldBeIdempotentWhenMarkingAlreadyUnavailableSlot() {
+        Order order = order();
+        order.setDeliverySlotStatus(DeliverySlotStatus.UNAVAILABLE);
+        order.setPreferredDeliveryDate(LocalDate.now().plusDays(5));
+        when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))
+                .thenReturn(company(COMPANY_ID));
+        when(orderRepository.findByIdAndProductCompanyId(ORDER_ID, COMPANY_ID)).thenReturn(Optional.of(order));
+        MarkSlotUnavailableRequest req = new MarkSlotUnavailableRequest();
+        req.setReason("retry");
+
+        CompanyOrderResponse response = service.markSlotUnavailable(COMPANY_ID, ORDER_ID, USER_ID, req);
+
+        assertEquals("UNAVAILABLE", response.deliverySlotStatus());
+        // No re-notification and no second write on a stale/retried request.
+        verify(emailService, never()).sendDeliverySlotUnavailableEmail(any(), any(), any(), any(), any());
+        verify(notificationEventPublisher, never()).publish(any());
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
     void shouldThrowBadRequestWhenConfirmingOrderWithoutSlot() {
         Order order = order();
         when(companyAccessService.require(COMPANY_ID, USER_ID, backend.models.enums.CompanyCapability.FULFILL_ORDERS))

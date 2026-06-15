@@ -2715,8 +2715,15 @@ public class OrderServiceImpl implements OrderService {
         // for an order that also contains another vendor's items. Mirrors the cancel/return guard.
         requireExclusiveCompanyOrder(order, orderId, companyId);
 
-        if (order.getDeliverySlotStatus() == null) {
+        DeliverySlotStatus current = order.getDeliverySlotStatus();
+        if (current == null) {
             throw new BadRequestException("This order has no requested delivery slot");
+        }
+        // Only a still-REQUESTED slot may be confirmed. Rejecting other states stops a stale
+        // or duplicate PATCH from flipping a CONFIRMED/UNAVAILABLE slot and re-notifying the customer.
+        if (current != DeliverySlotStatus.REQUESTED) {
+            throw new ConflictException("Delivery slot is already " + current.name().toLowerCase()
+                    + " and can no longer be confirmed");
         }
 
         order.setDeliverySlotStatus(DeliverySlotStatus.CONFIRMED);
@@ -2745,8 +2752,14 @@ public class OrderServiceImpl implements OrderService {
 
         requireExclusiveCompanyOrder(order, orderId, companyId);
 
-        if (order.getDeliverySlotStatus() == null) {
+        DeliverySlotStatus current = order.getDeliverySlotStatus();
+        if (current == null) {
             throw new BadRequestException("This order has no requested delivery slot");
+        }
+        // Idempotent: a retried request or a stale modal submitted after the slot was already
+        // marked unavailable must return cleanly without sending the customer another email/push.
+        if (current == DeliverySlotStatus.UNAVAILABLE) {
+            return toCompanyOrderResponse(order, companyId);
         }
 
         String reason = request != null ? request.getReason() : null;
