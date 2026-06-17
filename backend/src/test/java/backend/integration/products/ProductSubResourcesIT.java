@@ -795,32 +795,6 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                 .andExpect(status().isBadRequest());
     }
 
-    // ── GET /compare ──────────────────────────────────────────────────────────
-
-    @Test
-    void compareProducts_returns200WithRequestedProducts() throws Exception {
-        User owner = createActiveUser("sub-compare@example.com", "Password1!");
-        Company company = createCompany(owner);
-        Product p1 = createProduct(company, "Compare A");
-        Product p2 = createProduct(company, "Compare B");
-
-        mockMvc.perform(get("/companies/{cId}/products/compare", company.getId())
-                        .param("ids", p1.getId().toString())
-                        .param("ids", p2.getId().toString())
-                        .header("User-Agent", TEST_USER_AGENT))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(2)));
-    }
-
-    @Test
-    void compareProducts_returns404ForUnknownCompany() throws Exception {
-        mockMvc.perform(get("/companies/{cId}/products/compare", UUID.randomUUID())
-                        .param("ids", UUID.randomUUID().toString())
-                        .param("ids", UUID.randomUUID().toString())
-                        .header("User-Agent", TEST_USER_AGENT))
-                .andExpect(status().isNotFound());
-    }
-
     // ── POST /reindex ─────────────────────────────────────────────────────────
 
     @Test

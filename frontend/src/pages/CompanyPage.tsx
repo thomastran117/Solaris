@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag, Users, Bell, BellOff, Megaphone } from "lucide-react";
+import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag, Users, Bell, BellOff, Megaphone, GitCompareArrows } from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { companiesApi } from "../api/companies";
 import { followApi, announcementsApi } from "../api/follow";
@@ -236,6 +236,13 @@ export default function CompanyPage() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                <Link
+                  to={`/c/${companyId}/compare`}
+                  className="inline-flex items-center gap-1.5 text-sm border border-white/20 rounded-full px-4 py-1.5 text-white/70 hover:bg-white/[0.06] transition-colors"
+                >
+                  <GitCompareArrows className="w-4 h-4" />
+                  Compare
+                </Link>
                 {accessToken && followStatus.data?.following && (
                   <button
                     type="button"

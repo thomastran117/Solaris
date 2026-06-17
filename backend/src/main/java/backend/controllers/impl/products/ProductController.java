@@ -624,21 +624,6 @@ public class ProductController {
         }
     }
 
-    // --- Compare ---
-
-    @GetMapping("/compare")
-    public ResponseEntity<List<ProductResponse>> compareProducts(
-            @PathVariable UUID companyId,
-            @RequestParam @jakarta.validation.constraints.Size(max = 50, message = "Cannot compare more than 50 products at once") List<UUID> ids) {
-        try {
-            return ResponseEntity.ok(productService.compareProducts(companyId, ids));
-        } catch (AppHttpException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new InternalServerErrorException();
-        }
-    }
-
     @GetMapping("/{productId}/history")
     @RequireAuth
     public ResponseEntity<PagedResponse<ProductHistoryEntryResponse>> getProductHistory(
