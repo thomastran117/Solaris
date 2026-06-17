@@ -5,12 +5,14 @@ import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.product.CatalogSearchResponse;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
+import backend.dtos.responses.product.ProductComparisonResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.products.ProductComparisonService;
 import backend.services.intf.products.ProductFeedService;
 import backend.services.intf.products.ProductService;
 
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 @Validated
 @RestController
@@ -35,14 +38,17 @@ public class MarketplaceCatalogController {
 
     private final ProductService productService;
     private final ProductFeedService productFeedService;
+    private final ProductComparisonService productComparisonService;
     private final ActivityEventPublisher activityEventPublisher;
 
     public MarketplaceCatalogController(
             ProductService productService,
             ProductFeedService productFeedService,
+            ProductComparisonService productComparisonService,
             ActivityEventPublisher activityEventPublisher) {
         this.productService = productService;
         this.productFeedService = productFeedService;
+        this.productComparisonService = productComparisonService;
         this.activityEventPublisher = activityEventPublisher;
     }
 
@@ -117,6 +123,19 @@ public class MarketplaceCatalogController {
             return ResponseEntity.ok(productService.searchMarketplaceCatalog(
                     marketplaceId, q, category, brand, minPrice, maxPrice,
                     featured, vendorId, page, size, sort, direction));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/products/compare")
+    public ResponseEntity<ProductComparisonResponse> compareProducts(
+            @PathVariable UUID marketplaceId,
+            @RequestParam @Size(min = 2, max = 4, message = "Comparison requires between 2 and 4 product IDs") List<UUID> ids) {
+        try {
+            return ResponseEntity.ok(productComparisonService.compare(marketplaceId, ids));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

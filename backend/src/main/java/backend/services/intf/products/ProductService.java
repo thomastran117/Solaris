@@ -120,9 +120,6 @@ public interface ProductService {
     ProductResponse updateProductMerchandising(UUID companyId, UUID productId, UUID ownerId,
                                                 UpdateProductMerchandisingRequest request);
 
-    /** Returns 2–4 products enriched with rating data for side-by-side comparison. */
-    List<ProductResponse> compareProducts(UUID companyId, List<UUID> ids);
-
     // -------------------------------------------------------------------------
     // Versioning / change history
     // -------------------------------------------------------------------------

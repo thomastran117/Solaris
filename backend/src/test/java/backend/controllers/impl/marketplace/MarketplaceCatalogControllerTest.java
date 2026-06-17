@@ -2,12 +2,16 @@ package backend.controllers.impl.marketplace;
 
 import backend.configurations.application.GlobalExceptionHandler;
 import backend.dtos.responses.product.CatalogSearchResponse;
+import backend.dtos.responses.product.ComparedProduct;
+import backend.dtos.responses.product.ComparisonRow;
 import backend.dtos.responses.product.MarketplaceCatalogProductResponse;
+import backend.dtos.responses.product.ProductComparisonResponse;
 import backend.dtos.responses.product.VendorStorefrontResponse;
 import backend.events.activity.ActivityType;
 import backend.events.activity.UserActivityEvent;
 import backend.dtos.responses.general.PagedResponse;
 import backend.services.intf.ActivityEventPublisher;
+import backend.services.intf.products.ProductComparisonService;
 import backend.services.intf.products.ProductFeedService;
 import backend.services.intf.products.ProductService;
 import backend.testutil.TestIds;
@@ -53,6 +57,7 @@ class MarketplaceCatalogControllerTest {
 
     private ProductService productService;
     private ProductFeedService productFeedService;
+    private ProductComparisonService productComparisonService;
     private ActivityEventPublisher activityEventPublisher;
     private MockMvc mockMvc;
 
@@ -60,10 +65,11 @@ class MarketplaceCatalogControllerTest {
     void setUp() {
         productService = mock(ProductService.class);
         productFeedService = mock(ProductFeedService.class);
+        productComparisonService = mock(ProductComparisonService.class);
         activityEventPublisher = mock(ActivityEventPublisher.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new MarketplaceCatalogController(productService, productFeedService, activityEventPublisher))
+                        new MarketplaceCatalogController(productService, productFeedService, productComparisonService, activityEventPublisher))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
                 .build();
@@ -201,6 +207,36 @@ class MarketplaceCatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.vendorId").value(VENDOR_ID.toString()))
                 .andExpect(jsonPath("$.featuredProducts[0].id").value(PRODUCT_ID.toString()));
+    }
+
+    // --- /products/compare ---
+
+    @Test
+    void compareProducts_returns200WithMatrix() throws Exception {
+        UUID p2 = TestIds.uuid(5);
+        ProductComparisonResponse response = new ProductComparisonResponse(
+                List.of(
+                        new ComparedProduct(PRODUCT_ID, "Desk", new BigDecimal("19.99"), "USD", 4.5, 12L, "IN_STOCK", null),
+                        new ComparedProduct(p2, "Chair", new BigDecimal("9.99"), "USD", null, 0L, "LOW_STOCK", null)),
+                List.of(new ComparisonRow("Material",
+                        java.util.Map.of(PRODUCT_ID, "Steel"))));
+        when(productComparisonService.compare(eq(MARKETPLACE_ID), any())).thenReturn(response);
+
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/products/compare")
+                        .param("ids", PRODUCT_ID + "," + p2))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.products[0].productId").value(PRODUCT_ID.toString()))
+                .andExpect(jsonPath("$.attributes[0].attributeName").value("Material"));
+    }
+
+    @Test
+    void compareProducts_serviceBadRequest_returns400() throws Exception {
+        when(productComparisonService.compare(eq(MARKETPLACE_ID), any()))
+                .thenThrow(new backend.exceptions.http.BadRequestException("Comparison requires between 2 and 4 product IDs"));
+
+        mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/products/compare")
+                        .param("ids", PRODUCT_ID.toString()))
+                .andExpect(status().isBadRequest());
     }
 
     // --- /feed ---

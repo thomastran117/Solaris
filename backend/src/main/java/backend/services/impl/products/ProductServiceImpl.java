@@ -2049,18 +2049,6 @@ public class ProductServiceImpl implements ProductService {
             List<ProductOptionResponse> options,
             List<ProductVariantResponse> variants,
             List<ProductAttributeResponse> attributes,
-            Double avgRating,
-            Long reviewCount,
-            ActivePromotionSummary activePromotion) {
-        return toResponseWithRating(product, images, options, variants, attributes, List.of(), avgRating, reviewCount, activePromotion);
-    }
-
-    private ProductResponse toResponseWithRating(
-            Product product,
-            List<ProductImageResponse> images,
-            List<ProductOptionResponse> options,
-            List<ProductVariantResponse> variants,
-            List<ProductAttributeResponse> attributes,
             List<ProductRelationshipResponse> relationships,
             Double avgRating,
             Long reviewCount,
@@ -2104,42 +2092,6 @@ public class ProductServiceImpl implements ProductService {
                 reviewCount,
                 activePromotion
         );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<ProductResponse> compareProducts(UUID companyId, List<UUID> ids) {
-        if (ids == null || ids.size() < 2 || ids.size() > 4) {
-            throw new BadRequestException("Comparison requires between 2 and 4 product IDs");
-        }
-        assertCompanyExists(companyId);
-        String sortedIds = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
-        String cacheKey = "products:compare:" + companyId + ":" + sortedIds;
-        return singleFlightCache.getOrLoad(cacheKey, cacheTtlShort, () -> {
-            // Public, unauthenticated endpoint — only compare ACTIVE + listed products, matching
-            // GET /products and GET /products/{id}. Non-public ids (draft/inactive/unlisted) are
-            // omitted so guessing an id can't disclose hidden product metadata.
-            List<Product> products = productRepository.findAllByIdInAndCompanyId(ids, companyId).stream()
-                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isListed())
-                    .toList();
-            if (products.isEmpty()) {
-                throw new ResourceNotFoundException("No products found for the given IDs in this company");
-            }
-            List<UUID> foundIds = products.stream().map(Product::getId).toList();
-            Map<UUID, double[]> ratingMap = buildRatingMap(foundIds);
-            Map<UUID, ActivePromotionSummary> promoMap = activePromotionLookupService.findForProducts(products);
-
-            return products.stream().map(p -> {
-                double[] stats = ratingMap.getOrDefault(p.getId(), new double[]{0.0, 0.0});
-                Double avgRating = stats[1] > 0 ? stats[0] : null;
-                Long reviewCount = (long) stats[1];
-                List<ProductImageResponse> images = p.getImages().stream().map(this::toImageResponse).toList();
-                List<ProductOptionResponse> options = p.getOptions().stream().map(this::toOptionResponse).toList();
-                List<ProductVariantResponse> variants = p.getVariants().stream().map(this::toVariantResponse).toList();
-                List<ProductAttributeResponse> attributes = p.getAttributes().stream().map(this::toAttrResponse).toList();
-                return toResponseWithRating(p, images, options, variants, attributes, avgRating, reviewCount, promoMap.get(p.getId()));
-            }).toList();
-        }, new TypeReference<List<ProductResponse>>() {});
     }
 
     private Map<UUID, double[]> buildRatingMap(List<UUID> productIds) {

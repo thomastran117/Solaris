@@ -66,6 +66,18 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
 
     List<Product> findAllByIdInAndMarketplaceId(Collection<java.util.UUID> ids, java.util.UUID marketplaceId);
 
+    /**
+     * Product comparison load: fetches the attribute rows (always rendered for every column) in a
+     * single query to avoid an N+1 per product. Images are intentionally NOT co-fetched — fetching
+     * two bag collections at once triggers Hibernate's MultipleBagFetchException, and images are only
+     * read as a thumbnail fallback, so they load lazily via {@code @BatchSize} in one batched query.
+     */
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.attributes "
+            + "WHERE p.id IN :ids AND p.marketplaceId = :marketplaceId")
+    List<Product> findAllByIdInAndMarketplaceIdWithAttributes(
+            @Param("ids") Collection<java.util.UUID> ids,
+            @Param("marketplaceId") java.util.UUID marketplaceId);
+
     // -------------------------------------------------------------------------
     // JOIN FETCH queries used by indexing workers to avoid LazyInitializationException
     // on p.getCompany().getName() outside a JPA session

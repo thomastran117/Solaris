@@ -10,6 +10,7 @@ import HelloTestPage from "./pages/HelloTestPage";
 import DashboardPage from "./pages/DashboardPage";
 import BrowsePage from "./pages/BrowsePage";
 import CompanyPage from "./pages/CompanyPage";
+import ComparisonPage from "./pages/ComparisonPage";
 import ProductPage from "./pages/ProductPage";
 import SavedListsPage from "./pages/SavedListsPage";
 import SavedListDetailPage from "./pages/SavedListDetailPage";
@@ -81,6 +82,7 @@ function App() {
             {/* Public routes */}
             <Route path="/browse" element={<BrowsePage />} />
             <Route path="/c/:id" element={<CompanyPage />} />
+            <Route path="/c/:id/compare" element={<ComparisonPage />} />
             <Route path="/products/:id" element={<ProductPage />} />
             <Route path="/lists/public/:slug" element={<PublicSavedListPage />} />
             <Route path="/collections/:slug" element={<CollectionPage />} />
