@@ -75,7 +75,7 @@ class ProductComparisonServiceTest {
         Product p2 = makeProduct(P2, "Beta");
         addAttribute(p2, "Material", "Aluminium", 0);
 
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(p1, p2));
 
         ProductComparisonResponse result = service.compare(MARKETPLACE_ID, List.of(P1, P2));
@@ -93,7 +93,7 @@ class ProductComparisonServiceTest {
         addAttribute(p1, "Material", "Steel", 0);
         Product p2 = makeProduct(P2, "Beta"); // no Material attribute
 
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(p1, p2));
 
         ProductComparisonResponse result = service.compare(MARKETPLACE_ID, List.of(P1, P2));
@@ -128,7 +128,7 @@ class ProductComparisonServiceTest {
     @Test
     void compare_idNotInMarketplace_throwsResourceNotFound() {
         Product p1 = makeProduct(P1, "Alpha");
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(p1)); // P2 absent
 
         assertThrows(ResourceNotFoundException.class,
@@ -140,7 +140,7 @@ class ProductComparisonServiceTest {
         Product active = makeProduct(P1, "Alpha");
         Product draft = makeProduct(P2, "Beta");
         draft.setStatus(ProductStatus.DRAFT);
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(active, draft));
 
         // The DRAFT product is filtered out, so id P2 is "not available" -> 404.
@@ -159,7 +159,7 @@ class ProductComparisonServiceTest {
         Product outOfStock = makeProduct(P3, "Gamma");
         outOfStock.setStock(0);
 
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(inStock, lowStock, outOfStock));
 
         ProductComparisonResponse result = service.compare(MARKETPLACE_ID, List.of(P1, P2, P3));
@@ -178,7 +178,7 @@ class ProductComparisonServiceTest {
     void compare_noReviews_ratingIsNullAndCountZero() {
         Product p1 = makeProduct(P1, "Alpha");
         Product p2 = makeProduct(P2, "Beta");
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(p1, p2));
 
         ProductComparisonResponse result = service.compare(MARKETPLACE_ID, List.of(P1, P2));
@@ -192,7 +192,7 @@ class ProductComparisonServiceTest {
     void compare_withReviews_populatesRatingAndCount() {
         Product p1 = makeProduct(P1, "Alpha");
         Product p2 = makeProduct(P2, "Beta");
-        when(productRepository.findAllByIdInAndMarketplaceId(any(), any()))
+        when(productRepository.findAllByIdInAndMarketplaceIdWithAttributes(any(), any()))
                 .thenReturn(List.of(p1, p2));
         when(productReviewRepository.findAverageRatingsByProductIds(any()))
                 .thenReturn(List.<Object[]>of(new Object[]{P1, 4.5, 12L}));

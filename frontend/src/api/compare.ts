@@ -25,7 +25,11 @@ export const compareApi = {
       params: { ids: ids.join(",") },
     }),
 
-  /** Public storefront bundle listing — drives the bundle search picker (client-side filter). */
+  /**
+   * Public storefront bundle listing — drives the bundle search picker (client-side filter).
+   * Capped at the backend's max page size (50); stores with more than 50 bundles will only
+   * surface the first page in the picker.
+   */
   listBundles: (companyId: string) =>
     api.get<BundlesPage>(`/companies/${companyId}/bundles`, {
       params: { size: 50 },

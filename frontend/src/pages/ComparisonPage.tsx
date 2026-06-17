@@ -8,6 +8,7 @@ import type { RootState } from "../stores";
 import { compareApi } from "../api/compare";
 import { catalogApi } from "../api/catalog";
 import { useAnims } from "../hooks/useAnims";
+import { useDebounce } from "../hooks/useDebounce";
 import type { CompareType } from "../types/comparison";
 import {
   ProductComparisonTable,
@@ -22,16 +23,6 @@ interface PickerResult {
   name: string;
   thumbnailUrl: string | null;
   subtitle: string;
-}
-
-// ---- useDebounce ----
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
 }
 
 // ======================================================================
@@ -215,6 +206,8 @@ export default function ComparisonPage() {
 
   const sortedIds = useMemo(() => [...selectedIds].sort(), [selectedIds]);
 
+  // Switching product/bundle mode resets the selection: product and bundle IDs are different
+  // entities, so carrying them across modes would produce invalid comparisons.
   const setType = (t: CompareType) => setSearchParams({ type: t });
 
   const addId = (newId: string) => {
@@ -397,7 +390,7 @@ export default function ComparisonPage() {
 
         {/* Tables */}
         {!isLoading && !fetchError && resultCount >= 2 && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          <motion.div variants={fadeInUp} initial="hidden" animate="visible">
             {type === "product" && matrix ? (
               <ProductComparisonTable matrix={matrix} onRemove={removeId} />
             ) : type === "bundle" && compareBundles ? (

@@ -1,6 +1,7 @@
 package backend.services.impl.products;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
         // Public, unauthenticated endpoint — only compare ACTIVE + marketplaceListed products,
         // matching the catalog search/detail endpoints. A requested id that isn't a publicly
         // listed product in this marketplace yields a 404 rather than silently dropping a column.
-        Map<UUID, Product> byId = productRepository.findAllByIdInAndMarketplaceId(requestedIds, marketplaceId).stream()
+        Map<UUID, Product> byId = productRepository.findAllByIdInAndMarketplaceIdWithAttributes(requestedIds, marketplaceId).stream()
                 .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isMarketplaceListed())
                 .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
 
@@ -189,7 +190,7 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
     }
 
     private Map<UUID, double[]> buildRatingMap(List<UUID> productIds) {
-        Map<UUID, double[]> map = new java.util.HashMap<>();
+        Map<UUID, double[]> map = new HashMap<>();
         try {
             List<Object[]> rows = productReviewRepository.findAverageRatingsByProductIds(productIds);
             for (Object[] row : rows) {
