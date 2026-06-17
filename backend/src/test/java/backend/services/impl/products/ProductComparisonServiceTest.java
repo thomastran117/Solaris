@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -46,6 +47,7 @@ class ProductComparisonServiceTest {
     private ProductRepository productRepository;
     private ProductReviewRepository productReviewRepository;
     private SingleFlightCache singleFlightCache;
+    private PlatformTransactionManager transactionManager;
     private ProductComparisonServiceImpl service;
 
     @BeforeEach
@@ -53,6 +55,7 @@ class ProductComparisonServiceTest {
         productRepository = mock(ProductRepository.class);
         productReviewRepository = mock(ProductReviewRepository.class);
         singleFlightCache = mock(SingleFlightCache.class);
+        transactionManager = mock(PlatformTransactionManager.class);
 
         // Bypass cache: execute the loader directly.
         doAnswer(inv -> ((Supplier<?>) inv.getArgument(2)).get())
@@ -61,7 +64,7 @@ class ProductComparisonServiceTest {
         when(productReviewRepository.findAverageRatingsByProductIds(any())).thenReturn(List.of());
 
         service = new ProductComparisonServiceImpl(
-                productRepository, productReviewRepository, singleFlightCache, 120);
+                productRepository, productReviewRepository, singleFlightCache, transactionManager, 120);
     }
 
     @Test

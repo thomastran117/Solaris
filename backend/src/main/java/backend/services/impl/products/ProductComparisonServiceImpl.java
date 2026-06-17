@@ -11,7 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -42,21 +43,27 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
     private final ProductRepository productRepository;
     private final ProductReviewRepository productReviewRepository;
     private final SingleFlightCache singleFlightCache;
+    private final TransactionTemplate txTemplate;
     private final long ttlSeconds;
 
     public ProductComparisonServiceImpl(
             ProductRepository productRepository,
             ProductReviewRepository productReviewRepository,
             SingleFlightCache singleFlightCache,
+            PlatformTransactionManager transactionManager,
             @Value("${app.product.compare-cache-ttl-seconds:120}") long ttlSeconds) {
         this.productRepository = productRepository;
         this.productReviewRepository = productReviewRepository;
         this.singleFlightCache = singleFlightCache;
+        // The cache may run the loader on a background early-refresh thread that has no ambient
+        // transaction; a read-only TransactionTemplate gives the loader its own session so lazy
+        // collections (attributes, images) load on any thread without LazyInitializationException.
+        this.txTemplate = new TransactionTemplate(transactionManager);
+        this.txTemplate.setReadOnly(true);
         this.ttlSeconds = ttlSeconds > 0 ? ttlSeconds : CACHE_TTL_SECONDS;
     }
 
     @Override
-    @Transactional(readOnly = true)
     public ProductComparisonResponse compare(UUID marketplaceId, List<UUID> productIds) {
         if (productIds == null || productIds.size() < MIN_PRODUCTS || productIds.size() > MAX_PRODUCTS) {
             throw new BadRequestException("Comparison requires between 2 and 4 product IDs");
@@ -72,39 +79,43 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
         String idsKey = requestedIds.stream().map(String::valueOf).collect(Collectors.joining(":"));
         String cacheKey = "marketplace:compare:" + marketplaceId + ":" + idsKey;
 
-        return singleFlightCache.getOrLoad(cacheKey, ttlSeconds, () -> {
-            // Public, unauthenticated endpoint — only compare ACTIVE + marketplaceListed products,
-            // matching the catalog search/detail endpoints. A requested id that isn't a publicly
-            // listed product in this marketplace yields a 404 rather than silently dropping a column.
-            Map<UUID, Product> byId = productRepository.findAllByIdInAndMarketplaceId(requestedIds, marketplaceId).stream()
-                    .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isMarketplaceListed())
-                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        return singleFlightCache.getOrLoad(cacheKey, ttlSeconds,
+                () -> txTemplate.execute(status -> buildComparison(marketplaceId, requestedIds)),
+                new TypeReference<ProductComparisonResponse>() {});
+    }
 
-            List<Product> products = requestedIds.stream()
-                    .map(id -> {
-                        Product p = byId.get(id);
-                        if (p == null) {
-                            throw new ResourceNotFoundException("Product " + id + " is not available in this marketplace");
-                        }
-                        return p;
-                    })
-                    .toList();
+    private ProductComparisonResponse buildComparison(UUID marketplaceId, List<UUID> requestedIds) {
+        // Public, unauthenticated endpoint — only compare ACTIVE + marketplaceListed products,
+        // matching the catalog search/detail endpoints. A requested id that isn't a publicly
+        // listed product in this marketplace yields a 404 rather than silently dropping a column.
+        Map<UUID, Product> byId = productRepository.findAllByIdInAndMarketplaceId(requestedIds, marketplaceId).stream()
+                .filter(p -> p.getStatus() == ProductStatus.ACTIVE && p.isMarketplaceListed())
+                .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
 
-            Map<UUID, double[]> ratingMap = buildRatingMap(requestedIds);
+        List<Product> products = requestedIds.stream()
+                .map(id -> {
+                    Product p = byId.get(id);
+                    if (p == null) {
+                        throw new ResourceNotFoundException("Product " + id + " is not available in this marketplace");
+                    }
+                    return p;
+                })
+                .toList();
 
-            List<ComparedProduct> columns = products.stream()
-                    .map(p -> toComparedProduct(p, ratingMap.get(p.getId())))
-                    .toList();
+        Map<UUID, double[]> ratingMap = buildRatingMap(requestedIds);
 
-            List<ComparisonRow> rows = buildAttributeRows(products);
+        List<ComparedProduct> columns = products.stream()
+                .map(p -> toComparedProduct(p, ratingMap.get(p.getId())))
+                .toList();
 
-            return new ProductComparisonResponse(columns, rows);
-        }, new TypeReference<ProductComparisonResponse>() {});
+        List<ComparisonRow> rows = buildAttributeRows(products);
+
+        return new ProductComparisonResponse(columns, rows);
     }
 
     private ComparedProduct toComparedProduct(Product p, double[] stats) {
         Double avgRating = (stats != null && stats[1] > 0) ? stats[0] : null;
-        Long reviewCount = stats != null ? (long) stats[1] : 0L;
+        long reviewCount = stats != null ? (long) stats[1] : 0L;
         return new ComparedProduct(
                 p.getId(),
                 p.getName(),
@@ -188,7 +199,7 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
                 map.put(productId, new double[]{avg, count});
             }
         } catch (Exception e) {
-            log.warn("[COMPARE] Failed to load ratings: {}", e.getMessage());
+            log.warn("[COMPARE] Failed to load ratings", e);
         }
         return map;
     }
