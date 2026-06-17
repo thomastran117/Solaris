@@ -41,11 +41,12 @@ function useDebounce<T>(value: T, delay: number): T {
 interface SearchPickerProps {
   type: CompareType;
   companyId: string;
+  marketplaceId: string | undefined;
   selectedIds: string[];
   onAdd: (id: string) => void;
 }
 
-function SearchPicker({ type, companyId, selectedIds, onAdd }: SearchPickerProps) {
+function SearchPicker({ type, companyId, marketplaceId, selectedIds, onAdd }: SearchPickerProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
@@ -53,12 +54,13 @@ function SearchPicker({ type, companyId, selectedIds, onAdd }: SearchPickerProps
 
   const isDisabled = selectedIds.length >= MAX_ITEMS;
 
-  // Product search — storefront catalog search scoped to the company.
+  // Product search — scoped to the SAME marketplace the compare call targets, so every result is
+  // a marketplace-listed product the endpoint can actually compare (no scope-mismatch 404s).
   const { data: productResults } = useQuery({
-    queryKey: ["compare-search-products", companyId, debouncedQuery],
+    queryKey: ["compare-search-products", marketplaceId, debouncedQuery],
     queryFn: () =>
-      catalogApi.companyCatalogSearch(companyId, { q: debouncedQuery, size: 6 }).then((r) => r.data.items),
-    enabled: type === "product" && debouncedQuery.length >= 1 && !isDisabled,
+      catalogApi.search(marketplaceId!, { q: debouncedQuery, size: 6 }).then((r) => r.data.items),
+    enabled: type === "product" && !!marketplaceId && debouncedQuery.length >= 1 && !isDisabled,
     staleTime: 10_000,
   });
 
@@ -323,7 +325,13 @@ export default function ComparisonPage() {
           </motion.div>
 
           <motion.div variants={fadeInUp} className="flex-1">
-            <SearchPicker type={type} companyId={companyId} selectedIds={selectedIds} onAdd={addId} />
+            <SearchPicker
+              type={type}
+              companyId={companyId}
+              marketplaceId={marketplaceId}
+              selectedIds={selectedIds}
+              onAdd={addId}
+            />
           </motion.div>
 
           {selectedIds.length > 0 && (

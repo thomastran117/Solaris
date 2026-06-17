@@ -18,7 +18,7 @@ vi.mock("../api/compare", () => ({
 }));
 
 vi.mock("../api/catalog", () => ({
-  catalogApi: { companyCatalogSearch: vi.fn() },
+  catalogApi: { search: vi.fn() },
 }));
 
 import { compareApi } from "../api/compare";
@@ -27,7 +27,7 @@ import { catalogApi } from "../api/catalog";
 const mockCompareProducts = vi.mocked(compareApi.compareProducts);
 const mockCompareBundles = vi.mocked(compareApi.compareBundles);
 const mockListBundles = vi.mocked(compareApi.listBundles);
-const mockCompanySearch = vi.mocked(catalogApi.companyCatalogSearch);
+const mockCatalogSearch = vi.mocked(catalogApi.search);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ function makeBundle(id: string, name: string): CompareBundle {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCompanySearch.mockResolvedValue({ data: { items: [] } } as never);
+  mockCatalogSearch.mockResolvedValue({ data: { items: [] } } as never);
   mockListBundles.mockResolvedValue({ data: { items: [] } } as never);
 });
 

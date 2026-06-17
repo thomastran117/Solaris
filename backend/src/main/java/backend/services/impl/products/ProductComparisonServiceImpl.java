@@ -61,15 +61,16 @@ public class ProductComparisonServiceImpl implements ProductComparisonService {
         if (productIds == null || productIds.size() < MIN_PRODUCTS || productIds.size() > MAX_PRODUCTS) {
             throw new BadRequestException("Comparison requires between 2 and 4 product IDs");
         }
-        // De-duplicate while preserving request order so the matrix columns are stable and the
-        // cache key is canonical regardless of how the caller ordered/repeated the ids.
-        List<UUID> requestedIds = productIds.stream().distinct().toList();
+        // Canonical order: dedupe + sort by id so the response column order, the cache key, and any
+        // background early-refresh reload are all deterministic regardless of the order the ids
+        // arrive in — two requests for the same set always share one cache entry and one column order.
+        List<UUID> requestedIds = productIds.stream().distinct().sorted().toList();
         if (requestedIds.size() < MIN_PRODUCTS) {
             throw new BadRequestException("Comparison requires at least 2 distinct product IDs");
         }
 
-        String sortedIds = requestedIds.stream().sorted().map(String::valueOf).collect(Collectors.joining(":"));
-        String cacheKey = "marketplace:compare:" + marketplaceId + ":" + sortedIds;
+        String idsKey = requestedIds.stream().map(String::valueOf).collect(Collectors.joining(":"));
+        String cacheKey = "marketplace:compare:" + marketplaceId + ":" + idsKey;
 
         return singleFlightCache.getOrLoad(cacheKey, ttlSeconds, () -> {
             // Public, unauthenticated endpoint — only compare ACTIVE + marketplaceListed products,

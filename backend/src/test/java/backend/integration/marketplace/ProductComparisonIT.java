@@ -17,6 +17,8 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -103,9 +105,9 @@ class ProductComparisonIT extends AbstractIntegrationIT {
                         .param("ids", p1.getId() + "," + p2.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.products", hasSize(2)))
-                .andExpect(jsonPath("$.data.products[0].productId").value(p1.getId().toString()))
-                .andExpect(jsonPath("$.data.products[0].name").value("Alpha"))
-                .andExpect(jsonPath("$.data.products[0].stockStatus").value("IN_STOCK"))
+                // Columns are ordered canonically by id, so assert membership rather than position.
+                .andExpect(jsonPath("$.data.products[*].name", containsInAnyOrder("Alpha", "Beta")))
+                .andExpect(jsonPath("$.data.products[?(@.name=='Alpha')].stockStatus", hasItem("IN_STOCK")))
                 .andExpect(jsonPath("$.data.attributes", hasSize(2)))
                 .andExpect(jsonPath("$.data.attributes[0].attributeName").value("Material"))
                 .andExpect(jsonPath("$.data.attributes[0].valuesByProductId['" + p1.getId() + "']").value("Steel"))
