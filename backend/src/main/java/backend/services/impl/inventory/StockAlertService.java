@@ -15,6 +15,7 @@ import backend.repositories.ProductVariantRepository;
 import backend.repositories.RestockRequestRepository;
 import backend.services.intf.OutboundWebhookEventPublisher;
 import backend.services.intf.support.EmailService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -44,17 +45,21 @@ public class StockAlertService {
     private final RestockRequestRepository restockRequestRepository;
     private final EmailService emailService;
     private final OutboundWebhookEventPublisher outboundWebhookEventPublisher;
+    // ObjectMapper is thread-safe for serialization; reuse one instance rather than building per alert.
+    private final ObjectMapper objectMapper;
 
     public StockAlertService(ProductRepository productRepository,
                              ProductVariantRepository variantRepository,
                              RestockRequestRepository restockRequestRepository,
                              EmailService emailService,
-                             OutboundWebhookEventPublisher outboundWebhookEventPublisher) {
+                             OutboundWebhookEventPublisher outboundWebhookEventPublisher,
+                             ObjectMapper objectMapper) {
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.restockRequestRepository = restockRequestRepository;
         this.emailService = emailService;
         this.outboundWebhookEventPublisher = outboundWebhookEventPublisher;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -163,8 +168,7 @@ public class StockAlertService {
                 payloadMap.put("newStock", newStock);
                 payloadMap.put("companyId", companyId.toString());
                 payloadMap.put("occurredAt", Instant.now().toString());
-                String payload = new com.fasterxml.jackson.databind.ObjectMapper()
-                        .writeValueAsString(payloadMap);
+                String payload = objectMapper.writeValueAsString(payloadMap);
                 outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
                         UUID.randomUUID(), WebhookEventType.STOCK_LOW, companyId, null, productId, payload, Instant.now()));
             } catch (Exception e) {

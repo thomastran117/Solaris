@@ -107,6 +107,11 @@ public class WebhookSubscriptionServiceImpl implements WebhookSubscriptionServic
         return new WebhookCreationResponse(toResponse(sub), rawSecret);
     }
 
+    /**
+     * INTERNAL — do not call from outside this class. It is {@code public} only so the {@code @Lazy}
+     * self-proxy ({@link #self()}) applies the {@code @Transactional} boundary; invoke via
+     * {@link #register} instead.
+     */
     @Transactional
     public Object[] doRegisterPersist(UUID companyId, UUID userId, RegisterWebhookRequest request) {
         Company company = companyAccessService.require(companyId, userId, CompanyCapability.MANAGE_COMPANY);
@@ -149,6 +154,7 @@ public class WebhookSubscriptionServiceImpl implements WebhookSubscriptionServic
         }
     }
 
+    /** INTERNAL — {@code public} only for the self-proxy {@code @Transactional} boundary; call via {@link #register}. */
     @Transactional
     public void activateSubscription(CompanyWebhookSubscription sub) {
         sub.setStatus(WebhookSubscriptionStatus.ACTIVE);
@@ -178,6 +184,7 @@ public class WebhookSubscriptionServiceImpl implements WebhookSubscriptionServic
         self().doActivateById(subscriptionId, companyId);
     }
 
+    /** INTERNAL — {@code public} only for the self-proxy {@code @Transactional} boundary; call via {@link #verify}. */
     @Transactional
     public void doActivateById(UUID subscriptionId, UUID companyId) {
         CompanyWebhookSubscription sub = subscriptionRepository.findByIdAndCompanyId(subscriptionId, companyId)

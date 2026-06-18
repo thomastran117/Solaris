@@ -1,5 +1,7 @@
 package backend.kafka.producers;
 
+import backend.dtos.webhook.WebhookOrderDeliveredPayload;
+import backend.dtos.webhook.WebhookOrderShippedPayload;
 import backend.events.order.OrderFulfillmentEvent;
 import backend.events.webhook.OutboundWebhookEvent;
 import backend.models.enums.WebhookEventType;
@@ -70,13 +72,19 @@ public class OrderFulfillmentEventPublisherImpl implements OrderFulfillmentEvent
         // ORDER_CANCELLED is handled by OrderServiceImpl (which has companyId context).
         // PickupReady has no webhook event type defined.
         try {
+            // Serialize a public-facing DTO, never the internal event record, so the external webhook
+            // contract stays stable when the internal event schema changes.
             OutboundWebhookEvent outbound = switch (event) {
                 case OrderFulfillmentEvent.Shipped e -> new OutboundWebhookEvent(
                         java.util.UUID.randomUUID(), WebhookEventType.ORDER_SHIPPED, e.companyId(), e.orderId(), null,
-                        objectMapper.writeValueAsString(e), Instant.now());
+                        objectMapper.writeValueAsString(new WebhookOrderShippedPayload(
+                                e.orderId(), e.companyId(), e.trackingNumber(), e.carrier(), e.shippedAt())),
+                        Instant.now());
                 case OrderFulfillmentEvent.Delivered e -> new OutboundWebhookEvent(
                         java.util.UUID.randomUUID(), WebhookEventType.ORDER_DELIVERED, e.companyId(), e.orderId(), null,
-                        objectMapper.writeValueAsString(e), Instant.now());
+                        objectMapper.writeValueAsString(new WebhookOrderDeliveredPayload(
+                                e.orderId(), e.companyId(), e.deliveredAt())),
+                        Instant.now());
                 case OrderFulfillmentEvent.Cancelled e -> null;
                 case OrderFulfillmentEvent.PickupReady e -> null;
             };

@@ -4142,19 +4142,29 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void publishOrderWebhookEvent(Order order, WebhookEventType eventType) {
+        // Guard for test/wiring contexts where the optional collaborator was not set. In production
+        // it is @Autowired (required) via setter — see setOutboundWebhookEventPublisher — so a missing
+        // bean fails fast at startup; this guard only matters when the setter is never invoked.
         if (outboundWebhookEventPublisher == null) return;
         try {
             UUID companyId = resolveOrderCompanyId(order.getItems());
-            if (companyId == null) return;
-            String payload = objectMapper.writeValueAsString(java.util.Map.of(
-                    "eventType", eventType.name(),
-                    "orderId", order.getId().toString(),
-                    "companyId", companyId.toString(),
-                    "status", order.getStatus().name(),
-                    "occurredAt", Instant.now().toString()
-            ));
+            if (companyId == null) {
+                log.warn("Skipping outbound webhook event type={} orderId={}: could not resolve a company from order items",
+                        eventType, order.getId());
+                return;
+            }
+            // Single timestamp so the payload's occurredAt matches the event record's occurredAt.
+            Instant occurredAt = Instant.now();
+            // LinkedHashMap for stable, deterministic key ordering in the serialized payload.
+            java.util.Map<String, Object> payloadMap = new java.util.LinkedHashMap<>();
+            payloadMap.put("eventType", eventType.name());
+            payloadMap.put("orderId", order.getId().toString());
+            payloadMap.put("companyId", companyId.toString());
+            payloadMap.put("status", order.getStatus().name());
+            payloadMap.put("occurredAt", occurredAt.toString());
+            String payload = objectMapper.writeValueAsString(payloadMap);
             outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
-                    UUID.randomUUID(), eventType, companyId, order.getId(), null, payload, Instant.now()));
+                    UUID.randomUUID(), eventType, companyId, order.getId(), null, payload, occurredAt));
         } catch (Exception e) {
             log.warn("Failed to build outbound webhook event type={} orderId={}: {}", eventType, order.getId(), e.getMessage());
         }

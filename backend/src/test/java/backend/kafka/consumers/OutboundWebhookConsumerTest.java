@@ -1,6 +1,8 @@
 package backend.kafka.consumers;
 
 import backend.configurations.application.WebhookSecretEncryptor;
+import backend.configurations.application.WebhookUrlValidator;
+import backend.exceptions.http.BadRequestException;
 import backend.events.webhook.OutboundWebhookEvent;
 import backend.models.core.Company;
 import backend.models.core.CompanyWebhookSubscription;
@@ -36,6 +38,7 @@ class OutboundWebhookConsumerTest {
     private WebhookDeliveryLogRepository deliveryLogRepository;
     private RestTemplate webhookRestTemplate;
     private WebhookSecretEncryptor secretEncryptor;
+    private WebhookUrlValidator urlValidator;
     private OutboundWebhookConsumer consumer;
 
     private static final UUID COMPANY_ID = TestIds.uuid(1);
@@ -50,10 +53,13 @@ class OutboundWebhookConsumerTest {
         deliveryLogRepository  = mock(WebhookDeliveryLogRepository.class);
         webhookRestTemplate    = mock(RestTemplate.class);
         secretEncryptor        = mock(WebhookSecretEncryptor.class);
+        urlValidator           = mock(WebhookUrlValidator.class);
         // Pass-through: no encryption key in tests, decrypt returns the stored value unchanged
         when(secretEncryptor.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        // retryBackoffBaseMs = 0 → no real sleeps between retries, keeping the test fast
         consumer = new OutboundWebhookConsumer(
-                subscriptionRepository, deliveryLogRepository, webhookRestTemplate, secretEncryptor);
+                subscriptionRepository, deliveryLogRepository, webhookRestTemplate, secretEncryptor,
+                urlValidator, 0L);
 
         when(deliveryLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // Default: event not yet processed — allow delivery to proceed
@@ -108,6 +114,27 @@ class OutboundWebhookConsumerTest {
 
         verify(webhookRestTemplate, never()).exchange(anyString(), any(), any(), eq(String.class));
         verify(deliveryLogRepository, never()).save(any());
+    }
+
+    // ── SSRF re-validation at delivery time ─────────────────────────────────────
+
+    @Test
+    void onEvent_blocksDelivery_whenUrlFailsSsrfRevalidationAtDeliveryTime() {
+        CompanyWebhookSubscription sub = makeSub(SUB_ID, COMPANY_ID, SECRET);
+        when(subscriptionRepository.findActiveByCompanyIdAndEventType(COMPANY_ID, WebhookEventType.ORDER_CREATED))
+                .thenReturn(List.of(sub));
+        // Simulate DNS rebinding: the URL now resolves to a blocked address at delivery time.
+        doThrow(new BadRequestException("Webhook URL must resolve to a publicly accessible address"))
+                .when(urlValidator).validate(sub.getUrl());
+
+        consumer.onEvent(makeEvent(WebhookEventType.ORDER_CREATED));
+
+        // No HTTP call is made, and the attempt is recorded as FAILED with zero attempts.
+        verify(webhookRestTemplate, never()).exchange(anyString(), any(), any(), eq(String.class));
+        ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
+        verify(deliveryLogRepository, times(1)).save(captor.capture());
+        assertEquals(WebhookDeliveryStatus.FAILED, captor.getValue().getStatus());
+        assertEquals(0, captor.getValue().getAttemptCount());
     }
 
     // ── retry logic ───────────────────────────────────────────────────────────

@@ -49,7 +49,8 @@ class StockAlertServiceTest {
         emailService = mock(EmailService.class);
         OutboundWebhookEventPublisher webhookPublisher = mock(OutboundWebhookEventPublisher.class);
         service = new StockAlertService(productRepository, variantRepository,
-                restockRequestRepository, emailService, webhookPublisher);
+                restockRequestRepository, emailService, webhookPublisher,
+                new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
     @Test
