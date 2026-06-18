@@ -119,6 +119,9 @@ import backend.repositories.OrderStatusHistoryRepository;
 import backend.services.intf.ActivityEventPublisher;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.orders.OrderFulfillmentEventPublisher;
+import backend.services.intf.OutboundWebhookEventPublisher;
+import backend.events.webhook.OutboundWebhookEvent;
+import backend.models.enums.WebhookEventType;
 import backend.services.intf.orders.TrackingService;
 import backend.services.intf.inventory.AllocationService;
 import backend.services.intf.CacheService;
@@ -217,6 +220,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderFulfillmentEventPublisher fulfillmentEventPublisher;
     private final TrackingService trackingService;
     private backend.kafka.producers.NotificationEventPublisher notificationEventPublisher;
+    private OutboundWebhookEventPublisher outboundWebhookEventPublisher;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
@@ -309,6 +313,11 @@ public class OrderServiceImpl implements OrderService {
     @org.springframework.beans.factory.annotation.Autowired
     public void setNotificationEventPublisher(backend.kafka.producers.NotificationEventPublisher publisher) {
         this.notificationEventPublisher = publisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOutboundWebhookEventPublisher(OutboundWebhookEventPublisher publisher) {
+        this.outboundWebhookEventPublisher = publisher;
     }
 
     /** Setter injection breaks the circular dependency: ReturnService → OrderServiceImpl → ReturnService. */
@@ -1343,7 +1352,9 @@ public class OrderServiceImpl implements OrderService {
         order.setPaymentClientSecret(paymentIntent.clientSecret());
         // Persist the intent only — the receipt email is sent best-effort by the caller after this
         // transaction commits, so an email failure can never roll back the attachment.
-        return toResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        publishOrderWebhookEvent(saved, WebhookEventType.ORDER_CREATED);
+        return toResponse(saved);
     }
 
     /**
@@ -1633,6 +1644,7 @@ public class OrderServiceImpl implements OrderService {
         // Publish after the enclosing @Transactional commits — publisher registers an afterCommit hook
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Cancelled(
                 order.getId(), order.getUser().getId(), reason, order.getCancelledAt()));
+        publishOrderWebhookEvent(order, WebhookEventType.ORDER_CANCELLED);
 
         recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, actorId, reason.name());
         publishSseEvent(order, reason.name(), "status_update");
@@ -1672,6 +1684,7 @@ public class OrderServiceImpl implements OrderService {
             Order order = orderRepository.findById(initialOrder.getId()).orElse(initialOrder);
             order.setPaidAt(Instant.now());
             orderRepository.save(order);
+            publishOrderWebhookEvent(order, WebhookEventType.ORDER_PAID);
             recordHistory(order, OrderHistoryEventType.STATUS_CHANGED, null, "Payment confirmed");
             publishSseEvent(order, "Payment confirmed", "status_update");
             eventPublisher.publishEvent(new GiftCardIssueRequestedEvent(order.getId()));
@@ -4126,5 +4139,34 @@ public class OrderServiceImpl implements OrderService {
         vendorBalanceRepository.upsertPending(
                 subOrder.getMarketplaceVendor().getId(),
                 pendingCents, grossCents, commissionCents, result.currency());
+    }
+
+    private void publishOrderWebhookEvent(Order order, WebhookEventType eventType) {
+        // Guard for test/wiring contexts where the optional collaborator was not set. In production
+        // it is @Autowired (required) via setter — see setOutboundWebhookEventPublisher — so a missing
+        // bean fails fast at startup; this guard only matters when the setter is never invoked.
+        if (outboundWebhookEventPublisher == null) return;
+        try {
+            UUID companyId = resolveOrderCompanyId(order.getItems());
+            if (companyId == null) {
+                log.warn("Skipping outbound webhook event type={} orderId={}: could not resolve a company from order items",
+                        eventType, order.getId());
+                return;
+            }
+            // Single timestamp so the payload's occurredAt matches the event record's occurredAt.
+            Instant occurredAt = Instant.now();
+            // LinkedHashMap for stable, deterministic key ordering in the serialized payload.
+            java.util.Map<String, Object> payloadMap = new java.util.LinkedHashMap<>();
+            payloadMap.put("eventType", eventType.name());
+            payloadMap.put("orderId", order.getId().toString());
+            payloadMap.put("companyId", companyId.toString());
+            payloadMap.put("status", order.getStatus().name());
+            payloadMap.put("occurredAt", occurredAt.toString());
+            String payload = objectMapper.writeValueAsString(payloadMap);
+            outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
+                    UUID.randomUUID(), eventType, companyId, order.getId(), null, payload, occurredAt));
+        } catch (Exception e) {
+            log.warn("Failed to build outbound webhook event type={} orderId={}: {}", eventType, order.getId(), e.getMessage());
+        }
     }
 }

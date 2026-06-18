@@ -9,6 +9,7 @@ import backend.models.enums.RestockStatus;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.RestockRequestRepository;
+import backend.services.intf.OutboundWebhookEventPublisher;
 import backend.services.intf.support.EmailService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +47,10 @@ class StockAlertServiceTest {
         variantRepository = mock(ProductVariantRepository.class);
         restockRequestRepository = mock(RestockRequestRepository.class);
         emailService = mock(EmailService.class);
-        service = new StockAlertService(productRepository, variantRepository, restockRequestRepository, emailService);
+        OutboundWebhookEventPublisher webhookPublisher = mock(OutboundWebhookEventPublisher.class);
+        service = new StockAlertService(productRepository, variantRepository,
+                restockRequestRepository, emailService, webhookPublisher,
+                new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
     @Test
