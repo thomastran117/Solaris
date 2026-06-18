@@ -166,7 +166,7 @@ public class StockAlertService {
                 String payload = new com.fasterxml.jackson.databind.ObjectMapper()
                         .writeValueAsString(payloadMap);
                 outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
-                        WebhookEventType.STOCK_LOW, companyId, null, productId, payload, Instant.now()));
+                        UUID.randomUUID(), WebhookEventType.STOCK_LOW, companyId, null, productId, payload, Instant.now()));
             } catch (Exception e) {
                 log.warn("[WEBHOOK] Failed to publish STOCK_LOW webhook for product {}: {}", productId, e.getMessage());
             }

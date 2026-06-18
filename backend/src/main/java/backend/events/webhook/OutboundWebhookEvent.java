@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record OutboundWebhookEvent(
+        UUID eventId,
         WebhookEventType eventType,
         UUID companyId,
         UUID orderId,

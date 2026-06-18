@@ -22,6 +22,9 @@ import java.util.UUID;
         name = "webhook_delivery_logs",
         indexes = {
                 @Index(name = "idx_whdl_sub_created", columnList = "subscription_id, created_at")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_whdl_sub_event", columnNames = {"subscription_id", "event_id"})
         }
 )
 public class WebhookDeliveryLog {
@@ -34,6 +37,9 @@ public class WebhookDeliveryLog {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "subscription_id", nullable = false)
     private CompanyWebhookSubscription subscription;
+
+    @Column(name = "event_id", nullable = false, columnDefinition = "BINARY(16)")
+    private UUID eventId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

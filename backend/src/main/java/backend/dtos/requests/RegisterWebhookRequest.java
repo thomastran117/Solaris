@@ -12,7 +12,7 @@ public class RegisterWebhookRequest {
 
     @NotBlank
     @Size(max = 2048)
-    @Pattern(regexp = "https?://.*", message = "URL must start with http:// or https://")
+    @Pattern(regexp = "https://.*", message = "Webhook URL must use HTTPS")
     private String url;
 
     @NotEmpty

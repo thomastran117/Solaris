@@ -1,5 +1,7 @@
 package backend.services.impl.webhook;
 
+import backend.configurations.application.WebhookSecretEncryptor;
+import backend.configurations.application.WebhookUrlValidator;
 import backend.dtos.requests.RegisterWebhookRequest;
 import backend.dtos.responses.WebhookCreationResponse;
 import backend.exceptions.http.BadRequestException;
@@ -20,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -34,11 +37,13 @@ class WebhookSubscriptionServiceImplTest {
     private WebhookDeliveryLogRepository deliveryLogRepository;
     private CompanyAccessService companyAccessService;
     private RestTemplate webhookRestTemplate;
+    private WebhookSecretEncryptor secretEncryptor;
+    private WebhookUrlValidator urlValidator;
     private WebhookSubscriptionServiceImpl service;
 
-    private static final UUID USER_ID       = TestIds.uuid(1);
-    private static final UUID COMPANY_ID    = TestIds.uuid(2);
-    private static final UUID SUB_ID        = TestIds.uuid(3);
+    private static final UUID USER_ID    = TestIds.uuid(1);
+    private static final UUID COMPANY_ID = TestIds.uuid(2);
+    private static final UUID SUB_ID     = TestIds.uuid(3);
 
     @BeforeEach
     void setUp() {
@@ -46,9 +51,21 @@ class WebhookSubscriptionServiceImplTest {
         deliveryLogRepository  = mock(WebhookDeliveryLogRepository.class);
         companyAccessService   = mock(CompanyAccessService.class);
         webhookRestTemplate    = mock(RestTemplate.class);
+        secretEncryptor        = mock(WebhookSecretEncryptor.class);
+        urlValidator           = mock(WebhookUrlValidator.class);
+
+        // Pass-through encryption in tests
+        when(secretEncryptor.encrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        when(secretEncryptor.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        // SSRF check is a no-op in unit tests (would need real DNS)
+        doNothing().when(urlValidator).validate(anyString());
+
         service = new WebhookSubscriptionServiceImpl(
                 subscriptionRepository, deliveryLogRepository,
-                companyAccessService, webhookRestTemplate);
+                companyAccessService, webhookRestTemplate,
+                secretEncryptor, urlValidator);
+        // Wire self-proxy to the real instance (no Spring context in unit tests)
+        service.setSelf(service);
     }
 
     // ── register ──────────────────────────────────────────────────────────────
@@ -58,7 +75,7 @@ class WebhookSubscriptionServiceImplTest {
         Company company = makeCompany(COMPANY_ID);
         when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
                 .thenReturn(company);
-        when(subscriptionRepository.countByCompanyId(COMPANY_ID)).thenReturn(0L);
+        when(subscriptionRepository.findAllByCompanyIdWithLock(COMPANY_ID)).thenReturn(List.of());
         // Challenge GET fails → stays PENDING
         when(webhookRestTemplate.getForEntity(anyString(), eq(String.class)))
                 .thenThrow(new RestClientException("timeout"));
@@ -83,7 +100,12 @@ class WebhookSubscriptionServiceImplTest {
         Company company = makeCompany(COMPANY_ID);
         when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
                 .thenReturn(company);
-        when(subscriptionRepository.countByCompanyId(COMPANY_ID)).thenReturn(5L);
+        when(subscriptionRepository.findAllByCompanyIdWithLock(COMPANY_ID))
+                .thenReturn(List.of(makeSub(TestIds.uuid(10), COMPANY_ID, "c1"),
+                        makeSub(TestIds.uuid(11), COMPANY_ID, "c2"),
+                        makeSub(TestIds.uuid(12), COMPANY_ID, "c3"),
+                        makeSub(TestIds.uuid(13), COMPANY_ID, "c4"),
+                        makeSub(TestIds.uuid(14), COMPANY_ID, "c5")));
 
         assertThrows(BadRequestException.class,
                 () -> service.register(COMPANY_ID, USER_ID,
@@ -96,24 +118,22 @@ class WebhookSubscriptionServiceImplTest {
         Company company = makeCompany(COMPANY_ID);
         when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
                 .thenReturn(company);
-        when(subscriptionRepository.countByCompanyId(COMPANY_ID)).thenReturn(0L);
+        when(subscriptionRepository.findAllByCompanyIdWithLock(COMPANY_ID)).thenReturn(List.of());
 
-        // Capture the subscription so we can return the right challenge in the mock
         when(subscriptionRepository.save(any())).thenAnswer(inv -> {
             CompanyWebhookSubscription sub = inv.getArgument(0);
             sub.setId(SUB_ID);
-            // Mock challenge GET to return the correct challenge token
+            // Challenge GET returns the correct challenge token
             when(webhookRestTemplate.getForEntity(
                     contains("?challenge="), eq(String.class)))
                     .thenReturn(ResponseEntity.ok(sub.getVerificationChallenge()));
             return sub;
         });
 
-        RegisterWebhookRequest req = makeRequest("https://fast-endpoint.com/wh",
-                Set.of(WebhookEventType.ORDER_SHIPPED));
-        service.register(COMPANY_ID, USER_ID, req);
+        service.register(COMPANY_ID, USER_ID,
+                makeRequest("https://fast-endpoint.com/wh", Set.of(WebhookEventType.ORDER_SHIPPED)));
 
-        // save called twice: once for initial persist, once when ACTIVE is set
+        // save called twice: initial persist + activate
         verify(subscriptionRepository, times(2)).save(any());
     }
 
@@ -122,7 +142,7 @@ class WebhookSubscriptionServiceImplTest {
         Company company = makeCompany(COMPANY_ID);
         when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
                 .thenReturn(company);
-        when(subscriptionRepository.countByCompanyId(COMPANY_ID)).thenReturn(2L);
+        when(subscriptionRepository.findAllByCompanyIdWithLock(COMPANY_ID)).thenReturn(List.of());
         when(webhookRestTemplate.getForEntity(anyString(), eq(String.class)))
                 .thenThrow(new RestClientException("connection refused"));
         when(subscriptionRepository.save(any())).thenAnswer(inv -> {
@@ -131,12 +151,10 @@ class WebhookSubscriptionServiceImplTest {
             return sub;
         });
 
-        RegisterWebhookRequest req = makeRequest("https://offline.example.com/hook",
-                Set.of(WebhookEventType.STOCK_LOW));
-        WebhookCreationResponse result = service.register(COMPANY_ID, USER_ID, req);
+        WebhookCreationResponse result = service.register(COMPANY_ID, USER_ID,
+                makeRequest("https://offline.example.com/hook", Set.of(WebhookEventType.STOCK_LOW)));
 
         assertEquals(WebhookSubscriptionStatus.PENDING_VERIFICATION, result.subscription().status());
-        // only the initial save — no second save to mark ACTIVE
         verify(subscriptionRepository, times(1)).save(any());
     }
 
@@ -148,6 +166,17 @@ class WebhookSubscriptionServiceImplTest {
         assertThrows(ForbiddenException.class,
                 () -> service.register(COMPANY_ID, USER_ID,
                         makeRequest("https://example.com/hook", Set.of(WebhookEventType.ORDER_CREATED))));
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void register_callsUrlValidator_beforeAnyDbWork() {
+        doThrow(new BadRequestException("SSRF blocked")).when(urlValidator).validate(anyString());
+
+        assertThrows(BadRequestException.class,
+                () -> service.register(COMPANY_ID, USER_ID,
+                        makeRequest("https://192.168.1.1/evil", Set.of(WebhookEventType.ORDER_CREATED))));
+        verify(subscriptionRepository, never()).findAllByCompanyIdWithLock(any());
         verify(subscriptionRepository, never()).save(any());
     }
 
@@ -191,6 +220,35 @@ class WebhookSubscriptionServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.verify(SUB_ID, COMPANY_ID, USER_ID));
+    }
+
+    // ── disable ───────────────────────────────────────────────────────────────
+
+    @Test
+    void disable_setsStatusDisabled_whenOwnerRequests() {
+        when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
+                .thenReturn(makeCompany(COMPANY_ID));
+        CompanyWebhookSubscription sub = makeSub(SUB_ID, COMPANY_ID, "ch");
+        sub.setStatus(WebhookSubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findByIdAndCompanyId(SUB_ID, COMPANY_ID))
+                .thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.disable(SUB_ID, COMPANY_ID, USER_ID);
+
+        verify(subscriptionRepository).save(argThat(s ->
+                s.getStatus() == WebhookSubscriptionStatus.DISABLED));
+    }
+
+    @Test
+    void disable_throwsResourceNotFound_whenSubMissing() {
+        when(companyAccessService.require(COMPANY_ID, USER_ID, CompanyCapability.MANAGE_COMPANY))
+                .thenReturn(makeCompany(COMPANY_ID));
+        when(subscriptionRepository.findByIdAndCompanyId(SUB_ID, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.disable(SUB_ID, COMPANY_ID, USER_ID));
     }
 
     // ── deleteSubscription ────────────────────────────────────────────────────

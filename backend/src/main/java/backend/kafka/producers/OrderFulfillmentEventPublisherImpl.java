@@ -72,10 +72,10 @@ public class OrderFulfillmentEventPublisherImpl implements OrderFulfillmentEvent
         try {
             OutboundWebhookEvent outbound = switch (event) {
                 case OrderFulfillmentEvent.Shipped e -> new OutboundWebhookEvent(
-                        WebhookEventType.ORDER_SHIPPED, e.companyId(), e.orderId(), null,
+                        java.util.UUID.randomUUID(), WebhookEventType.ORDER_SHIPPED, e.companyId(), e.orderId(), null,
                         objectMapper.writeValueAsString(e), Instant.now());
                 case OrderFulfillmentEvent.Delivered e -> new OutboundWebhookEvent(
-                        WebhookEventType.ORDER_DELIVERED, e.companyId(), e.orderId(), null,
+                        java.util.UUID.randomUUID(), WebhookEventType.ORDER_DELIVERED, e.companyId(), e.orderId(), null,
                         objectMapper.writeValueAsString(e), Instant.now());
                 case OrderFulfillmentEvent.Cancelled e -> null;
                 case OrderFulfillmentEvent.PickupReady e -> null;

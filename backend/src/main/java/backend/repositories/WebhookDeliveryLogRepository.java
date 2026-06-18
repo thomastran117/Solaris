@@ -20,4 +20,6 @@ public interface WebhookDeliveryLogRepository extends JpaRepository<WebhookDeliv
             @Param("subscriptionId") UUID subscriptionId,
             @Param("since") Instant since,
             Pageable pageable);
+
+    boolean existsBySubscriptionIdAndEventId(UUID subscriptionId, UUID eventId);
 }

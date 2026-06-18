@@ -4154,7 +4154,7 @@ public class OrderServiceImpl implements OrderService {
                     "occurredAt", Instant.now().toString()
             ));
             outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
-                    eventType, companyId, order.getId(), null, payload, Instant.now()));
+                    UUID.randomUUID(), eventType, companyId, order.getId(), null, payload, Instant.now()));
         } catch (Exception e) {
             log.warn("Failed to build outbound webhook event type={} orderId={}: {}", eventType, order.getId(), e.getMessage());
         }

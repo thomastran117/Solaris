@@ -1,5 +1,6 @@
 package backend.kafka.consumers;
 
+import backend.configurations.application.WebhookSecretEncryptor;
 import backend.events.webhook.OutboundWebhookEvent;
 import backend.models.core.Company;
 import backend.models.core.CompanyWebhookSubscription;
@@ -34,6 +35,7 @@ class OutboundWebhookConsumerTest {
     private CompanyWebhookSubscriptionRepository subscriptionRepository;
     private WebhookDeliveryLogRepository deliveryLogRepository;
     private RestTemplate webhookRestTemplate;
+    private WebhookSecretEncryptor secretEncryptor;
     private OutboundWebhookConsumer consumer;
 
     private static final UUID COMPANY_ID = TestIds.uuid(1);
@@ -47,10 +49,15 @@ class OutboundWebhookConsumerTest {
         subscriptionRepository = mock(CompanyWebhookSubscriptionRepository.class);
         deliveryLogRepository  = mock(WebhookDeliveryLogRepository.class);
         webhookRestTemplate    = mock(RestTemplate.class);
+        secretEncryptor        = mock(WebhookSecretEncryptor.class);
+        // Pass-through: no encryption key in tests, decrypt returns the stored value unchanged
+        when(secretEncryptor.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         consumer = new OutboundWebhookConsumer(
-                subscriptionRepository, deliveryLogRepository, webhookRestTemplate);
+                subscriptionRepository, deliveryLogRepository, webhookRestTemplate, secretEncryptor);
 
         when(deliveryLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // Default: event not yet processed — allow delivery to proceed
+        when(deliveryLogRepository.existsBySubscriptionIdAndEventId(any(), any())).thenReturn(false);
     }
 
     // ── happy path ────────────────────────────────────────────────────────────
@@ -65,9 +72,10 @@ class OutboundWebhookConsumerTest {
 
         consumer.onEvent(makeEvent(WebhookEventType.ORDER_CREATED));
 
+        // Single save at the end — no initial PENDING save
         ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
-        verify(deliveryLogRepository, times(2)).save(captor.capture());
-        WebhookDeliveryLog finalLog = captor.getAllValues().get(1);
+        verify(deliveryLogRepository, times(1)).save(captor.capture());
+        WebhookDeliveryLog finalLog = captor.getValue();
         assertEquals(WebhookDeliveryStatus.DELIVERED, finalLog.getStatus());
         assertEquals(1, finalLog.getAttemptCount());
         assertEquals(200, finalLog.getResponseStatus());
@@ -80,6 +88,23 @@ class OutboundWebhookConsumerTest {
                 .thenReturn(List.of());
 
         consumer.onEvent(makeEvent(WebhookEventType.ORDER_PAID));
+
+        verify(webhookRestTemplate, never()).exchange(anyString(), any(), any(), eq(String.class));
+        verify(deliveryLogRepository, never()).save(any());
+    }
+
+    // ── idempotency ───────────────────────────────────────────────────────────
+
+    @Test
+    void onEvent_skipsDelivery_whenEventAlreadyProcessed() {
+        UUID eventId = UUID.randomUUID();
+        CompanyWebhookSubscription sub = makeSub(SUB_ID, COMPANY_ID, SECRET);
+        when(subscriptionRepository.findActiveByCompanyIdAndEventType(COMPANY_ID, WebhookEventType.ORDER_CREATED))
+                .thenReturn(List.of(sub));
+        // Simulate Kafka re-delivery: log already exists for this subscription+event
+        when(deliveryLogRepository.existsBySubscriptionIdAndEventId(SUB_ID, eventId)).thenReturn(true);
+
+        consumer.onEvent(makeEvent(eventId, WebhookEventType.ORDER_CREATED));
 
         verify(webhookRestTemplate, never()).exchange(anyString(), any(), any(), eq(String.class));
         verify(deliveryLogRepository, never()).save(any());
@@ -102,8 +127,8 @@ class OutboundWebhookConsumerTest {
         verify(webhookRestTemplate, times(3)).exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class));
 
         ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
-        verify(deliveryLogRepository, atLeastOnce()).save(captor.capture());
-        WebhookDeliveryLog last = captor.getAllValues().getLast();
+        verify(deliveryLogRepository, times(1)).save(captor.capture());
+        WebhookDeliveryLog last = captor.getValue();
         assertEquals(WebhookDeliveryStatus.FAILED, last.getStatus());
         assertEquals(3, last.getAttemptCount());
     }
@@ -120,8 +145,8 @@ class OutboundWebhookConsumerTest {
 
         verify(webhookRestTemplate, times(3)).exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class));
         ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
-        verify(deliveryLogRepository, atLeastOnce()).save(captor.capture());
-        assertEquals(WebhookDeliveryStatus.FAILED, captor.getAllValues().getLast().getStatus());
+        verify(deliveryLogRepository, times(1)).save(captor.capture());
+        assertEquals(WebhookDeliveryStatus.FAILED, captor.getValue().getStatus());
     }
 
     @Test
@@ -137,9 +162,9 @@ class OutboundWebhookConsumerTest {
 
         verify(webhookRestTemplate, times(2)).exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class));
         ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
-        verify(deliveryLogRepository, atLeastOnce()).save(captor.capture());
-        assertEquals(WebhookDeliveryStatus.DELIVERED, captor.getAllValues().getLast().getStatus());
-        assertEquals(2, captor.getAllValues().getLast().getAttemptCount());
+        verify(deliveryLogRepository, times(1)).save(captor.capture());
+        assertEquals(WebhookDeliveryStatus.DELIVERED, captor.getValue().getStatus());
+        assertEquals(2, captor.getValue().getAttemptCount());
     }
 
     // ── HMAC signature ────────────────────────────────────────────────────────
@@ -168,7 +193,11 @@ class OutboundWebhookConsumerTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private OutboundWebhookEvent makeEvent(WebhookEventType type) {
-        return new OutboundWebhookEvent(type, COMPANY_ID, ORDER_ID, null, PAYLOAD, Instant.now());
+        return makeEvent(UUID.randomUUID(), type);
+    }
+
+    private OutboundWebhookEvent makeEvent(UUID eventId, WebhookEventType type) {
+        return new OutboundWebhookEvent(eventId, type, COMPANY_ID, ORDER_ID, null, PAYLOAD, Instant.now());
     }
 
     private CompanyWebhookSubscription makeSub(UUID id, UUID companyId, String secret) {

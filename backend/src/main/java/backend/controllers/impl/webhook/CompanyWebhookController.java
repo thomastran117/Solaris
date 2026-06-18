@@ -90,6 +90,21 @@ public class CompanyWebhookController {
         }
     }
 
+    @PatchMapping("/{id}/disable")
+    @RequireAuth
+    public ResponseEntity<Void> disable(
+            @PathVariable UUID companyId,
+            @PathVariable UUID id) {
+        try {
+            webhookService.disable(id, companyId, resolveUserId());
+            return ResponseEntity.noContent().build();
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @GetMapping("/{id}/deliveries")
     @RequireAuth
     public ResponseEntity<PagedResponse<WebhookDeliveryLogResponse>> deliveries(

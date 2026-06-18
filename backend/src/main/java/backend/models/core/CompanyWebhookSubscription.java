@@ -40,7 +40,9 @@ public class CompanyWebhookSubscription {
     @Column(nullable = false, length = 2048)
     private String url;
 
-    @Column(name = "secret_token", nullable = false, length = 64)
+    // Length 256 accommodates AES-256-GCM encrypted secrets (Base64 IV+ciphertext ≈ 112 chars)
+    // as well as plaintext hex secrets (64 chars) for environments without an encryption key.
+    @Column(name = "secret_token", nullable = false, length = 256)
     private String secretToken;
 
     @Column(name = "verification_challenge", nullable = false, length = 64)
