@@ -2,7 +2,9 @@ package backend.kafka.producers;
 
 import backend.events.order.OrderFulfillmentEvent;
 import backend.models.enums.CancellationReason;
+import backend.services.intf.OutboundWebhookEventPublisher;
 import backend.testutil.TestIds;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -33,7 +35,9 @@ class OrderFulfillmentEventPublisherImplTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         kafkaTemplate = mock(KafkaTemplate.class);
-        publisher = new OrderFulfillmentEventPublisherImpl(kafkaTemplate, TOPIC);
+        OutboundWebhookEventPublisher webhookPublisher = mock(OutboundWebhookEventPublisher.class);
+        publisher = new OrderFulfillmentEventPublisherImpl(kafkaTemplate, TOPIC,
+                webhookPublisher, new ObjectMapper());
 
         when(kafkaTemplate.send(anyString(), anyString(), any()))
                 .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));

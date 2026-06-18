@@ -4,15 +4,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import backend.events.webhook.OutboundWebhookEvent;
 import backend.models.core.Product;
 import backend.models.core.ProductVariant;
 import backend.models.core.RestockRequest;
 import backend.models.enums.RestockStatus;
+import backend.models.enums.WebhookEventType;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.RestockRequestRepository;
+import backend.services.intf.OutboundWebhookEventPublisher;
 import backend.services.intf.support.EmailService;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,15 +43,18 @@ public class StockAlertService {
     private final ProductVariantRepository variantRepository;
     private final RestockRequestRepository restockRequestRepository;
     private final EmailService emailService;
+    private final OutboundWebhookEventPublisher outboundWebhookEventPublisher;
 
     public StockAlertService(ProductRepository productRepository,
                              ProductVariantRepository variantRepository,
                              RestockRequestRepository restockRequestRepository,
-                             EmailService emailService) {
+                             EmailService emailService,
+                             OutboundWebhookEventPublisher outboundWebhookEventPublisher) {
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
         this.restockRequestRepository = restockRequestRepository;
         this.emailService = emailService;
+        this.outboundWebhookEventPublisher = outboundWebhookEventPublisher;
     }
 
     /**
@@ -142,6 +149,27 @@ public class StockAlertService {
                     variantId, variantSku,
                     newStock, threshold,
                     outOfStock);
+
+            // 3a. Outbound webhook — STOCK_LOW
+            try {
+                UUID companyId = product.getCompany().getId();
+                // Map.of() does not allow null values — use LinkedHashMap for optional fields
+                java.util.Map<String, Object> payloadMap = new java.util.LinkedHashMap<>();
+                payloadMap.put("eventType", WebhookEventType.STOCK_LOW.name());
+                payloadMap.put("productId", productId.toString());
+                payloadMap.put("productName", productName);
+                payloadMap.put("variantId", variantId != null ? variantId.toString() : "");
+                payloadMap.put("variantSku", variantSku != null ? variantSku : "");
+                payloadMap.put("newStock", newStock);
+                payloadMap.put("companyId", companyId.toString());
+                payloadMap.put("occurredAt", Instant.now().toString());
+                String payload = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(payloadMap);
+                outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
+                        WebhookEventType.STOCK_LOW, companyId, null, productId, payload, Instant.now()));
+            } catch (Exception e) {
+                log.warn("[WEBHOOK] Failed to publish STOCK_LOW webhook for product {}: {}", productId, e.getMessage());
+            }
 
             // 3. Auto-restock: create a PENDING RestockRequest if none already active
             if (doAutoRestock) {

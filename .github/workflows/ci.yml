@@ -68,7 +68,7 @@ jobs:
             tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,DeliverySlotIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
           - shard: 5
             name: vendors-company
-            tests: VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,CompanyIT,TeamIT,AnnouncementIT,CompanyFollowIT,CompanyCatalogControllerIT,ProfileIT
+            tests: VendorOnboardingIT,VendorPayoutIT,VendorAnalyticsIT,CompanyIT,TeamIT,AnnouncementIT,CompanyFollowIT,CompanyCatalogControllerIT,ProfileIT,CompanyWebhookIT
           - shard: 6
             name: customers-admin-analytics
             tests: CustomerSegmentIT,CustomerCreditIT,CustomerAddressIT,CustomerFeedIT,AnalyticsControllerIT,ForecastingControllerIT,OperationsIT,AdminReportControllerIT,AdminFeedbackIT,ReviewAdminIT,UserAdminIT,SearchAdminIT,PricingReportControllerIT,ReportIT
