@@ -11,7 +11,9 @@ import {
   Copy,
   ChevronDown,
   ChevronRight,
+  PauseCircle,
 } from "lucide-react";
+import NavyGridGlowBackground from "../../components/layout/NavyGridGlowBackground";
 import { webhooksApi } from "../../api/webhooks";
 import type {
   WebhookEventType,
@@ -70,6 +72,7 @@ export default function AdminWebhooksPage() {
   const [expandedDeliveries, setExpandedDeliveries] = useState<string | null>(null);
   const [deliveryPage, setDeliveryPage] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["admin", "webhooks", companyId],
@@ -100,14 +103,32 @@ export default function AdminWebhooksPage() {
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => webhooksApi.remove(companyId!, id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", companyId] }),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", companyId] });
+    },
+    onError: () => setActionError("Failed to remove the endpoint. Please try again."),
   });
 
   const verifyMutation = useMutation({
     mutationFn: (id: string) => webhooksApi.verify(companyId!, id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", companyId] }),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", companyId] });
+    },
+    onError: () =>
+      setActionError(
+        "Verification failed. Ensure your endpoint echoes the challenge query parameter, then try again."
+      ),
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: (id: string) => webhooksApi.disable(companyId!, id),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", companyId] });
+    },
+    onError: () => setActionError("Failed to disable the endpoint. Please try again."),
   });
 
   function toggleEvent(evt: WebhookEventType) {
@@ -145,10 +166,8 @@ export default function AdminWebhooksPage() {
   const subs: WebhookSubscriptionResponse[] = listQuery.data ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-950 relative">
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/3 w-[600px] h-[600px] rounded-full bg-blue-600/8 blur-[140px]" />
-      </div>
+    <div className="relative min-h-screen bg-slate-950 text-white">
+      <NavyGridGlowBackground />
 
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
@@ -175,13 +194,29 @@ export default function AdminWebhooksPage() {
           </button>
         </div>
 
+        {/* Action error banner (verify / disable / remove failures) */}
+        {actionError && (
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-red-400/30 bg-red-500/10 backdrop-blur p-4 mb-6">
+            <p className="text-sm text-red-300">{actionError}</p>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="shrink-0 text-white/40 hover:text-white transition-colors"
+              aria-label="Dismiss error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Secret reveal banner */}
         <AnimatePresence>
           {revealedSecret && (
             <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              variants={fadeInUp}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
               className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 backdrop-blur p-5 mb-6"
             >
               <div className="flex items-start justify-between gap-4">
@@ -222,8 +257,9 @@ export default function AdminWebhooksPage() {
         {/* Register form */}
         {showCreate && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
+            variants={fadeInUp}
+            initial="hidden"
+            animate="visible"
             className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 mb-6"
           >
             <h2 className="text-base font-semibold text-white mb-4">New Webhook Endpoint</h2>
@@ -334,6 +370,21 @@ export default function AdminWebhooksPage() {
                         className="p-2 rounded-xl border border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20 transition-colors disabled:opacity-50"
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {sub.status !== "DISABLED" && (
+                      <button
+                        type="button"
+                        title="Disable (pause deliveries without deleting)"
+                        onClick={() => {
+                          if (window.confirm("Disable this endpoint? Deliveries will pause until it is re-verified.")) {
+                            disableMutation.mutate(sub.id);
+                          }
+                        }}
+                        disabled={disableMutation.isPending}
+                        className="p-2 rounded-xl border border-white/10 text-white/50 hover:text-yellow-300 hover:border-yellow-400/30 transition-colors disabled:opacity-50"
+                      >
+                        <PauseCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button

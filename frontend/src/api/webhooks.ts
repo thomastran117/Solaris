@@ -19,6 +19,9 @@ export const webhooksApi = {
   verify: (companyId: string, id: string) =>
     api.post<void>(`/companies/${companyId}/webhooks/${id}/verify`),
 
+  disable: (companyId: string, id: string) =>
+    api.patch<void>(`/companies/${companyId}/webhooks/${id}/disable`),
+
   deliveries: (companyId: string, id: string, page = 0) =>
     api.get<WebhookDeliveryPage>(
       `/companies/${companyId}/webhooks/${id}/deliveries?page=${page}&size=20`
