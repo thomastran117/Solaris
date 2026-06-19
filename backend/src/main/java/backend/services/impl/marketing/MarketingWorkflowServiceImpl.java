@@ -4,6 +4,7 @@ import backend.dtos.requests.marketing.CreateWorkflowRequest;
 import backend.dtos.requests.marketing.UpdateWorkflowRequest;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
+import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.MarketingWorkflow;
 import backend.models.enums.CompanyCapability;
@@ -86,13 +87,13 @@ public class MarketingWorkflowServiceImpl implements MarketingWorkflowService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkflowResponse> getWorkflows(UUID companyId, UUID ownerId) {
+    public List<WorkflowSummaryResponse> getWorkflows(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
         return workflowRepository.findByCompanyIdAndStatusNot(
                         companyId, WorkflowStatus.ARCHIVED, PageRequest.of(0, 200))
                 .getContent()
                 .stream()
-                .map(WorkflowResponse::from)
+                .map(WorkflowSummaryResponse::from)
                 .toList();
     }
 

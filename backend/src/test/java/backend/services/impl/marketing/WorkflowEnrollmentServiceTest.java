@@ -1,10 +1,14 @@
 package backend.services.impl.marketing;
 
 import backend.kafka.producers.NotificationEventPublisher;
+import backend.models.core.LoyaltyAccount;
 import backend.models.core.MarketingWorkflow;
 import backend.models.core.User;
+import backend.models.core.UserPreference;
+import backend.models.core.WorkflowDeliveryLog;
 import backend.models.core.WorkflowEnrollment;
 import backend.models.enums.WorkflowActionType;
+import backend.models.enums.WorkflowDeliveryStatus;
 import backend.models.enums.WorkflowEnrollmentStatus;
 import backend.models.enums.WorkflowStatus;
 import backend.models.enums.WorkflowTrigger;
@@ -24,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -50,9 +55,10 @@ class WorkflowEnrollmentServiceTest {
 
     WorkflowEnrollmentServiceImpl service;
 
-    static final UUID COMPANY_ID  = TestIds.uuid(1);
-    static final UUID USER_ID     = TestIds.uuid(2);
-    static final UUID WORKFLOW_ID = TestIds.uuid(3);
+    static final UUID COMPANY_ID   = TestIds.uuid(1);
+    static final UUID USER_ID      = TestIds.uuid(2);
+    static final UUID WORKFLOW_ID  = TestIds.uuid(3);
+    static final UUID ENROLLMENT_ID = TestIds.uuid(10);
 
     @BeforeEach
     void setUp() {
@@ -96,7 +102,7 @@ class WorkflowEnrollmentServiceTest {
     }
 
     @Test
-    void enrol_pausedWorkflow_skipsEnrollment() {
+    void enrol_noActiveWorkflowsForTrigger_skipsEnrollment() {
         when(workflowRepository.findByTriggerAndStatusAndCompanyId(any(), any(), any()))
                 .thenReturn(List.of());
 
@@ -125,22 +131,36 @@ class WorkflowEnrollmentServiceTest {
     // ─── processScheduledEnrollments ─────────────────────────────────────────
 
     @Test
-    void processScheduledEnrollments_firesEmailForDueEnrollments() {
+    void processScheduledEnrollments_delegatesToProcessOneEnrollment() {
+        when(enrollmentRepository.findIdsByStatusAndFireAtBefore(
+                eq(WorkflowEnrollmentStatus.SCHEDULED), any(), any()))
+                .thenReturn(List.of(ENROLLMENT_ID));
+
+        service.processScheduledEnrollments();
+
+        verify(enrollmentServiceProxy).processOneEnrollment(ENROLLMENT_ID);
+    }
+
+    @Test
+    void processScheduledEnrollments_skipsWhenNoDueEnrollments() {
+        when(enrollmentRepository.findIdsByStatusAndFireAtBefore(any(), any(), any()))
+                .thenReturn(List.of());
+
+        service.processScheduledEnrollments();
+
+        verify(enrollmentServiceProxy, never()).processOneEnrollment(any());
+    }
+
+    // ─── processOneEnrollment ─────────────────────────────────────────────────
+
+    @Test
+    void processOneEnrollment_firesEmailForActiveWorkflow() {
         MarketingWorkflow wf = stubWorkflow(0, 0, null);
         wf.setEmailSubject("Review us");
         wf.setEmailBody("<p>Hi</p>");
 
-        WorkflowEnrollment enrollment = new WorkflowEnrollment();
-        enrollment.setId(TestIds.uuid(10));
-        enrollment.setWorkflowId(WORKFLOW_ID);
-        enrollment.setUserId(USER_ID);
-        enrollment.setEnrolledAt(Instant.now().minusSeconds(100));
-        enrollment.setFireAt(Instant.now().minusSeconds(10));
-        enrollment.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
-
-        when(enrollmentRepository.findByStatusAndFireAtBefore(
-                eq(WorkflowEnrollmentStatus.SCHEDULED), any(), any()))
-                .thenReturn(new PageImpl<>(List.of(enrollment)));
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
         when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.of(wf));
 
         User user = new User();
@@ -151,25 +171,142 @@ class WorkflowEnrollmentServiceTest {
         when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(deliveryLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        service.processScheduledEnrollments();
+        service.processOneEnrollment(ENROLLMENT_ID);
 
+        ArgumentCaptor<WorkflowEnrollment> enrollCaptor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(enrollCaptor.capture());
+        assertThat(enrollCaptor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.SENT);
+
+        ArgumentCaptor<WorkflowDeliveryLog> logCaptor = ArgumentCaptor.forClass(WorkflowDeliveryLog.class);
+        verify(deliveryLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getStatus()).isEqualTo(WorkflowDeliveryStatus.SENT);
+
+        // isSynchronizationActive() is false in unit tests, so email is sent synchronously
         verify(emailService).sendMarketingWorkflowEmail(
                 eq("test@example.com"), eq("Alice"), eq(WORKFLOW_ID),
                 eq(COMPANY_ID), eq("Review us"), eq("<p>Hi</p>"));
-
-        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
-        verify(enrollmentRepository).save(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.SENT);
     }
 
     @Test
-    void processScheduledEnrollments_skipsNotYetDue() {
-        when(enrollmentRepository.findByStatusAndFireAtBefore(any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.of()));
+    void processOneEnrollment_pausedWorkflow_skipsWithoutCancelling() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
 
-        service.processScheduledEnrollments();
+        MarketingWorkflow wf = stubWorkflow(0, 0, null);
+        wf.setStatus(WorkflowStatus.PAUSED);
+        when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.of(wf));
 
+        service.processOneEnrollment(ENROLLMENT_ID);
+
+        verify(enrollmentRepository, never()).save(any());
         verify(emailService, never()).sendMarketingWorkflowEmail(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void processOneEnrollment_archivedWorkflow_cancelsEnrollment() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+
+        MarketingWorkflow wf = stubWorkflow(0, 0, null);
+        wf.setStatus(WorkflowStatus.ARCHIVED);
+        when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.of(wf));
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.processOneEnrollment(ENROLLMENT_ID);
+
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.CANCELLED);
+        verify(emailService, never()).sendMarketingWorkflowEmail(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void processOneEnrollment_alreadySentEnrollment_skips() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+
+        service.processOneEnrollment(ENROLLMENT_ID);
+
+        verify(workflowRepository, never()).findById(any());
+        verify(emailService, never()).sendMarketingWorkflowEmail(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void processOneEnrollment_missingWorkflow_cancelsEnrollment() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+        when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.empty());
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.processOneEnrollment(ENROLLMENT_ID);
+
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.CANCELLED);
+    }
+
+    // ─── dailyBirthdayEnrol ───────────────────────────────────────────────────
+
+    @Test
+    void dailyBirthdayEnrol_callsEnrolForEachUserAndCompany() {
+        MarketingWorkflow wf = stubWorkflow(0, 0, null);
+        wf.setTrigger(WorkflowTrigger.CUSTOMER_BIRTHDAY);
+        when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.CUSTOMER_BIRTHDAY, WorkflowStatus.ACTIVE))
+                .thenReturn(List.of(wf));
+
+        UserPreference pref = new UserPreference();
+        pref.setUserId(USER_ID);
+        when(userPreferenceRepository.findByBirthDateMonthAndDay(anyInt(), anyInt(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(pref)));
+
+        service.dailyBirthdayEnrol();
+
+        verify(enrollmentServiceProxy).enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, COMPANY_ID, USER_ID);
+    }
+
+    @Test
+    void dailyBirthdayEnrol_noWorkflows_skips() {
+        when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.CUSTOMER_BIRTHDAY, WorkflowStatus.ACTIVE))
+                .thenReturn(List.of());
+
+        service.dailyBirthdayEnrol();
+
+        verifyNoInteractions(userPreferenceRepository, enrollmentServiceProxy);
+    }
+
+    // ─── dailyWinBackEnrol ────────────────────────────────────────────────────
+
+    @Test
+    void dailyWinBackEnrol_schedulesEnrollmentsForInactiveUsers() {
+        MarketingWorkflow wf = stubWorkflow(720, 0, null); // 720h = 30 days inactivity
+        wf.setTrigger(WorkflowTrigger.DAYS_SINCE_LAST_ORDER);
+        when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, WorkflowStatus.ACTIVE))
+                .thenReturn(List.of(wf));
+
+        LoyaltyAccount account = new LoyaltyAccount();
+        account.setUserId(USER_ID);
+        when(loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonth(
+                eq(COMPANY_ID), any(String.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(account)));
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.dailyWinBackEnrol();
+
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(USER_ID);
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.SCHEDULED);
+    }
+
+    @Test
+    void dailyWinBackEnrol_noWorkflows_skips() {
+        when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, WorkflowStatus.ACTIVE))
+                .thenReturn(List.of());
+
+        service.dailyWinBackEnrol();
+
+        verifyNoInteractions(loyaltyAccountRepository);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
@@ -186,5 +323,16 @@ class WorkflowEnrollmentServiceTest {
         w.setCooldownDays(cooldownDays);
         w.setStatus(WorkflowStatus.ACTIVE);
         return w;
+    }
+
+    private WorkflowEnrollment scheduledEnrollment() {
+        WorkflowEnrollment e = new WorkflowEnrollment();
+        e.setId(ENROLLMENT_ID);
+        e.setWorkflowId(WORKFLOW_ID);
+        e.setUserId(USER_ID);
+        e.setEnrolledAt(Instant.now().minusSeconds(100));
+        e.setFireAt(Instant.now().minusSeconds(10));
+        e.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
+        return e;
     }
 }

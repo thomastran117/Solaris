@@ -5,6 +5,7 @@ import backend.dtos.requests.marketing.CreateWorkflowRequest;
 import backend.dtos.requests.marketing.UpdateWorkflowRequest;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
+import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.marketing.MarketingWorkflowService;
@@ -46,7 +47,7 @@ public class MarketingWorkflowController {
 
     @GetMapping("/companies/{companyId}/marketing/workflows")
     @RequireAuth
-    public ResponseEntity<List<WorkflowResponse>> list(@PathVariable UUID companyId) {
+    public ResponseEntity<List<WorkflowSummaryResponse>> list(@PathVariable UUID companyId) {
         try {
             return ResponseEntity.ok(workflowService.getWorkflows(companyId, resolveUserId()));
         } catch (AppHttpException e) {

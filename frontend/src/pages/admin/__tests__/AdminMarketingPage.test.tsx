@@ -75,7 +75,6 @@ function stubWorkflow(overrides: Partial<MarketingWorkflow> = {}): MarketingWork
     targetSegmentId: null,
     actionType: "EMAIL",
     emailSubject: "How was your order?",
-    emailBody: "<p>Hi</p>",
     cooldownDays: 30,
     status: "ACTIVE",
     createdAt: "2026-06-01T00:00:00Z",
@@ -146,6 +145,7 @@ describe("AdminMarketingPage", () => {
     await user.click(screen.getByRole("button", { name: /New Workflow/i }));
 
     await user.type(screen.getByPlaceholderText(/Post-delivery review ask/i), "Win-back 90d");
+    await user.type(screen.getByPlaceholderText(/Subject line/i), "We miss you");
 
     await user.click(screen.getByRole("button", { name: /Create Workflow/i }));
 
@@ -176,10 +176,16 @@ describe("AdminMarketingPage", () => {
     );
   });
 
-  it("shows sent count from analytics", async () => {
+  it("shows sent count from analytics on hover", async () => {
     mockList.mockResolvedValue([stubWorkflow()]);
+    const user = userEvent.setup();
 
     renderPage();
+
+    await waitFor(() => screen.getByText("Post-delivery review"));
+
+    // Analytics chip loads lazily — trigger on hover
+    await user.hover(screen.getByTestId("analytics-chip"));
 
     await waitFor(() =>
       expect(screen.getByText("7 sent")).toBeInTheDocument()

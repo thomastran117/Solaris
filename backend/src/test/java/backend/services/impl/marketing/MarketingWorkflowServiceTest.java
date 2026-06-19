@@ -3,6 +3,7 @@ package backend.services.impl.marketing;
 import backend.dtos.requests.marketing.CreateWorkflowRequest;
 import backend.dtos.requests.marketing.UpdateWorkflowRequest;
 import backend.dtos.responses.marketing.WorkflowResponse;
+import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.Company;
@@ -134,9 +135,10 @@ class MarketingWorkflowServiceTest {
                 eq(COMPANY_ID), eq(WorkflowStatus.ARCHIVED), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(stubWorkflow(WorkflowStatus.ACTIVE))));
 
-        List<WorkflowResponse> result = service.getWorkflows(COMPANY_ID, OWNER_ID);
+        List<WorkflowSummaryResponse> result = service.getWorkflows(COMPANY_ID, OWNER_ID);
 
         assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(WORKFLOW_ID);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ const labelCls = "block text-xs font-semibold text-white/60 mb-1 uppercase track
 export default function AdminMarketingPage() {
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
-  const { fadeInUp, stagger } = useAnims();
+  const { fadeInUp, stagger, hoverLift } = useAnims();
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: workflows = [], isLoading } = useQuery({
@@ -118,7 +118,7 @@ export default function AdminMarketingPage() {
               <motion.div
                 key={wf.id}
                 variants={fadeInUp}
-                whileHover={{ y: -4 }}
+                whileHover={hoverLift}
                 className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm hover:shadow-md p-5 flex items-start justify-between gap-4"
               >
                 <div className="min-w-0">
@@ -229,6 +229,7 @@ export default function AdminMarketingPage() {
               <div>
                 <label className={labelCls}>Email Subject</label>
                 <input {...register("emailSubject")} placeholder="Subject line" className={inputCls} />
+                {errors.emailSubject && <p className="text-red-400 text-xs mt-1">{errors.emailSubject.message}</p>}
               </div>
 
               <div>
@@ -256,13 +257,19 @@ export default function AdminMarketingPage() {
 }
 
 function AnalyticsChip({ companyId, workflowId }: { companyId: string; workflowId: string }) {
+  const [hovered, setHovered] = useState(false);
   const { data } = useQuery({
     queryKey: ["marketing", "analytics", workflowId],
     queryFn: () => import("../../api/marketing").then((m) => m.getWorkflowAnalytics(companyId, workflowId)),
+    enabled: hovered,
   });
 
   return (
-    <div className="flex items-center gap-1 text-xs text-white/50 px-2 py-1.5 rounded-xl border border-white/10 bg-white/[0.04]">
+    <div
+      data-testid="analytics-chip"
+      onMouseEnter={() => setHovered(true)}
+      className="flex items-center gap-1 text-xs text-white/50 px-2 py-1.5 rounded-xl border border-white/10 bg-white/[0.04]"
+    >
       <BarChart2 className="w-3.5 h-3.5 text-sky-200/60" />
       <span>{data?.sentCount ?? "—"} sent</span>
     </div>

@@ -8,6 +8,7 @@ import backend.models.core.UserPreference;
 import backend.models.core.WorkflowDeliveryLog;
 import backend.models.core.WorkflowEnrollment;
 import backend.models.enums.WorkflowActionType;
+import backend.models.enums.WorkflowDeliveryStatus;
 import backend.models.enums.WorkflowEnrollmentStatus;
 import backend.models.enums.WorkflowStatus;
 import backend.models.enums.WorkflowTrigger;
@@ -54,8 +55,8 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     private final EmailService emailService;
     private final NotificationEventPublisher notificationEventPublisher;
 
-    // Lazy self-reference so that calls from scheduled methods go through the Spring
-    // AOP proxy, ensuring @Transactional(REQUIRES_NEW) on enrol() is honoured.
+    // Lazy self-reference so calls from scheduled methods go through the Spring AOP proxy,
+    // ensuring @Transactional(REQUIRES_NEW) on enrol() and processOneEnrollment() are honoured.
     private WorkflowEnrollmentService self;
 
     public WorkflowEnrollmentServiceImpl(
@@ -109,108 +110,113 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
         log.debug("[WORKFLOW] Enrolled userId={} in workflowId={} fireAt={}", userId, workflow.getId(), enrollment.getFireAt());
     }
 
+    // Fetch due enrollment IDs; each is processed in its own REQUIRES_NEW transaction via
+    // self.processOneEnrollment(). A failure in one enrollment cannot roll back others.
     @Override
     @Scheduled(fixedDelay = 60_000)
-    @Transactional
     public void processScheduledEnrollments() {
-        List<WorkflowEnrollment> due = enrollmentRepository.findByStatusAndFireAtBefore(
-                WorkflowEnrollmentStatus.SCHEDULED, Instant.now(), PageRequest.of(0, SCHEDULER_BATCH_SIZE))
-                .getContent();
+        List<UUID> dueIds = enrollmentRepository.findIdsByStatusAndFireAtBefore(
+                WorkflowEnrollmentStatus.SCHEDULED, Instant.now(), PageRequest.of(0, SCHEDULER_BATCH_SIZE));
 
-        for (WorkflowEnrollment enrollment : due) {
+        for (UUID id : dueIds) {
             try {
-                backend.models.core.MarketingWorkflow workflow =
-                        workflowRepository.findById(enrollment.getWorkflowId()).orElse(null);
-                if (workflow == null || workflow.getStatus() != WorkflowStatus.ACTIVE) {
-                    enrollment.setStatus(WorkflowEnrollmentStatus.CANCELLED);
-                    enrollmentRepository.save(enrollment);
-                    continue;
-                }
-
-                User user = userRepository.findById(enrollment.getUserId()).orElse(null);
-                if (user == null) {
-                    enrollment.setStatus(WorkflowEnrollmentStatus.CANCELLED);
-                    enrollmentRepository.save(enrollment);
-                    continue;
-                }
-
-                // Commit the status update before dispatching any Kafka message.
-                // If the save throws, the catch block below prevents dispatch — the enrollment
-                // stays SCHEDULED and will be retried on the next tick.
-                enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
-                enrollmentRepository.save(enrollment);
-                deliveryLogRepository.save(new WorkflowDeliveryLog(
-                        enrollment.getId(), workflow.getActionType(), "SENT", Instant.now()));
-
-                // Dispatch after DB write succeeds. Email is deferred to afterCommit here;
-                // push goes through notificationEventPublisher which already handles afterCommit.
-                if (workflow.getActionType() == WorkflowActionType.EMAIL) {
-                    final String toEmail = user.getEmail();
-                    final String firstName = user.getFirstName();
-                    final UUID workflowId = workflow.getId();
-                    final UUID companyId = workflow.getCompanyId();
-                    final String subject = workflow.getEmailSubject();
-                    final String body = workflow.getEmailBody() != null ? workflow.getEmailBody() : "";
-                    if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                        TransactionSynchronizationManager.registerSynchronization(
-                                new TransactionSynchronization() {
-                                    @Override
-                                    public void afterCommit() {
-                                        emailService.sendMarketingWorkflowEmail(
-                                                toEmail, firstName, workflowId, companyId, subject, body);
-                                    }
-                                });
-                    } else {
-                        emailService.sendMarketingWorkflowEmail(
-                                toEmail, firstName, workflowId, companyId, subject, body);
-                    }
-                } else if (workflow.getActionType() == WorkflowActionType.PUSH) {
-                    notificationEventPublisher.publish(new NotificationEvent.MarketingWorkflowPush(
-                            user.getId(),
-                            workflow.getId(),
-                            workflow.getEmailSubject() != null ? workflow.getEmailSubject() : "Message",
-                            workflow.getEmailBody() != null ? workflow.getEmailBody() : ""));
-                }
-
+                self.processOneEnrollment(id);
             } catch (Exception e) {
-                log.error("[WORKFLOW] Failed to process enrollment id={}: {}", enrollment.getId(), e.getMessage(), e);
+                log.error("[WORKFLOW] Failed to process enrollment id={}: {}", id, e.getMessage(), e);
             }
         }
     }
 
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void processOneEnrollment(UUID enrollmentId) {
+        WorkflowEnrollment enrollment = enrollmentRepository.findById(enrollmentId).orElse(null);
+        if (enrollment == null || enrollment.getStatus() != WorkflowEnrollmentStatus.SCHEDULED) return;
+
+        backend.models.core.MarketingWorkflow workflow =
+                workflowRepository.findById(enrollment.getWorkflowId()).orElse(null);
+
+        if (workflow == null || workflow.getStatus() == WorkflowStatus.ARCHIVED) {
+            enrollment.setStatus(WorkflowEnrollmentStatus.CANCELLED);
+            enrollmentRepository.save(enrollment);
+            return;
+        }
+        if (workflow.getStatus() != WorkflowStatus.ACTIVE) {
+            // PAUSED — keep SCHEDULED so the enrollment fires after the workflow is resumed.
+            return;
+        }
+
+        User user = userRepository.findById(enrollment.getUserId()).orElse(null);
+        if (user == null) {
+            enrollment.setStatus(WorkflowEnrollmentStatus.CANCELLED);
+            enrollmentRepository.save(enrollment);
+            return;
+        }
+
+        // Write DB state before dispatching; if save throws the enrollment stays SCHEDULED
+        // and will be retried on the next tick — no Kafka message will have been sent.
+        enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
+        enrollmentRepository.save(enrollment);
+        deliveryLogRepository.save(new WorkflowDeliveryLog(
+                enrollment.getId(), workflow.getActionType(), WorkflowDeliveryStatus.SENT, Instant.now()));
+
+        if (workflow.getActionType() == WorkflowActionType.EMAIL) {
+            final String toEmail = user.getEmail();
+            final String firstName = user.getFirstName();
+            final UUID workflowId = workflow.getId();
+            final UUID companyId = workflow.getCompanyId();
+            final String subject = workflow.getEmailSubject();
+            final String body = workflow.getEmailBody() != null ? workflow.getEmailBody() : "";
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        emailService.sendMarketingWorkflowEmail(toEmail, firstName, workflowId, companyId, subject, body);
+                    }
+                });
+            } else {
+                emailService.sendMarketingWorkflowEmail(toEmail, firstName, workflowId, companyId, subject, body);
+            }
+        } else if (workflow.getActionType() == WorkflowActionType.PUSH) {
+            notificationEventPublisher.publish(new NotificationEvent.MarketingWorkflowPush(
+                    user.getId(),
+                    workflow.getId(),
+                    workflow.getEmailSubject() != null ? workflow.getEmailSubject() : "Message",
+                    workflow.getEmailBody() != null ? workflow.getEmailBody() : ""));
+        }
+    }
+
     @Scheduled(cron = "0 0 8 * * *")
-    @Transactional
     public void dailyBirthdayEnrol() {
         LocalDate today = LocalDate.now();
         List<backend.models.core.MarketingWorkflow> workflows =
                 workflowRepository.findByTriggerAndStatus(WorkflowTrigger.CUSTOMER_BIRTHDAY, WorkflowStatus.ACTIVE);
         if (workflows.isEmpty()) return;
 
-        List<UserPreference> todayBirthdays =
-                userPreferenceRepository.findByBirthDateMonthAndDay(today.getMonthValue(), today.getDayOfMonth());
-
-        // Deduplicate by company: enrol() already fans out to all active workflows for a company,
-        // so calling it per-workflow would create N×N enrollments for N workflows per company.
         Set<UUID> companyIds = workflows.stream()
                 .map(backend.models.core.MarketingWorkflow::getCompanyId)
                 .collect(Collectors.toSet());
 
-        for (UserPreference pref : todayBirthdays) {
-            for (UUID companyId : companyIds) {
-                try {
-                    // Call through self (the Spring proxy) so @Transactional(REQUIRES_NEW) on
-                    // enrol() is applied — isolating each enrollment in its own transaction.
-                    self.enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, companyId, pref.getUserId());
-                } catch (Exception e) {
-                    log.error("[WORKFLOW] Birthday enrol failed userId={} companyId={}: {}",
-                            pref.getUserId(), companyId, e.getMessage());
+        int page = 0;
+        List<UserPreference> chunk;
+        do {
+            chunk = userPreferenceRepository.findByBirthDateMonthAndDay(
+                    today.getMonthValue(), today.getDayOfMonth(),
+                    PageRequest.of(page++, SCHEDULER_BATCH_SIZE)).getContent();
+            for (UserPreference pref : chunk) {
+                for (UUID companyId : companyIds) {
+                    try {
+                        self.enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, companyId, pref.getUserId());
+                    } catch (Exception e) {
+                        log.error("[WORKFLOW] Birthday enrol failed userId={} companyId={}: {}",
+                                pref.getUserId(), companyId, e.getMessage());
+                    }
                 }
             }
-        }
+        } while (chunk.size() == SCHEDULER_BATCH_SIZE);
     }
 
     @Scheduled(cron = "0 0 9 * * *")
-    @Transactional
     public void dailyWinBackEnrol() {
         List<backend.models.core.MarketingWorkflow> workflows =
                 workflowRepository.findByTriggerAndStatus(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, WorkflowStatus.ACTIVE);
@@ -220,26 +226,25 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
             int inactiveDays = workflow.getDelayHours() / 24;
             if (inactiveDays <= 0) continue;
 
-            // Compute target year-month: today minus inactiveDays, formatted as "yyyy-MM"
             LocalDate cutoffDate = LocalDate.now().minusDays(inactiveDays);
             String cutoffYearMonth = String.format("%04d-%02d", cutoffDate.getYear(), cutoffDate.getMonthValue());
 
-            List<LoyaltyAccount> accounts =
-                    loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonth(
-                            workflow.getCompanyId(), cutoffYearMonth);
-
-            // Enrol in this specific workflow only — calling enrol() would fan out to every
-            // active DAYS_SINCE_LAST_ORDER workflow regardless of its inactivity threshold.
-            // fireAt = now: send promptly after detection; delayHours drives only the inactivity
-            // window, not an additional send delay.
-            for (LoyaltyAccount account : accounts) {
-                try {
-                    scheduleEnrollment(workflow, account.getUserId(), Instant.now());
-                } catch (Exception e) {
-                    log.error("[WORKFLOW] Win-back enrol failed userId={} workflowId={}: {}",
-                            account.getUserId(), workflow.getId(), e.getMessage());
+            int page = 0;
+            List<LoyaltyAccount> chunk;
+            do {
+                chunk = loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonth(
+                        workflow.getCompanyId(), cutoffYearMonth,
+                        PageRequest.of(page++, SCHEDULER_BATCH_SIZE)).getContent();
+                for (LoyaltyAccount account : chunk) {
+                    try {
+                        // fireAt = now: delayHours only drives the inactivity window, not a send delay.
+                        scheduleEnrollment(workflow, account.getUserId(), Instant.now());
+                    } catch (Exception e) {
+                        log.error("[WORKFLOW] Win-back enrol failed userId={} workflowId={}: {}",
+                                account.getUserId(), workflow.getId(), e.getMessage());
+                    }
                 }
-            }
+            } while (chunk.size() == SCHEDULER_BATCH_SIZE);
         }
     }
 

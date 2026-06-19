@@ -1,6 +1,7 @@
 package backend.models.core;
 
 import backend.models.enums.WorkflowActionType;
+import backend.models.enums.WorkflowDeliveryStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -44,13 +45,14 @@ public class WorkflowDeliveryLog {
     @Column(nullable = false, length = 20)
     private WorkflowActionType channel;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status;
+    private WorkflowDeliveryStatus status;
 
     @Column(nullable = false, name = "sent_at")
     private Instant sentAt;
 
-    public WorkflowDeliveryLog(UUID enrollmentId, WorkflowActionType channel, String status, Instant sentAt) {
+    public WorkflowDeliveryLog(UUID enrollmentId, WorkflowActionType channel, WorkflowDeliveryStatus status, Instant sentAt) {
         this.enrollmentId = enrollmentId;
         this.channel = channel;
         this.status = status;

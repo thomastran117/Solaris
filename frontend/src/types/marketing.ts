@@ -17,7 +17,6 @@ export interface MarketingWorkflow {
   targetSegmentId: string | null;
   actionType: WorkflowActionType;
   emailSubject: string | null;
-  emailBody: string | null;
   cooldownDays: number;
   status: WorkflowStatus;
   createdAt: string;

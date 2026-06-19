@@ -1,4 +1,4 @@
-import { useReducedMotion, type Variants } from "framer-motion";
+import { useReducedMotion, type TargetAndTransition, type Variants } from "framer-motion";
 
 export function useAnims() {
   const prefersReducedMotion = useReducedMotion();
@@ -15,5 +15,7 @@ export function useAnims() {
     ? { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }
     : { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
 
-  return { fadeInUp, fadeIn, stagger };
+  const hoverLift: TargetAndTransition = prefersReducedMotion ? {} : { y: -4 };
+
+  return { fadeInUp, fadeIn, stagger, hoverLift };
 }

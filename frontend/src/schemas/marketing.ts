@@ -9,6 +9,14 @@ export const createWorkflowSchema = z.object({
   emailSubject: z.string().max(255).optional(),
   emailBody: z.string().optional(),
   cooldownDays: z.number().int().min(0),
+}).superRefine((data, ctx) => {
+  if (data.actionType === 'EMAIL' && (!data.emailSubject || data.emailSubject.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Email subject is required for email workflows',
+      path: ['emailSubject'],
+    });
+  }
 });
 
 export type CreateWorkflowFormValues = z.infer<typeof createWorkflowSchema>;

@@ -3,6 +3,7 @@ package backend.controllers.impl.marketing;
 import backend.configurations.application.GlobalExceptionHandler;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
+import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.enums.WorkflowActionType;
@@ -99,11 +100,12 @@ class MarketingWorkflowControllerTest {
     void list_returns200WithWorkflows() throws Exception {
         authenticateAs(USER_ID);
         when(workflowService.getWorkflows(eq(COMPANY_ID), eq(USER_ID)))
-                .thenReturn(List.of(stubWorkflowResponse("ACTIVE")));
+                .thenReturn(List.of(stubWorkflowSummaryResponse()));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/marketing/workflows"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(WORKFLOW_ID.toString()));
+                .andExpect(jsonPath("$[0].id").value(WORKFLOW_ID.toString()))
+                .andExpect(jsonPath("$[0].emailBody").doesNotExist());
     }
 
     // ─── PATCH update ─────────────────────────────────────────────────────────
@@ -155,6 +157,14 @@ class MarketingWorkflowControllerTest {
                 WorkflowTrigger.ORDER_DELIVERED, 72, null,
                 WorkflowActionType.EMAIL, "How was your order?", null,
                 30, WorkflowStatus.valueOf(status), Instant.now(), Instant.now());
+    }
+
+    private WorkflowSummaryResponse stubWorkflowSummaryResponse() {
+        return new WorkflowSummaryResponse(
+                WORKFLOW_ID, COMPANY_ID, "Post-delivery review",
+                WorkflowTrigger.ORDER_DELIVERED, 72, null,
+                WorkflowActionType.EMAIL, "How was your order?",
+                30, WorkflowStatus.ACTIVE, Instant.now(), Instant.now());
     }
 
     private void authenticateAs(UUID userId) {

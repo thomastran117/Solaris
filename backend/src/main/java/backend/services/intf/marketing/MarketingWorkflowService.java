@@ -4,6 +4,7 @@ import backend.dtos.requests.marketing.CreateWorkflowRequest;
 import backend.dtos.requests.marketing.UpdateWorkflowRequest;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
+import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,7 +15,7 @@ public interface MarketingWorkflowService {
 
     WorkflowResponse updateWorkflow(UUID companyId, UUID workflowId, UUID ownerId, UpdateWorkflowRequest request);
 
-    List<WorkflowResponse> getWorkflows(UUID companyId, UUID ownerId);
+    List<WorkflowSummaryResponse> getWorkflows(UUID companyId, UUID ownerId);
 
     WorkflowAnalyticsResponse getAnalytics(UUID companyId, UUID workflowId, UUID ownerId);
 }
