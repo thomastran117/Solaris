@@ -9,6 +9,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -34,6 +35,9 @@ public class UserPreference {
 
     @Column(length = 30)
     private String smsPhoneNumber;
+
+    @Column(nullable = true, name = "birth_date")
+    private LocalDate birthDate;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

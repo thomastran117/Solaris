@@ -75,6 +75,8 @@ public class EmailSender {
                 sendPriceDropEmail(e.recipientEmail(), e.productName(), e.productUrl(), e.oldPriceCents(), e.newPriceCents());
             case EmailEvent.DeliverySlotUnavailableEmail e ->
                 sendDeliverySlotUnavailableEmail(e.recipientEmail(), e.orderReference(), e.requestedDate(), e.vendorReason());
+            case EmailEvent.MarketingWorkflowEmail e ->
+                sendMarketingWorkflowEmail(e.toEmail(), e.firstName(), e.subject(), e.body());
             default -> {}
         }
     }
@@ -809,6 +811,15 @@ public class EmailSender {
                 primaryButton(productUrl, "Shop Now"));
         sendMimeMessage(toEmail, "Price drop: " + safeProduct + " is now " + newFormatted + " — ShopWave",
                 wrapInShell("Price Drop", body));
+    }
+
+    private void sendMarketingWorkflowEmail(String toEmail, String firstName, String subject, String body) {
+        String greeting = firstName != null && !firstName.isBlank() ? "Hi " + HtmlUtils.htmlEscape(firstName) + "," : "Hi,";
+        String htmlBody = wrapInShell("Message", """
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            %s
+            """.formatted(greeting, body));
+        sendMimeMessage(toEmail, subject, htmlBody);
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

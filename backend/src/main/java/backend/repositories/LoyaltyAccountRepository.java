@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +22,12 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
     Optional<LoyaltyAccount> findByUserIdAndCompanyId(UUID userId, UUID companyId);
 
     Page<LoyaltyAccount> findByCompanyId(UUID companyId, Pageable pageable);
+
+    List<LoyaltyAccount> findByCompanyIdAndLastOrderYearMonth(UUID companyId, String lastOrderYearMonth);
+
+    Page<LoyaltyAccount> findByCompanyIdAndLastOrderYearMonth(UUID companyId, String lastOrderYearMonth, Pageable pageable);
+
+    Page<LoyaltyAccount> findByCompanyIdAndLastOrderYearMonthLessThan(UUID companyId, String cutoffYearMonth, Pageable pageable);
 
     /**
      * Atomically deducts points. Returns 1 on success, 0 if balance would go negative.

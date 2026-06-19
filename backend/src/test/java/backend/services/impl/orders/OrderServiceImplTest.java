@@ -96,6 +96,7 @@ import backend.models.enums.DeliveryWindow;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -328,7 +329,7 @@ class OrderServiceImplTest {
     @Test
     void shouldThrowBadRequestWhenDeliveryDateInPast() {
         when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order()));
-        SetDeliverySlotRequest req = slotRequest(LocalDate.now().minusDays(1), DeliveryWindow.MORNING);
+        SetDeliverySlotRequest req = slotRequest(LocalDate.now(ZoneOffset.UTC).minusDays(1), DeliveryWindow.MORNING);
 
         assertThrows(BadRequestException.class, () -> service.requestSlot(ORDER_ID, USER_ID, req));
     }
@@ -336,7 +337,7 @@ class OrderServiceImplTest {
     @Test
     void shouldThrowBadRequestWhenDeliveryDateBeyond14Days() {
         when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order()));
-        SetDeliverySlotRequest req = slotRequest(LocalDate.now().plusDays(15), DeliveryWindow.AFTERNOON);
+        SetDeliverySlotRequest req = slotRequest(LocalDate.now(ZoneOffset.UTC).plusDays(15), DeliveryWindow.AFTERNOON);
 
         assertThrows(BadRequestException.class, () -> service.requestSlot(ORDER_ID, USER_ID, req));
     }
@@ -356,7 +357,7 @@ class OrderServiceImplTest {
         Order order = order();
         when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
-        LocalDate date = LocalDate.now().plusDays(3);
+        LocalDate date = LocalDate.now(ZoneOffset.UTC).plusDays(3);
         SetDeliverySlotRequest req = slotRequest(date, DeliveryWindow.EVENING);
 
         OrderResponse response = service.requestSlot(ORDER_ID, USER_ID, req);
