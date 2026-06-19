@@ -1,6 +1,5 @@
 package backend.services.impl.marketing;
 
-import backend.events.email.EmailEvent;
 import backend.events.notification.NotificationEvent;
 import backend.kafka.producers.NotificationEventPublisher;
 import backend.models.core.LoyaltyAccount;
@@ -22,10 +21,15 @@ import backend.services.intf.marketing.WorkflowEnrollmentService;
 import backend.services.intf.support.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,6 +43,7 @@ import java.util.stream.Collectors;
 public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService {
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowEnrollmentServiceImpl.class);
+    private static final int SCHEDULER_BATCH_SIZE = 500;
 
     private final MarketingWorkflowRepository workflowRepository;
     private final WorkflowEnrollmentRepository enrollmentRepository;
@@ -48,6 +53,10 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     private final LoyaltyAccountRepository loyaltyAccountRepository;
     private final EmailService emailService;
     private final NotificationEventPublisher notificationEventPublisher;
+
+    // Lazy self-reference so that calls from scheduled methods go through the Spring
+    // AOP proxy, ensuring @Transactional(REQUIRES_NEW) on enrol() is honoured.
+    private WorkflowEnrollmentService self;
 
     public WorkflowEnrollmentServiceImpl(
             MarketingWorkflowRepository workflowRepository,
@@ -68,6 +77,11 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
         this.notificationEventPublisher = notificationEventPublisher;
     }
 
+    @Autowired
+    public void setSelf(@Lazy WorkflowEnrollmentService self) {
+        this.self = self;
+    }
+
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void enrol(WorkflowTrigger trigger, UUID companyId, UUID userId) {
@@ -79,14 +93,17 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     }
 
     private void scheduleEnrollment(backend.models.core.MarketingWorkflow workflow, UUID userId) {
+        scheduleEnrollment(workflow, userId, Instant.now().plus(workflow.getDelayHours(), ChronoUnit.HOURS));
+    }
+
+    private void scheduleEnrollment(backend.models.core.MarketingWorkflow workflow, UUID userId, Instant fireAt) {
         if (!passesSegmentFilter(workflow, userId)) return;
         if (!passesCooldown(workflow, userId)) return;
-        Instant now = Instant.now();
         WorkflowEnrollment enrollment = new WorkflowEnrollment();
         enrollment.setWorkflowId(workflow.getId());
         enrollment.setUserId(userId);
-        enrollment.setEnrolledAt(now);
-        enrollment.setFireAt(now.plus(workflow.getDelayHours(), ChronoUnit.HOURS));
+        enrollment.setEnrolledAt(Instant.now());
+        enrollment.setFireAt(fireAt);
         enrollment.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
         enrollmentRepository.save(enrollment);
         log.debug("[WORKFLOW] Enrolled userId={} in workflowId={} fireAt={}", userId, workflow.getId(), enrollment.getFireAt());
@@ -96,8 +113,9 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     @Scheduled(fixedDelay = 60_000)
     @Transactional
     public void processScheduledEnrollments() {
-        List<WorkflowEnrollment> due =
-                enrollmentRepository.findByStatusAndFireAtBefore(WorkflowEnrollmentStatus.SCHEDULED, Instant.now());
+        List<WorkflowEnrollment> due = enrollmentRepository.findByStatusAndFireAtBefore(
+                WorkflowEnrollmentStatus.SCHEDULED, Instant.now(), PageRequest.of(0, SCHEDULER_BATCH_SIZE))
+                .getContent();
 
         for (WorkflowEnrollment enrollment : due) {
             try {
@@ -116,14 +134,36 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
                     continue;
                 }
 
+                // Commit the status update before dispatching any Kafka message.
+                // If the save throws, the catch block below prevents dispatch — the enrollment
+                // stays SCHEDULED and will be retried on the next tick.
+                enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
+                enrollmentRepository.save(enrollment);
+                deliveryLogRepository.save(new WorkflowDeliveryLog(
+                        enrollment.getId(), workflow.getActionType(), "SENT", Instant.now()));
+
+                // Dispatch after DB write succeeds. Email is deferred to afterCommit here;
+                // push goes through notificationEventPublisher which already handles afterCommit.
                 if (workflow.getActionType() == WorkflowActionType.EMAIL) {
-                    emailService.sendMarketingWorkflowEmail(
-                            user.getEmail(),
-                            user.getFirstName(),
-                            workflow.getId(),
-                            workflow.getCompanyId(),
-                            workflow.getEmailSubject(),
-                            workflow.getEmailBody() != null ? workflow.getEmailBody() : "");
+                    final String toEmail = user.getEmail();
+                    final String firstName = user.getFirstName();
+                    final UUID workflowId = workflow.getId();
+                    final UUID companyId = workflow.getCompanyId();
+                    final String subject = workflow.getEmailSubject();
+                    final String body = workflow.getEmailBody() != null ? workflow.getEmailBody() : "";
+                    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                        TransactionSynchronizationManager.registerSynchronization(
+                                new TransactionSynchronization() {
+                                    @Override
+                                    public void afterCommit() {
+                                        emailService.sendMarketingWorkflowEmail(
+                                                toEmail, firstName, workflowId, companyId, subject, body);
+                                    }
+                                });
+                    } else {
+                        emailService.sendMarketingWorkflowEmail(
+                                toEmail, firstName, workflowId, companyId, subject, body);
+                    }
                 } else if (workflow.getActionType() == WorkflowActionType.PUSH) {
                     notificationEventPublisher.publish(new NotificationEvent.MarketingWorkflowPush(
                             user.getId(),
@@ -131,11 +171,6 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
                             workflow.getEmailSubject() != null ? workflow.getEmailSubject() : "Message",
                             workflow.getEmailBody() != null ? workflow.getEmailBody() : ""));
                 }
-
-                enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
-                enrollmentRepository.save(enrollment);
-                deliveryLogRepository.save(new WorkflowDeliveryLog(
-                        enrollment.getId(), workflow.getActionType(), "SENT", Instant.now()));
 
             } catch (Exception e) {
                 log.error("[WORKFLOW] Failed to process enrollment id={}: {}", enrollment.getId(), e.getMessage(), e);
@@ -163,7 +198,9 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
         for (UserPreference pref : todayBirthdays) {
             for (UUID companyId : companyIds) {
                 try {
-                    enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, companyId, pref.getUserId());
+                    // Call through self (the Spring proxy) so @Transactional(REQUIRES_NEW) on
+                    // enrol() is applied — isolating each enrollment in its own transaction.
+                    self.enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, companyId, pref.getUserId());
                 } catch (Exception e) {
                     log.error("[WORKFLOW] Birthday enrol failed userId={} companyId={}: {}",
                             pref.getUserId(), companyId, e.getMessage());
@@ -193,9 +230,11 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
 
             // Enrol in this specific workflow only — calling enrol() would fan out to every
             // active DAYS_SINCE_LAST_ORDER workflow regardless of its inactivity threshold.
+            // fireAt = now: send promptly after detection; delayHours drives only the inactivity
+            // window, not an additional send delay.
             for (LoyaltyAccount account : accounts) {
                 try {
-                    scheduleEnrollment(workflow, account.getUserId());
+                    scheduleEnrollment(workflow, account.getUserId(), Instant.now());
                 } catch (Exception e) {
                     log.error("[WORKFLOW] Win-back enrol failed userId={} workflowId={}: {}",
                             account.getUserId(), workflow.getId(), e.getMessage());

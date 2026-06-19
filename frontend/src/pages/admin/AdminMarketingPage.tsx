@@ -19,9 +19,9 @@ const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
 };
 
 const STATUS_COLORS: Record<WorkflowStatus, string> = {
-  ACTIVE: "bg-green-500/15 text-green-300 border-green-400/30",
-  PAUSED: "bg-yellow-500/15 text-yellow-300 border-yellow-400/30",
-  ARCHIVED: "bg-white/10 text-white/50 border-white/15",
+  ACTIVE: "bg-green-500/15 text-green-400 border-white/10",
+  PAUSED: "bg-yellow-500/15 text-yellow-400 border-white/10",
+  ARCHIVED: "bg-white/10 text-white/50 border-white/10",
 };
 
 const inputCls =
@@ -148,7 +148,7 @@ export default function AdminMarketingPage() {
                     <button
                       onClick={() => updateMutation.mutate({ id: wf.id, status: "PAUSED" })}
                       title="Pause"
-                      className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-yellow-300 transition"
+                      className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-yellow-400 transition"
                     >
                       <Pause className="w-4 h-4" />
                     </button>
@@ -157,7 +157,7 @@ export default function AdminMarketingPage() {
                     <button
                       onClick={() => updateMutation.mutate({ id: wf.id, status: "ACTIVE" })}
                       title="Resume"
-                      className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-green-300 transition"
+                      className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-green-400 transition"
                     >
                       <Zap className="w-4 h-4" />
                     </button>
@@ -182,7 +182,7 @@ export default function AdminMarketingPage() {
       {/* Create modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900 p-8 shadow-2xl">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-white/[0.06] backdrop-blur p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-extrabold text-white">New Workflow</h2>
               <button onClick={() => { setShowCreate(false); reset(); }} className="text-white/40 hover:text-white transition">

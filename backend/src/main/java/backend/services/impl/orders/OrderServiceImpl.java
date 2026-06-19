@@ -3255,6 +3255,14 @@ public class OrderServiceImpl implements OrderService {
                 .orElse(null);
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+        if (workflowEnrollmentService != null && companyId != null) {
+            try {
+                workflowEnrollmentService.enrol(backend.models.enums.WorkflowTrigger.ORDER_DELIVERED,
+                        companyId, saved.getUser().getId());
+            } catch (Exception e) {
+                log.error("[WORKFLOW] ORDER_DELIVERED enrol failed orderId={}", orderId, e);
+            }
+        }
     }
 
     @Override

@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
@@ -23,6 +25,17 @@ public class WorkflowDeliveryLog {
     @UuidGenerator(style = UuidGenerator.Style.TIME)
     @Column(columnDefinition = "BINARY(16)")
     private UUID id;
+
+    @Version
+    private int version;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private Instant updatedAt;
 
     @Column(nullable = false, name = "enrollment_id", columnDefinition = "BINARY(16)")
     private UUID enrollmentId;

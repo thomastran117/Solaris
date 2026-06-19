@@ -14,6 +14,7 @@ import backend.repositories.UserPreferenceRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.WorkflowDeliveryLogRepository;
 import backend.repositories.WorkflowEnrollmentRepository;
+import backend.services.intf.marketing.WorkflowEnrollmentService;
 import backend.services.intf.support.EmailService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -44,6 +46,7 @@ class WorkflowEnrollmentServiceTest {
     @Mock LoyaltyAccountRepository loyaltyAccountRepository;
     @Mock EmailService emailService;
     @Mock NotificationEventPublisher notificationEventPublisher;
+    @Mock WorkflowEnrollmentService enrollmentServiceProxy;
 
     WorkflowEnrollmentServiceImpl service;
 
@@ -57,6 +60,7 @@ class WorkflowEnrollmentServiceTest {
                 workflowRepository, enrollmentRepository, deliveryLogRepository,
                 userRepository, userPreferenceRepository, loyaltyAccountRepository,
                 emailService, notificationEventPublisher);
+        service.setSelf(enrollmentServiceProxy);
     }
 
     // ─── enrol ───────────────────────────────────────────────────────────────
@@ -134,8 +138,9 @@ class WorkflowEnrollmentServiceTest {
         enrollment.setFireAt(Instant.now().minusSeconds(10));
         enrollment.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
 
-        when(enrollmentRepository.findByStatusAndFireAtBefore(eq(WorkflowEnrollmentStatus.SCHEDULED), any()))
-                .thenReturn(List.of(enrollment));
+        when(enrollmentRepository.findByStatusAndFireAtBefore(
+                eq(WorkflowEnrollmentStatus.SCHEDULED), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(enrollment)));
         when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.of(wf));
 
         User user = new User();
@@ -159,7 +164,8 @@ class WorkflowEnrollmentServiceTest {
 
     @Test
     void processScheduledEnrollments_skipsNotYetDue() {
-        when(enrollmentRepository.findByStatusAndFireAtBefore(any(), any())).thenReturn(List.of());
+        when(enrollmentRepository.findByStatusAndFireAtBefore(any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
 
         service.processScheduledEnrollments();
 

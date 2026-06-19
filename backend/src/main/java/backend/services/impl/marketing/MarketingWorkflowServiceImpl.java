@@ -13,6 +13,7 @@ import backend.repositories.WorkflowDeliveryLogRepository;
 import backend.repositories.WorkflowEnrollmentRepository;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.marketing.MarketingWorkflowService;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,7 +88,9 @@ public class MarketingWorkflowServiceImpl implements MarketingWorkflowService {
     @Transactional(readOnly = true)
     public List<WorkflowResponse> getWorkflows(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
-        return workflowRepository.findByCompanyIdAndStatusNot(companyId, WorkflowStatus.ARCHIVED)
+        return workflowRepository.findByCompanyIdAndStatusNot(
+                        companyId, WorkflowStatus.ARCHIVED, PageRequest.of(0, 200))
+                .getContent()
                 .stream()
                 .map(WorkflowResponse::from)
                 .toList();
@@ -103,10 +106,7 @@ public class MarketingWorkflowServiceImpl implements MarketingWorkflowService {
                 .orElseThrow(() -> new ResourceNotFoundException("Workflow not found: " + workflowId));
 
         long enrolledCount = enrollmentRepository.countByWorkflowId(workflowId);
-
-        List<UUID> enrollmentIds = enrollmentRepository.findByWorkflowId(workflowId)
-                .stream().map(e -> e.getId()).toList();
-        long sentCount = enrollmentIds.isEmpty() ? 0 : deliveryLogRepository.countByEnrollmentIdIn(enrollmentIds);
+        long sentCount = deliveryLogRepository.countByWorkflowId(workflowId);
 
         return new WorkflowAnalyticsResponse(workflowId, enrolledCount, sentCount);
     }

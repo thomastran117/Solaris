@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class EmailServiceImpl implements EmailService {
@@ -134,10 +136,27 @@ public class EmailServiceImpl implements EmailService {
     }
 
     private void publish(EmailEvent event) {
-        kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
-            if (ex != null) {
-                log.warn("email-events publish failed type={}", event.getClass().getSimpleName(), ex);
-            }
-        });
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    doSend(event);
+                }
+            });
+        } else {
+            doSend(event);
+        }
+    }
+
+    private void doSend(EmailEvent event) {
+        try {
+            kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
+                if (ex != null) {
+                    log.warn("email-events publish failed type={}", event.getClass().getSimpleName(), ex);
+                }
+            });
+        } catch (Throwable t) {
+            log.warn("email-events publish error type={}", event.getClass().getSimpleName(), t);
+        }
     }
 }

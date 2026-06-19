@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.util.List;
@@ -128,8 +130,9 @@ class MarketingWorkflowServiceTest {
     @Test
     void getWorkflows_returnsNonArchivedList() {
         stubCompanyAccess();
-        when(workflowRepository.findByCompanyIdAndStatusNot(COMPANY_ID, WorkflowStatus.ARCHIVED))
-                .thenReturn(List.of(stubWorkflow(WorkflowStatus.ACTIVE)));
+        when(workflowRepository.findByCompanyIdAndStatusNot(
+                eq(COMPANY_ID), eq(WorkflowStatus.ARCHIVED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stubWorkflow(WorkflowStatus.ACTIVE))));
 
         List<WorkflowResponse> result = service.getWorkflows(COMPANY_ID, OWNER_ID);
 
