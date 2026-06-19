@@ -31,7 +31,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService {
@@ -71,21 +73,23 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     public void enrol(WorkflowTrigger trigger, UUID companyId, UUID userId) {
         List<backend.models.core.MarketingWorkflow> workflows =
                 workflowRepository.findByTriggerAndStatusAndCompanyId(trigger, WorkflowStatus.ACTIVE, companyId);
-
         for (backend.models.core.MarketingWorkflow workflow : workflows) {
-            if (!passesSegmentFilter(workflow, userId)) continue;
-            if (!passesCooldown(workflow, userId)) continue;
-
-            Instant now = Instant.now();
-            WorkflowEnrollment enrollment = new WorkflowEnrollment();
-            enrollment.setWorkflowId(workflow.getId());
-            enrollment.setUserId(userId);
-            enrollment.setEnrolledAt(now);
-            enrollment.setFireAt(now.plus(workflow.getDelayHours(), ChronoUnit.HOURS));
-            enrollment.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
-            enrollmentRepository.save(enrollment);
-            log.debug("[WORKFLOW] Enrolled userId={} in workflowId={} fireAt={}", userId, workflow.getId(), enrollment.getFireAt());
+            scheduleEnrollment(workflow, userId);
         }
+    }
+
+    private void scheduleEnrollment(backend.models.core.MarketingWorkflow workflow, UUID userId) {
+        if (!passesSegmentFilter(workflow, userId)) return;
+        if (!passesCooldown(workflow, userId)) return;
+        Instant now = Instant.now();
+        WorkflowEnrollment enrollment = new WorkflowEnrollment();
+        enrollment.setWorkflowId(workflow.getId());
+        enrollment.setUserId(userId);
+        enrollment.setEnrolledAt(now);
+        enrollment.setFireAt(now.plus(workflow.getDelayHours(), ChronoUnit.HOURS));
+        enrollment.setStatus(WorkflowEnrollmentStatus.SCHEDULED);
+        enrollmentRepository.save(enrollment);
+        log.debug("[WORKFLOW] Enrolled userId={} in workflowId={} fireAt={}", userId, workflow.getId(), enrollment.getFireAt());
     }
 
     @Override
@@ -99,7 +103,7 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
             try {
                 backend.models.core.MarketingWorkflow workflow =
                         workflowRepository.findById(enrollment.getWorkflowId()).orElse(null);
-                if (workflow == null || workflow.getStatus() == WorkflowStatus.ARCHIVED) {
+                if (workflow == null || workflow.getStatus() != WorkflowStatus.ACTIVE) {
                     enrollment.setStatus(WorkflowEnrollmentStatus.CANCELLED);
                     enrollmentRepository.save(enrollment);
                     continue;
@@ -150,13 +154,19 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
         List<UserPreference> todayBirthdays =
                 userPreferenceRepository.findByBirthDateMonthAndDay(today.getMonthValue(), today.getDayOfMonth());
 
+        // Deduplicate by company: enrol() already fans out to all active workflows for a company,
+        // so calling it per-workflow would create N×N enrollments for N workflows per company.
+        Set<UUID> companyIds = workflows.stream()
+                .map(backend.models.core.MarketingWorkflow::getCompanyId)
+                .collect(Collectors.toSet());
+
         for (UserPreference pref : todayBirthdays) {
-            for (backend.models.core.MarketingWorkflow workflow : workflows) {
+            for (UUID companyId : companyIds) {
                 try {
-                    enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, workflow.getCompanyId(), pref.getUserId());
+                    enrol(WorkflowTrigger.CUSTOMER_BIRTHDAY, companyId, pref.getUserId());
                 } catch (Exception e) {
-                    log.error("[WORKFLOW] Birthday enrol failed userId={} workflowId={}: {}",
-                            pref.getUserId(), workflow.getId(), e.getMessage());
+                    log.error("[WORKFLOW] Birthday enrol failed userId={} companyId={}: {}",
+                            pref.getUserId(), companyId, e.getMessage());
                 }
             }
         }
@@ -181,9 +191,11 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
                     loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonth(
                             workflow.getCompanyId(), cutoffYearMonth);
 
+            // Enrol in this specific workflow only — calling enrol() would fan out to every
+            // active DAYS_SINCE_LAST_ORDER workflow regardless of its inactivity threshold.
             for (LoyaltyAccount account : accounts) {
                 try {
-                    enrol(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, workflow.getCompanyId(), account.getUserId());
+                    scheduleEnrollment(workflow, account.getUserId());
                 } catch (Exception e) {
                     log.error("[WORKFLOW] Win-back enrol failed userId={} workflowId={}: {}",
                             account.getUserId(), workflow.getId(), e.getMessage());

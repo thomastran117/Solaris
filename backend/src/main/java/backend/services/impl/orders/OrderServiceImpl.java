@@ -1702,8 +1702,8 @@ public class OrderServiceImpl implements OrderService {
                 UUID companyId = resolveOrderCompanyId(order.getItems());
                 loyaltyService.recordOrderEarn(order, companyId);
                 if (workflowEnrollmentService != null && companyId != null) {
-                    long paidCount = orderRepository.countByUserIdAndStatus(
-                            order.getUser().getId(), OrderStatus.PAID);
+                    long paidCount = orderRepository.countByUserIdAndProductCompanyIdAndStatus(
+                            order.getUser().getId(), companyId, OrderStatus.PAID);
                     if (paidCount == 1) {
                         workflowEnrollmentService.enrol(
                                 backend.models.enums.WorkflowTrigger.FIRST_ORDER_PLACED,

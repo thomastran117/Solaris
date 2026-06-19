@@ -42,6 +42,11 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
 
     long countByUserIdAndStatus(UUID userId, OrderStatus status);
 
+    @Query("SELECT COUNT(DISTINCT o) FROM Order o JOIN o.items oi WHERE o.user.id = :userId AND oi.product.company.id = :companyId AND o.status = :status")
+    long countByUserIdAndProductCompanyIdAndStatus(@Param("userId") UUID userId,
+                                                   @Param("companyId") UUID companyId,
+                                                   @Param("status") OrderStatus status);
+
     /**
      * Count of the user's orders that have moved past the just-created RESERVED state.
      * Used by {@code CouponAbuseEvaluator} so a "first order" check doesn't get fooled
