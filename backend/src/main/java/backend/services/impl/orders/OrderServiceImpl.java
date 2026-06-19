@@ -221,6 +221,7 @@ public class OrderServiceImpl implements OrderService {
     private final TrackingService trackingService;
     private backend.kafka.producers.NotificationEventPublisher notificationEventPublisher;
     private OutboundWebhookEventPublisher outboundWebhookEventPublisher;
+    private backend.services.intf.marketing.WorkflowEnrollmentService workflowEnrollmentService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private ReturnService returnService;
     private PromotionPerUserCountRepository promotionPerUserCountRepository;
@@ -339,6 +340,11 @@ public class OrderServiceImpl implements OrderService {
     @org.springframework.beans.factory.annotation.Autowired
     public void setSelf(@org.springframework.context.annotation.Lazy OrderServiceImpl self) {
         this.self = self;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWorkflowEnrollmentService(backend.services.intf.marketing.WorkflowEnrollmentService service) {
+        this.workflowEnrollmentService = service;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -1695,6 +1701,15 @@ public class OrderServiceImpl implements OrderService {
             try {
                 UUID companyId = resolveOrderCompanyId(order.getItems());
                 loyaltyService.recordOrderEarn(order, companyId);
+                if (workflowEnrollmentService != null && companyId != null) {
+                    long paidCount = orderRepository.countByUserIdAndStatus(
+                            order.getUser().getId(), OrderStatus.PAID);
+                    if (paidCount == 1) {
+                        workflowEnrollmentService.enrol(
+                                backend.models.enums.WorkflowTrigger.FIRST_ORDER_PLACED,
+                                companyId, order.getUser().getId());
+                    }
+                }
             } catch (Exception e) {
                 log.error("[LOYALTY] Failed to record earn for order {}: {}", order.getId(), e.getMessage());
             }
@@ -3130,6 +3145,14 @@ public class OrderServiceImpl implements OrderService {
             notificationEventPublisher.publish(new NotificationEvent.OrderDelivered(
                     saved.getUser().getId(), saved.getId(), saved.getUser().getFirstName()));
         }
+        if (workflowEnrollmentService != null) {
+            try {
+                workflowEnrollmentService.enrol(backend.models.enums.WorkflowTrigger.ORDER_DELIVERED,
+                        companyId, saved.getUser().getId());
+            } catch (Exception e) {
+                log.error("[WORKFLOW] ORDER_DELIVERED enrol failed orderId={}", orderId, e);
+            }
+        }
         return toCompanyOrderResponse(saved, companyId);
     }
 
@@ -3154,6 +3177,14 @@ public class OrderServiceImpl implements OrderService {
                 .orElse(null);
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
+        if (workflowEnrollmentService != null && companyId != null) {
+            try {
+                workflowEnrollmentService.enrol(backend.models.enums.WorkflowTrigger.ORDER_DELIVERED,
+                        companyId, saved.getUser().getId());
+            } catch (Exception e) {
+                log.error("[WORKFLOW] ORDER_DELIVERED enrol failed trackingNumber={}", trackingNumber, e);
+            }
+        }
     }
 
     @Override

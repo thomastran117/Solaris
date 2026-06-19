@@ -110,6 +110,7 @@ public class NotificationDispatchWorker {
             case NotificationEvent.BackInStock e    -> e.userId();
             case NotificationEvent.DeliverySlotConfirmed e   -> e.userId();
             case NotificationEvent.DeliverySlotUnavailable e -> e.userId();
+            case NotificationEvent.MarketingWorkflowPush e   -> e.userId();
         };
     }
 
@@ -121,6 +122,7 @@ public class NotificationDispatchWorker {
             case NotificationEvent.BackInStock e    -> e.productName() + " is back in stock";
             case NotificationEvent.DeliverySlotConfirmed e   -> "Delivery slot confirmed";
             case NotificationEvent.DeliverySlotUnavailable e -> "Delivery slot unavailable";
+            case NotificationEvent.MarketingWorkflowPush e   -> e.title();
         };
     }
 
@@ -145,6 +147,7 @@ public class NotificationDispatchWorker {
             case NotificationEvent.DeliverySlotUnavailable e ->
                 "Hi " + e.firstName() + ", the seller can't make your requested delivery slot."
                     + (e.reason() != null && !e.reason().isBlank() ? " Reason: " + e.reason() : "");
+            case NotificationEvent.MarketingWorkflowPush e -> e.body();
         };
     }
 }

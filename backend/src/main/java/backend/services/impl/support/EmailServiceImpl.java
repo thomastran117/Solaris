@@ -126,6 +126,13 @@ public class EmailServiceImpl implements EmailService {
                 requestedDate, vendorReason));
     }
 
+    @Override
+    public void sendMarketingWorkflowEmail(String toEmail, String firstName,
+                                           java.util.UUID workflowId, java.util.UUID companyId,
+                                           String subject, String body) {
+        publish(new EmailEvent.MarketingWorkflowEmail(toEmail, firstName, workflowId, companyId, subject, body));
+    }
+
     private void publish(EmailEvent event) {
         kafkaTemplate.send(topic, event).whenComplete((res, ex) -> {
             if (ex != null) {

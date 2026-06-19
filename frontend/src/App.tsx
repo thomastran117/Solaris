@@ -43,6 +43,7 @@ import FeedPage from "./pages/FeedPage";
 import FollowingPage from "./pages/FollowingPage";
 import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
 import AdminWebhooksPage from "./pages/admin/AdminWebhooksPage";
+import AdminMarketingPage from "./pages/admin/AdminMarketingPage";
 import GiftCardsPage from "./pages/GiftCardsPage";
 import PriceWatchesPage from "./pages/PriceWatchesPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
@@ -124,6 +125,7 @@ function App() {
               <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
               <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
               <Route path="/admin/webhooks" element={<AdminWebhooksPage />} />
+              <Route path="/admin/marketing" element={<AdminMarketingPage />} />
               <Route path="/admin/orders" element={<CompanyOrdersPage />} />
               <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
               <Route path="/admin/drivers" element={<DriverDispatchPage />} />

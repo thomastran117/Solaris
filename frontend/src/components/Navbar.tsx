@@ -188,6 +188,11 @@ export default function Navbar() {
                   Loyalty
                 </NavLink>
               )}
+              {accessToken && companyId && canManagePromotions && (
+                <NavLink to="/admin/marketing" className={navLinkClass}>
+                  Marketing
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

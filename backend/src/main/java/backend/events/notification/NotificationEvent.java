@@ -14,6 +14,7 @@ import java.util.UUID;
     @JsonSubTypes.Type(value = NotificationEvent.BackInStock.class,    name = "BACK_IN_STOCK"),
     @JsonSubTypes.Type(value = NotificationEvent.DeliverySlotConfirmed.class,   name = "DELIVERY_SLOT_CONFIRMED"),
     @JsonSubTypes.Type(value = NotificationEvent.DeliverySlotUnavailable.class, name = "DELIVERY_SLOT_UNAVAILABLE"),
+    @JsonSubTypes.Type(value = NotificationEvent.MarketingWorkflowPush.class,  name = "MARKETING_WORKFLOW_PUSH"),
 })
 public sealed interface NotificationEvent
         permits NotificationEvent.OrderShipped,
@@ -21,7 +22,8 @@ public sealed interface NotificationEvent
                 NotificationEvent.OrderCancelled,
                 NotificationEvent.BackInStock,
                 NotificationEvent.DeliverySlotConfirmed,
-                NotificationEvent.DeliverySlotUnavailable {
+                NotificationEvent.DeliverySlotUnavailable,
+                NotificationEvent.MarketingWorkflowPush {
 
     record OrderShipped(
         UUID userId,
@@ -65,5 +67,12 @@ public sealed interface NotificationEvent
         UUID orderId,
         String firstName,
         String reason
+    ) implements NotificationEvent {}
+
+    record MarketingWorkflowPush(
+        UUID userId,
+        UUID workflowId,
+        String title,
+        String body
     ) implements NotificationEvent {}
 }

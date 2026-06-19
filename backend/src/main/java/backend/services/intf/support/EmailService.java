@@ -144,4 +144,8 @@ public interface EmailService {
      */
     void sendDeliverySlotUnavailableEmail(UUID userId, String recipientEmail, String orderReference,
                                           java.time.LocalDate requestedDate, String vendorReason);
+
+    void sendMarketingWorkflowEmail(String toEmail, String firstName,
+                                    UUID workflowId, UUID companyId,
+                                    String subject, String body);
 }

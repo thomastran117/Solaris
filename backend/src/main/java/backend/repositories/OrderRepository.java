@@ -40,6 +40,8 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
     /** Total orders placed by this user — feeds CouponAbuseEvaluator's first-order heuristic. */
     long countByUserId(UUID userId);
 
+    long countByUserIdAndStatus(UUID userId, OrderStatus status);
+
     /**
      * Count of the user's orders that have moved past the just-created RESERVED state.
      * Used by {@code CouponAbuseEvaluator} so a "first order" check doesn't get fooled

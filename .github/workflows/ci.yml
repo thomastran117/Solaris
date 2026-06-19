@@ -44,7 +44,7 @@ jobs:
           path: backend/target/site/jacoco/
 
   backend-integration-tests:
-    name: Backend Integration Tests ${{ matrix.shard }}/7 (${{ matrix.name }})
+    name: Backend Integration Tests ${{ matrix.shard }}/8 (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -75,6 +75,9 @@ jobs:
           - shard: 7
             name: subscriptions-returns-support
             tests: SavedListIT,LoyaltyIT,CouponIT,SubscriptionIT,CompanyReturnLocationIT,CompanyReturnIT,ReturnIT,SupportTicketIT,InternalNoteIT,FeedbackIT
+          - shard: 8
+            name: marketing-workflows
+            tests: MarketingWorkflowIT,WorkflowEnrollmentIT
 
     steps:
       - name: Checkout
