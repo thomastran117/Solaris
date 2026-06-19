@@ -5,6 +5,7 @@ import backend.models.enums.WorkflowEnrollmentStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -26,4 +27,9 @@ public interface WorkflowEnrollmentRepository extends JpaRepository<WorkflowEnro
                                               Pageable pageable);
 
     long countByWorkflowId(UUID workflowId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE WorkflowEnrollment e SET e.status = backend.models.enums.WorkflowEnrollmentStatus.SCHEDULED " +
+           "WHERE e.workflowId = :workflowId AND e.status = backend.models.enums.WorkflowEnrollmentStatus.DEFERRED")
+    void reactivateDeferredForWorkflow(@Param("workflowId") UUID workflowId);
 }

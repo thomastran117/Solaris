@@ -29,6 +29,16 @@ export interface WorkflowAnalytics {
   sentCount: number;
 }
 
+export interface SpringPage<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+  first: boolean;
+  size: number;
+  page: number;
+}
+
 export interface CreateWorkflowPayload {
   name: string;
   trigger: WorkflowTrigger;

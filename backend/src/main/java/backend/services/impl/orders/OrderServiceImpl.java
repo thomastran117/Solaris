@@ -1705,9 +1705,20 @@ public class OrderServiceImpl implements OrderService {
                     long paidCount = orderRepository.countByUserIdAndProductCompanyIdAndStatus(
                             order.getUser().getId(), companyId, OrderStatus.PAID);
                     if (paidCount == 1) {
-                        workflowEnrollmentService.enrol(
-                                backend.models.enums.WorkflowTrigger.FIRST_ORDER_PLACED,
-                                companyId, order.getUser().getId());
+                        final UUID wfCompanyId = companyId;
+                        final UUID wfUserId = order.getUser().getId();
+                        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                try {
+                                    workflowEnrollmentService.enrol(
+                                            backend.models.enums.WorkflowTrigger.FIRST_ORDER_PLACED,
+                                            wfCompanyId, wfUserId);
+                                } catch (Exception e) {
+                                    log.error("[WORKFLOW] FIRST_ORDER_PLACED enrol failed order={}", order.getId(), e);
+                                }
+                            }
+                        });
                     }
                 }
             } catch (Exception e) {
@@ -3178,12 +3189,19 @@ public class OrderServiceImpl implements OrderService {
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
         if (workflowEnrollmentService != null && companyId != null) {
-            try {
-                workflowEnrollmentService.enrol(backend.models.enums.WorkflowTrigger.ORDER_DELIVERED,
-                        companyId, saved.getUser().getId());
-            } catch (Exception e) {
-                log.error("[WORKFLOW] ORDER_DELIVERED enrol failed trackingNumber={}", trackingNumber, e);
-            }
+            final UUID wfCompanyId = companyId;
+            final UUID wfUserId = saved.getUser().getId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        workflowEnrollmentService.enrol(
+                                backend.models.enums.WorkflowTrigger.ORDER_DELIVERED, wfCompanyId, wfUserId);
+                    } catch (Exception e) {
+                        log.error("[WORKFLOW] ORDER_DELIVERED enrol failed trackingNumber={}", trackingNumber, e);
+                    }
+                }
+            });
         }
     }
 
@@ -3256,12 +3274,19 @@ public class OrderServiceImpl implements OrderService {
         fulfillmentEventPublisher.publish(new OrderFulfillmentEvent.Delivered(
                 saved.getId(), saved.getUser().getId(), companyId, saved.getDeliveredAt()));
         if (workflowEnrollmentService != null && companyId != null) {
-            try {
-                workflowEnrollmentService.enrol(backend.models.enums.WorkflowTrigger.ORDER_DELIVERED,
-                        companyId, saved.getUser().getId());
-            } catch (Exception e) {
-                log.error("[WORKFLOW] ORDER_DELIVERED enrol failed orderId={}", orderId, e);
-            }
+            final UUID wfCompanyId = companyId;
+            final UUID wfUserId = saved.getUser().getId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        workflowEnrollmentService.enrol(
+                                backend.models.enums.WorkflowTrigger.ORDER_DELIVERED, wfCompanyId, wfUserId);
+                    } catch (Exception e) {
+                        log.error("[WORKFLOW] ORDER_DELIVERED enrol failed orderId={}", orderId, e);
+                    }
+                }
+            });
         }
     }
 

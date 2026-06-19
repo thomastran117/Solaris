@@ -18,7 +18,6 @@ import backend.repositories.UserPreferenceRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.WorkflowDeliveryLogRepository;
 import backend.repositories.WorkflowEnrollmentRepository;
-import backend.services.intf.marketing.WorkflowEnrollmentService;
 import backend.services.intf.support.EmailService;
 import backend.testutil.TestIds;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,13 +50,16 @@ class WorkflowEnrollmentServiceTest {
     @Mock LoyaltyAccountRepository loyaltyAccountRepository;
     @Mock EmailService emailService;
     @Mock NotificationEventPublisher notificationEventPublisher;
-    @Mock WorkflowEnrollmentService enrollmentServiceProxy;
+
+    // Self-reference is typed to the impl class since processOneEnrollment / scheduleEnrollmentInNewTx
+    // / incrementRetryOrMarkFailed are not on the public WorkflowEnrollmentService interface.
+    @Mock WorkflowEnrollmentServiceImpl enrollmentServiceProxy;
 
     WorkflowEnrollmentServiceImpl service;
 
-    static final UUID COMPANY_ID   = TestIds.uuid(1);
-    static final UUID USER_ID      = TestIds.uuid(2);
-    static final UUID WORKFLOW_ID  = TestIds.uuid(3);
+    static final UUID COMPANY_ID    = TestIds.uuid(1);
+    static final UUID USER_ID       = TestIds.uuid(2);
+    static final UUID WORKFLOW_ID   = TestIds.uuid(3);
     static final UUID ENROLLMENT_ID = TestIds.uuid(10);
 
     @BeforeEach
@@ -151,6 +153,18 @@ class WorkflowEnrollmentServiceTest {
         verify(enrollmentServiceProxy, never()).processOneEnrollment(any());
     }
 
+    @Test
+    void processScheduledEnrollments_callsIncrementRetryOrMarkFailed_onProcessingFailure() {
+        when(enrollmentRepository.findIdsByStatusAndFireAtBefore(
+                eq(WorkflowEnrollmentStatus.SCHEDULED), any(), any()))
+                .thenReturn(List.of(ENROLLMENT_ID));
+        doThrow(new RuntimeException("db error")).when(enrollmentServiceProxy).processOneEnrollment(ENROLLMENT_ID);
+
+        service.processScheduledEnrollments();
+
+        verify(enrollmentServiceProxy).incrementRetryOrMarkFailed(ENROLLMENT_ID);
+    }
+
     // ─── processOneEnrollment ─────────────────────────────────────────────────
 
     @Test
@@ -181,24 +195,28 @@ class WorkflowEnrollmentServiceTest {
         verify(deliveryLogRepository).save(logCaptor.capture());
         assertThat(logCaptor.getValue().getStatus()).isEqualTo(WorkflowDeliveryStatus.SENT);
 
-        // isSynchronizationActive() is false in unit tests, so email is sent synchronously
+        // isSynchronizationActive() is false in unit tests, so EmailServiceImpl.publish()
+        // calls doSend() directly — but here emailService is mocked so we just verify the call.
         verify(emailService).sendMarketingWorkflowEmail(
                 eq("test@example.com"), eq("Alice"), eq(WORKFLOW_ID),
                 eq(COMPANY_ID), eq("Review us"), eq("<p>Hi</p>"));
     }
 
     @Test
-    void processOneEnrollment_pausedWorkflow_skipsWithoutCancelling() {
+    void processOneEnrollment_pausedWorkflow_setsDeferredStatus() {
         WorkflowEnrollment enrollment = scheduledEnrollment();
         when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
 
         MarketingWorkflow wf = stubWorkflow(0, 0, null);
         wf.setStatus(WorkflowStatus.PAUSED);
         when(workflowRepository.findById(WORKFLOW_ID)).thenReturn(Optional.of(wf));
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.processOneEnrollment(ENROLLMENT_ID);
 
-        verify(enrollmentRepository, never()).save(any());
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.DEFERRED);
         verify(emailService, never()).sendMarketingWorkflowEmail(any(), any(), any(), any(), any(), any());
     }
 
@@ -246,6 +264,49 @@ class WorkflowEnrollmentServiceTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.CANCELLED);
     }
 
+    // ─── incrementRetryOrMarkFailed ───────────────────────────────────────────
+
+    @Test
+    void incrementRetryOrMarkFailed_incrementsRetryCount() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        enrollment.setRetryCount(1);
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.incrementRetryOrMarkFailed(ENROLLMENT_ID);
+
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getRetryCount()).isEqualTo(2);
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.SCHEDULED);
+    }
+
+    @Test
+    void incrementRetryOrMarkFailed_setsFailedAfterMaxRetries() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        enrollment.setRetryCount(2);
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.incrementRetryOrMarkFailed(ENROLLMENT_ID);
+
+        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
+        verify(enrollmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getRetryCount()).isEqualTo(3);
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.FAILED);
+    }
+
+    @Test
+    void incrementRetryOrMarkFailed_skipsNonScheduledEnrollment() {
+        WorkflowEnrollment enrollment = scheduledEnrollment();
+        enrollment.setStatus(WorkflowEnrollmentStatus.SENT);
+        when(enrollmentRepository.findById(ENROLLMENT_ID)).thenReturn(Optional.of(enrollment));
+
+        service.incrementRetryOrMarkFailed(ENROLLMENT_ID);
+
+        verify(enrollmentRepository, never()).save(any());
+    }
+
     // ─── dailyBirthdayEnrol ───────────────────────────────────────────────────
 
     @Test
@@ -278,7 +339,7 @@ class WorkflowEnrollmentServiceTest {
     // ─── dailyWinBackEnrol ────────────────────────────────────────────────────
 
     @Test
-    void dailyWinBackEnrol_schedulesEnrollmentsForInactiveUsers() {
+    void dailyWinBackEnrol_schedulesEnrollmentsForInactiveUsersUsingLessThanEqual() {
         MarketingWorkflow wf = stubWorkflow(720, 0, null); // 720h = 30 days inactivity
         wf.setTrigger(WorkflowTrigger.DAYS_SINCE_LAST_ORDER);
         when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, WorkflowStatus.ACTIVE))
@@ -286,17 +347,15 @@ class WorkflowEnrollmentServiceTest {
 
         LoyaltyAccount account = new LoyaltyAccount();
         account.setUserId(USER_ID);
-        when(loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonth(
+        // Verify the repository call uses the LessThanEqual variant (fixes #2: exact equality missed older users).
+        when(loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonthLessThanEqual(
                 eq(COMPANY_ID), any(String.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(account)));
-        when(enrollmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.dailyWinBackEnrol();
 
-        ArgumentCaptor<WorkflowEnrollment> captor = ArgumentCaptor.forClass(WorkflowEnrollment.class);
-        verify(enrollmentRepository).save(captor.capture());
-        assertThat(captor.getValue().getUserId()).isEqualTo(USER_ID);
-        assertThat(captor.getValue().getStatus()).isEqualTo(WorkflowEnrollmentStatus.SCHEDULED);
+        // Verify self.scheduleEnrollmentInNewTx is used (fixes TOCTOU race, issue #6).
+        verify(enrollmentServiceProxy).scheduleEnrollmentInNewTx(eq(wf), eq(USER_ID), any(Instant.class));
     }
 
     @Test

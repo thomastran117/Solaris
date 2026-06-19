@@ -49,6 +49,9 @@ public class WorkflowEnrollment {
     @Column(nullable = false, length = 20)
     private WorkflowEnrollmentStatus status = WorkflowEnrollmentStatus.SCHEDULED;
 
+    @Column(nullable = false, columnDefinition = "int default 0")
+    private int retryCount = 0;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

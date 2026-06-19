@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Pause, Archive, BarChart2, Zap, X } from "lucide-react";
 import { listWorkflows, createWorkflow, updateWorkflow } from "../../api/marketing";
 import { createWorkflowSchema, type CreateWorkflowFormValues } from "../../schemas/marketing";
-import type { MarketingWorkflow, WorkflowStatus, WorkflowTrigger } from "../../types/marketing";
+import type { MarketingWorkflow, SpringPage, WorkflowStatus, WorkflowTrigger } from "../../types/marketing";
 import type { RootState } from "../../stores";
 import { useAnims } from "../../hooks/useAnims";
 
@@ -35,11 +35,12 @@ export default function AdminMarketingPage() {
   const { fadeInUp, stagger, hoverLift } = useAnims();
   const [showCreate, setShowCreate] = useState(false);
 
-  const { data: workflows = [], isLoading } = useQuery({
+  const { data: workflowPage, isLoading } = useQuery<SpringPage<MarketingWorkflow>>({
     queryKey: ["marketing", "workflows", companyId],
     queryFn: () => listWorkflows(companyId!),
     enabled: !!companyId,
   });
+  const workflows = workflowPage?.content ?? [];
 
   const {
     register,

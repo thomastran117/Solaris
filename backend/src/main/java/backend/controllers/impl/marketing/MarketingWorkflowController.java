@@ -4,8 +4,8 @@ import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.marketing.CreateWorkflowRequest;
 import backend.dtos.requests.marketing.UpdateWorkflowRequest;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
+import backend.dtos.responses.marketing.WorkflowListResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
-import backend.dtos.responses.marketing.WorkflowSummaryResponse;
 import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.marketing.MarketingWorkflowService;
@@ -17,7 +17,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @Validated
@@ -47,9 +46,13 @@ public class MarketingWorkflowController {
 
     @GetMapping("/companies/{companyId}/marketing/workflows")
     @RequireAuth
-    public ResponseEntity<List<WorkflowSummaryResponse>> list(@PathVariable UUID companyId) {
+    public ResponseEntity<WorkflowListResponse> list(
+            @PathVariable UUID companyId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
         try {
-            return ResponseEntity.ok(workflowService.getWorkflows(companyId, resolveUserId()));
+            return ResponseEntity.ok(
+                    WorkflowListResponse.from(workflowService.getWorkflows(companyId, resolveUserId(), page, size)));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

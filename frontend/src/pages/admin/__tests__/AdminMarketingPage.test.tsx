@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
 import AdminMarketingPage from "../AdminMarketingPage";
-import type { MarketingWorkflow, WorkflowAnalytics } from "../../../types/marketing";
+import type { MarketingWorkflow, SpringPage, WorkflowAnalytics } from "../../../types/marketing";
 
 // ─── mocks ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +89,18 @@ const stubAnalytics: WorkflowAnalytics = {
   sentCount: 7,
 };
 
+function stubPage(workflows: MarketingWorkflow[]): SpringPage<MarketingWorkflow> {
+  return {
+    content: workflows,
+    totalElements: workflows.length,
+    totalPages: 1,
+    last: true,
+    first: true,
+    size: 50,
+    page: 0,
+  };
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("AdminMarketingPage", () => {
@@ -98,7 +110,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("renders workflow list from API", async () => {
-    mockList.mockResolvedValue([stubWorkflow()]);
+    mockList.mockResolvedValue(stubPage([stubWorkflow()]));
 
     renderPage();
 
@@ -110,7 +122,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("shows empty state when no workflows exist", async () => {
-    mockList.mockResolvedValue([]);
+    mockList.mockResolvedValue(stubPage([]));
 
     renderPage();
 
@@ -120,7 +132,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("opens create modal when New Workflow button is clicked", async () => {
-    mockList.mockResolvedValue([]);
+    mockList.mockResolvedValue(stubPage([]));
     const user = userEvent.setup();
 
     renderPage();
@@ -134,7 +146,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("submits create form and closes modal on success", async () => {
-    mockList.mockResolvedValue([]);
+    mockList.mockResolvedValue(stubPage([]));
     mockCreate.mockResolvedValue(stubWorkflow());
     const user = userEvent.setup();
 
@@ -161,7 +173,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("pause button calls PATCH with PAUSED status", async () => {
-    mockList.mockResolvedValue([stubWorkflow({ status: "ACTIVE" })]);
+    mockList.mockResolvedValue(stubPage([stubWorkflow({ status: "ACTIVE" })]));
     mockUpdate.mockResolvedValue(stubWorkflow({ status: "PAUSED" }));
     const user = userEvent.setup();
 
@@ -177,7 +189,7 @@ describe("AdminMarketingPage", () => {
   });
 
   it("shows sent count from analytics on hover", async () => {
-    mockList.mockResolvedValue([stubWorkflow()]);
+    mockList.mockResolvedValue(stubPage([stubWorkflow()]));
     const user = userEvent.setup();
 
     renderPage();

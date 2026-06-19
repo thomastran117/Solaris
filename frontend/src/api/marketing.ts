@@ -4,10 +4,19 @@ import type {
   WorkflowAnalytics,
   CreateWorkflowPayload,
   UpdateWorkflowPayload,
+  SpringPage,
 } from '../types/marketing';
 
-export const listWorkflows = (companyId: string): Promise<MarketingWorkflow[]> =>
-  api.get<MarketingWorkflow[]>(`/companies/${companyId}/marketing/workflows`).then((r) => r.data);
+export const listWorkflows = (
+  companyId: string,
+  page = 0,
+  size = 50,
+): Promise<SpringPage<MarketingWorkflow>> =>
+  api
+    .get<SpringPage<MarketingWorkflow>>(
+      `/companies/${companyId}/marketing/workflows?page=${page}&size=${size}`,
+    )
+    .then((r) => r.data);
 
 export const createWorkflow = (
   companyId: string,

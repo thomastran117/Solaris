@@ -14,11 +14,11 @@ import backend.repositories.WorkflowDeliveryLogRepository;
 import backend.repositories.WorkflowEnrollmentRepository;
 import backend.services.intf.company.CompanyAccessService;
 import backend.services.intf.marketing.MarketingWorkflowService;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -70,6 +70,9 @@ public class MarketingWorkflowServiceImpl implements MarketingWorkflowService {
                 .orElseThrow(() -> new ResourceNotFoundException("Workflow not found: " + workflowId));
 
         if (request.status() != null) {
+            if (request.status() == WorkflowStatus.ACTIVE && workflow.getStatus() == WorkflowStatus.PAUSED) {
+                enrollmentRepository.reactivateDeferredForWorkflow(workflowId);
+            }
             workflow.setStatus(request.status());
         }
         if (request.name() != null && !request.name().isBlank()) {
@@ -87,14 +90,12 @@ public class MarketingWorkflowServiceImpl implements MarketingWorkflowService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkflowSummaryResponse> getWorkflows(UUID companyId, UUID ownerId) {
+    public Page<WorkflowSummaryResponse> getWorkflows(UUID companyId, UUID ownerId, int page, int size) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PROMOTIONS);
+        int clampedSize = Math.min(Math.max(size, 1), 100);
         return workflowRepository.findByCompanyIdAndStatusNot(
-                        companyId, WorkflowStatus.ARCHIVED, PageRequest.of(0, 200))
-                .getContent()
-                .stream()
-                .map(WorkflowSummaryResponse::from)
-                .toList();
+                        companyId, WorkflowStatus.ARCHIVED, PageRequest.of(page, clampedSize))
+                .map(WorkflowSummaryResponse::from);
     }
 
     @Override

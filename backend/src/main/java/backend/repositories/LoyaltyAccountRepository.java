@@ -27,6 +27,8 @@ public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount, 
 
     Page<LoyaltyAccount> findByCompanyIdAndLastOrderYearMonth(UUID companyId, String lastOrderYearMonth, Pageable pageable);
 
+    Page<LoyaltyAccount> findByCompanyIdAndLastOrderYearMonthLessThanEqual(UUID companyId, String cutoffYearMonth, Pageable pageable);
+
     /**
      * Atomically deducts points. Returns 1 on success, 0 if balance would go negative.
      * Caller must verify the return value.

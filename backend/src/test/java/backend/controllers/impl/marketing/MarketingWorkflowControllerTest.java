@@ -4,6 +4,7 @@ import backend.configurations.application.GlobalExceptionHandler;
 import backend.dtos.responses.marketing.WorkflowAnalyticsResponse;
 import backend.dtos.responses.marketing.WorkflowResponse;
 import backend.dtos.responses.marketing.WorkflowSummaryResponse;
+import org.springframework.data.domain.PageImpl;
 import backend.exceptions.http.ForbiddenException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.enums.WorkflowActionType;
@@ -99,13 +100,14 @@ class MarketingWorkflowControllerTest {
     @Test
     void list_returns200WithWorkflows() throws Exception {
         authenticateAs(USER_ID);
-        when(workflowService.getWorkflows(eq(COMPANY_ID), eq(USER_ID)))
-                .thenReturn(List.of(stubWorkflowSummaryResponse()));
+        when(workflowService.getWorkflows(eq(COMPANY_ID), eq(USER_ID), anyInt(), anyInt()))
+                .thenReturn(new PageImpl<>(List.of(stubWorkflowSummaryResponse())));
 
         mockMvc.perform(get("/companies/" + COMPANY_ID + "/marketing/workflows"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(WORKFLOW_ID.toString()))
-                .andExpect(jsonPath("$[0].emailBody").doesNotExist());
+                .andExpect(jsonPath("$.content[0].id").value(WORKFLOW_ID.toString()))
+                .andExpect(jsonPath("$.content[0].emailBody").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     // ─── PATCH update ─────────────────────────────────────────────────────────
