@@ -19,7 +19,6 @@ import backend.repositories.UserPreferenceRepository;
 import backend.repositories.UserRepository;
 import backend.repositories.WorkflowDeliveryLogRepository;
 import backend.repositories.WorkflowEnrollmentRepository;
-import backend.services.intf.marketing.WorkflowEnrollmentService;
 import backend.services.intf.support.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService {
+public class WorkflowEnrollmentServiceImpl implements WorkflowSchedulerPort {
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowEnrollmentServiceImpl.class);
     private static final int SCHEDULER_BATCH_SIZE = 500;
@@ -55,10 +54,9 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     private final EmailService emailService;
     private final NotificationEventPublisher notificationEventPublisher;
 
-    // Lazy self-reference typed to the impl class so calls from scheduled methods go through
-    // the Spring AOP proxy (applying @Transactional(REQUIRES_NEW)) without exposing internal
-    // methods on the public WorkflowEnrollmentService interface.
-    private WorkflowEnrollmentServiceImpl self;
+    // Lazy self-reference typed to the package-private WorkflowSchedulerPort so Spring AOP
+    // proxy interception works under both CGLIB and JDK dynamic proxy modes.
+    private WorkflowSchedulerPort self;
 
     public WorkflowEnrollmentServiceImpl(
             MarketingWorkflowRepository workflowRepository,
@@ -80,7 +78,7 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
     }
 
     @Autowired
-    public void setSelf(@Lazy WorkflowEnrollmentServiceImpl self) {
+    public void setSelf(@Lazy WorkflowSchedulerPort self) {
         this.self = self;
     }
 
@@ -134,7 +132,7 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
                 try {
                     self.incrementRetryOrMarkFailed(id);
                 } catch (Exception e2) {
-                    log.error("[WORKFLOW] Failed to update retry count for enrollment id={}", id, e2.getMessage());
+                    log.error("[WORKFLOW] Failed to update retry count for enrollment id={}", id, e2);
                 }
             }
         }
@@ -253,8 +251,9 @@ public class WorkflowEnrollmentServiceImpl implements WorkflowEnrollmentService 
             int page = 0;
             List<LoyaltyAccount> chunk;
             do {
-                // Use <= so customers inactive *longer* than the threshold are also enrolled.
-                chunk = loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonthLessThanEqual(
+                // Use < so only months entirely before the cutoff are targeted, avoiding
+                // false positives for customers who ordered late in the cutoff month.
+                chunk = loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonthLessThan(
                         workflow.getCompanyId(), cutoffYearMonth,
                         PageRequest.of(page++, SCHEDULER_BATCH_SIZE)).getContent();
                 for (LoyaltyAccount account : chunk) {

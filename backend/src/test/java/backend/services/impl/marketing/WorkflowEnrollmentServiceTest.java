@@ -51,9 +51,7 @@ class WorkflowEnrollmentServiceTest {
     @Mock EmailService emailService;
     @Mock NotificationEventPublisher notificationEventPublisher;
 
-    // Self-reference is typed to the impl class since processOneEnrollment / scheduleEnrollmentInNewTx
-    // / incrementRetryOrMarkFailed are not on the public WorkflowEnrollmentService interface.
-    @Mock WorkflowEnrollmentServiceImpl enrollmentServiceProxy;
+    @Mock WorkflowSchedulerPort enrollmentServiceProxy;
 
     WorkflowEnrollmentServiceImpl service;
 
@@ -339,7 +337,7 @@ class WorkflowEnrollmentServiceTest {
     // ─── dailyWinBackEnrol ────────────────────────────────────────────────────
 
     @Test
-    void dailyWinBackEnrol_schedulesEnrollmentsForInactiveUsersUsingLessThanEqual() {
+    void dailyWinBackEnrol_schedulesEnrollmentsForInactiveUsers() {
         MarketingWorkflow wf = stubWorkflow(720, 0, null); // 720h = 30 days inactivity
         wf.setTrigger(WorkflowTrigger.DAYS_SINCE_LAST_ORDER);
         when(workflowRepository.findByTriggerAndStatus(WorkflowTrigger.DAYS_SINCE_LAST_ORDER, WorkflowStatus.ACTIVE))
@@ -347,14 +345,12 @@ class WorkflowEnrollmentServiceTest {
 
         LoyaltyAccount account = new LoyaltyAccount();
         account.setUserId(USER_ID);
-        // Verify the repository call uses the LessThanEqual variant (fixes #2: exact equality missed older users).
-        when(loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonthLessThanEqual(
+        when(loyaltyAccountRepository.findByCompanyIdAndLastOrderYearMonthLessThan(
                 eq(COMPANY_ID), any(String.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(account)));
 
         service.dailyWinBackEnrol();
 
-        // Verify self.scheduleEnrollmentInNewTx is used (fixes TOCTOU race, issue #6).
         verify(enrollmentServiceProxy).scheduleEnrollmentInNewTx(eq(wf), eq(USER_ID), any(Instant.class));
     }
 

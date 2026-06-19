@@ -10,6 +10,7 @@ import backend.exceptions.http.AppHttpException;
 import backend.exceptions.http.InternalServerErrorException;
 import backend.services.intf.marketing.MarketingWorkflowService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -48,8 +49,8 @@ public class MarketingWorkflowController {
     @RequireAuth
     public ResponseEntity<WorkflowListResponse> list(
             @PathVariable UUID companyId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "50") @Min(1) int size) {
         try {
             return ResponseEntity.ok(
                     WorkflowListResponse.from(workflowService.getWorkflows(companyId, resolveUserId(), page, size)));

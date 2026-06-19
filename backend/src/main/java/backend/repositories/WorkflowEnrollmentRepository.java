@@ -29,7 +29,8 @@ public interface WorkflowEnrollmentRepository extends JpaRepository<WorkflowEnro
     long countByWorkflowId(UUID workflowId);
 
     @Modifying(clearAutomatically = true)
-    @Query("UPDATE WorkflowEnrollment e SET e.status = backend.models.enums.WorkflowEnrollmentStatus.SCHEDULED " +
+    @Query("UPDATE WorkflowEnrollment e " +
+           "SET e.status = backend.models.enums.WorkflowEnrollmentStatus.SCHEDULED, e.retryCount = 0 " +
            "WHERE e.workflowId = :workflowId AND e.status = backend.models.enums.WorkflowEnrollmentStatus.DEFERRED")
     void reactivateDeferredForWorkflow(@Param("workflowId") UUID workflowId);
 }

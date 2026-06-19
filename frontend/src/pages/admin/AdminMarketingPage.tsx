@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Pause, Archive, BarChart2, Zap, X } from "lucide-react";
+import { Plus, Pause, Archive, BarChart2, Zap, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { listWorkflows, createWorkflow, updateWorkflow } from "../../api/marketing";
 import { createWorkflowSchema, type CreateWorkflowFormValues } from "../../schemas/marketing";
 import type { MarketingWorkflow, SpringPage, WorkflowStatus, WorkflowTrigger } from "../../types/marketing";
@@ -34,10 +34,11 @@ export default function AdminMarketingPage() {
   const queryClient = useQueryClient();
   const { fadeInUp, stagger, hoverLift } = useAnims();
   const [showCreate, setShowCreate] = useState(false);
+  const [page, setPage] = useState(0);
 
   const { data: workflowPage, isLoading } = useQuery<SpringPage<MarketingWorkflow>>({
-    queryKey: ["marketing", "workflows", companyId],
-    queryFn: () => listWorkflows(companyId!),
+    queryKey: ["marketing", "workflows", companyId, page],
+    queryFn: () => listWorkflows(companyId!, page),
     enabled: !!companyId,
   });
   const workflows = workflowPage?.content ?? [];
@@ -65,6 +66,7 @@ export default function AdminMarketingPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["marketing", "workflows", companyId] });
+      setPage(0);
       setShowCreate(false);
       reset();
     },
@@ -177,6 +179,38 @@ export default function AdminMarketingPage() {
               </motion.div>
             ))}
           </motion.div>
+        )}
+
+        {/* Pagination */}
+        {workflowPage && workflowPage.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-xs text-white/50">
+              Showing {page * workflowPage.size + 1}–
+              {Math.min((page + 1) * workflowPage.size, workflowPage.totalElements)} of{" "}
+              {workflowPage.totalElements} workflows
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => p - 1)}
+                disabled={workflowPage.first}
+                className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-white/50">
+                {page + 1} / {workflowPage.totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={workflowPage.last}
+                className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                aria-label="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

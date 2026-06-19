@@ -118,7 +118,7 @@ describe("AdminMarketingPage", () => {
       expect(screen.getByText("Post-delivery review")).toBeInTheDocument()
     );
     expect(screen.getByText("ACTIVE")).toBeInTheDocument();
-    expect(mockList).toHaveBeenCalledWith(COMPANY_ID);
+    expect(mockList).toHaveBeenCalledWith(COMPANY_ID, 0);
   });
 
   it("shows empty state when no workflows exist", async () => {
