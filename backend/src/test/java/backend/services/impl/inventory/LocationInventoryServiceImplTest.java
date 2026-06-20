@@ -794,4 +794,76 @@ class LocationInventoryServiceImplTest {
         verify(stockAlertService).checkAndAlertLocation(
                 LOCATION_STOCK_ID, "Toronto Warehouse", PRODUCT_ID, "Desk", null, 0, 2);
     }
+
+    // ─── applyTransferStock ───────────────────────────────────────────────────
+
+    @Test
+    void applyTransferStock_destinationWithNoRecord_createsStockAndRecordsTransferIn() {
+        InventoryLocation location = location();
+        Product product = product();
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.empty());
+        when(locationStockRepository.saveAndFlush(any(LocationStock.class))).thenAnswer(inv -> {
+            LocationStock ls = inv.getArgument(0);
+            ls.setId(LOCATION_STOCK_ID);
+            return ls;
+        });
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(4))).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        LocationStockResponse resp = service.applyTransferStock(
+                COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, 4, AdjustmentReason.TRANSFER_IN, "Transfer x in");
+
+        verify(locationStockRepository).saveAndFlush(any(LocationStock.class));
+        verify(locationStockRepository).adjustStock(LOCATION_STOCK_ID, 4);
+        verify(adjustmentRepository).save(any());
+        assertEquals(4, resp.getStock());
+    }
+
+    @Test
+    void applyTransferStock_sourceDecreaseInsufficient_throwsUnprocessableEntity() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock ls = locationStock(location, product, 2, null);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(-5))).thenReturn(0);
+
+        assertThrows(backend.exceptions.http.UnprocessableEntityException.class, () ->
+                service.applyTransferStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, -5,
+                        AdjustmentReason.TRANSFER_OUT, "Transfer x out"));
+    }
+
+    @Test
+    void applyTransferStock_sourceDecrease_recordsTransferOutAndAlerts() {
+        InventoryLocation location = location();
+        Product product = product();
+        LocationStock ls = locationStock(location, product, 10, 3);
+
+        when(locationRepository.findByIdAndCompanyId(LOCATION_ID, COMPANY_ID)).thenReturn(Optional.of(location));
+        when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(product));
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        when(locationStockRepository.findByLocationIdAndProductIdAndVariantRef(LOCATION_ID, PRODUCT_ID, null))
+                .thenReturn(Optional.of(ls));
+        when(locationStockRepository.adjustStock(eq(LOCATION_STOCK_ID), eq(-4))).thenReturn(1);
+        when(productRepository.getReferenceById(PRODUCT_ID)).thenReturn(product);
+        when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
+
+        service.applyTransferStock(COMPANY_ID, LOCATION_ID, PRODUCT_ID, OWNER_ID, -4,
+                AdjustmentReason.TRANSFER_OUT, "Transfer x out");
+
+        verify(adjustmentRepository).save(any());
+        verify(stockAlertService).checkAndAlertLocation(
+                LOCATION_STOCK_ID, "Toronto Warehouse", PRODUCT_ID, "Desk", null, 6, 3);
+        verify(cacheService).unlock(anyString(), anyString());
+    }
 }

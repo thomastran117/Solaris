@@ -92,4 +92,5 @@ public interface SanitizationService {
     void normalize(CreateSupplierRequest request);
     void normalize(UpdateSupplierRequest request);
     void normalize(CreatePORequest request);
+    void normalize(backend.dtos.requests.inventory.CreateTransferRequest request);
 }

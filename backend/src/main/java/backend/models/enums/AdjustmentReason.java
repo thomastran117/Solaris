@@ -14,5 +14,7 @@ public enum AdjustmentReason {
     COUNT_CORRECTION,
     IMPORT_SYNC,
     OTHER,
-    PURCHASE_ORDER_RECEIPT
+    PURCHASE_ORDER_RECEIPT,
+    TRANSFER_OUT,
+    TRANSFER_IN
 }
