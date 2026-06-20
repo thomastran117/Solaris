@@ -476,9 +476,13 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     }
 
     /**
-     * Loads the product-level stock row for the location, creating it at zero when absent. A racing
-     * insert (the {@code uq_loc_stock} unique constraint fires) is resolved by re-reading the row
-     * rather than failing.
+     * Loads the product-level stock row for the location, creating it at zero when absent. The
+     * per-location cache lock held by the caller serializes concurrent first-time inserts, so the
+     * {@code uq_loc_stock} unique constraint should never fire. If it ever does (e.g. the lock TTL
+     * lapses mid-transaction), we surface a retryable {@link ConflictException} (409): re-reading
+     * the row in-place cannot recover, because the constraint violation has already marked the
+     * surrounding transaction rollback-only, so the caller must retry in a fresh transaction (which
+     * will then find the now-existing row).
      */
     private LocationStock findOrCreateProductStock(InventoryLocation location, Product product) {
         return locationStockRepository
@@ -492,9 +496,8 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                     try {
                         return locationStockRepository.saveAndFlush(created);
                     } catch (DataIntegrityViolationException race) {
-                        return locationStockRepository
-                                .findByLocationIdAndProductIdAndVariantRef(location.getId(), product.getId(), null)
-                                .orElseThrow(() -> race);
+                        throw new ConflictException(
+                                "Stock for this product at the location was just created by another operation, please retry");
                     }
                 });
     }

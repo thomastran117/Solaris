@@ -134,6 +134,7 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
     }
 
     @Override
+    @RetryOnConcurrency
     @Transactional
     public InventoryTransferResponse markInTransit(UUID companyId, UUID transferId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
@@ -186,6 +187,7 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
     }
 
     @Override
+    @RetryOnConcurrency
     @Transactional
     public InventoryTransferResponse cancelTransfer(UUID companyId, UUID transferId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
