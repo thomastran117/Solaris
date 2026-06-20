@@ -169,6 +169,16 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
         UUID toId = transfer.getToLocation().getId();
         String ref = "Transfer " + transfer.getId();
 
+        // Claim the receipt first: flushing the RECEIVED status (and its @Version bump) before any
+        // stock is touched means a concurrent duplicate receive fails the optimistic-lock check here
+        // — and @RetryOnConcurrency re-reads the now-RECEIVED transfer and returns a clean 409 —
+        // rather than the loser blocking on the source row and throwing a misleading 422 from the
+        // stock leg. If a stock leg later fails legitimately, this flush rolls back with it.
+        transfer.setStatus(TransferStatus.RECEIVED);
+        transfer.setReceivedAt(Instant.now());
+        transfer.setReceivedBy(userRepository.getReferenceById(receivedByUserId));
+        transferRepository.saveAndFlush(transfer);
+
         // Apply both legs in deterministic (locationId-ascending) order to avoid DB-row deadlocks,
         // keeping the correct signed delta bound to each location.
         List<TransferLeg> legs = List.of(
@@ -180,10 +190,7 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
                 .forEach(leg -> locationInventoryService.applyTransferStock(
                         companyId, leg.locationId(), productId, receivedByUserId, leg.delta(), leg.reason(), leg.note()));
 
-        transfer.setStatus(TransferStatus.RECEIVED);
-        transfer.setReceivedAt(Instant.now());
-        transfer.setReceivedBy(userRepository.getReferenceById(receivedByUserId));
-        return toResponse(transferRepository.save(transfer));
+        return toResponse(transfer);
     }
 
     @Override

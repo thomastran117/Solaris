@@ -147,7 +147,9 @@ class InventoryTransferIT extends AbstractIntegrationIT {
     @Test
     void receiveTransfer_concurrentReceipts_onlyOneSucceeds() throws Exception {
         Fixture f = fixture("trf-concurrent@example.com");
-        setStock(f, f.from, 20);
+        // Seed EXACTLY enough for one receipt: the loser must be rejected at the transfer's
+        // optimistic-lock check (409), not surface a misleading 422 from the source stock leg.
+        setStock(f, f.from, 6);
 
         UUID transferId = createTransfer(f, 6);
         dispatch(f, transferId);
@@ -172,10 +174,10 @@ class InventoryTransferIT extends AbstractIntegrationIT {
         long ok = statuses.stream().filter(s -> s == 200).count();
         long conflict = statuses.stream().filter(s -> s == 409).count();
         assertEquals(1, ok, "exactly one receipt should succeed");
-        assertEquals(1, conflict, "the losing concurrent receipt should return 409");
+        assertEquals(1, conflict, "the losing concurrent receipt should return 409, not 422");
 
         // Stock moved exactly once — no double application.
-        assertEquals(14, stockAt(f, f.from));
+        assertEquals(0, stockAt(f, f.from));
         assertEquals(6, stockAt(f, f.to));
     }
 
