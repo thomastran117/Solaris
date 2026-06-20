@@ -198,6 +198,11 @@ export default function Navbar() {
                   Purchase Orders
                 </NavLink>
               )}
+              {accessToken && companyId && canManageProducts && (
+                <NavLink to="/admin/inventory-transfers" className={navLinkClass}>
+                  Transfers
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

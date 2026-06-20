@@ -2,6 +2,7 @@ package backend.services.impl.inventory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,7 @@ import backend.dtos.responses.inventory.NearbyPickupLocationResponse;
 import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
+import backend.exceptions.http.UnprocessableEntityException;
 import backend.models.enums.CompanyCapability;
 import backend.services.intf.company.CompanyAccessService;
 import backend.models.core.Company;
@@ -396,6 +398,108 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 }
             }
         }
+    }
+
+    @Override
+    @Transactional
+    public LocationStockResponse applyTransferStock(UUID companyId, UUID locationId, UUID productId,
+                                                    UUID actingUserId, int delta,
+                                                    AdjustmentReason reason, String note) {
+        InventoryLocation location = locationRepository.findByIdAndCompanyId(locationId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
+
+        Product product = productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        // variantRef is always null for v1 transfers (product-level only).
+        String lockKey = LOC_STOCK_LOCK_PREFIX + locationId + ":" + null;
+        String lockToken = UUID.randomUUID().toString();
+        boolean lockAcquired = false;
+
+        try {
+            for (int attempt = 0; attempt < LOCK_RETRY_ATTEMPTS; attempt++) {
+                if (cacheService.tryLock(lockKey, lockToken, LOCK_TTL_SECONDS)) {
+                    lockAcquired = true;
+                    break;
+                }
+                try {
+                    Thread.sleep(LOCK_RETRY_DELAY_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new ConflictException("Stock transfer interrupted, please try again");
+                }
+            }
+
+            if (!lockAcquired) {
+                throw new ConflictException("Location stock is currently being updated, please try again shortly");
+            }
+
+            LocationStock locationStock = findOrCreateProductStock(location, product);
+
+            int previousStock = locationStock.getStock();
+            int rows = locationStockRepository.adjustStock(locationStock.getId(), delta);
+            if (rows == 0) {
+                throw new UnprocessableEntityException(
+                        "Insufficient stock at location '" + location.getName() + "'. Current: "
+                                + previousStock + ", requested change: " + delta);
+            }
+
+            InventoryAdjustment adjustment = new InventoryAdjustment();
+            adjustment.setProduct(productRepository.getReferenceById(productId));
+            adjustment.setAdjustedBy(userRepository.getReferenceById(actingUserId));
+            adjustment.setDelta(delta);
+            adjustment.setPreviousStock(previousStock);
+            adjustment.setNewStock(previousStock + delta);
+            adjustment.setReason(reason);
+            adjustment.setNote(note);
+            adjustmentRepository.save(adjustment);
+
+            if (delta < 0) {
+                stockAlertService.checkAndAlertLocation(
+                        locationStock.getId(), location.getName(),
+                        productId, product.getName(),
+                        null, previousStock + delta, locationStock.getLowStockThreshold());
+            }
+
+            locationStock.setStock(previousStock + delta);
+            return toLocationStockResponse(locationStock);
+
+        } finally {
+            if (lockAcquired) {
+                try {
+                    cacheService.unlock(lockKey, lockToken);
+                } catch (Exception e) {
+                    log.error("Failed to release location stock lock {}: {}", lockKey, e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads the product-level stock row for the location, creating it at zero when absent. The
+     * per-location cache lock held by the caller serializes concurrent first-time inserts, so the
+     * {@code uq_loc_stock} unique constraint should never fire. If it ever does (e.g. the lock TTL
+     * lapses mid-transaction), we surface a retryable {@link ConflictException} (409): re-reading
+     * the row in-place cannot recover, because the constraint violation has already marked the
+     * surrounding transaction rollback-only, so the caller must retry in a fresh transaction (which
+     * will then find the now-existing row).
+     */
+    private LocationStock findOrCreateProductStock(InventoryLocation location, Product product) {
+        return locationStockRepository
+                .findByLocationIdAndProductIdAndVariantRef(location.getId(), product.getId(), null)
+                .orElseGet(() -> {
+                    LocationStock created = new LocationStock();
+                    created.setLocation(location);
+                    created.setProduct(product);
+                    created.setVariantRef(null);
+                    created.setStock(0);
+                    try {
+                        return locationStockRepository.saveAndFlush(created);
+                    } catch (DataIntegrityViolationException race) {
+                        throw new ConflictException(
+                                "Stock for this product at the location was just created by another operation, please retry");
+                    }
+                });
     }
 
     // --- Nearby pickup ---

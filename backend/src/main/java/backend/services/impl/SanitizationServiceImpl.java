@@ -259,6 +259,12 @@ public class SanitizationServiceImpl implements SanitizationService, Initializin
     }
 
     @Override
+    public void normalize(backend.dtos.requests.inventory.CreateTransferRequest r) {
+        if (r == null) return;
+        r.setNotes(normalizeRichText(r.getNotes()));
+    }
+
+    @Override
     public void normalize(CreateLocationRequest r) {
         if (r == null) return;
         r.setName(normalizeText(r.getName()));
