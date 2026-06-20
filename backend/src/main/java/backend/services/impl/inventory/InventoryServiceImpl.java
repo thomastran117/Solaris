@@ -565,6 +565,7 @@ public class InventoryServiceImpl implements InventoryService {
                 adj.getProduct().getName(),
                 adj.getVariant() != null ? adj.getVariant().getId() : null,
                 adj.getOrderId(),
+                adj.getPurchaseOrderId(),
                 adj.getAdjustedBy() != null ? adj.getAdjustedBy().getId() : null,
                 adj.getDelta(),
                 adj.getPreviousStock(),

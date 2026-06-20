@@ -193,6 +193,11 @@ export default function Navbar() {
                   Marketing
                 </NavLink>
               )}
+              {accessToken && companyId && canManageProducts && (
+                <NavLink to="/admin/purchase-orders" className={navLinkClass}>
+                  Purchase Orders
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

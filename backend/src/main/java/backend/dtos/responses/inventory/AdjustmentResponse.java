@@ -14,6 +14,7 @@ public class AdjustmentResponse {
     private String productName;
     private UUID variantId;
     private UUID orderId;
+    private UUID purchaseOrderId;
     private UUID adjustedByUserId;
     private int delta;
     private int previousStock;

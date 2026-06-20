@@ -148,4 +148,9 @@ public interface EmailService {
     void sendMarketingWorkflowEmail(String toEmail, String firstName,
                                     UUID workflowId, UUID companyId,
                                     String subject, String body);
+
+    void sendPurchaseOrderEmail(String supplierEmail, String supplierName,
+                                String companyName, String poReference,
+                                java.util.List<backend.events.email.EmailEvent.POLineItemSummary> items,
+                                java.time.LocalDate expectedArrival);
 }

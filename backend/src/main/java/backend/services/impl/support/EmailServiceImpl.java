@@ -135,6 +135,15 @@ public class EmailServiceImpl implements EmailService {
         publish(new EmailEvent.MarketingWorkflowEmail(toEmail, firstName, workflowId, companyId, subject, body));
     }
 
+    @Override
+    public void sendPurchaseOrderEmail(String supplierEmail, String supplierName,
+                                       String companyName, String poReference,
+                                       java.util.List<EmailEvent.POLineItemSummary> items,
+                                       java.time.LocalDate expectedArrival) {
+        publish(new EmailEvent.PurchaseOrderEmail(supplierEmail, supplierName, companyName,
+                poReference, items, expectedArrival));
+    }
+
     private void publish(EmailEvent event) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

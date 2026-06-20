@@ -233,6 +233,32 @@ public class SanitizationServiceImpl implements SanitizationService, Initializin
     }
 
     @Override
+    public void normalize(backend.dtos.requests.inventory.CreateSupplierRequest r) {
+        if (r == null) return;
+        r.setName(normalizeText(r.getName()));
+        r.setEmail(normalizeText(r.getEmail()));
+        r.setPhone(normalizeText(r.getPhone()));
+        r.setAddress(normalizeRichText(r.getAddress()));
+        r.setNotes(normalizeRichText(r.getNotes()));
+    }
+
+    @Override
+    public void normalize(backend.dtos.requests.inventory.UpdateSupplierRequest r) {
+        if (r == null) return;
+        r.setName(normalizeText(r.getName()));
+        r.setEmail(normalizeText(r.getEmail()));
+        r.setPhone(normalizeText(r.getPhone()));
+        r.setAddress(normalizeRichText(r.getAddress()));
+        r.setNotes(normalizeRichText(r.getNotes()));
+    }
+
+    @Override
+    public void normalize(backend.dtos.requests.inventory.CreatePORequest r) {
+        if (r == null) return;
+        r.setNotes(normalizeRichText(r.getNotes()));
+    }
+
+    @Override
     public void normalize(CreateLocationRequest r) {
         if (r == null) return;
         r.setName(normalizeText(r.getName()));
