@@ -127,6 +127,15 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         Supplier supplier = supplierRepository.findByIdAndCompanyId(request.getSupplierId(), companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found: " + request.getSupplierId()));
 
+        // Validate the linked restock request belongs to this company before storing the
+        // reference, so a guessed/foreign restock ID cannot be attached to (and later
+        // mutated through) this PO. Mirrors the company-scoped lookups used above.
+        if (request.getRestockRequestId() != null) {
+            restockRepository.findByIdAndCompanyId(request.getRestockRequestId(), companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Restock request not found: " + request.getRestockRequestId()));
+        }
+
         PurchaseOrder po = new PurchaseOrder();
         po.setCompany(company);
         po.setSupplier(supplier);
@@ -276,7 +285,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             po.setReceivedAt(Instant.now());
 
             if (po.getRestockRequestId() != null) {
-                restockRepository.findById(po.getRestockRequestId()).ifPresent(rr -> {
+                restockRepository.findByIdAndCompanyId(po.getRestockRequestId(), companyId).ifPresent(rr -> {
                     rr.setStatus(RestockStatus.RECEIVED);
                     rr.setReceivedAt(Instant.now());
                     restockRepository.save(rr);

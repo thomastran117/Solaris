@@ -131,6 +131,27 @@ class PurchaseOrderServiceTest {
         verify(itemRepository).save(any(PurchaseOrderItem.class));
     }
 
+    @Test
+    void shouldThrowNotFoundWhenLinkedRestockRequestBelongsToAnotherCompany() {
+        stubCompanyAccess();
+        when(supplierRepository.findByIdAndCompanyId(SUPPLIER_ID, COMPANY_ID))
+                .thenReturn(Optional.of(supplier()));
+        // A restock ID from another company is not found under this company's scope.
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        CreatePORequest req = new CreatePORequest();
+        req.setSupplierId(SUPPLIER_ID);
+        req.setRestockRequestId(RESTOCK_ID);
+        req.setItems(List.of(lineItem(PRODUCT_ID, 5, 1000L)));
+
+        assertThatThrownBy(() -> service.createPO(COMPANY_ID, OWNER_ID, req))
+                .isInstanceOf(backend.exceptions.http.ResourceNotFoundException.class);
+        // The PO must never be persisted when the restock link is invalid.
+        verify(poRepository, never()).save(any());
+        verify(itemRepository, never()).save(any());
+    }
+
     // ─── sendPO ───────────────────────────────────────────────────────────────
 
     @Test
@@ -243,7 +264,7 @@ class PurchaseOrderServiceTest {
         stubStockAdjustInfra(5);
 
         RestockRequest rr = restockRequest();
-        when(restockRepository.findById(RESTOCK_ID)).thenReturn(Optional.of(rr));
+        when(restockRepository.findByIdAndCompanyId(RESTOCK_ID, COMPANY_ID)).thenReturn(Optional.of(rr));
         when(restockRepository.save(any(RestockRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.receiveItems(COMPANY_ID, PO_ID, OWNER_ID, receiveRequest(ITEM_ID, 5));
