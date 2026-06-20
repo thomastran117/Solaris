@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -74,6 +75,7 @@ type LookbackDays = 7 | 30 | 90;
 
 export default function DashboardPage() {
   const { fadeInUp, stagger } = useAnims();
+  const navigate    = useNavigate();
   const companyId   = useSelector((s: RootState) => s.auth.companyId);
 
   // ---- Global time range ----
@@ -524,6 +526,12 @@ export default function DashboardPage() {
                           Order <span className="text-white font-semibold">{item.suggestedQty}</span> units
                           {item.projectedStockoutDate ? ` · stockout ${item.projectedStockoutDate}` : ""}
                         </p>
+                        <button
+                          onClick={() => navigate(`/admin/purchase-orders?prefill=${item.productId}`)}
+                          className="text-xs text-sky-200/80 hover:text-sky-200 transition underline-offset-2 hover:underline"
+                        >
+                          Create PO
+                        </button>
                       </div>
                     </div>
                   );

@@ -77,6 +77,9 @@ public class EmailSender {
                 sendDeliverySlotUnavailableEmail(e.recipientEmail(), e.orderReference(), e.requestedDate(), e.vendorReason());
             case EmailEvent.MarketingWorkflowEmail e ->
                 sendMarketingWorkflowEmail(e.toEmail(), e.firstName(), e.subject(), e.body());
+            case EmailEvent.PurchaseOrderEmail e ->
+                sendPurchaseOrderEmail(e.supplierEmail(), e.supplierName(), e.companyName(),
+                        e.poReference(), e.items(), e.expectedArrival());
             default -> {}
         }
     }
@@ -820,6 +823,66 @@ public class EmailSender {
             %s
             """.formatted(greeting, body));
         sendMimeMessage(toEmail, subject, htmlBody);
+    }
+
+    private void sendPurchaseOrderEmail(String supplierEmail, String supplierName,
+                                        String companyName, String poReference,
+                                        java.util.List<EmailEvent.POLineItemSummary> items,
+                                        java.time.LocalDate expectedArrival) {
+        String safeSupplier = HtmlUtils.htmlEscape(supplierName != null ? supplierName : "");
+        String safeCompany  = HtmlUtils.htmlEscape(companyName != null ? companyName : "");
+        String safeRef      = HtmlUtils.htmlEscape(poReference != null ? poReference : "");
+        String arrivalLine  = expectedArrival != null
+                ? "<p style=\"margin:8px 0 0 0;font-size:14px;color:#475569;\">Expected arrival: <strong>"
+                  + expectedArrival.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")) + "</strong></p>"
+                : "";
+
+        StringBuilder rows = new StringBuilder();
+        for (EmailEvent.POLineItemSummary item : items) {
+            String name = HtmlUtils.htmlEscape(item.productName() != null ? item.productName() : "");
+            String sku  = item.variantSku() != null
+                    ? " <span style=\"font-size:12px;color:#94A3B8;\">(" + HtmlUtils.htmlEscape(item.variantSku()) + ")</span>"
+                    : "";
+            rows.append("""
+                <tr style="border-bottom:1px solid #DBEAFE;">
+                  <td style="padding:10px 0;font-size:14px;color:#0F172A;font-weight:500;">%s%s</td>
+                  <td style="padding:10px 0;font-size:14px;color:#475569;text-align:center;">%d</td>
+                  <td style="padding:10px 0;font-size:14px;color:#0F172A;font-weight:600;text-align:right;">$%.2f</td>
+                </tr>
+                """.formatted(name, sku, item.orderedQty(), item.unitCostCents() / 100.0));
+        }
+
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Purchase Order from %s
+            </h1>
+            <p style="margin:0 0 4px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Dear <strong>%s</strong>,
+            </p>
+            <p style="margin:0 0 20px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Please find below the details of purchase order <strong>#%s</strong>.
+            </p>
+            %s
+            <hr style="border:none;border-top:1px solid #DBEAFE;margin:20px 0;">
+            <table width="100%%" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                             color:#94A3B8;text-align:left;padding-bottom:10px;border-bottom:2px solid #DBEAFE;">Product</th>
+                  <th style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                             color:#94A3B8;text-align:center;padding-bottom:10px;border-bottom:2px solid #DBEAFE;">Qty</th>
+                  <th style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                             color:#94A3B8;text-align:right;padding-bottom:10px;border-bottom:2px solid #DBEAFE;">Unit Cost</th>
+                </tr>
+              </thead>
+              <tbody>%s</tbody>
+            </table>
+            <p style="margin:20px 0 0 0;font-size:13px;color:#94A3B8;line-height:1.6;">
+              Please confirm receipt of this order by contacting <strong>%s</strong>.
+            </p>
+            """.formatted(safeCompany, safeSupplier, safeRef, arrivalLine, rows, safeCompany);
+
+        sendMimeMessage(supplierEmail, "Purchase Order #" + safeRef + " from " + safeCompany, wrapInShell("Purchase Order", body));
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

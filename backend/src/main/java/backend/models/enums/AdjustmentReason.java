@@ -13,5 +13,6 @@ public enum AdjustmentReason {
     EXPIRY,
     COUNT_CORRECTION,
     IMPORT_SYNC,
-    OTHER
+    OTHER,
+    PURCHASE_ORDER_RECEIPT
 }

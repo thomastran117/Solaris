@@ -197,7 +197,7 @@ class InventoryControllerTest {
                 10))
                 .thenReturn(new PagedResponse<>(new PageImpl<>(
                         List.of(new AdjustmentResponse(
-                                TestIds.uuid(10), PRODUCT_ID, "Desk", null, null, USER_ID,
+                                TestIds.uuid(10), PRODUCT_ID, "Desk", null, null, null, USER_ID,
                                 5, 1, 6, "RESTOCK", "warehouse count", Instant.parse("2026-05-02T12:00:00Z"))),
                         PageRequest.of(1, 10),
                         1

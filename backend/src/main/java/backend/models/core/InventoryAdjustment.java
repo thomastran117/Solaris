@@ -21,7 +21,8 @@ import java.util.UUID;
 @Table(name = "inventory_adjustments", indexes = {
         @Index(name = "idx_inv_adj_product", columnList = "product_id"),
         @Index(name = "idx_inv_adj_product_created", columnList = "product_id, created_at"),
-        @Index(name = "idx_inv_adj_order", columnList = "order_id")
+        @Index(name = "idx_inv_adj_order", columnList = "order_id"),
+        @Index(name = "idx_inv_adj_po", columnList = "purchase_order_id")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class InventoryAdjustment {
@@ -61,6 +62,9 @@ public class InventoryAdjustment {
 
     @Column(name = "order_id", nullable = true)
     private UUID orderId;
+
+    @Column(name = "purchase_order_id", nullable = true)
+    private UUID purchaseOrderId;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

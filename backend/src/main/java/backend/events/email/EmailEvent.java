@@ -28,6 +28,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.PriceDropEmail.class,         name = "PRICE_DROP"),
     @JsonSubTypes.Type(value = EmailEvent.DeliverySlotUnavailableEmail.class, name = "DELIVERY_SLOT_UNAVAILABLE"),
     @JsonSubTypes.Type(value = EmailEvent.MarketingWorkflowEmail.class,       name = "MARKETING_WORKFLOW"),
+    @JsonSubTypes.Type(value = EmailEvent.PurchaseOrderEmail.class,           name = "PURCHASE_ORDER"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -46,7 +47,8 @@ public sealed interface EmailEvent
                 EmailEvent.GiftCardIssuedEmail,
                 EmailEvent.PriceDropEmail,
                 EmailEvent.DeliverySlotUnavailableEmail,
-                EmailEvent.MarketingWorkflowEmail {
+                EmailEvent.MarketingWorkflowEmail,
+                EmailEvent.PurchaseOrderEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -190,5 +192,21 @@ public sealed interface EmailEvent
         java.util.UUID companyId,
         String subject,
         String body
+    ) implements EmailEvent {}
+
+    record POLineItemSummary(
+        String productName,
+        String variantSku,
+        int orderedQty,
+        long unitCostCents
+    ) {}
+
+    record PurchaseOrderEmail(
+        String supplierEmail,
+        String supplierName,
+        String companyName,
+        String poReference,
+        List<POLineItemSummary> items,
+        java.time.LocalDate expectedArrival
     ) implements EmailEvent {}
 }

@@ -3,9 +3,12 @@ package backend.services.intf;
 import backend.dtos.requests.inventory.AdjustStockRequest;
 import backend.dtos.requests.inventory.BulkAdjustRequest;
 import backend.dtos.requests.inventory.CreateLocationRequest;
+import backend.dtos.requests.inventory.CreatePORequest;
 import backend.dtos.requests.inventory.CreateRestockRequest;
+import backend.dtos.requests.inventory.CreateSupplierRequest;
 import backend.dtos.requests.inventory.UpdateLocationRequest;
 import backend.dtos.requests.inventory.UpdateRestockRequest;
+import backend.dtos.requests.inventory.UpdateSupplierRequest;
 import backend.dtos.requests.product.AddProductImageRequest;
 import backend.dtos.requests.product.BatchCreateProductsRequest;
 import backend.dtos.requests.product.CreateProductOptionRequest;
@@ -85,4 +88,8 @@ public interface SanitizationService {
 
     void normalize(CreateLocationRequest request);
     void normalize(UpdateLocationRequest request);
+
+    void normalize(CreateSupplierRequest request);
+    void normalize(UpdateSupplierRequest request);
+    void normalize(CreatePORequest request);
 }
