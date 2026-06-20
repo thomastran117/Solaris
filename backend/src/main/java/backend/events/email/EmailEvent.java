@@ -29,6 +29,9 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.DeliverySlotUnavailableEmail.class, name = "DELIVERY_SLOT_UNAVAILABLE"),
     @JsonSubTypes.Type(value = EmailEvent.MarketingWorkflowEmail.class,       name = "MARKETING_WORKFLOW"),
     @JsonSubTypes.Type(value = EmailEvent.PurchaseOrderEmail.class,           name = "PURCHASE_ORDER"),
+    @JsonSubTypes.Type(value = EmailEvent.QuoteReceivedEmail.class,           name = "QUOTE_RECEIVED"),
+    @JsonSubTypes.Type(value = EmailEvent.QuoteRespondedEmail.class,          name = "QUOTE_RESPONDED"),
+    @JsonSubTypes.Type(value = EmailEvent.InvoiceIssuedEmail.class,           name = "INVOICE_ISSUED"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -48,7 +51,10 @@ public sealed interface EmailEvent
                 EmailEvent.PriceDropEmail,
                 EmailEvent.DeliverySlotUnavailableEmail,
                 EmailEvent.MarketingWorkflowEmail,
-                EmailEvent.PurchaseOrderEmail {
+                EmailEvent.PurchaseOrderEmail,
+                EmailEvent.QuoteReceivedEmail,
+                EmailEvent.QuoteRespondedEmail,
+                EmailEvent.InvoiceIssuedEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -208,5 +214,44 @@ public sealed interface EmailEvent
         String poReference,
         List<POLineItemSummary> items,
         java.time.LocalDate expectedArrival
+    ) implements EmailEvent {}
+
+    // ─── B2B / Wholesale Quoting (Feature 12) ──────────────────────────────────
+
+    /** Sent to the vendor when a buyer submits a new quote request. */
+    record QuoteReceivedEmail(
+        String vendorEmail,
+        String vendorName,
+        String buyerCompanyName,
+        java.util.UUID quoteId,
+        long totalCents
+    ) implements EmailEvent {}
+
+    /** Sent to the buyer when the vendor approves or counter-proposes a quote. */
+    record QuoteRespondedEmail(
+        String buyerEmail,
+        String buyerName,
+        String vendorName,
+        java.util.UUID quoteId,
+        String responseStatus
+    ) implements EmailEvent {}
+
+    record InvoiceLineItem(
+        String description,
+        int quantity,
+        long unitPriceCents,
+        long totalPriceCents
+    ) {}
+
+    /** Sent to the buyer when a net-terms invoice is issued; a PDF invoice is attached. */
+    record InvoiceIssuedEmail(
+        String buyerEmail,
+        String buyerName,
+        String vendorName,
+        String invoiceNumber,
+        long totalCents,
+        java.time.LocalDate dueDate,
+        String currency,
+        List<InvoiceLineItem> items
     ) implements EmailEvent {}
 }

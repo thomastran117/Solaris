@@ -127,4 +127,12 @@ public interface OrderService {
      * order item is marked BACKORDERED rather than failing the whole renewal.
      */
     Order createRenewalOrder(Subscription subscription, String stripeInvoiceId, long amountPaidCents);
+
+    /**
+     * Creates an {@link Order} from an accepted B2B quote (Feature 12), using the quote's
+     * pre-negotiated line prices and bypassing the promotion engine. Stock is reserved normally.
+     * For IMMEDIATE terms a Stripe PaymentIntent is created and the order starts RESERVED; for net
+     * terms no Stripe call is made and the order starts PAID (payment is tracked via a B2BInvoice).
+     */
+    OrderResponse createOrderFromQuote(QuoteOrderSpec spec);
 }

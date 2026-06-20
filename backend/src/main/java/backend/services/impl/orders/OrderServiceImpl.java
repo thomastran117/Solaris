@@ -3947,6 +3947,144 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // -------------------------------------------------------------------------
+    // B2B quote conversion (Feature 12)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public OrderResponse createOrderFromQuote(backend.services.intf.orders.QuoteOrderSpec spec) {
+        if (spec.immediate()) {
+            // Same two-phase pattern as createOrder: the Stripe call runs outside any transaction.
+            OrderReservation reservation = self().reserveQuoteOrder(spec);
+            Order reserved = reservation.order();
+            PaymentIntentResult paymentIntent;
+            try {
+                paymentIntent = paymentService.createPaymentIntent(
+                        reservation.amountInCents(), reservation.currency(), null,
+                        Map.of("user_id", String.valueOf(spec.buyerUserId()),
+                               "order_id", String.valueOf(reserved.getId()),
+                               "quote_id", String.valueOf(spec.quoteId())));
+            } catch (Exception e) {
+                failReservedOrderQuietly(reserved, "Payment intent creation failed: " + e.getMessage(), null);
+                throw e;
+            }
+            OrderResponse response;
+            try {
+                response = self().attachPaymentIntent(reserved, paymentIntent);
+            } catch (Exception e) {
+                failReservedOrderQuietly(reserved,
+                        "Failed to attach payment intent: " + e.getMessage(), paymentIntent.id());
+                throw e;
+            }
+            try {
+                emailService.sendOrderReceiptEmail(reservation.email(), reservation.firstName(), response);
+            } catch (Exception e) {
+                log.warn("[B2B] Failed to send receipt email for quote order {}: {}", reserved.getId(), e.getMessage());
+            }
+            return response;
+        }
+        // Net terms: single transaction, order born PAID, no Stripe. Payment is tracked separately
+        // via the B2BInvoice issued by B2BInvoiceService.
+        return self().createNetTermsQuoteOrder(spec);
+    }
+
+    /** T1 for an IMMEDIATE quote order: builds and persists the RESERVED order (no Stripe call here). */
+    @Transactional
+    public OrderReservation reserveQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        User buyer = userRepository.findById(spec.buyerUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
+        String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
+        Order order = new Order();
+        order.setUser(buyer);
+        order.setStatus(OrderStatus.RESERVED);
+        order.setCurrency(currency);
+        order.setCompensated(false);
+        order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
+        populateQuoteOrderItems(order, spec.lines());
+        Order saved = persistWithMarketplace(order);
+        return OrderReservation.pending(saved, spec.totalCents(), currency, buyer.getEmail(), buyer.getFirstName());
+    }
+
+    /** Net-terms quote order: born PAID so it fulfills normally; payment tracked via B2BInvoice. */
+    @Transactional
+    public OrderResponse createNetTermsQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        User buyer = userRepository.findById(spec.buyerUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
+        String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
+        Order order = new Order();
+        order.setUser(buyer);
+        order.setStatus(OrderStatus.PAID);
+        order.setCurrency(currency);
+        order.setCompensated(true); // no reservation lifecycle: net-terms orders are born ready to fulfil
+        order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
+        populateQuoteOrderItems(order, spec.lines());
+        Order saved = persistWithMarketplace(order);
+        publishOrderWebhookEvent(saved, WebhookEventType.ORDER_CREATED);
+        return toResponse(saved);
+    }
+
+    /** Saves the order, then stamps marketplace vendor ids / sub-orders / commission if applicable. */
+    private Order persistWithMarketplace(Order order) {
+        boolean marketplace = stampVendorIds(order.getItems());
+        Order saved = orderRepository.save(order);
+        if (marketplace) {
+            saved.setMarketplaceOrder(true);
+            createSubOrders(saved, saved.getItems());
+            saved = orderRepository.save(saved);
+            recordSubOrderCommission(saved);
+        }
+        return saved;
+    }
+
+    /**
+     * Builds order items from quote lines at the pre-negotiated unit prices (no promotion engine),
+     * decrementing stock under product/variant locks and falling back to BACKORDERED on shortfall —
+     * mirroring the stock mechanics of {@link #createRenewalOrder}.
+     */
+    private void populateQuoteOrderItems(Order order, List<backend.services.intf.orders.QuoteOrderSpec.QuoteOrderLine> lines) {
+        java.util.TreeSet<UUID> productIds = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> variantIds = new java.util.TreeSet<>();
+        for (var line : lines) {
+            productIds.add(line.productId());
+            if (line.variantId() != null) variantIds.add(line.variantId());
+        }
+        String lockToken = UUID.randomUUID().toString();
+        List<String> locks = new ArrayList<>();
+        try {
+            acquireLocks(new ArrayList<>(productIds), lockToken, locks);
+            acquireVariantLocks(new ArrayList<>(variantIds), lockToken, locks);
+        } catch (ConflictException e) {
+            log.warn("createOrderFromQuote: could not acquire all locks — proceeding without full lock coverage");
+        }
+        try {
+            for (var line : lines) {
+                Product product = productRepository.findById(line.productId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + line.productId()));
+                OrderItem item = new OrderItem();
+                item.setOrder(order);
+                item.setProduct(product);
+                item.setProductName(product.getName());
+                item.setQuantity(line.quantity());
+                item.setUnitPrice(BigDecimal.valueOf(line.unitPriceCents()).movePointLeft(2));
+                if (line.variantId() != null) {
+                    ProductVariant variant = variantRepository.findById(line.variantId())
+                            .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + line.variantId()));
+                    item.setVariant(variant);
+                    item.setVariantTitle(buildVariantTitle(variant));
+                    item.setVariantSku(variant.getSku());
+                    int updated = variantRepository.decrementStock(variant.getId(), line.quantity());
+                    if (updated == 0) item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                } else {
+                    int updated = productRepository.decrementStock(product.getId(), line.quantity());
+                    if (updated == 0) item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                }
+                order.getItems().add(item);
+            }
+        } finally {
+            releaseLocks(locks, lockToken);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Marketplace helpers
     // -------------------------------------------------------------------------
 

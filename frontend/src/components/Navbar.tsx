@@ -203,6 +203,16 @@ export default function Navbar() {
                   Transfers
                 </NavLink>
               )}
+              {accessToken && companyId && canManageProducts && (
+                <NavLink to="/admin/b2b-quotes" className={navLinkClass}>
+                  B2B Quotes
+                </NavLink>
+              )}
+              {accessToken && (
+                <NavLink to="/b2b/quotes" className={navLinkClass}>
+                  My Quotes
+                </NavLink>
+              )}
 
               {/* More Dropdown */}
               <div

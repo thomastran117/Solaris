@@ -8,6 +8,7 @@ public enum CompanyCapability {
     MANAGE_PRODUCTS,
     MANAGE_INVENTORY,
     MANAGE_PROMOTIONS,
+    MANAGE_QUOTES,
     FULFILL_ORDERS,
     READ_PRODUCTS,
     READ_ANALYTICS;
@@ -19,6 +20,7 @@ public enum CompanyCapability {
                     MANAGE_PRODUCTS,
                     MANAGE_INVENTORY,
                     MANAGE_PROMOTIONS,
+                    MANAGE_QUOTES,
                     FULFILL_ORDERS,
                     READ_PRODUCTS,
                     READ_ANALYTICS

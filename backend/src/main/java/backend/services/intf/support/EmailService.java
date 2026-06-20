@@ -153,4 +153,18 @@ public interface EmailService {
                                 String companyName, String poReference,
                                 java.util.List<backend.events.email.EmailEvent.POLineItemSummary> items,
                                 java.time.LocalDate expectedArrival);
+
+    /** Notifies the vendor that a buyer has submitted a new B2B quote request. */
+    void sendQuoteReceivedEmail(String vendorEmail, String vendorName, String buyerCompanyName,
+                                UUID quoteId, long totalCents);
+
+    /** Notifies the buyer that the vendor approved or countered their quote. */
+    void sendQuoteRespondedEmail(String buyerEmail, String buyerName, String vendorName,
+                                 UUID quoteId, String responseStatus);
+
+    /** Notifies the buyer that a net-terms invoice has been issued; a PDF is attached. */
+    void sendInvoiceIssuedEmail(String buyerEmail, String buyerName, String vendorName,
+                                String invoiceNumber, long totalCents, java.time.LocalDate dueDate,
+                                String currency,
+                                java.util.List<backend.events.email.EmailEvent.InvoiceLineItem> items);
 }

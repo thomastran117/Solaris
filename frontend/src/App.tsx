@@ -46,6 +46,8 @@ import AdminWebhooksPage from "./pages/admin/AdminWebhooksPage";
 import AdminMarketingPage from "./pages/admin/AdminMarketingPage";
 import AdminPurchaseOrdersPage from "./pages/admin/AdminPurchaseOrdersPage";
 import AdminInventoryTransfersPage from "./pages/admin/AdminInventoryTransfersPage";
+import B2BQuotesPage from "./pages/B2BQuotesPage";
+import AdminB2BQuotesPage from "./pages/admin/AdminB2BQuotesPage";
 import GiftCardsPage from "./pages/GiftCardsPage";
 import PriceWatchesPage from "./pages/PriceWatchesPage";
 import FeedbackButton from "./components/feedback/FeedbackButton";
@@ -109,6 +111,8 @@ function App() {
               <Route path="/feedback" element={<FeedbackPage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/:id" element={<OrderDetailPage />} />
+              <Route path="/b2b/quotes" element={<B2BQuotesPage />} />
+              <Route path="/admin/b2b-quotes" element={<AdminB2BQuotesPage />} />
               <Route path="/admin/products" element={<AdminProductsPage />} />
               <Route path="/admin/bundles" element={<AdminBundlesPage />} />
               <Route path="/admin/kits" element={<AdminKitsPage />} />
