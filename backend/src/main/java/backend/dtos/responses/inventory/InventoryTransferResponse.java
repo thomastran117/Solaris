@@ -1,5 +1,6 @@
 package backend.dtos.responses.inventory;
 
+import backend.models.enums.TransferStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -18,7 +19,7 @@ public class InventoryTransferResponse {
     private UUID toLocationId;
     private String toLocationName;
     private int quantity;
-    private String status;
+    private TransferStatus status;
     private String notes;
     private UUID createdByUserId;
     private UUID receivedByUserId;

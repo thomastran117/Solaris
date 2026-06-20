@@ -3,7 +3,6 @@ package backend.services.impl.inventory;
 import backend.dtos.requests.inventory.CreateTransferRequest;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.inventory.InventoryTransferResponse;
-import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.exceptions.http.ResourceNotFoundException;
 import backend.exceptions.http.UnprocessableEntityException;
@@ -99,7 +98,7 @@ class InventoryTransferServiceImplTest {
 
         InventoryTransferResponse resp = service.createTransfer(COMPANY_ID, OWNER_ID, request(5));
 
-        assertEquals("PENDING", resp.getStatus());
+        assertEquals(TransferStatus.PENDING, resp.getStatus());
         assertEquals(5, resp.getQuantity());
         verify(companyAccessService).require(COMPANY_ID, OWNER_ID, CompanyCapability.MANAGE_INVENTORY);
         verify(transferRepository).save(any(InventoryTransfer.class));
@@ -129,15 +128,9 @@ class InventoryTransferServiceImplTest {
                 () -> service.createTransfer(COMPANY_ID, OWNER_ID, request(5)));
     }
 
-    @Test
-    void createTransfer_sameLocation_throwsBadRequest() {
-        when(companyAccessService.require(any(), any(), any())).thenReturn(company());
-        CreateTransferRequest req = request(5);
-        req.setToLocationId(FROM_ID); // same as from
-
-        assertThrows(BadRequestException.class,
-                () -> service.createTransfer(COMPANY_ID, OWNER_ID, req));
-    }
+    // Note: same-location rejection is enforced by Bean Validation (@AssertTrue on
+    // CreateTransferRequest) before the service runs; it is covered by InventoryTransferIT
+    // (createTransfer_sameLocation_returns400), not at the service layer.
 
     @Test
     void createTransfer_variantManagedProduct_throwsUnprocessableEntity() {
@@ -175,7 +168,7 @@ class InventoryTransferServiceImplTest {
 
         InventoryTransferResponse resp = service.markInTransit(COMPANY_ID, TRANSFER_ID, OWNER_ID);
 
-        assertEquals("IN_TRANSIT", resp.getStatus());
+        assertEquals(TransferStatus.IN_TRANSIT, resp.getStatus());
         assertEquals(TransferStatus.IN_TRANSIT, transfer.getStatus());
     }
 
@@ -207,11 +200,13 @@ class InventoryTransferServiceImplTest {
         InventoryTransfer transfer = transfer(TransferStatus.IN_TRANSIT, 5);
         when(transferRepository.findByIdAndCompanyId(TRANSFER_ID, COMPANY_ID)).thenReturn(Optional.of(transfer));
         when(userRepository.getReferenceById(OWNER_ID)).thenReturn(user());
-        when(transferRepository.save(any(InventoryTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transferRepository.saveAndFlush(any(InventoryTransfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
         InventoryTransferResponse resp = service.receiveTransfer(COMPANY_ID, TRANSFER_ID, OWNER_ID);
 
-        assertEquals("RECEIVED", resp.getStatus());
+        assertEquals(TransferStatus.RECEIVED, resp.getStatus());
+        // The RECEIVED status + @Version bump is flushed BEFORE stock moves (concurrency guard).
+        verify(transferRepository).saveAndFlush(any(InventoryTransfer.class));
         // Source decrement (TRANSFER_OUT) and destination increment (TRANSFER_IN).
         verify(locationInventoryService).applyTransferStock(
                 eq(COMPANY_ID), eq(FROM_ID), eq(PRODUCT_ID), eq(OWNER_ID), eq(-5),
@@ -245,7 +240,7 @@ class InventoryTransferServiceImplTest {
 
         InventoryTransferResponse resp = service.cancelTransfer(COMPANY_ID, TRANSFER_ID, OWNER_ID);
 
-        assertEquals("CANCELLED", resp.getStatus());
+        assertEquals(TransferStatus.CANCELLED, resp.getStatus());
         verify(locationInventoryService, never())
                 .applyTransferStock(any(), any(), any(), any(), anyInt(), any(), any());
     }

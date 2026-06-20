@@ -82,10 +82,8 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
     public InventoryTransferResponse createTransfer(UUID companyId, UUID ownerId, CreateTransferRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
-        if (request.getFromLocationId().equals(request.getToLocationId())) {
-            throw new backend.exceptions.http.BadRequestException("Source and destination locations must be different");
-        }
-
+        // Distinct source/destination is enforced by CreateTransferRequest#isDistinctLocations
+        // (Bean Validation, surfaced as 400 before this method runs).
         InventoryLocation from = locationRepository.findByIdAndCompanyId(request.getFromLocationId(), companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + request.getFromLocationId()));
         InventoryLocation to = locationRepository.findByIdAndCompanyId(request.getToLocationId(), companyId)
@@ -239,7 +237,7 @@ public class InventoryTransferServiceImpl implements InventoryTransferService {
                 t.getToLocation().getId(),
                 t.getToLocation().getName(),
                 t.getQuantity(),
-                t.getStatus().name(),
+                t.getStatus(),
                 t.getNotes(),
                 t.getCreatedBy() != null ? t.getCreatedBy().getId() : null,
                 t.getReceivedBy() != null ? t.getReceivedBy().getId() : null,

@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -29,7 +29,6 @@ import java.util.UUID;
         @Index(name = "idx_transfer_company", columnList = "company_id"),
         @Index(name = "idx_transfer_company_status", columnList = "company_id, status")
 })
-@EntityListeners(AuditingEntityListener.class)
 public class InventoryTransfer {
 
     @Id
@@ -82,6 +81,10 @@ public class InventoryTransfer {
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    private Instant updatedAt;
 
     @Column(nullable = true)
     private Instant inTransitAt;
