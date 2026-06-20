@@ -103,7 +103,7 @@ class PurchaseOrderServiceTest {
                 emailService, stockAlertService, orderService, eventPublisher);
 
         when(poRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(itemRepository.save(any(PurchaseOrderItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(itemRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
         when(adjustmentRepository.save(any(InventoryAdjustment.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -128,7 +128,9 @@ class PurchaseOrderServiceTest {
         assertThat(response.getTotalCostCents()).isEqualTo(5000L);
         assertThat(response.getCompanyId()).isEqualTo(COMPANY_ID);
         assertThat(response.getSupplierId()).isEqualTo(SUPPLIER_ID);
-        verify(itemRepository).save(any(PurchaseOrderItem.class));
+        verify(itemRepository).saveAll(anyList());
+        // PO persisted exactly once (total pre-computed, no second backfill save).
+        verify(poRepository, times(1)).save(any(PurchaseOrder.class));
     }
 
     @Test
@@ -149,7 +151,7 @@ class PurchaseOrderServiceTest {
                 .isInstanceOf(backend.exceptions.http.ResourceNotFoundException.class);
         // The PO must never be persisted when the restock link is invalid.
         verify(poRepository, never()).save(any());
-        verify(itemRepository, never()).save(any());
+        verify(itemRepository, never()).saveAll(any());
     }
 
     // ─── sendPO ───────────────────────────────────────────────────────────────

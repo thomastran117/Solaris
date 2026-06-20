@@ -64,8 +64,6 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private static final String VARIANT_LOCK_PREFIX  = "lock:variant:";
     private static final String LOC_STOCK_LOCK_PREFIX = "lock:locstock:";
     private static final long   LOCK_TTL_SECONDS      = 10;
-    private static final int    LOCK_RETRY_ATTEMPTS   = 5;
-    private static final long   LOCK_RETRY_DELAY_MS   = 100;
 
     private final PurchaseOrderRepository poRepository;
     private final PurchaseOrderItemRepository itemRepository;
@@ -136,6 +134,12 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                             "Restock request not found: " + request.getRestockRequestId()));
         }
 
+        // Total is derivable from the request, so compute it up front and persist the PO
+        // exactly once (no second save to backfill totalCostCents).
+        long totalCostCents = request.getItems().stream()
+                .mapToLong(li -> (long) li.getOrderedQty() * li.getUnitCostCents())
+                .sum();
+
         PurchaseOrder po = new PurchaseOrder();
         po.setCompany(company);
         po.setSupplier(supplier);
@@ -144,11 +148,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setExpectedArrivalDate(request.getExpectedArrivalDate());
         po.setNotes(request.getNotes());
         po.setRestockRequestId(request.getRestockRequestId());
+        po.setTotalCostCents(totalCostCents);
 
-        long totalCostCents = 0;
         PurchaseOrder savedPo = poRepository.save(po);
 
-        List<PurchaseOrderItem> savedItems = new java.util.ArrayList<>();
+        List<PurchaseOrderItem> itemsToSave = new java.util.ArrayList<>();
         for (POLineItemRequest lineReq : request.getItems()) {
             Product product = productRepository.findByIdAndCompanyId(lineReq.getProductId(), companyId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + lineReq.getProductId()));
@@ -172,13 +176,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             item.setLocation(location);
             item.setOrderedQty(lineReq.getOrderedQty());
             item.setUnitCostCents(lineReq.getUnitCostCents());
-            savedItems.add(itemRepository.save(item));
-
-            totalCostCents += (long) lineReq.getOrderedQty() * lineReq.getUnitCostCents();
+            itemsToSave.add(item);
         }
 
-        savedPo.setTotalCostCents(totalCostCents);
-        poRepository.save(savedPo);
+        // Persist all line items in a single batch instead of one round trip per item.
+        List<PurchaseOrderItem> savedItems = itemRepository.saveAll(itemsToSave);
 
         return toResponse(savedPo, savedItems);
     }
@@ -466,17 +468,15 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
     }
 
+    /**
+     * Acquires the lock with a single, non-blocking attempt. We deliberately do NOT spin/sleep
+     * here: this runs inside the receipt's @Transactional boundary, so blocking would hold a
+     * pooled JDBC connection idle and could starve the connection pool under contention. On
+     * contention we fail fast with a 409 and let the caller retry — receipts are rare/serial,
+     * and correctness is already guaranteed by the atomic incrementReceivedQty + adjustStock.
+     */
     private boolean acquireLock(String key, String token) {
-        for (int attempt = 0; attempt < LOCK_RETRY_ATTEMPTS; attempt++) {
-            if (cacheService.tryLock(key, token, LOCK_TTL_SECONDS)) return true;
-            try {
-                Thread.sleep(LOCK_RETRY_DELAY_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new ConflictException("Operation interrupted, please try again");
-            }
-        }
-        return false;
+        return cacheService.tryLock(key, token, LOCK_TTL_SECONDS);
     }
 
     private void releaseLock(String key, String token) {

@@ -40,6 +40,22 @@ import type { PurchaseOrder, POStatus, Supplier, PurchaseOrderItem } from "../..
 import type { RootState } from "../../stores";
 import { useAnims } from "../../hooks/useAnims";
 
+/** Pulls the most specific message out of the backend ApiResponse error envelope. */
+function apiErrorMessage(error: unknown, fallback: string): string {
+  const e = error as {
+    apiMessage?: string;
+    response?: {
+      data?: { message?: string; error?: { details?: { detail?: string } } };
+    };
+  };
+  return (
+    e?.response?.data?.error?.details?.detail ??
+    e?.apiMessage ??
+    e?.response?.data?.message ??
+    fallback
+  );
+}
+
 const STATUS_COLORS: Record<POStatus, string> = {
   DRAFT: "bg-white/10 text-white/60 border-white/10",
   SENT: "bg-blue-500/15 text-blue-400 border-blue-500/20",
@@ -141,6 +157,8 @@ export default function AdminPurchaseOrdersPage() {
   const cancelPOMutation = useMutation({
     mutationFn: (poId: string) => cancelPO(companyId!, poId),
     onSuccess: invalidatePOs,
+    onError: (error) =>
+      window.alert(apiErrorMessage(error, "Failed to cancel the purchase order.")),
   });
 
   const createSupplierMutation = useMutation({
@@ -160,6 +178,8 @@ export default function AdminPurchaseOrdersPage() {
     mutationFn: (supplierId: string) => deleteSupplier(companyId!, supplierId),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["suppliers", companyId] }),
+    onError: (error) =>
+      window.alert(apiErrorMessage(error, "Failed to delete the supplier.")),
   });
 
   // ── Forms ─────────────────────────────────────────────────────────────────────
@@ -333,7 +353,11 @@ export default function AdminPurchaseOrdersPage() {
                         )}
                         {po.status !== "RECEIVED" && po.status !== "CANCELLED" && (
                           <button
-                            onClick={() => cancelPOMutation.mutate(po.id)}
+                            onClick={() => {
+                              if (window.confirm("Cancel this purchase order? This cannot be undone.")) {
+                                cancelPOMutation.mutate(po.id);
+                              }
+                            }}
                             disabled={cancelPOMutation.isPending}
                             title="Cancel PO"
                             className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/40 hover:text-red-400 transition"
@@ -411,7 +435,11 @@ export default function AdminPurchaseOrdersPage() {
                       {s.phone && <p className="text-xs text-white/40">{s.phone}</p>}
                     </div>
                     <button
-                      onClick={() => deleteSupplierMutation.mutate(s.id)}
+                      onClick={() => {
+                        if (window.confirm(`Delete supplier "${s.name}"? This cannot be undone.`)) {
+                          deleteSupplierMutation.mutate(s.id);
+                        }
+                      }}
                       disabled={deleteSupplierMutation.isPending}
                       className="p-2 rounded-xl border border-white/10 hover:bg-white/10 text-white/40 hover:text-red-400 transition"
                       title="Delete supplier"
@@ -521,7 +549,9 @@ export default function AdminPurchaseOrdersPage() {
               </div>
 
               {createPOMutation.isError && (
-                <p className="text-red-400 text-xs">Failed to create PO. Please try again.</p>
+                <p className="text-red-400 text-xs">
+                  {apiErrorMessage(createPOMutation.error, "Failed to create PO. Please try again.")}
+                </p>
               )}
 
               <button
@@ -575,7 +605,9 @@ export default function AdminPurchaseOrdersPage() {
               </div>
 
               {createSupplierMutation.isError && (
-                <p className="text-red-400 text-xs">Failed to add supplier. Please try again.</p>
+                <p className="text-red-400 text-xs">
+                  {apiErrorMessage(createSupplierMutation.error, "Failed to add supplier. Please try again.")}
+                </p>
               )}
 
               <button
@@ -635,7 +667,9 @@ export default function AdminPurchaseOrdersPage() {
                 ))}
 
               {receiveItemsMutation.isError && (
-                <p className="text-red-400 text-xs">Failed to receive items. Please try again.</p>
+                <p className="text-red-400 text-xs">
+                  {apiErrorMessage(receiveItemsMutation.error, "Failed to receive items. Please try again.")}
+                </p>
               )}
 
               <button
