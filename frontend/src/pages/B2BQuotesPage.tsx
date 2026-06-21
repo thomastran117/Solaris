@@ -29,10 +29,8 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 }
 
 const STATUS_COLORS: Record<QuoteStatus, string> = {
-  DRAFT: "bg-white/10 text-white/60 border-white/10",
   PENDING_VENDOR: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
   PENDING_BUYER: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  ACCEPTED: "bg-green-500/15 text-green-400 border-green-500/20",
   CONVERTED: "bg-green-500/15 text-green-400 border-green-500/20",
   REJECTED: "bg-red-500/15 text-red-400 border-red-500/20",
   EXPIRED: "bg-white/10 text-white/50 border-white/10",
@@ -40,10 +38,8 @@ const STATUS_COLORS: Record<QuoteStatus, string> = {
 
 const STATUS_LABELS: Record<QuoteStatus | "ALL", string> = {
   ALL: "All",
-  DRAFT: "Draft",
   PENDING_VENDOR: "Awaiting Vendor",
   PENDING_BUYER: "Awaiting You",
-  ACCEPTED: "Accepted",
   CONVERTED: "Converted",
   REJECTED: "Rejected",
   EXPIRED: "Expired",

@@ -168,16 +168,11 @@ public class B2BInvoiceServiceImpl implements B2BInvoiceService {
     @Override
     @Transactional
     public int markOverdueInvoices() {
-        List<B2BInvoice> overdue = invoiceRepository.findByStatusAndDueDateAtBefore(
-                InvoiceStatus.ISSUED, Instant.now());
-        for (B2BInvoice inv : overdue) {
-            inv.setStatus(InvoiceStatus.OVERDUE);
-            invoiceRepository.save(inv);
+        int overdue = invoiceRepository.markOverdue(Instant.now());
+        if (overdue > 0) {
+            log.info("[B2B] Marked {} invoice(s) overdue", overdue);
         }
-        if (!overdue.isEmpty()) {
-            log.info("[B2B] Marked {} invoice(s) overdue", overdue.size());
-        }
-        return overdue.size();
+        return overdue;
     }
 
     private String generateInvoiceNumber() {

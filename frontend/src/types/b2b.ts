@@ -1,8 +1,6 @@
 export type QuoteStatus =
-  | 'DRAFT'
   | 'PENDING_VENDOR'
   | 'PENDING_BUYER'
-  | 'ACCEPTED'
   | 'REJECTED'
   | 'EXPIRED'
   | 'CONVERTED';

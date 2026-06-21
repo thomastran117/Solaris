@@ -331,25 +331,45 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
     @Override
     @Transactional
     public void expireStaleQuotes() {
-        List<B2BQuote> stale = quoteRepository.findByStatusAndExpiresAtBefore(QuoteStatus.PENDING_BUYER, Instant.now());
-        for (B2BQuote quote : stale) {
-            quote.setStatus(QuoteStatus.EXPIRED);
-            quoteRepository.save(quote);
-        }
-        if (!stale.isEmpty()) {
-            log.info("[B2B] Expired {} stale quote(s)", stale.size());
+        int expired = quoteRepository.expireStalePendingBuyer(Instant.now());
+        if (expired > 0) {
+            log.info("[B2B] Expired {} stale quote(s)", expired);
         }
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────
 
     private B2BAccount upsertAccount(UUID buyerUserId, CreateQuoteRequest req) {
-        B2BAccount account = accountRepository.findByUserId(buyerUserId).orElseGet(B2BAccount::new);
-        account.setUserId(buyerUserId);
-        account.setCompanyName(req.companyName());
-        account.setTaxId(req.taxId());
-        account.setBillingAddress(req.billingAddress());
-        return accountRepository.save(account);
+        B2BAccount existing = accountRepository.findByUserId(buyerUserId).orElse(null);
+        if (existing == null) {
+            B2BAccount account = new B2BAccount();
+            account.setUserId(buyerUserId);
+            account.setCompanyName(req.companyName());
+            account.setTaxId(req.taxId());
+            account.setBillingAddress(req.billingAddress());
+            return accountRepository.save(account);
+        }
+        // Don't overwrite an established profile from a quote request — only fill blanks, so a typo in
+        // one quote can't silently corrupt the buyer's saved billing details. Profile edits belong to
+        // dedicated account management (out of v1 scope).
+        boolean changed = false;
+        if (!hasText(existing.getCompanyName()) && hasText(req.companyName())) {
+            existing.setCompanyName(req.companyName());
+            changed = true;
+        }
+        if (!hasText(existing.getTaxId()) && hasText(req.taxId())) {
+            existing.setTaxId(req.taxId());
+            changed = true;
+        }
+        if (!hasText(existing.getBillingAddress()) && hasText(req.billingAddress())) {
+            existing.setBillingAddress(req.billingAddress());
+            changed = true;
+        }
+        return changed ? accountRepository.save(existing) : existing;
+    }
+
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** Loads a product and verifies it is sold by the given vendor company. */

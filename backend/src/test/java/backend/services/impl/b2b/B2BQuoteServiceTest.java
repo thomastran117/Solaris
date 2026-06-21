@@ -390,17 +390,11 @@ class B2BQuoteServiceTest {
     // ─── expireStaleQuotes ─────────────────────────────────────────────────────────
 
     @Test
-    void shouldExpireOnlyStalePendingBuyerQuotes() {
-        B2BQuote q1 = quote(QuoteStatus.PENDING_BUYER, PaymentTerms.IMMEDIATE, Instant.now().minus(1, ChronoUnit.DAYS), 5000, 1);
-        B2BQuote q2 = quote(QuoteStatus.PENDING_BUYER, PaymentTerms.IMMEDIATE, Instant.now().minus(2, ChronoUnit.DAYS), 5000, 1);
-        when(quoteRepository.findByStatusAndExpiresAtBefore(eq(QuoteStatus.PENDING_BUYER), any()))
-                .thenReturn(List.of(q1, q2));
-        when(quoteRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+    void shouldBulkExpireStalePendingBuyerQuotes() {
+        when(quoteRepository.expireStalePendingBuyer(any())).thenReturn(3);
 
         service.expireStaleQuotes();
 
-        assertThat(q1.getStatus()).isEqualTo(QuoteStatus.EXPIRED);
-        assertThat(q2.getStatus()).isEqualTo(QuoteStatus.EXPIRED);
-        verify(quoteRepository, times(2)).save(any());
+        verify(quoteRepository).expireStalePendingBuyer(any());
     }
 }

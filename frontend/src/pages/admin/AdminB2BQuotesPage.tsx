@@ -2,7 +2,15 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { FileText, Check, X, ReceiptText, AlertTriangle } from "lucide-react";
+import {
+  FileText,
+  Check,
+  X,
+  ReceiptText,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   listInboundQuotes,
   respondToQuote,
@@ -35,10 +43,8 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 }
 
 const QUOTE_STATUS_COLORS: Record<QuoteStatus, string> = {
-  DRAFT: "bg-white/10 text-white/60 border-white/10",
   PENDING_VENDOR: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
   PENDING_BUYER: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  ACCEPTED: "bg-green-500/15 text-green-400 border-green-500/20",
   CONVERTED: "bg-green-500/15 text-green-400 border-green-500/20",
   REJECTED: "bg-red-500/15 text-red-400 border-red-500/20",
   EXPIRED: "bg-white/10 text-white/50 border-white/10",
@@ -56,6 +62,39 @@ const inputCls =
 const labelCls = "block text-xs font-semibold text-white/60 mb-1 uppercase tracking-widest";
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+function Pager({
+  page,
+  meta,
+  onPage,
+}: {
+  page: number;
+  meta?: { totalPages: number; hasNext: boolean; hasPrevious: boolean };
+  onPage: (p: number) => void;
+}) {
+  if (!meta || meta.totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 mt-6">
+      <button
+        disabled={!meta.hasPrevious}
+        onClick={() => onPage(Math.max(0, page - 1))}
+        className="p-2 rounded-full border border-white/10 text-white/70 disabled:opacity-30 hover:bg-white/10"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span className="text-xs text-white/50">
+        {page + 1} / {meta.totalPages}
+      </span>
+      <button
+        disabled={!meta.hasNext}
+        onClick={() => onPage(page + 1)}
+        className="p-2 rounded-full border border-white/10 text-white/70 disabled:opacity-30 hover:bg-white/10"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 interface RespondLine extends RevisedQuoteItemPayload {
   productName: string | null;
 }
@@ -71,17 +110,19 @@ export default function AdminB2BQuotesPage() {
   const [vendorNote, setVendorNote] = useState("");
   const [terms, setTerms] = useState<PaymentTerms>("IMMEDIATE");
   const [lines, setLines] = useState<RespondLine[]>([]);
+  const [quotesPage, setQuotesPage] = useState(0);
+  const [invoicesPage, setInvoicesPage] = useState(0);
 
   const { data: quotePage, isLoading: quotesLoading } = useQuery({
-    queryKey: ["inbound-quotes", companyId],
-    queryFn: () => listInboundQuotes(companyId!),
+    queryKey: ["inbound-quotes", companyId, quotesPage],
+    queryFn: () => listInboundQuotes(companyId!, undefined, quotesPage),
     enabled: !!companyId,
   });
   const quotes = quotePage?.items ?? [];
 
   const { data: invoicePage, isLoading: invoicesLoading } = useQuery({
-    queryKey: ["b2b-invoices", companyId],
-    queryFn: () => listInvoices(companyId!),
+    queryKey: ["b2b-invoices", companyId, invoicesPage],
+    queryFn: () => listInvoices(companyId!, undefined, invoicesPage),
     enabled: !!companyId && tab === "invoices",
   });
   const invoices = invoicePage?.items ?? [];
@@ -124,10 +165,17 @@ export default function AdminB2BQuotesPage() {
   });
 
   const markPaidMutation = useMutation({
-    mutationFn: (invoiceId: string) => markInvoicePaid(companyId!, invoiceId),
+    mutationFn: ({ invoiceId, reference }: { invoiceId: string; reference?: string }) =>
+      markInvoicePaid(companyId!, invoiceId, reference),
     onSuccess: invalidateInvoices,
     onError: (e) => window.alert(apiErrorMessage(e, "Could not mark invoice paid.")),
   });
+
+  const onMarkPaid = (invoiceId: string) => {
+    const reference = window.prompt("Payment reference (e.g. wire / check #), or leave blank:");
+    if (reference === null) return; // cancelled
+    markPaidMutation.mutate({ invoiceId, reference: reference.trim() || undefined });
+  };
 
   const openRespond = (q: Quote) => {
     setRespondTo(q);
@@ -271,7 +319,7 @@ export default function AdminB2BQuotesPage() {
                     </div>
                     {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
                       <button
-                        onClick={() => markPaidMutation.mutate(inv.id)}
+                        onClick={() => onMarkPaid(inv.id)}
                         disabled={markPaidMutation.isPending}
                         className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded-full transition disabled:opacity-50"
                       >
@@ -283,6 +331,13 @@ export default function AdminB2BQuotesPage() {
               })}
             </motion.div>
           ))}
+
+        {tab === "quotes" && (
+          <Pager page={quotesPage} meta={quotePage} onPage={setQuotesPage} />
+        )}
+        {tab === "invoices" && (
+          <Pager page={invoicesPage} meta={invoicePage} onPage={setInvoicesPage} />
+        )}
       </div>
 
       {respondTo && (

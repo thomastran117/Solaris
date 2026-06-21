@@ -142,23 +142,13 @@ class B2BInvoiceServiceTest {
     }
 
     @Test
-    void shouldFlipPastDueIssuedInvoicesToOverdue() {
-        B2BInvoice a = new B2BInvoice();
-        a.setStatus(InvoiceStatus.ISSUED);
-        a.setDueDateAt(Instant.now().minus(3, ChronoUnit.DAYS));
-        B2BInvoice b = new B2BInvoice();
-        b.setStatus(InvoiceStatus.ISSUED);
-        b.setDueDateAt(Instant.now().minus(1, ChronoUnit.DAYS));
-        when(invoiceRepository.findByStatusAndDueDateAtBefore(eq(InvoiceStatus.ISSUED), any()))
-                .thenReturn(List.of(a, b));
-        when(invoiceRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+    void shouldBulkFlipPastDueIssuedInvoicesToOverdue() {
+        when(invoiceRepository.markOverdue(any())).thenReturn(2);
 
         int count = service.markOverdueInvoices();
 
         assertThat(count).isEqualTo(2);
-        assertThat(a.getStatus()).isEqualTo(InvoiceStatus.OVERDUE);
-        assertThat(b.getStatus()).isEqualTo(InvoiceStatus.OVERDUE);
-        verify(invoiceRepository, times(2)).save(any());
+        verify(invoiceRepository).markOverdue(any());
     }
 
     @Test

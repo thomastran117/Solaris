@@ -6,17 +6,18 @@ package backend.models.enums;
  * <pre>
  *   PENDING_VENDOR  buyer submitted; awaiting vendor review
  *   PENDING_BUYER   vendor approved/counter-proposed; awaiting buyer decision
- *   ACCEPTED        buyer accepted (transient; immediately CONVERTED once the order is created)
  *   CONVERTED       an Order has been created from this quote
  *   REJECTED        buyer rejected the vendor's terms
  *   EXPIRED         passed expiresAt before the buyer acted
  * </pre>
+ *
+ * <p>v1 accepts directly from PENDING_BUYER to CONVERTED, so there is no intermediate ACCEPTED
+ * state; DRAFT (saved-but-unsubmitted quotes) is likewise not part of v1. Re-add either when those
+ * flows are built.
  */
 public enum QuoteStatus {
-    DRAFT,
     PENDING_VENDOR,
     PENDING_BUYER,
-    ACCEPTED,
     REJECTED,
     EXPIRED,
     CONVERTED
