@@ -1381,6 +1381,10 @@ public class OrderServiceImpl implements OrderService {
         // scheduler (which scans FAILED + compensatedFalse) must not run compensateOrder
         // again and restore the same items a second time.
         order.setCompensated(true);
+        // Release the unique b2b_quote_id so a transient-failure retry can legitimately create a
+        // fresh order for the quote, rather than the idempotency lookup handing back this dead order
+        // (no-op for non-quote orders, where b2bQuoteId is already null).
+        order.setB2bQuoteId(null);
         orderRepository.save(order);
         releaseReservation(orderId);
 
@@ -3944,6 +3948,194 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return saved;
+    }
+
+    // -------------------------------------------------------------------------
+    // B2B quote conversion (Feature 12)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public OrderResponse createOrderFromQuote(backend.services.intf.orders.QuoteOrderSpec spec) {
+        if (spec.immediate()) {
+            // Same two-phase pattern as createOrder: the Stripe call runs outside any transaction.
+            OrderReservation reservation;
+            try {
+                reservation = self().reserveQuoteOrder(spec);
+            } catch (DataIntegrityViolationException e) {
+                // Lost the unique b2b_quote_id race (per-buyer lock had expired): the winning accept's
+                // order is already committed. Recover here — outside the now rolled-back T1 — by
+                // returning the existing order in a fresh transaction rather than surfacing a 500.
+                return self().loadQuoteOrderResponse(spec.quoteId());
+            }
+            // Idempotent: an order already existed for this quote (retry / lock expiry) — return it.
+            if (reservation.response() != null) {
+                return reservation.response();
+            }
+            Order reserved = reservation.order();
+            PaymentIntentResult paymentIntent;
+            try {
+                paymentIntent = paymentService.createPaymentIntent(
+                        reservation.amountInCents(), reservation.currency(), null,
+                        Map.of("user_id", String.valueOf(spec.buyerUserId()),
+                               "order_id", String.valueOf(reserved.getId()),
+                               "quote_id", String.valueOf(spec.quoteId())));
+            } catch (Exception e) {
+                failReservedOrderQuietly(reserved, "Payment intent creation failed: " + e.getMessage(), null);
+                throw e;
+            }
+            OrderResponse response;
+            try {
+                response = self().attachPaymentIntent(reserved, paymentIntent);
+            } catch (Exception e) {
+                failReservedOrderQuietly(reserved,
+                        "Failed to attach payment intent: " + e.getMessage(), paymentIntent.id());
+                throw e;
+            }
+            try {
+                emailService.sendOrderReceiptEmail(reservation.email(), reservation.firstName(), response);
+            } catch (Exception e) {
+                log.warn("[B2B] Failed to send receipt email for quote order {}: {}", reserved.getId(), e.getMessage());
+            }
+            return response;
+        }
+        // Net terms: single transaction, order born PAID, no Stripe. Payment is tracked separately
+        // via the B2BInvoice issued by B2BInvoiceService.
+        try {
+            return self().createNetTermsQuoteOrder(spec);
+        } catch (DataIntegrityViolationException e) {
+            // Lost the unique b2b_quote_id race — return the committed winner from a fresh tx.
+            return self().loadQuoteOrderResponse(spec.quoteId());
+        }
+    }
+
+    /** Fresh-tx lookup of the order a quote converted to; used to recover from a unique-constraint race. */
+    @Transactional(readOnly = true)
+    public OrderResponse loadQuoteOrderResponse(UUID quoteId) {
+        Order order = orderRepository.findByB2bQuoteId(quoteId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Quote order constraint race but no committed order found for quote: " + quoteId));
+        return toResponse(order);
+    }
+
+    /** T1 for an IMMEDIATE quote order: builds and persists the RESERVED order (no Stripe call here). */
+    @Transactional
+    public OrderReservation reserveQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        // Idempotent on the quote: if this quote already converted, return its order (terminal).
+        Order existing = orderRepository.findByB2bQuoteId(spec.quoteId()).orElse(null);
+        if (existing != null) {
+            return OrderReservation.terminal(toResponse(existing));
+        }
+        User buyer = userRepository.findById(spec.buyerUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
+        String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
+        Order order = new Order();
+        order.setUser(buyer);
+        order.setStatus(OrderStatus.RESERVED);
+        order.setCurrency(currency);
+        order.setCompensated(false);
+        order.setB2bQuoteId(spec.quoteId());
+        order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
+        populateQuoteOrderItems(order, spec.lines());
+        // A unique b2b_quote_id violation must surface here (saveAndFlush, translated to
+        // DataIntegrityViolationException) so it propagates out of this transaction and is recovered
+        // by the non-transactional caller — an in-method catch could not, as the tx is already doomed.
+        Order saved = persistWithMarketplace(order);
+        return OrderReservation.pending(saved, spec.totalCents(), currency, buyer.getEmail(), buyer.getFirstName());
+    }
+
+    /** Net-terms quote order: born PAID so it fulfills normally; payment tracked via B2BInvoice. */
+    @Transactional
+    public OrderResponse createNetTermsQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        // Idempotent on the quote: if this quote already converted, return its order.
+        Order existing = orderRepository.findByB2bQuoteId(spec.quoteId()).orElse(null);
+        if (existing != null) {
+            return toResponse(existing);
+        }
+        User buyer = userRepository.findById(spec.buyerUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
+        String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
+        Order order = new Order();
+        order.setUser(buyer);
+        order.setStatus(OrderStatus.PAID);
+        order.setCurrency(currency);
+        order.setCompensated(true); // no reservation lifecycle: net-terms orders are born ready to fulfil
+        order.setB2bQuoteId(spec.quoteId());
+        order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
+        populateQuoteOrderItems(order, spec.lines());
+        // saveAndFlush (in persistWithMarketplace) raises a unique b2b_quote_id violation synchronously
+        // so the non-transactional caller can recover; an in-method catch could not (tx already doomed).
+        Order saved = persistWithMarketplace(order);
+        publishOrderWebhookEvent(saved, WebhookEventType.ORDER_CREATED);
+        return toResponse(saved);
+    }
+
+    /** Saves the order, then stamps marketplace vendor ids / sub-orders / commission if applicable. */
+    private Order persistWithMarketplace(Order order) {
+        boolean marketplace = stampVendorIds(order.getItems());
+        // saveAndFlush so a unique-constraint violation (e.g. duplicate b2b_quote_id) is raised and
+        // translated to DataIntegrityViolationException now, not deferred to transaction commit.
+        Order saved = orderRepository.saveAndFlush(order);
+        if (marketplace) {
+            saved.setMarketplaceOrder(true);
+            createSubOrders(saved, saved.getItems());
+            saved = orderRepository.save(saved);
+            recordSubOrderCommission(saved);
+        }
+        return saved;
+    }
+
+    /**
+     * Builds order items from quote lines at the pre-negotiated unit prices (no promotion engine),
+     * decrementing stock under product/variant locks and falling back to BACKORDERED on shortfall —
+     * mirroring the stock mechanics of {@link #createRenewalOrder}.
+     */
+    private void populateQuoteOrderItems(Order order, List<backend.services.intf.orders.QuoteOrderSpec.QuoteOrderLine> lines) {
+        java.util.TreeSet<UUID> productIds = new java.util.TreeSet<>();
+        java.util.TreeSet<UUID> variantIds = new java.util.TreeSet<>();
+        for (var line : lines) {
+            productIds.add(line.productId());
+            if (line.variantId() != null) variantIds.add(line.variantId());
+        }
+        String lockToken = UUID.randomUUID().toString();
+        List<String> locks = new ArrayList<>();
+        try {
+            acquireLocks(new ArrayList<>(productIds), lockToken, locks);
+            acquireVariantLocks(new ArrayList<>(variantIds), lockToken, locks);
+        } catch (RuntimeException e) {
+            // Unlike createRenewalOrder (where Stripe already charged, so we cannot abort), a
+            // buyer-initiated quote conversion has committed nothing yet — abort under contention
+            // instead of decrementing stock without full lock coverage, matching createOrder's
+            // stronger guarantee. The enclosing order-creation transaction rolls back cleanly.
+            releaseLocks(locks, lockToken);
+            throw e;
+        }
+        try {
+            for (var line : lines) {
+                Product product = productRepository.findById(line.productId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + line.productId()));
+                OrderItem item = new OrderItem();
+                item.setOrder(order);
+                item.setProduct(product);
+                item.setProductName(product.getName());
+                item.setQuantity(line.quantity());
+                item.setUnitPrice(BigDecimal.valueOf(line.unitPriceCents()).movePointLeft(2));
+                if (line.variantId() != null) {
+                    ProductVariant variant = variantRepository.findById(line.variantId())
+                            .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + line.variantId()));
+                    item.setVariant(variant);
+                    item.setVariantTitle(buildVariantTitle(variant));
+                    item.setVariantSku(variant.getSku());
+                    int updated = variantRepository.decrementStock(variant.getId(), line.quantity());
+                    if (updated == 0) item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                } else {
+                    int updated = productRepository.decrementStock(product.getId(), line.quantity());
+                    if (updated == 0) item.setFulfillmentStatus(FulfillmentStatus.BACKORDERED);
+                }
+                order.getItems().add(item);
+            }
+        } finally {
+            releaseLocks(locks, lockToken);
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -59,6 +59,7 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
                                       @Param("excludeStatus") OrderStatus excludeStatus);
     Optional<Order> findByPaymentIntentId(String paymentIntentId);
     Optional<Order> findByStripeInvoiceId(String stripeInvoiceId);
+    Optional<Order> findByB2bQuoteId(UUID b2bQuoteId);
     Optional<Order> findByTrackingNumber(String trackingNumber);
     Page<Order> findAllByUserIdAndStatus(UUID userId, OrderStatus status, Pageable pageable);
     /** Prefer the paginated overload for scheduled/batch callers to avoid unbounded result sets. */

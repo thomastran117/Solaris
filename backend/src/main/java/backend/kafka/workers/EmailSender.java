@@ -80,6 +80,15 @@ public class EmailSender {
             case EmailEvent.PurchaseOrderEmail e ->
                 sendPurchaseOrderEmail(e.supplierEmail(), e.supplierName(), e.companyName(),
                         e.poReference(), e.items(), e.expectedArrival());
+            case EmailEvent.QuoteReceivedEmail e ->
+                sendQuoteReceivedEmail(e.vendorEmail(), e.vendorName(), e.buyerCompanyName(),
+                        e.quoteId(), e.totalCents());
+            case EmailEvent.QuoteRespondedEmail e ->
+                sendQuoteRespondedEmail(e.buyerEmail(), e.buyerName(), e.vendorName(),
+                        e.quoteId(), e.responseStatus());
+            case EmailEvent.InvoiceIssuedEmail e ->
+                sendInvoiceIssuedEmail(e.buyerEmail(), e.buyerName(), e.vendorName(),
+                        e.invoiceNumber(), e.totalCents(), e.dueDate(), e.currency(), e.items());
             default -> {}
         }
     }
@@ -883,6 +892,197 @@ public class EmailSender {
             """.formatted(safeCompany, safeSupplier, safeRef, arrivalLine, rows, safeCompany);
 
         sendMimeMessage(supplierEmail, "Purchase Order #" + safeRef + " from " + safeCompany, wrapInShell("Purchase Order", body));
+    }
+
+    // ─── B2B / Wholesale Quoting (Feature 12) ──────────────────────────────────
+
+    private void sendQuoteReceivedEmail(String vendorEmail, String vendorName,
+                                        String buyerCompanyName, java.util.UUID quoteId,
+                                        long totalCents) {
+        String greeting = vendorName != null && !vendorName.isBlank()
+                ? "Hi " + HtmlUtils.htmlEscape(vendorName) + "," : "Hi,";
+        String safeBuyer = HtmlUtils.htmlEscape(buyerCompanyName != null ? buyerCompanyName : "A business buyer");
+        String quotesUrl = env.getEmail().getVerificationBaseUrl() + "/admin/b2b-quotes";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              New wholesale quote request
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#93C5FD;">
+                From
+              </p>
+              <p style="margin:6px 0 0 0;font-size:16px;color:#0F172A;font-weight:600;">%s</p>
+              <p style="margin:12px 0 0 0;font-size:14px;color:#475569;">Estimated total: <strong>$%.2f</strong></p>
+            </div>
+            <p style="margin:16px 0 0 0;font-size:14px;color:#475569;line-height:1.7;">
+              Review the request and respond with approval or revised pricing from your dashboard.
+            </p>
+            %s
+            """.formatted(greeting, safeBuyer, totalCents / 100.0, primaryButton(quotesUrl, "Review Quote"));
+        sendMimeMessage(vendorEmail, "New wholesale quote from " + safeBuyer + " — ShopWave",
+                wrapInShell("Wholesale Quote", body));
+    }
+
+    private void sendQuoteRespondedEmail(String buyerEmail, String buyerName,
+                                         String vendorName, java.util.UUID quoteId,
+                                         String responseStatus) {
+        String greeting = buyerName != null && !buyerName.isBlank()
+                ? "Hi " + HtmlUtils.htmlEscape(buyerName) + "," : "Hi,";
+        String safeVendor = HtmlUtils.htmlEscape(vendorName != null ? vendorName : "The vendor");
+        boolean countered = "COUNTERED".equalsIgnoreCase(responseStatus);
+        String headline = countered ? "Your quote has a revised offer" : "Your quote has been approved";
+        String detail = countered
+                ? safeVendor + " has responded with revised pricing. Review the updated terms and accept to place your order."
+                : safeVendor + " approved your quote. Review the terms and accept to place your order.";
+        // Buyer quotes live at the list route /b2b/quotes (there is no per-quote detail route).
+        String quoteUrl = env.getEmail().getVerificationBaseUrl() + "/b2b/quotes";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              %s
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            %s
+            """.formatted(headline, greeting, detail, primaryButton(quoteUrl, "View Quote"));
+        sendMimeMessage(buyerEmail, "Update on your wholesale quote — ShopWave",
+                wrapInShell("Wholesale Quote", body));
+    }
+
+    private void sendInvoiceIssuedEmail(String buyerEmail, String buyerName, String vendorName,
+                                        String invoiceNumber, long totalCents,
+                                        java.time.LocalDate dueDate, String currency,
+                                        java.util.List<EmailEvent.InvoiceLineItem> items) {
+        String greeting = buyerName != null && !buyerName.isBlank()
+                ? "Hi " + HtmlUtils.htmlEscape(buyerName) + "," : "Hi,";
+        String safeVendor = HtmlUtils.htmlEscape(vendorName != null ? vendorName : "the vendor");
+        String safeNumber = HtmlUtils.htmlEscape(invoiceNumber != null ? invoiceNumber : "");
+        String dueLabel = dueDate != null
+                ? dueDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")) : "—";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Invoice %s
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">%s</p>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              An invoice for your wholesale order from <strong>%s</strong> is attached as a PDF.
+            </p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <table width="100%%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="font-size:13px;color:#64748B;">Amount due</td>
+                  <td style="font-size:18px;font-weight:800;color:#1D4ED8;text-align:right;">$%.2f</td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px;color:#64748B;padding-top:8px;">Due date</td>
+                  <td style="font-size:14px;color:#0F172A;font-weight:600;text-align:right;padding-top:8px;">%s</td>
+                </tr>
+              </table>
+            </div>
+            """.formatted(safeNumber, greeting, safeVendor, totalCents / 100.0, dueLabel);
+        String html = wrapInShell("Invoice", body);
+
+        byte[] pdf = null;
+        try {
+            pdf = generateInvoicePdf(invoiceNumber, vendorName, buyerName, totalCents, dueDate, currency, items);
+        } catch (Exception e) {
+            // Fall back to a body-only email rather than dropping the notification entirely.
+            pdf = null;
+        }
+        sendMimeMessageWithPdf(buyerEmail, "Invoice " + safeNumber + " from " + safeVendor + " — ShopWave",
+                html, pdf, "invoice-" + (invoiceNumber != null ? invoiceNumber : "shopwave") + ".pdf");
+    }
+
+    /** Sends an HTML email, attaching the given PDF bytes when present. */
+    private void sendMimeMessageWithPdf(String toEmail, String subject, String htmlBody,
+                                        byte[] pdfBytes, String pdfFilename) {
+        final boolean multipart = pdfBytes != null && pdfBytes.length > 0;
+        retryTemplate.execute(context -> {
+            MimeMessage message = mailSender.createMimeMessage();
+            try {
+                MimeMessageHelper helper = new MimeMessageHelper(message, multipart, "UTF-8");
+                helper.setFrom(env.getEmail().getFrom());
+                helper.setTo(toEmail);
+                helper.setSubject(subject);
+                helper.setText(htmlBody, true);
+                if (multipart) {
+                    helper.addAttachment(pdfFilename,
+                            new org.springframework.core.io.ByteArrayResource(pdfBytes), "application/pdf");
+                }
+            } catch (MessagingException e) {
+                throw new RuntimeException(e);
+            }
+            mailSender.send(message);
+            return null;
+        });
+    }
+
+    /** Renders a simple one-page PDF invoice using OpenPDF. */
+    private byte[] generateInvoicePdf(String invoiceNumber, String vendorName, String buyerName,
+                                      long totalCents, java.time.LocalDate dueDate, String currency,
+                                      java.util.List<EmailEvent.InvoiceLineItem> items) {
+        String cur = currency != null ? currency.toUpperCase() : "USD";
+        com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 48, 48, 48, 48);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+        doc.open();
+
+        com.lowagie.text.Font titleFont = com.lowagie.text.FontFactory.getFont(
+                com.lowagie.text.FontFactory.HELVETICA_BOLD, 22, new java.awt.Color(0x1D, 0x4E, 0xD8));
+        com.lowagie.text.Font labelFont = com.lowagie.text.FontFactory.getFont(
+                com.lowagie.text.FontFactory.HELVETICA, 10, java.awt.Color.GRAY);
+        com.lowagie.text.Font bodyFont = com.lowagie.text.FontFactory.getFont(
+                com.lowagie.text.FontFactory.HELVETICA, 11, java.awt.Color.DARK_GRAY);
+        com.lowagie.text.Font cellFont = com.lowagie.text.FontFactory.getFont(
+                com.lowagie.text.FontFactory.HELVETICA, 10, java.awt.Color.DARK_GRAY);
+        com.lowagie.text.Font totalFont = com.lowagie.text.FontFactory.getFont(
+                com.lowagie.text.FontFactory.HELVETICA_BOLD, 13, java.awt.Color.BLACK);
+
+        doc.add(new com.lowagie.text.Paragraph("ShopWave Invoice", titleFont));
+        doc.add(new com.lowagie.text.Paragraph("Invoice " + (invoiceNumber != null ? invoiceNumber : ""), bodyFont));
+        if (vendorName != null) doc.add(new com.lowagie.text.Paragraph("From: " + vendorName, bodyFont));
+        if (buyerName != null) doc.add(new com.lowagie.text.Paragraph("Bill to: " + buyerName, bodyFont));
+        String dueLabel = dueDate != null
+                ? dueDate.format(DateTimeFormatter.ofPattern("d MMMM yyyy")) : "—";
+        doc.add(new com.lowagie.text.Paragraph("Due date: " + dueLabel, labelFont));
+        doc.add(com.lowagie.text.Chunk.NEWLINE);
+
+        com.lowagie.text.pdf.PdfPTable table = new com.lowagie.text.pdf.PdfPTable(new float[]{5, 1, 2, 2});
+        table.setWidthPercentage(100);
+        for (String head : new String[]{"Description", "Qty", "Unit", "Total"}) {
+            com.lowagie.text.pdf.PdfPCell hc = new com.lowagie.text.pdf.PdfPCell(
+                    new com.lowagie.text.Phrase(head, labelFont));
+            hc.setBorder(com.lowagie.text.Rectangle.BOTTOM);
+            hc.setPadding(6);
+            table.addCell(hc);
+        }
+        if (items != null) {
+            for (EmailEvent.InvoiceLineItem li : items) {
+                table.addCell(invoiceCell(li.description() != null ? li.description() : "Item", cellFont));
+                table.addCell(invoiceCell(String.valueOf(li.quantity()), cellFont));
+                table.addCell(invoiceCell(cur + " " + String.format("%.2f", li.unitPriceCents() / 100.0), cellFont));
+                table.addCell(invoiceCell(cur + " " + String.format("%.2f", li.totalPriceCents() / 100.0), cellFont));
+            }
+        }
+        doc.add(table);
+        doc.add(com.lowagie.text.Chunk.NEWLINE);
+
+        com.lowagie.text.Paragraph total = new com.lowagie.text.Paragraph(
+                "Total due: " + cur + " " + String.format("%.2f", totalCents / 100.0), totalFont);
+        total.setAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
+        doc.add(total);
+
+        doc.close();
+        return out.toByteArray();
+    }
+
+    private com.lowagie.text.pdf.PdfPCell invoiceCell(String text, com.lowagie.text.Font font) {
+        com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(
+                new com.lowagie.text.Phrase(text, font));
+        cell.setBorder(com.lowagie.text.Rectangle.BOTTOM);
+        cell.setBorderColor(new java.awt.Color(0xDB, 0xEA, 0xFE));
+        cell.setPadding(6);
+        return cell;
     }
 
     private void sendAbandonedCartEmail(String toEmail, String firstName,

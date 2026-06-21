@@ -144,6 +144,27 @@ public class EmailServiceImpl implements EmailService {
                 poReference, items, expectedArrival));
     }
 
+    @Override
+    public void sendQuoteReceivedEmail(String vendorEmail, String vendorName, String buyerCompanyName,
+                                       java.util.UUID quoteId, long totalCents) {
+        publish(new EmailEvent.QuoteReceivedEmail(vendorEmail, vendorName, buyerCompanyName, quoteId, totalCents));
+    }
+
+    @Override
+    public void sendQuoteRespondedEmail(String buyerEmail, String buyerName, String vendorName,
+                                        java.util.UUID quoteId, String responseStatus) {
+        publish(new EmailEvent.QuoteRespondedEmail(buyerEmail, buyerName, vendorName, quoteId, responseStatus));
+    }
+
+    @Override
+    public void sendInvoiceIssuedEmail(String buyerEmail, String buyerName, String vendorName,
+                                       String invoiceNumber, long totalCents, java.time.LocalDate dueDate,
+                                       String currency,
+                                       java.util.List<EmailEvent.InvoiceLineItem> items) {
+        publish(new EmailEvent.InvoiceIssuedEmail(buyerEmail, buyerName, vendorName, invoiceNumber,
+                totalCents, dueDate, currency, items));
+    }
+
     private void publish(EmailEvent event) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

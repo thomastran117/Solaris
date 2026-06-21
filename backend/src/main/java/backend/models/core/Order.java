@@ -306,6 +306,14 @@ public class Order {
     @Column(name = "stripe_invoice_id", nullable = true, length = 100)
     private String stripeInvoiceId;
 
+    /**
+     * B2B quote this order was converted from (Feature 12). Unique so a quote can convert to at most
+     * one order — the DB constraint makes {@code createOrderFromQuote} idempotent even if the accept
+     * lock expires mid-flight or a post-creation step fails and the buyer retries.
+     */
+    @Column(name = "b2b_quote_id", nullable = true, unique = true, columnDefinition = "BINARY(16)")
+    private UUID b2bQuoteId;
+
     @Column(name = "assigned_driver_id", nullable = true, columnDefinition = "BINARY(16)")
     private UUID assignedDriverId;
 
