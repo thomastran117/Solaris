@@ -26,6 +26,7 @@ import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
 import backend.repositories.ProductVariantRepository;
 import backend.repositories.UserRepository;
+import backend.services.intf.CacheService;
 import backend.services.intf.b2b.B2BInvoiceService;
 import backend.services.intf.b2b.B2BQuoteService;
 import backend.services.intf.company.CompanyAccessService;
@@ -65,8 +66,16 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
     private final OrderService orderService;
     private final B2BInvoiceService invoiceService;
     private final EmailService emailService;
+    private final CacheService cacheService;
 
     private final int quoteExpiryDays;
+
+    /**
+     * TTL for the per-buyer accept lock — comfortably above a Stripe round-trip so the lock rarely
+     * expires mid-flight; expires on crash. Correctness no longer depends on this: the unique
+     * b2b_quote_id constraint on Order makes conversion idempotent even if the lock expires.
+     */
+    private static final long ACCEPT_LOCK_TTL_S = 60L;
 
     public B2BQuoteServiceImpl(B2BQuoteRepository quoteRepository,
                                B2BAccountRepository accountRepository,
@@ -79,6 +88,7 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
                                OrderService orderService,
                                B2BInvoiceService invoiceService,
                                EmailService emailService,
+                               CacheService cacheService,
                                @Value("${app.b2b.quote-expiry-days:14}") int quoteExpiryDays) {
         this.quoteRepository = quoteRepository;
         this.accountRepository = accountRepository;
@@ -91,6 +101,7 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
         this.orderService = orderService;
         this.invoiceService = invoiceService;
         this.emailService = emailService;
+        this.cacheService = cacheService;
         this.quoteExpiryDays = quoteExpiryDays;
     }
 
@@ -112,6 +123,17 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
 
         for (QuoteLineItemRequest line : req.items()) {
             Product product = loadVendorProduct(line.productId(), vendorCompanyId);
+            // Snapshot currency from the first product so the converted order/Stripe charge isn't
+            // forced to USD, and enforce a single currency per quote (one charge, one invoice).
+            if (product.getCurrency() != null) {
+                if (quote.getItems().isEmpty()) {
+                    quote.setCurrency(product.getCurrency());
+                } else if (!quote.getCurrency().equalsIgnoreCase(product.getCurrency())) {
+                    throw new BadRequestException(
+                            "All quoted products must share a single currency (found "
+                                    + quote.getCurrency() + " and " + product.getCurrency() + ")");
+                }
+            }
             B2BQuoteItem item = new B2BQuoteItem();
             item.setQuote(quote);
             item.setProductId(product.getId());
@@ -198,38 +220,67 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
     public OrderResponse buyerAcceptQuote(UUID quoteId, UUID buyerUserId) {
         // Not @Transactional: createOrderFromQuote performs its own two-phase tx with a Stripe call
         // that must not run inside an open transaction.
-        B2BQuote quote = quoteRepository.findByIdAndBuyerUserId(quoteId, buyerUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Quote not found with id: " + quoteId));
-
-        if (quote.getStatus() != QuoteStatus.PENDING_BUYER) {
-            throw new ConflictException("Quote is not awaiting buyer acceptance");
+        //
+        // Serialize accepts per buyer with a Redis lock: this prevents duplicate orders from
+        // double-clicks/retries on the same quote AND makes the net-terms credit check atomic
+        // across the buyer's concurrent accepts of different quotes (both fixes share the lock).
+        String lockKey = "b2b:accept:buyer:" + buyerUserId;
+        String lockToken = UUID.randomUUID().toString();
+        boolean locked;
+        try {
+            locked = cacheService.tryLock(lockKey, lockToken, ACCEPT_LOCK_TTL_S);
+        } catch (Exception e) {
+            // Fail closed: this path mutates stock, money, and credit balances.
+            throw new ConflictException("Unable to process acceptance right now — please retry");
         }
-        if (quote.getExpiresAt() != null && quote.getExpiresAt().isBefore(Instant.now())) {
-            throw new ConflictException("Quote has expired");
+        if (!locked) {
+            throw new ConflictException("Another acceptance is already in progress for your account");
         }
+        try {
+            B2BQuote quote = quoteRepository.findByIdAndBuyerUserId(quoteId, buyerUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Quote not found with id: " + quoteId));
 
-        boolean netTerms = quote.getPaymentTerms().isNet();
-        if (netTerms) {
-            enforceCreditLimit(buyerUserId, quote.totalCents());
+            // Idempotent: a prior accept already converted this quote — return the existing order
+            // rather than creating a second one.
+            if (quote.getStatus() == QuoteStatus.CONVERTED && quote.getConvertedOrderId() != null) {
+                return orderService.getOrder(quote.getConvertedOrderId(), buyerUserId);
+            }
+            if (quote.getStatus() != QuoteStatus.PENDING_BUYER) {
+                throw new ConflictException("Quote is not awaiting buyer acceptance");
+            }
+            if (quote.getExpiresAt() != null && quote.getExpiresAt().isBefore(Instant.now())) {
+                throw new ConflictException("Quote has expired");
+            }
+
+            boolean netTerms = quote.getPaymentTerms().isNet();
+            if (netTerms) {
+                enforceCreditLimit(buyerUserId, quote.totalCents());
+            }
+
+            List<QuoteOrderSpec.QuoteOrderLine> lines = quote.getItems().stream()
+                    .map(i -> new QuoteOrderSpec.QuoteOrderLine(
+                            i.getProductId(), i.getVariantId(), i.getQuantity(), i.getUnitPriceCents()))
+                    .toList();
+            QuoteOrderSpec spec = new QuoteOrderSpec(buyerUserId, quoteId, quote.getCurrency(), !netTerms, lines);
+
+            OrderResponse order = orderService.createOrderFromQuote(spec);
+
+            if (netTerms) {
+                invoiceService.issueInvoice(order.getId(), quoteId);
+            }
+
+            quote.setConvertedOrderId(order.getId());
+            quote.setStatus(QuoteStatus.CONVERTED);
+            quoteRepository.save(quote);
+
+            return order;
+        } finally {
+            try {
+                cacheService.unlock(lockKey, lockToken);
+            } catch (Exception e) {
+                log.warn("[B2B] Failed to release accept lock for buyer {}: {}", buyerUserId, e.getMessage());
+            }
         }
-
-        List<QuoteOrderSpec.QuoteOrderLine> lines = quote.getItems().stream()
-                .map(i -> new QuoteOrderSpec.QuoteOrderLine(
-                        i.getProductId(), i.getVariantId(), i.getQuantity(), i.getUnitPriceCents()))
-                .toList();
-        QuoteOrderSpec spec = new QuoteOrderSpec(buyerUserId, quoteId, null, !netTerms, lines);
-
-        OrderResponse order = orderService.createOrderFromQuote(spec);
-
-        if (netTerms) {
-            invoiceService.issueInvoice(order.getId(), quoteId);
-        }
-
-        quote.setConvertedOrderId(order.getId());
-        quote.setStatus(QuoteStatus.CONVERTED);
-        quoteRepository.save(quote);
-
-        return order;
     }
 
     @Override
@@ -254,9 +305,11 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<QuoteResponse> listBuyerQuotes(UUID buyerUserId, int page, int size) {
+    public PagedResponse<QuoteResponse> listBuyerQuotes(UUID buyerUserId, QuoteStatus status, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<B2BQuote> result = quoteRepository.findByBuyerUserId(buyerUserId, pageable);
+        Page<B2BQuote> result = status != null
+                ? quoteRepository.findByBuyerUserIdAndStatus(buyerUserId, status, pageable)
+                : quoteRepository.findByBuyerUserId(buyerUserId, pageable);
         return new PagedResponse<>(result.map(QuoteResponse::from));
     }
 

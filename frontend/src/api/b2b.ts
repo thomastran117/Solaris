@@ -40,8 +40,13 @@ export const requestQuote = (
     .post<Quote>(`/b2b/quotes?vendorCompanyId=${vendorCompanyId}`, payload)
     .then((r) => r.data);
 
-export const listMyQuotes = (page = 0, size = 20): Promise<PagedResponse<Quote>> => {
+export const listMyQuotes = (
+  status?: QuoteStatus,
+  page = 0,
+  size = 20,
+): Promise<PagedResponse<Quote>> => {
   const params = new URLSearchParams({ page: String(page), size: String(size) });
+  if (status) params.set('status', status);
   return api.get<Quote[]>(`/b2b/quotes?${params}`).then((r) => toPaged<Quote>(r, page, size));
 };
 

@@ -6,6 +6,7 @@ import backend.dtos.requests.b2b.RevisedQuoteItemRequest;
 import backend.dtos.requests.b2b.VendorQuoteResponseRequest;
 import backend.dtos.responses.b2b.QuoteResponse;
 import backend.dtos.responses.order.OrderResponse;
+import backend.exceptions.http.BadRequestException;
 import backend.exceptions.http.ConflictException;
 import backend.models.core.B2BAccount;
 import backend.models.core.B2BQuote;
@@ -59,6 +60,7 @@ class B2BQuoteServiceTest {
     @Mock OrderService orderService;
     @Mock B2BInvoiceService invoiceService;
     @Mock backend.services.intf.support.EmailService emailService;
+    @Mock backend.services.intf.CacheService cacheService;
 
     B2BQuoteServiceImpl service;
 
@@ -73,7 +75,9 @@ class B2BQuoteServiceTest {
     void setUp() {
         service = new B2BQuoteServiceImpl(quoteRepository, accountRepository, invoiceRepository,
                 productRepository, variantRepository, companyRepository, userRepository,
-                companyAccessService, orderService, invoiceService, emailService, 14);
+                companyAccessService, orderService, invoiceService, emailService, cacheService, 14);
+        // Accept path serializes on a per-buyer Redis lock; grant it by default.
+        lenient().when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
     }
 
     private Company mockVendor() {
@@ -88,13 +92,18 @@ class B2BQuoteServiceTest {
     }
 
     private Product mockProduct(String price) {
+        return mockProduct(PRODUCT_ID, price, null);
+    }
+
+    private Product mockProduct(UUID id, String price, String currency) {
         Product product = mock(Product.class);
         Company company = mock(Company.class);
         lenient().when(company.getId()).thenReturn(COMPANY_ID);
-        lenient().when(product.getId()).thenReturn(PRODUCT_ID);
+        lenient().when(product.getId()).thenReturn(id);
         lenient().when(product.getName()).thenReturn("Widget");
         lenient().when(product.getCompany()).thenReturn(company);
         lenient().when(product.getPrice()).thenReturn(new BigDecimal(price));
+        lenient().when(product.getCurrency()).thenReturn(currency);
         return product;
     }
 
@@ -138,6 +147,26 @@ class B2BQuoteServiceTest {
         assertThat(resp.totalCents()).isEqualTo(20000L);
         verify(accountRepository).save(any());
         verify(emailService).sendQuoteReceivedEmail(eq("owner@vendor.com"), any(), eq("Buyer Co"), any(), eq(20000L));
+    }
+
+    @Test
+    void shouldRejectMixedCurrencyQuoteRequest() {
+        Company vendor = mockVendor();
+        UUID p2 = TestIds.uuid(7);
+        Product usd = mockProduct(PRODUCT_ID, "50.00", "USD");
+        Product eur = mockProduct(p2, "40.00", "EUR");
+        when(companyRepository.findById(COMPANY_ID)).thenReturn(Optional.of(vendor));
+        when(accountRepository.findByUserId(BUYER_ID)).thenReturn(Optional.empty());
+        when(accountRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(usd));
+        when(productRepository.findById(p2)).thenReturn(Optional.of(eur));
+
+        CreateQuoteRequest req = new CreateQuoteRequest("Buyer Co", null, null, null, PaymentTerms.NET_30,
+                List.of(new QuoteLineItemRequest(PRODUCT_ID, null, 1),
+                        new QuoteLineItemRequest(p2, null, 1)));
+
+        assertThatThrownBy(() -> service.requestQuote(BUYER_ID, COMPANY_ID, req))
+                .isInstanceOf(BadRequestException.class);
     }
 
     // ─── vendorRespondToQuote ──────────────────────────────────────────────────────
@@ -277,6 +306,30 @@ class B2BQuoteServiceTest {
         account.setNetTermsLimitCents(20000);
         when(accountRepository.findByUserId(BUYER_ID)).thenReturn(Optional.of(account));
         when(invoiceRepository.sumOutstandingByBuyer(BUYER_ID)).thenReturn(8000L); // 8000 + 15000 > 20000
+
+        assertThatThrownBy(() -> service.buyerAcceptQuote(QUOTE_ID, BUYER_ID))
+                .isInstanceOf(ConflictException.class);
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void shouldReturnExistingOrderWhenQuoteAlreadyConverted() {
+        B2BQuote converted = quote(QuoteStatus.CONVERTED, PaymentTerms.IMMEDIATE, null, 5000, 1);
+        converted.setConvertedOrderId(ORDER_ID);
+        when(quoteRepository.findByIdAndBuyerUserId(QUOTE_ID, BUYER_ID)).thenReturn(Optional.of(converted));
+        OrderResponse existing = mock(OrderResponse.class);
+        when(orderService.getOrder(ORDER_ID, BUYER_ID)).thenReturn(existing);
+
+        OrderResponse result = service.buyerAcceptQuote(QUOTE_ID, BUYER_ID);
+
+        assertThat(result).isSameAs(existing);
+        verify(orderService, never()).createOrderFromQuote(any());
+        verify(quoteRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldReturnConflictWhenAnotherAcceptanceInProgress() {
+        when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(false);
 
         assertThatThrownBy(() -> service.buyerAcceptQuote(QUOTE_ID, BUYER_ID))
                 .isInstanceOf(ConflictException.class);

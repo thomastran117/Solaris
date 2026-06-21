@@ -40,7 +40,7 @@ public interface B2BQuoteService {
 
     QuoteResponse getBuyerQuote(UUID quoteId, UUID buyerUserId);
 
-    PagedResponse<QuoteResponse> listBuyerQuotes(UUID buyerUserId, int page, int size);
+    PagedResponse<QuoteResponse> listBuyerQuotes(UUID buyerUserId, QuoteStatus status, int page, int size);
 
     PagedResponse<QuoteResponse> listVendorQuotes(UUID companyId, UUID ownerId, QuoteStatus status,
                                                   int page, int size);

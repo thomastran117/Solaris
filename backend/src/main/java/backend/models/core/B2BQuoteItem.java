@@ -48,6 +48,11 @@ public class B2BQuoteItem {
     @Column(nullable = false)
     private long totalPriceCents;
 
+    // NOTE: No @Version / timestamps by design (mirrors OrderItem). Quote lines are immutable once
+    // written: a vendor counter-offer replaces the whole collection via orphanRemoval rather than
+    // mutating existing rows, so there is no in-place concurrent update to guard with optimistic
+    // locking. The parent B2BQuote carries @Version for the lifecycle transitions.
+
     /** Recomputes {@code totalPriceCents} from unit price and quantity. */
     public void recomputeTotal() {
         this.totalPriceCents = this.unitPriceCents * this.quantity;

@@ -33,7 +33,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class B2BInvoiceServiceImpl implements B2BInvoiceService {
@@ -182,9 +181,11 @@ public class B2BInvoiceServiceImpl implements B2BInvoiceService {
     }
 
     private String generateInvoiceNumber() {
-        // e.g. INV-20260620-4831 — date + random suffix; uniqueness enforced by the DB index.
+        // e.g. INV-20260620-3F9A1C7B — date prefix for readability + 8 hex chars of UUID entropy
+        // (~4.3B values) so same-day issuance does not realistically collide on the unique index.
+        // (A 4-digit random suffix had only ~9k values/day and was birthday-collision-prone.)
         String date = LocalDate.now(ZoneOffset.UTC).toString().replace("-", "");
-        int suffix = ThreadLocalRandom.current().nextInt(1000, 10000);
+        String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         return "INV-" + date + "-" + suffix;
     }
 }

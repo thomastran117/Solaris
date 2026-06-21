@@ -30,6 +30,7 @@ export interface Quote {
   buyerMessage: string | null;
   vendorNote: string | null;
   paymentTerms: PaymentTerms;
+  currency: string;
   convertedOrderId: string | null;
   totalCents: number;
   items: QuoteItem[];

@@ -51,6 +51,7 @@ function stubQuote(overrides: Partial<Quote> = {}): Quote {
     buyerMessage: null,
     vendorNote: "Best price",
     paymentTerms: "NET_30",
+    currency: "USD",
     convertedOrderId: null,
     totalCents: 12000,
     items: [

@@ -19,6 +19,7 @@ export default function Navbar() {
   const canManageProducts = can("MANAGE_PRODUCTS");
   const canFulfillOrders = can("FULFILL_ORDERS");
   const canManagePromotions = can("MANAGE_PROMOTIONS");
+  const canManageQuotes = can("MANAGE_QUOTES");
 
   const username = email ?? null;
 
@@ -203,7 +204,7 @@ export default function Navbar() {
                   Transfers
                 </NavLink>
               )}
-              {accessToken && companyId && canManageProducts && (
+              {accessToken && companyId && canManageQuotes && (
                 <NavLink to="/admin/b2b-quotes" className={navLinkClass}>
                   B2B Quotes
                 </NavLink>

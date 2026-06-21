@@ -24,6 +24,8 @@ public interface B2BQuoteRepository extends JpaRepository<B2BQuote, UUID> {
 
     Page<B2BQuote> findByBuyerUserId(UUID buyerUserId, Pageable pageable);
 
+    Page<B2BQuote> findByBuyerUserIdAndStatus(UUID buyerUserId, QuoteStatus status, Pageable pageable);
+
     Page<B2BQuote> findByVendorCompanyId(UUID vendorCompanyId, Pageable pageable);
 
     Page<B2BQuote> findByVendorCompanyIdAndStatus(UUID vendorCompanyId, QuoteStatus status, Pageable pageable);

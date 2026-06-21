@@ -45,6 +45,7 @@ class B2BQuoteIT extends AbstractIntegrationIT {
     @Autowired private B2BQuoteRepository quoteRepository;
     @Autowired private B2BInvoiceRepository invoiceRepository;
     @Autowired private B2BAccountRepository accountRepository;
+    @Autowired private backend.repositories.OrderRepository orderRepository;
 
     @AfterEach
     void clean() {
@@ -209,6 +210,37 @@ class B2BQuoteIT extends AbstractIntegrationIT {
         org.junit.jupiter.api.Assertions.assertEquals(QuoteStatus.CONVERTED, reloaded.getStatus());
         org.junit.jupiter.api.Assertions.assertTrue(
                 invoiceRepository.findByOrderId(UUID.fromString(orderId)).isPresent());
+    }
+
+    @Test
+    void acceptNetTermsQuote_isIdempotentOnRetry() throws Exception {
+        User buyer = createActiveUser("b2b-buyer6@example.com", "Password1!");
+        User vendorOwner = createActiveUser("b2b-vendor6@example.com", "Password1!");
+        Company vendor = createCompany(vendorOwner, "Vendor Co6");
+        addMember(vendorOwner, vendor, CompanyRole.OWNER);
+        Product product = createProduct(vendor, 100);
+        approveNetTerms(buyer, 1_000_000);
+        B2BQuote quote = seedQuote(buyer, vendor, product, QuoteStatus.PENDING_BUYER, PaymentTerms.NET_30,
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        String firstOrderId = acceptAndGetOrderId(quote.getId(), buyer);
+        String secondOrderId = acceptAndGetOrderId(quote.getId(), buyer);
+
+        org.junit.jupiter.api.Assertions.assertEquals(firstOrderId, secondOrderId,
+                "Re-accepting a converted quote must return the same order");
+        // Exactly one order references this quote.
+        org.junit.jupiter.api.Assertions.assertEquals(
+                firstOrderId,
+                orderRepository.findByB2bQuoteId(quote.getId()).orElseThrow().getId().toString());
+    }
+
+    private String acceptAndGetOrderId(UUID quoteId, User buyer) throws Exception {
+        String resp = mockMvc.perform(post("/b2b/quotes/{id}/accept", quoteId)
+                        .header("Authorization", bearer(accessTokenFor(buyer)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(resp).path("data").path("id").asText();
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

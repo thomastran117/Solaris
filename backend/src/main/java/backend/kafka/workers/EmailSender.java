@@ -935,7 +935,8 @@ public class EmailSender {
         String detail = countered
                 ? safeVendor + " has responded with revised pricing. Review the updated terms and accept to place your order."
                 : safeVendor + " approved your quote. Review the terms and accept to place your order.";
-        String quoteUrl = env.getEmail().getVerificationBaseUrl() + "/b2b-quotes/" + quoteId;
+        // Buyer quotes live at the list route /b2b/quotes (there is no per-quote detail route).
+        String quoteUrl = env.getEmail().getVerificationBaseUrl() + "/b2b/quotes";
         String body = """
             <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
               %s

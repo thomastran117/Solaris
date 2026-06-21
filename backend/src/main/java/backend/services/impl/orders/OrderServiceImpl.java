@@ -3955,6 +3955,10 @@ public class OrderServiceImpl implements OrderService {
         if (spec.immediate()) {
             // Same two-phase pattern as createOrder: the Stripe call runs outside any transaction.
             OrderReservation reservation = self().reserveQuoteOrder(spec);
+            // Idempotent: an order already existed for this quote (retry / lock expiry) — return it.
+            if (reservation.response() != null) {
+                return reservation.response();
+            }
             Order reserved = reservation.order();
             PaymentIntentResult paymentIntent;
             try {
@@ -3990,6 +3994,11 @@ public class OrderServiceImpl implements OrderService {
     /** T1 for an IMMEDIATE quote order: builds and persists the RESERVED order (no Stripe call here). */
     @Transactional
     public OrderReservation reserveQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        // Idempotent on the quote: if this quote already converted, return its order (terminal).
+        Order existing = orderRepository.findByB2bQuoteId(spec.quoteId()).orElse(null);
+        if (existing != null) {
+            return OrderReservation.terminal(toResponse(existing));
+        }
         User buyer = userRepository.findById(spec.buyerUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
         String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
@@ -3998,15 +4007,30 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.RESERVED);
         order.setCurrency(currency);
         order.setCompensated(false);
+        order.setB2bQuoteId(spec.quoteId());
         order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
         populateQuoteOrderItems(order, spec.lines());
-        Order saved = persistWithMarketplace(order);
+        Order saved;
+        try {
+            saved = persistWithMarketplace(order);
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent accept won the unique b2b_quote_id constraint — treat as idempotent success.
+            Order dup = orderRepository.findByB2bQuoteId(spec.quoteId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Quote order insert failed on duplicate but existing row not found: " + spec.quoteId(), e));
+            return OrderReservation.terminal(toResponse(dup));
+        }
         return OrderReservation.pending(saved, spec.totalCents(), currency, buyer.getEmail(), buyer.getFirstName());
     }
 
     /** Net-terms quote order: born PAID so it fulfills normally; payment tracked via B2BInvoice. */
     @Transactional
     public OrderResponse createNetTermsQuoteOrder(backend.services.intf.orders.QuoteOrderSpec spec) {
+        // Idempotent on the quote: if this quote already converted, return its order.
+        Order existing = orderRepository.findByB2bQuoteId(spec.quoteId()).orElse(null);
+        if (existing != null) {
+            return toResponse(existing);
+        }
         User buyer = userRepository.findById(spec.buyerUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + spec.buyerUserId()));
         String currency = spec.currency() != null ? spec.currency().toLowerCase() : "usd";
@@ -4015,9 +4039,19 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.PAID);
         order.setCurrency(currency);
         order.setCompensated(true); // no reservation lifecycle: net-terms orders are born ready to fulfil
+        order.setB2bQuoteId(spec.quoteId());
         order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
         populateQuoteOrderItems(order, spec.lines());
-        Order saved = persistWithMarketplace(order);
+        Order saved;
+        try {
+            saved = persistWithMarketplace(order);
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent accept won the unique b2b_quote_id constraint — treat as idempotent success.
+            return orderRepository.findByB2bQuoteId(spec.quoteId())
+                    .map(this::toResponse)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Net-terms quote order insert failed on duplicate but existing row not found: " + spec.quoteId(), e));
+        }
         publishOrderWebhookEvent(saved, WebhookEventType.ORDER_CREATED);
         return toResponse(saved);
     }
@@ -4052,8 +4086,13 @@ public class OrderServiceImpl implements OrderService {
         try {
             acquireLocks(new ArrayList<>(productIds), lockToken, locks);
             acquireVariantLocks(new ArrayList<>(variantIds), lockToken, locks);
-        } catch (ConflictException e) {
-            log.warn("createOrderFromQuote: could not acquire all locks — proceeding without full lock coverage");
+        } catch (RuntimeException e) {
+            // Unlike createRenewalOrder (where Stripe already charged, so we cannot abort), a
+            // buyer-initiated quote conversion has committed nothing yet — abort under contention
+            // instead of decrementing stock without full lock coverage, matching createOrder's
+            // stronger guarantee. The enclosing order-creation transaction rolls back cleanly.
+            releaseLocks(locks, lockToken);
+            throw e;
         }
         try {
             for (var line : lines) {

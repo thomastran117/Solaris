@@ -69,10 +69,9 @@ export default function B2BQuotesPage() {
 
   const { data: quotePage, isLoading } = useQuery({
     queryKey: ["my-quotes", filter, page],
-    queryFn: () => listMyQuotes(page),
+    queryFn: () => listMyQuotes(filter, page),
   });
-  const allQuotes = quotePage?.items ?? [];
-  const quotes = filter ? allQuotes.filter((q) => q.status === filter) : allQuotes;
+  const quotes = quotePage?.items ?? [];
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["my-quotes"] });
 

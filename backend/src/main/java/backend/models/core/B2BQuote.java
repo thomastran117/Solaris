@@ -57,10 +57,15 @@ public class B2BQuote {
     @Column(nullable = false, length = 20)
     private PaymentTerms paymentTerms = PaymentTerms.IMMEDIATE;
 
+    /** ISO 4217 currency snapshotted from the quoted products, used for the converted order. */
+    @Column(nullable = false, length = 3)
+    private String currency = "USD";
+
     @Column(name = "converted_order_id", nullable = true, columnDefinition = "BINARY(16)")
     private UUID convertedOrderId;
 
     @OneToMany(mappedBy = "quote", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 50)
     private List<B2BQuoteItem> items = new ArrayList<>();
 
     @CreationTimestamp

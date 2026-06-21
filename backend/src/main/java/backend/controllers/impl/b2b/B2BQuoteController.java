@@ -40,9 +40,10 @@ public class B2BQuoteController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<QuoteResponse>> listQuotes(
+            @RequestParam(required = false) backend.models.enums.QuoteStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
-        return ResponseEntity.ok(quoteService.listBuyerQuotes(resolveUserId(), page, size));
+        return ResponseEntity.ok(quoteService.listBuyerQuotes(resolveUserId(), status, page, size));
     }
 
     @GetMapping("/{id}")
