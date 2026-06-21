@@ -16,6 +16,9 @@ public interface InventoryLocationRepository extends JpaRepository<InventoryLoca
 
     List<InventoryLocation> findAllByCompanyIdOrderByDisplayOrderAscNameAsc(java.util.UUID companyId);
 
+    /** The company's primary active location (lowest displayOrder, then name). Used as the shipping origin. */
+    Optional<InventoryLocation> findFirstByCompanyIdAndActiveTrueOrderByDisplayOrderAscNameAsc(java.util.UUID companyId);
+
     Optional<InventoryLocation> findByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);
 
     boolean existsByIdAndCompanyId(java.util.UUID id, java.util.UUID companyId);

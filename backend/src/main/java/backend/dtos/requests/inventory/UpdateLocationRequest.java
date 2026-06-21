@@ -32,6 +32,14 @@ public class UpdateLocationRequest {
     @SafeText
     private String city;
 
+    @Size(max = 100, message = "State/province must be at most 100 characters")
+    @SafeText
+    private String stateProvince;
+
+    @Size(max = 20, message = "Postal code must be at most 20 characters")
+    @SafeText
+    private String postalCode;
+
     @Size(max = 100, message = "Country must be at most 100 characters")
     @SafeText
     private String country;

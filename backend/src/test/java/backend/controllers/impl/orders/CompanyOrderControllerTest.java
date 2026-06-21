@@ -338,6 +338,8 @@ class CompanyOrderControllerTest {
                 null,
                 0L,
                 null,
+                // shipping rate selection (Feature 13)
+                null, null, null, null, null, null, 0L, null,
                 Instant.parse("2026-05-19T00:00:00Z"),
                 Instant.parse("2026-05-19T00:00:00Z")
         );

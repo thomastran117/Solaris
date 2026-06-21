@@ -93,6 +93,10 @@ import backend.repositories.PromotionRedemptionRepository;
 import backend.repositories.PromotionRuleRepository;
 import backend.repositories.InventoryAdjustmentRepository;
 import backend.repositories.InventoryLocationRepository;
+import backend.dtos.shipping.ShippingRate;
+import backend.dtos.shipping.ShippingRateRequest;
+import backend.services.intf.shipping.ShippingRateService;
+import backend.utils.MoneyUtil;
 import backend.repositories.LocationStockRepository;
 import backend.repositories.OrderCompensationRepository;
 import backend.repositories.OrderRepository;
@@ -325,6 +329,13 @@ public class OrderServiceImpl implements OrderService {
     @org.springframework.beans.factory.annotation.Autowired
     public void setReturnService(ReturnService returnService) {
         this.returnService = returnService;
+    }
+
+    private ShippingRateService shippingRateService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setShippingRateService(ShippingRateService shippingRateService) {
+        this.shippingRateService = shippingRateService;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -2876,6 +2887,205 @@ public class OrderServiceImpl implements OrderService {
                 order.getCreatedAt());
     }
 
+    // -------------------------------------------------------------------------
+    // Shipping rate shopping (Feature 13)
+    // -------------------------------------------------------------------------
+
+    /** Default box dimension (cm) used when a product has no shipping dimensions set. */
+    private static final int DEFAULT_DIM_CM = 10;
+
+    @Value("${app.easy-post.default-weight-grams:500}")
+    private int defaultShippingWeightGrams;
+
+    @Override
+    public List<ShippingRate> getShippingRates(UUID userId, UUID orderId) {
+        // Build the request inside a read transaction (touches lazy items/product/location),
+        // then make the external call with no DB transaction or locks held.
+        ShippingRateRequest request = self().buildShippingRateRequest(userId, orderId);
+        return shippingRateService.getRates(request);
+    }
+
+    @Transactional(readOnly = true)
+    public ShippingRateRequest buildShippingRateRequest(UUID userId, UUID orderId) {
+        Order order = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        requireRateableOrder(order);
+        return toRateRequest(order);
+    }
+
+    @Override
+    public OrderResponse confirmShippingRate(UUID userId, UUID orderId, String rateId) {
+        if (rateId == null || rateId.isBlank()) {
+            throw new BadRequestException("A shipping rate id is required");
+        }
+
+        // Serialize concurrent confirms (e.g. double-click) on the same order.
+        String lockKey = "confirm-rate:" + orderId;
+        String lockToken = UUID.randomUUID().toString();
+        if (!cacheService.tryLock(lockKey, lockToken, lockTtlSeconds)) {
+            throw new ConflictException("This order's shipping rate is currently being updated, please try again shortly");
+        }
+        try {
+            RateConfirmSnapshot snapshot = self().loadRateConfirmSnapshot(userId, orderId);
+
+            // Re-fetch (cache-first) and match the rate server-side — prevents cost spoofing and
+            // surfaces EasyPost rate-id expiry as a clean 400.
+            List<ShippingRate> rates = shippingRateService.getRates(snapshot.request());
+            ShippingRate selected = rates.stream()
+                    .filter(r -> rateId.equals(r.rateId()))
+                    .findFirst()
+                    .orElseThrow(() -> new BadRequestException(
+                            "Selected shipping rate is no longer available; please refresh rates"));
+
+            long baseTotalCents = snapshot.oldTotalCents() - snapshot.currentShippingCents();
+            long newTotalCents = baseTotalCents + selected.totalCents();
+            boolean hasPaymentIntent = snapshot.paymentIntentId() != null && !snapshot.paymentIntentId().isBlank();
+
+            // Update Stripe first so the charge never exceeds the persisted total. If the DB
+            // persist then fails, roll the PaymentIntent back to the prior amount (best-effort).
+            if (hasPaymentIntent) {
+                paymentService.updatePaymentIntentAmount(snapshot.paymentIntentId(), newTotalCents);
+            }
+            try {
+                return self().applyConfirmedRate(orderId, userId, selected, baseTotalCents, newTotalCents);
+            } catch (Exception ex) {
+                if (hasPaymentIntent) {
+                    try {
+                        paymentService.updatePaymentIntentAmount(snapshot.paymentIntentId(), snapshot.oldTotalCents());
+                    } catch (Exception rb) {
+                        log.error("PI amount rollback failed — manual reconciliation needed. orderId={} "
+                                        + "paymentIntentId={} oldTotalCents={} newTotalCents={}",
+                                orderId, snapshot.paymentIntentId(), snapshot.oldTotalCents(), newTotalCents, rb);
+                    }
+                }
+                throw ex;
+            }
+        } finally {
+            cacheService.unlock(lockKey, lockToken);
+        }
+    }
+
+    /** Read-tx snapshot of the data needed to confirm a rate without holding the tx open across Stripe. */
+    private record RateConfirmSnapshot(
+            String paymentIntentId,
+            long oldTotalCents,
+            long currentShippingCents,
+            ShippingRateRequest request) {}
+
+    @Transactional(readOnly = true)
+    public RateConfirmSnapshot loadRateConfirmSnapshot(UUID userId, UUID orderId) {
+        Order order = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        requireRateableOrder(order);
+        return new RateConfirmSnapshot(
+                order.getPaymentIntentId(),
+                MoneyUtil.toCents(order.getTotalAmount()),
+                order.getShippingCostCents(),
+                toRateRequest(order));
+    }
+
+    /**
+     * Persists the confirmed rate and the recomputed total inside one transaction. Re-asserts the
+     * RESERVED state and re-derives the base from the freshly-read row (under {@code @Version}) so a
+     * concurrent change can't be stomped; if the base no longer matches the amount sent to Stripe the
+     * transaction is failed so the caller can revert the PaymentIntent.
+     */
+    @Transactional
+    public OrderResponse applyConfirmedRate(UUID orderId, UUID userId, ShippingRate rate,
+                                            long expectedBaseCents, long newTotalCents) {
+        Order order = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        requireRateableOrder(order);
+
+        long freshBaseCents = MoneyUtil.toCents(order.getTotalAmount()) - order.getShippingCostCents();
+        if (freshBaseCents != expectedBaseCents) {
+            throw new ConflictException("Order total changed during rate confirmation, please retry");
+        }
+
+        order.setShippingRateId(rate.rateId());
+        order.setShippingCarrier(rate.carrier());
+        order.setShippingServiceCode(rate.serviceCode());
+        order.setShippingServiceName(rate.serviceName());
+        order.setShippingRateCurrency(rate.currency());
+        order.setShippingEstimatedDays(rate.estimatedDays());
+        order.setShippingCostCents(rate.totalCents());
+        order.setShippingRateQuotedAt(Instant.now());
+        order.setTotalAmount(MoneyUtil.fromCents(newTotalCents));
+
+        return toResponse(orderRepository.save(order));
+    }
+
+    /** Rates only apply to a customer's RESERVED, DELIVERY order. */
+    private void requireRateableOrder(Order order) {
+        if (order.getStatus() != OrderStatus.RESERVED) {
+            throw new BadRequestException("Shipping rates can only be selected on a reserved order");
+        }
+        if (order.getFulfillmentMethod() != null && order.getFulfillmentMethod() != FulfillmentMethod.DELIVERY) {
+            throw new BadRequestException("Shipping rates only apply to delivery orders");
+        }
+        if (order.getItems() == null || order.getItems().isEmpty()) {
+            throw new BadRequestException("Order has no items to ship");
+        }
+    }
+
+    private ShippingRateRequest toRateRequest(Order order) {
+        OrderItem first = order.getItems().get(0);
+        InventoryLocation origin = resolveOrigin(first);
+
+        int totalGrams = 0;
+        int maxLengthCm = 0;
+        int maxWidthCm = 0;
+        int sumHeightCm = 0;
+        for (OrderItem item : order.getItems()) {
+            Product product = item.getProduct();
+            int qty = Math.max(1, item.getQuantity());
+            // weightGrams defaults to 0 = "unset"; the <= 0 check substitutes the configured default
+            // since 0 is indistinguishable from a vendor simply not filling the field in.
+            int grams = (product != null && product.getWeightGrams() > 0)
+                    ? product.getWeightGrams() : defaultShippingWeightGrams;
+            totalGrams += grams * qty;
+
+            int lengthCm = (product != null && product.getLengthCm() > 0) ? product.getLengthCm() : DEFAULT_DIM_CM;
+            int widthCm = (product != null && product.getWidthCm() > 0) ? product.getWidthCm() : DEFAULT_DIM_CM;
+            int heightCm = (product != null && product.getHeightCm() > 0) ? product.getHeightCm() : DEFAULT_DIM_CM;
+            // Parcel approximation: max footprint, stacked height. Dimensional packing is out of scope (v1).
+            maxLengthCm = Math.max(maxLengthCm, lengthCm);
+            maxWidthCm = Math.max(maxWidthCm, widthCm);
+            sumHeightCm += heightCm * qty;
+        }
+
+        return new ShippingRateRequest(
+                origin != null ? origin.getAddress() : null,
+                origin != null ? origin.getCity() : null,
+                origin != null ? origin.getStateProvince() : null,
+                origin != null ? origin.getPostalCode() : null,
+                origin != null ? origin.getCountry() : null,
+                order.getShipStreet(),
+                order.getShipStreet2(),
+                order.getShipCity(),
+                order.getShipState(),
+                order.getShipPostalCode(),
+                order.getShipCountry(),
+                totalGrams,
+                maxLengthCm,
+                maxWidthCm,
+                sumHeightCm);
+    }
+
+    /**
+     * Origin = the primary active location of the company that fulfils the first item. Falls back to
+     * the item's own fulfillment location. v1 rates the whole order from one origin (no split shipment).
+     */
+    private InventoryLocation resolveOrigin(OrderItem item) {
+        InventoryLocation itemLocation = item.getFulfillmentLocation();
+        if (itemLocation != null && itemLocation.getCompany() != null) {
+            return locationRepository
+                    .findFirstByCompanyIdAndActiveTrueOrderByDisplayOrderAscNameAsc(itemLocation.getCompany().getId())
+                    .orElse(itemLocation);
+        }
+        return itemLocation;
+    }
+
     private OrderResponse toResponse(Order order) {
         List<OrderItemResponse> items = order.getItems().stream()
                 .map(this::toItemResponse)
@@ -2914,6 +3124,14 @@ public class OrderServiceImpl implements OrderService {
                 order.getFulfillmentNote(),
                 order.getRefundedAmountCents(),
                 order.getAssignedDriverId(),
+                order.getShippingRateId(),
+                order.getShippingCarrier(),
+                order.getShippingServiceCode(),
+                order.getShippingServiceName(),
+                order.getShippingRateCurrency(),
+                order.getShippingEstimatedDays(),
+                order.getShippingCostCents(),
+                order.getShippingRateQuotedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
         );

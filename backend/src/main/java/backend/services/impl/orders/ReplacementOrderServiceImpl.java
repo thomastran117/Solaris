@@ -167,6 +167,14 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                 order.getFulfillmentNote(),
                 order.getRefundedAmountCents(),
                 order.getAssignedDriverId(),
+                order.getShippingRateId(),
+                order.getShippingCarrier(),
+                order.getShippingServiceCode(),
+                order.getShippingServiceName(),
+                order.getShippingRateCurrency(),
+                order.getShippingEstimatedDays(),
+                order.getShippingCostCents(),
+                order.getShippingRateQuotedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
         );

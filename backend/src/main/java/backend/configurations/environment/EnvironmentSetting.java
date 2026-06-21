@@ -21,6 +21,7 @@ public class EnvironmentSetting {
     private final Proxy proxy = new Proxy();
     private final S3 s3 = new S3();
     private final Stripe stripe = new Stripe();
+    private final EasyPost easyPost = new EasyPost();
     private final Email email = new Email();
     private final Elasticsearch elasticsearch = new Elasticsearch();
 
@@ -62,6 +63,10 @@ public class EnvironmentSetting {
 
     public Stripe getStripe() {
         return stripe;
+    }
+
+    public EasyPost getEasyPost() {
+        return easyPost;
     }
 
     public Email getEmail() {
@@ -819,6 +824,83 @@ public class EnvironmentSetting {
             public void setMaxIntervalMs(long maxIntervalMs) {
                 this.maxIntervalMs = Math.max(1_000, Math.min(300_000, maxIntervalMs));
             }
+        }
+    }
+
+    /**
+     * EasyPost shipping-rate configuration (Feature 13). When {@code apiKey} is blank the
+     * rate service runs in flat-rate-only mode (no external calls). The flat-rate values
+     * back the graceful-degradation fallback so checkout always offers at least one option.
+     */
+    public static class EasyPost {
+        private String apiKey = "";
+        private int defaultWeightGrams = 500;
+        private long flatRateCents = 999;
+        private String flatRateServiceName = "Standard Shipping";
+        private long rateCacheTtlSeconds = 900;
+        private int connectTimeoutMs = 3_000;
+        private int readTimeoutMs = 8_000;
+        private final Stripe.Retry retry = new Stripe.Retry();
+
+        public String getApiKey() {
+            return apiKey != null ? apiKey : "";
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey != null ? apiKey : "";
+        }
+
+        public int getDefaultWeightGrams() {
+            return defaultWeightGrams;
+        }
+
+        public void setDefaultWeightGrams(int defaultWeightGrams) {
+            this.defaultWeightGrams = Math.max(1, defaultWeightGrams);
+        }
+
+        public long getFlatRateCents() {
+            return flatRateCents;
+        }
+
+        public void setFlatRateCents(long flatRateCents) {
+            this.flatRateCents = Math.max(0, flatRateCents);
+        }
+
+        public String getFlatRateServiceName() {
+            return flatRateServiceName != null && !flatRateServiceName.isBlank()
+                    ? flatRateServiceName : "Standard Shipping";
+        }
+
+        public void setFlatRateServiceName(String flatRateServiceName) {
+            this.flatRateServiceName = flatRateServiceName;
+        }
+
+        public long getRateCacheTtlSeconds() {
+            return rateCacheTtlSeconds;
+        }
+
+        public void setRateCacheTtlSeconds(long rateCacheTtlSeconds) {
+            this.rateCacheTtlSeconds = Math.max(1, rateCacheTtlSeconds);
+        }
+
+        public int getConnectTimeoutMs() {
+            return connectTimeoutMs;
+        }
+
+        public void setConnectTimeoutMs(int connectTimeoutMs) {
+            this.connectTimeoutMs = Math.max(100, Math.min(60_000, connectTimeoutMs));
+        }
+
+        public int getReadTimeoutMs() {
+            return readTimeoutMs;
+        }
+
+        public void setReadTimeoutMs(int readTimeoutMs) {
+            this.readTimeoutMs = Math.max(100, Math.min(120_000, readTimeoutMs));
+        }
+
+        public Stripe.Retry getRetry() {
+            return retry;
         }
     }
 
