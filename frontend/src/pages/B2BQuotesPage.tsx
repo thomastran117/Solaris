@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,6 +61,7 @@ const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function B2BQuotesPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { fadeInUp, stagger } = useAnims();
 
   const [filter, setFilter] = useState<QuoteStatus | undefined>(undefined);
@@ -109,7 +111,13 @@ export default function B2BQuotesPage() {
 
   const acceptMutation = useMutation({
     mutationFn: (id: string) => acceptQuote(id),
-    onSuccess: () => invalidate(),
+    onSuccess: (order) => {
+      invalidate();
+      // Land the buyer on the created order. For IMMEDIATE terms it is RESERVED pending payment
+      // capture (confirmed server-side via the Stripe webhook, same as a normal checkout); for net
+      // terms it is already PAID with an invoice issued. Don't discard the returned order.
+      navigate(`/orders/${order.id}`);
+    },
     onError: (e) => {
       invalidate();
       window.alert(apiErrorMessage(e, "Could not accept this quote."));

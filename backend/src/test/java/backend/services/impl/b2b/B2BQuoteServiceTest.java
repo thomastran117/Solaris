@@ -13,6 +13,7 @@ import backend.models.core.B2BQuote;
 import backend.models.core.B2BQuoteItem;
 import backend.models.core.Company;
 import backend.models.core.Product;
+import backend.models.core.ProductVariant;
 import backend.models.core.User;
 import backend.models.enums.PaymentTerms;
 import backend.models.enums.QuoteStatus;
@@ -211,6 +212,29 @@ class B2BQuoteServiceTest {
         assertThat(resp.items().get(0).unitPriceCents()).isEqualTo(4200L);
         assertThat(resp.totalCents()).isEqualTo(8400L);
         verify(emailService).sendQuoteRespondedEmail(any(), any(), any(), any(), eq("COUNTERED"));
+    }
+
+    @Test
+    void shouldRejectCounterWithVariantFromAnotherProduct() {
+        Company vendor = mockVendor();
+        Product product = mockProduct("50.00");
+        UUID variantId = TestIds.uuid(9);
+        Product otherProduct = mock(Product.class);
+        lenient().when(otherProduct.getId()).thenReturn(TestIds.uuid(10));
+        ProductVariant variant = mock(ProductVariant.class);
+        lenient().when(variant.getProduct()).thenReturn(otherProduct);
+        when(companyAccessService.require(eq(COMPANY_ID), eq(OWNER_ID), any())).thenReturn(vendor);
+        when(quoteRepository.findByIdAndVendorCompanyId(QUOTE_ID, COMPANY_ID))
+                .thenReturn(Optional.of(quote(QuoteStatus.PENDING_VENDOR, PaymentTerms.IMMEDIATE, null, 5000, 1)));
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(product));
+        when(variantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+
+        VendorQuoteResponseRequest req = new VendorQuoteResponseRequest(
+                VendorQuoteResponseRequest.VendorQuoteAction.COUNTER, null, null,
+                List.of(new RevisedQuoteItemRequest(PRODUCT_ID, variantId, 1, 4000)));
+
+        assertThatThrownBy(() -> service.vendorRespondToQuote(COMPANY_ID, QUOTE_ID, OWNER_ID, req))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test

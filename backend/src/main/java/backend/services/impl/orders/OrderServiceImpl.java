@@ -1381,6 +1381,10 @@ public class OrderServiceImpl implements OrderService {
         // scheduler (which scans FAILED + compensatedFalse) must not run compensateOrder
         // again and restore the same items a second time.
         order.setCompensated(true);
+        // Release the unique b2b_quote_id so a transient-failure retry can legitimately create a
+        // fresh order for the quote, rather than the idempotency lookup handing back this dead order
+        // (no-op for non-quote orders, where b2bQuoteId is already null).
+        order.setB2bQuoteId(null);
         orderRepository.save(order);
         releaseReservation(orderId);
 
@@ -3954,7 +3958,15 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse createOrderFromQuote(backend.services.intf.orders.QuoteOrderSpec spec) {
         if (spec.immediate()) {
             // Same two-phase pattern as createOrder: the Stripe call runs outside any transaction.
-            OrderReservation reservation = self().reserveQuoteOrder(spec);
+            OrderReservation reservation;
+            try {
+                reservation = self().reserveQuoteOrder(spec);
+            } catch (DataIntegrityViolationException e) {
+                // Lost the unique b2b_quote_id race (per-buyer lock had expired): the winning accept's
+                // order is already committed. Recover here — outside the now rolled-back T1 — by
+                // returning the existing order in a fresh transaction rather than surfacing a 500.
+                return self().loadQuoteOrderResponse(spec.quoteId());
+            }
             // Idempotent: an order already existed for this quote (retry / lock expiry) — return it.
             if (reservation.response() != null) {
                 return reservation.response();
@@ -3988,7 +4000,21 @@ public class OrderServiceImpl implements OrderService {
         }
         // Net terms: single transaction, order born PAID, no Stripe. Payment is tracked separately
         // via the B2BInvoice issued by B2BInvoiceService.
-        return self().createNetTermsQuoteOrder(spec);
+        try {
+            return self().createNetTermsQuoteOrder(spec);
+        } catch (DataIntegrityViolationException e) {
+            // Lost the unique b2b_quote_id race — return the committed winner from a fresh tx.
+            return self().loadQuoteOrderResponse(spec.quoteId());
+        }
+    }
+
+    /** Fresh-tx lookup of the order a quote converted to; used to recover from a unique-constraint race. */
+    @Transactional(readOnly = true)
+    public OrderResponse loadQuoteOrderResponse(UUID quoteId) {
+        Order order = orderRepository.findByB2bQuoteId(quoteId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Quote order constraint race but no committed order found for quote: " + quoteId));
+        return toResponse(order);
     }
 
     /** T1 for an IMMEDIATE quote order: builds and persists the RESERVED order (no Stripe call here). */
@@ -4010,16 +4036,10 @@ public class OrderServiceImpl implements OrderService {
         order.setB2bQuoteId(spec.quoteId());
         order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
         populateQuoteOrderItems(order, spec.lines());
-        Order saved;
-        try {
-            saved = persistWithMarketplace(order);
-        } catch (DataIntegrityViolationException e) {
-            // Concurrent accept won the unique b2b_quote_id constraint — treat as idempotent success.
-            Order dup = orderRepository.findByB2bQuoteId(spec.quoteId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Quote order insert failed on duplicate but existing row not found: " + spec.quoteId(), e));
-            return OrderReservation.terminal(toResponse(dup));
-        }
+        // A unique b2b_quote_id violation must surface here (saveAndFlush, translated to
+        // DataIntegrityViolationException) so it propagates out of this transaction and is recovered
+        // by the non-transactional caller — an in-method catch could not, as the tx is already doomed.
+        Order saved = persistWithMarketplace(order);
         return OrderReservation.pending(saved, spec.totalCents(), currency, buyer.getEmail(), buyer.getFirstName());
     }
 
@@ -4042,16 +4062,9 @@ public class OrderServiceImpl implements OrderService {
         order.setB2bQuoteId(spec.quoteId());
         order.setTotalAmount(BigDecimal.valueOf(spec.totalCents()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP));
         populateQuoteOrderItems(order, spec.lines());
-        Order saved;
-        try {
-            saved = persistWithMarketplace(order);
-        } catch (DataIntegrityViolationException e) {
-            // Concurrent accept won the unique b2b_quote_id constraint — treat as idempotent success.
-            return orderRepository.findByB2bQuoteId(spec.quoteId())
-                    .map(this::toResponse)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Net-terms quote order insert failed on duplicate but existing row not found: " + spec.quoteId(), e));
-        }
+        // saveAndFlush (in persistWithMarketplace) raises a unique b2b_quote_id violation synchronously
+        // so the non-transactional caller can recover; an in-method catch could not (tx already doomed).
+        Order saved = persistWithMarketplace(order);
         publishOrderWebhookEvent(saved, WebhookEventType.ORDER_CREATED);
         return toResponse(saved);
     }
@@ -4059,7 +4072,9 @@ public class OrderServiceImpl implements OrderService {
     /** Saves the order, then stamps marketplace vendor ids / sub-orders / commission if applicable. */
     private Order persistWithMarketplace(Order order) {
         boolean marketplace = stampVendorIds(order.getItems());
-        Order saved = orderRepository.save(order);
+        // saveAndFlush so a unique-constraint violation (e.g. duplicate b2b_quote_id) is raised and
+        // translated to DataIntegrityViolationException now, not deferred to transaction commit.
+        Order saved = orderRepository.saveAndFlush(order);
         if (marketplace) {
             saved.setMarketplaceOrder(true);
             createSubOrders(saved, saved.getItems());

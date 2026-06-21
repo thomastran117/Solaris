@@ -186,6 +186,9 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
             quote.getItems().clear();
             for (RevisedQuoteItemRequest line : req.items()) {
                 Product product = loadVendorProduct(line.productId(), companyId);
+                // Verify the variant belongs to this product before persisting the counter line,
+                // otherwise acceptance would decrement stock for an unrelated variant.
+                validateVariant(line.variantId(), product);
                 B2BQuoteItem item = new B2BQuoteItem();
                 item.setQuote(quote);
                 item.setProductId(product.getId());
@@ -359,18 +362,29 @@ public class B2BQuoteServiceImpl implements B2BQuoteService {
         return product;
     }
 
+    /**
+     * Verifies the variant exists and belongs to the given product (no-op when {@code variantId} is
+     * null). Returns the loaded variant so callers can reuse it. Guards both the request and
+     * counter-offer paths against attaching a variant from an unrelated product.
+     */
+    private ProductVariant validateVariant(UUID variantId, Product product) {
+        if (variantId == null) {
+            return null;
+        }
+        ProductVariant variant = variantRepository.findById(variantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
+        if (variant.getProduct() == null || !product.getId().equals(variant.getProduct().getId())) {
+            throw new BadRequestException("Variant " + variantId + " does not belong to product " + product.getId());
+        }
+        return variant;
+    }
+
     /** Snapshots the current list price (variant price when given, else product price) in cents. */
     private long snapshotUnitPriceCents(Product product, UUID variantId) {
         BigDecimal price = product.getPrice();
-        if (variantId != null) {
-            ProductVariant variant = variantRepository.findById(variantId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
-            if (variant.getProduct() == null || !product.getId().equals(variant.getProduct().getId())) {
-                throw new BadRequestException("Variant " + variantId + " does not belong to product " + product.getId());
-            }
-            if (variant.getPrice() != null) {
-                price = variant.getPrice();
-            }
+        ProductVariant variant = validateVariant(variantId, product);
+        if (variant != null && variant.getPrice() != null) {
+            price = variant.getPrice();
         }
         if (price == null) {
             throw new BadRequestException("Product " + product.getId() + " has no price to quote");
