@@ -144,6 +144,7 @@ class OrderServiceImplShippingRateTest {
                 mock(OrderFulfillmentEventPublisher.class),
                 mock(TrackingService.class));
         service.setShippingRateService(shippingRateService);
+        service.setEnvironmentSetting(new backend.configurations.environment.EnvironmentSetting());
 
         // Lock acquired by default; persist echoes the saved order.
         when(cacheService.tryLock(anyString(), anyString(), anyLong())).thenReturn(true);
@@ -220,6 +221,18 @@ class OrderServiceImplShippingRateTest {
         when(shippingRateService.getRates(any())).thenReturn(RATES);
 
         assertThrows(BadRequestException.class, () -> service.confirmShippingRate(USER_ID, ORDER_ID, "rate_unknown"));
+        verify(paymentService, never()).updatePaymentIntentAmount(anyString(), anyLong());
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmShippingRate_rejectsRateInDifferentCurrency() {
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID))
+                .thenReturn(Optional.of(reservedOrder(new BigDecimal("20.00"), 0))); // order currency USD
+        when(shippingRateService.getRates(any())).thenReturn(List.of(
+                new ShippingRate("rate_cad", "Canada Post", "Expedited", "Expedited", 3, 599, "CAD")));
+
+        assertThrows(BadRequestException.class, () -> service.confirmShippingRate(USER_ID, ORDER_ID, "rate_cad"));
         verify(paymentService, never()).updatePaymentIntentAmount(anyString(), anyLong());
         verify(orderRepository, never()).save(any());
     }

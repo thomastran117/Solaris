@@ -95,20 +95,20 @@ public class EasyPostShippingRateServiceImpl implements ShippingRateService {
 
         if (client == null) {
             // No external provider available — fall back without caching the placeholder.
-            return List.of(flatRate());
+            return List.of(flatRate(request));
         }
 
         try {
             List<ShippingRate> rates = retryTemplate.execute(ctx -> fetchFromEasyPost(request));
             if (rates == null || rates.isEmpty()) {
                 // Degraded: never cache the fallback so a transient outage isn't pinned for the TTL.
-                return List.of(flatRate());
+                return List.of(flatRate(request));
             }
             writeCache(cacheKey, rates);
             return rates;
         } catch (Exception e) {
             log.warn("EasyPost rate lookup failed; serving flat-rate fallback. cacheKey={}", cacheKey, e);
-            return List.of(flatRate());
+            return List.of(flatRate(request));
         }
     }
 
@@ -172,8 +172,11 @@ public class EasyPostShippingRateServiceImpl implements ShippingRateService {
         return days != null ? days.intValue() : null;
     }
 
-    private ShippingRate flatRate() {
+    private ShippingRate flatRate(ShippingRateRequest req) {
         EnvironmentSetting.EasyPost cfg = environmentSetting.getEasyPost();
+        // Quote the fallback in the order's currency so a non-USD order isn't charged USD shipping.
+        String currency = req.currency() != null && !req.currency().isBlank()
+                ? req.currency().toUpperCase(Locale.ROOT) : "USD";
         return new ShippingRate(
                 FLAT_RATE_ID,
                 FLAT_RATE_CARRIER,
@@ -181,7 +184,7 @@ public class EasyPostShippingRateServiceImpl implements ShippingRateService {
                 FLAT_RATE_SERVICE_CODE,
                 null,
                 cfg.getFlatRateCents(),
-                "USD"
+                currency
         );
     }
 

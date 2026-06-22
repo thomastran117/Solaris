@@ -2894,8 +2894,12 @@ public class OrderServiceImpl implements OrderService {
     /** Default box dimension (cm) used when a product has no shipping dimensions set. */
     private static final int DEFAULT_DIM_CM = 10;
 
-    @Value("${app.easy-post.default-weight-grams:500}")
-    private int defaultShippingWeightGrams;
+    private backend.configurations.environment.EnvironmentSetting environmentSetting;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setEnvironmentSetting(backend.configurations.environment.EnvironmentSetting environmentSetting) {
+        this.environmentSetting = environmentSetting;
+    }
 
     @Override
     public List<ShippingRate> getShippingRates(UUID userId, UUID orderId) {
@@ -2936,6 +2940,14 @@ public class OrderServiceImpl implements OrderService {
                     .findFirst()
                     .orElseThrow(() -> new BadRequestException(
                             "Selected shipping rate is no longer available; please refresh rates"));
+
+            // Guard against folding a foreign-currency shipping amount into the order total — the
+            // rate cents would otherwise be charged in the order's currency at the wrong value.
+            String orderCurrency = snapshot.request().currency();
+            if (orderCurrency != null && selected.currency() != null
+                    && !orderCurrency.equalsIgnoreCase(selected.currency())) {
+                throw new BadRequestException("Selected shipping rate currency does not match the order currency");
+            }
 
             long baseTotalCents = snapshot.oldTotalCents() - snapshot.currentShippingCents();
             long newTotalCents = baseTotalCents + selected.totalCents();
@@ -3031,6 +3043,7 @@ public class OrderServiceImpl implements OrderService {
     private ShippingRateRequest toRateRequest(Order order) {
         OrderItem first = order.getItems().get(0);
         InventoryLocation origin = resolveOrigin(first);
+        int defaultWeightGrams = environmentSetting.getEasyPost().getDefaultWeightGrams();
 
         int totalGrams = 0;
         int maxLengthCm = 0;
@@ -3042,7 +3055,7 @@ public class OrderServiceImpl implements OrderService {
             // weightGrams defaults to 0 = "unset"; the <= 0 check substitutes the configured default
             // since 0 is indistinguishable from a vendor simply not filling the field in.
             int grams = (product != null && product.getWeightGrams() > 0)
-                    ? product.getWeightGrams() : defaultShippingWeightGrams;
+                    ? product.getWeightGrams() : defaultWeightGrams;
             totalGrams += grams * qty;
 
             int lengthCm = (product != null && product.getLengthCm() > 0) ? product.getLengthCm() : DEFAULT_DIM_CM;
@@ -3069,7 +3082,8 @@ public class OrderServiceImpl implements OrderService {
                 totalGrams,
                 maxLengthCm,
                 maxWidthCm,
-                sumHeightCm);
+                sumHeightCm,
+                order.getCurrency());
     }
 
     /**

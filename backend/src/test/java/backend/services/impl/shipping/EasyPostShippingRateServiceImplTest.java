@@ -60,7 +60,7 @@ class EasyPostShippingRateServiceImplTest {
         return new ShippingRateRequest(
                 "1 Vendor St", "Seattle", "WA", "98101", "US",
                 "5 Buyer Ave", null, "Boston", "MA", "02108", "US",
-                1000, length, width, height);
+                1000, length, width, height, "USD");
     }
 
     @BeforeEach
@@ -126,6 +126,23 @@ class EasyPostShippingRateServiceImplTest {
         assertEquals(1, result.size());
         assertEquals("flat-rate", result.get(0).rateId());
         assertEquals(0, svc.fetchCalls);
+    }
+
+    @Test
+    void shouldQuoteFlatRateFallbackInRequestCurrency() {
+        when(cacheService.get(anyString())).thenReturn(null);
+        StubService svc = new StubService(env, cacheService, objectMapper);
+        svc.init(); // no key -> flat-rate-only mode
+        ShippingRateRequest cadReq = new ShippingRateRequest(
+                "1 Vendor St", "Toronto", "ON", "M5V", "CA",
+                "5 Buyer Ave", null, "Vancouver", "BC", "V6B", "CA",
+                1000, 10, 10, 10, "CAD");
+
+        List<ShippingRate> result = svc.getRates(cadReq);
+
+        assertEquals(1, result.size());
+        assertEquals("flat-rate", result.get(0).rateId());
+        assertEquals("CAD", result.get(0).currency());
     }
 
     @Test

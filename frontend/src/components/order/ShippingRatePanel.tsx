@@ -24,8 +24,11 @@ export default function ShippingRatePanel({ order }: Props) {
   const qc = useQueryClient();
   const [selectedRateId, setSelectedRateId] = useState<string | null>(order.shippingRateId);
 
+  // Separate top-level key (not nested under ["order", id]) so invalidating the order detail
+  // query after a confirm does not prefix-match and trigger a redundant rate re-fetch — each
+  // refetch spends the per-user rate-limit budget and can cost a billable EasyPost call.
   const ratesQuery = useQuery({
-    queryKey: ["order", order.id, "shipping-rates"],
+    queryKey: ["shipping-rates", order.id],
     queryFn: () => ordersApi.getShippingRates(order.id).then((r) => r.data),
   });
 

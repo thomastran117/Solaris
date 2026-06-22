@@ -828,6 +828,50 @@ public class EnvironmentSetting {
     }
 
     /**
+     * Standalone exponential-backoff retry settings shared by external-call clients
+     * (currently EasyPost). Kept independent of any one provider so tuning one client's
+     * retry shape never silently changes another's.
+     */
+    public static class Retry {
+        private int maxAttempts = 3;
+        private long initialIntervalMs = 500;
+        private double multiplier = 2.0;
+        private long maxIntervalMs = 8000;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = Math.max(1, Math.min(10, maxAttempts));
+        }
+
+        public long getInitialIntervalMs() {
+            return initialIntervalMs;
+        }
+
+        public void setInitialIntervalMs(long initialIntervalMs) {
+            this.initialIntervalMs = Math.max(100, Math.min(60_000, initialIntervalMs));
+        }
+
+        public double getMultiplier() {
+            return multiplier;
+        }
+
+        public void setMultiplier(double multiplier) {
+            this.multiplier = Math.max(1.0, Math.min(5.0, multiplier));
+        }
+
+        public long getMaxIntervalMs() {
+            return maxIntervalMs;
+        }
+
+        public void setMaxIntervalMs(long maxIntervalMs) {
+            this.maxIntervalMs = Math.max(1_000, Math.min(300_000, maxIntervalMs));
+        }
+    }
+
+    /**
      * EasyPost shipping-rate configuration (Feature 13). When {@code apiKey} is blank the
      * rate service runs in flat-rate-only mode (no external calls). The flat-rate values
      * back the graceful-degradation fallback so checkout always offers at least one option.
@@ -840,7 +884,7 @@ public class EnvironmentSetting {
         private long rateCacheTtlSeconds = 900;
         private int connectTimeoutMs = 3_000;
         private int readTimeoutMs = 8_000;
-        private final Stripe.Retry retry = new Stripe.Retry();
+        private final Retry retry = new Retry();
 
         public String getApiKey() {
             return apiKey != null ? apiKey : "";
@@ -899,7 +943,7 @@ public class EnvironmentSetting {
             this.readTimeoutMs = Math.max(100, Math.min(120_000, readTimeoutMs));
         }
 
-        public Stripe.Retry getRetry() {
+        public Retry getRetry() {
             return retry;
         }
     }

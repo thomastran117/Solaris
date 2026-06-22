@@ -27,5 +27,6 @@ public record ShippingRateRequest(
         int weightGrams,
         int lengthCm,
         int widthCm,
-        int heightCm
+        int heightCm,
+        String currency
 ) {}

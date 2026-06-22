@@ -37,7 +37,7 @@ public class EasyPostRetryConfiguration {
     @Bean("easyPostRetryTemplate")
     @Qualifier("easyPostRetryTemplate")
     public RetryTemplate easyPostRetryTemplate() {
-        EnvironmentSetting.Stripe.Retry retry = env.getEasyPost().getRetry();
+        EnvironmentSetting.Retry retry = env.getEasyPost().getRetry();
 
         ExponentialBackOffPolicy backOff = new ExponentialBackOffPolicy();
         backOff.setInitialInterval(retry.getInitialIntervalMs());
