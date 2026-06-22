@@ -101,6 +101,17 @@ public interface PaymentService {
     PaymentIntentResult retrievePaymentIntent(String paymentIntentId);
 
     /**
+     * Updates the amount on a not-yet-captured payment intent. Used when the order total
+     * changes pre-payment (e.g. the customer selects a shipping rate on a RESERVED order).
+     * Implementations must reject the change cleanly (domain exception) if the provider no
+     * longer permits an amount change (e.g. the intent already has a confirmed payment).
+     *
+     * @param paymentIntentId  the intent to update
+     * @param newAmountInCents new amount in the smallest currency unit
+     */
+    PaymentIntentResult updatePaymentIntentAmount(String paymentIntentId, long newAmountInCents);
+
+    /**
      * Cancels a payment intent that has not yet been captured.
      */
     PaymentIntentResult cancelPaymentIntent(String paymentIntentId);

@@ -17,6 +17,8 @@ public class LocationResponse {
     private String code;
     private String address;
     private String city;
+    private String stateProvince;
+    private String postalCode;
     private String country;
     private boolean active;
     private int displayOrder;

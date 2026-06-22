@@ -12,6 +12,7 @@ import TrackingPanel from "../components/order/TrackingPanel";
 import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import DeliverySlotPanel from "../components/order/DeliverySlotPanel";
+import ShippingRatePanel from "../components/order/ShippingRatePanel";
 import { ordersApi } from "../api/orders";
 import { useOrderStream } from "../hooks/useOrderStream";
 import { useAnims } from "../hooks/useAnims";
@@ -154,6 +155,13 @@ export default function OrderDetailPage() {
             {order.fulfillmentMethod === "DELIVERY" && (
               <motion.div variants={fadeInUp}>
                 <DeliverySlotPanel order={order} />
+              </motion.div>
+            )}
+
+            {/* Shipping rate selection — only before payment on a delivery order */}
+            {order.fulfillmentMethod === "DELIVERY" && order.status === "RESERVED" && (
+              <motion.div variants={fadeInUp}>
+                <ShippingRatePanel order={order} />
               </motion.div>
             )}
 

@@ -28,6 +28,7 @@ import com.stripe.param.AccountLinkCreateParams;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCancelParams;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.PaymentIntentUpdateParams;
 import com.stripe.param.PaymentMethodDetachParams;
 import com.stripe.param.PaymentMethodListParams;
 import com.stripe.param.PriceCreateParams;
@@ -120,6 +121,18 @@ public class StripePaymentServiceImpl implements PaymentService {
     @Override
     public PaymentIntentResult retrievePaymentIntent(String paymentIntentId) {
         return executeWithRetry(() -> toPaymentIntentResult(PaymentIntent.retrieve(paymentIntentId)));
+    }
+
+    @Override
+    public PaymentIntentResult updatePaymentIntentAmount(String paymentIntentId, long newAmountInCents) {
+        return executeWithRetry(() -> {
+            PaymentIntent intent = PaymentIntent.retrieve(paymentIntentId);
+            PaymentIntent updated = intent.update(
+                    PaymentIntentUpdateParams.builder()
+                            .setAmount(newAmountInCents)
+                            .build());
+            return toPaymentIntentResult(updated);
+        });
     }
 
     @Override
@@ -772,6 +785,11 @@ public class StripePaymentServiceImpl implements PaymentService {
         }
         if (e instanceof RateLimitException) {
             return new TooManyRequestException();
+        }
+        if (e instanceof com.stripe.exception.InvalidRequestException) {
+            // e.g. attempting to change the amount of an intent that already has a confirmed
+            // payment. A client/usage error — surface as 400 so callers don't persist.
+            return new BadRequestException("This payment can no longer be modified");
         }
         if (e instanceof AuthenticationException) {
             return new InternalServerErrorException();

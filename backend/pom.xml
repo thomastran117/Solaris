@@ -51,6 +51,13 @@
 			<artifactId>stripe-java</artifactId>
 			<version>26.3.0</version>
 		</dependency>
+
+		<!-- EasyPost multi-carrier shipping rates (Feature 13). -->
+		<dependency>
+			<groupId>com.easypost</groupId>
+			<artifactId>easypost-api-client</artifactId>
+			<version>8.7.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>

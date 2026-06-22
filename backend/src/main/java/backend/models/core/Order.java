@@ -234,6 +234,42 @@ public class Order {
     private String fulfillmentNote;
 
     // -------------------------------------------------------------------------
+    // Shipping rate selection (Feature 13)
+    // -------------------------------------------------------------------------
+
+    /** Provider's selected rate id (e.g. EasyPost rate_xxx, or "flat-rate"). Null until a rate is chosen. */
+    @Column(nullable = true, length = 100)
+    private String shippingRateId;
+
+    /** Selected carrier name (e.g. "USPS", "UPS"). */
+    @Column(nullable = true, length = 60)
+    private String shippingCarrier;
+
+    /** Selected service machine code. */
+    @Column(nullable = true, length = 60)
+    private String shippingServiceCode;
+
+    /** Selected service display name (e.g. "Priority"). */
+    @Column(nullable = true, length = 100)
+    private String shippingServiceName;
+
+    /** ISO 4217 currency the shipping rate was quoted in. */
+    @Column(nullable = true, length = 3)
+    private String shippingRateCurrency;
+
+    /** Carrier estimated transit days for the selected rate; null when not provided. */
+    @Column(nullable = true)
+    private Integer shippingEstimatedDays;
+
+    /** Selected shipping cost in cents, folded into {@link #totalAmount}. Zero until a rate is chosen. */
+    @Column(nullable = false)
+    private long shippingCostCents = 0L;
+
+    /** When the selected rate was quoted (EasyPost rate ids expire ~15 min). */
+    @Column(nullable = true)
+    private Instant shippingRateQuotedAt;
+
+    // -------------------------------------------------------------------------
     // Refund tracking
     // -------------------------------------------------------------------------
 

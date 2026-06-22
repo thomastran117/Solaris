@@ -135,6 +135,21 @@ public class Product {
     @Column(nullable = true, length = 10)
     private String weightUnit;
 
+    // Shipping dimensions (Feature 13). Default 0 = "unset"; the rate service substitutes a
+    // configured default when these are <= 0. Kept separate from `weight`/`weightUnit` so carrier
+    // rating has an unambiguous gram/centimetre parcel without unit-string parsing.
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 0")
+    private int weightGrams = 0;
+
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 0")
+    private int lengthCm = 0;
+
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 0")
+    private int widthCm = 0;
+
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 0")
+    private int heightCm = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ProductType productType = ProductType.STANDARD;

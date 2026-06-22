@@ -130,6 +130,8 @@ class LocationInventoryControllerTest {
                 "TOR-1",
                 null,
                 "Toronto",
+                null,
+                null,
                 "Canada",
                 true,
                 0,

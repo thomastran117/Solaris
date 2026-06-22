@@ -20,6 +20,21 @@ import java.util.List;
 
 public interface OrderService {
     OrderResponse createOrder(UUID userId, CreateOrderRequest request);
+
+    /**
+     * Fetches live carrier shipping rates for a customer's RESERVED, DELIVERY order (Feature 13).
+     * Derives origin/destination/parcel from the order and never throws on provider failure —
+     * a degraded lookup yields a flat-rate fallback option.
+     */
+    java.util.List<backend.dtos.shipping.ShippingRate> getShippingRates(UUID userId, UUID orderId);
+
+    /**
+     * Confirms the customer's selected shipping rate on a RESERVED order (Feature 13): validates
+     * the rate server-side, updates the Stripe PaymentIntent amount, and folds the shipping cost
+     * into the order total.
+     */
+    OrderResponse confirmShippingRate(UUID userId, UUID orderId, String rateId);
+
     OrderResponse getOrder(UUID orderId, UUID userId);
     OrderResponse getLatestOrder(UUID userId);
     PagedResponse<OrderResponse> getOrders(UUID userId, OrderStatus status, int page, int size, String sort, String direction);

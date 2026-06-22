@@ -30,7 +30,11 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     shipPhoneNumber: null, pickupLocationName: null, pickupReadyAt: null,
     preferredDeliveryDate: null, preferredDeliveryWindow: null, deliverySlotStatus: null,
     couponCode: null, couponDiscountAmount: 0, refundedAmountCents: 0,
-    assignedDriverId: null, createdAt: "2026-05-20T10:00:00Z", updatedAt: "2026-05-20T10:00:00Z",
+    assignedDriverId: null,
+    shippingRateId: null, shippingCarrier: null, shippingServiceCode: null,
+    shippingServiceName: null, shippingRateCurrency: null, shippingEstimatedDays: null,
+    shippingCostCents: 0, shippingRateQuotedAt: null,
+    createdAt: "2026-05-20T10:00:00Z", updatedAt: "2026-05-20T10:00:00Z",
     ...overrides,
   };
 }

@@ -111,8 +111,27 @@ export interface Order {
   couponDiscountAmount: number;
   refundedAmountCents: number;
   assignedDriverId: string | null;
+  // Shipping rate selection (Feature 13)
+  shippingRateId: string | null;
+  shippingCarrier: string | null;
+  shippingServiceCode: string | null;
+  shippingServiceName: string | null;
+  shippingRateCurrency: string | null;
+  shippingEstimatedDays: number | null;
+  shippingCostCents: number;
+  shippingRateQuotedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ShippingRate {
+  rateId: string;
+  carrier: string;
+  serviceName: string;
+  serviceCode: string;
+  estimatedDays: number | null;
+  totalCents: number;
+  currency: string;
 }
 
 export interface CompanyOrder {

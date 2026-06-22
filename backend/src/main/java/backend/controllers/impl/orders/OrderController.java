@@ -70,6 +70,10 @@ public class OrderController {
     private static final int DELIVERY_SLOT_LIMIT = 20;
     private static final int DELIVERY_SLOT_WINDOW_SECONDS = 60;
 
+    /** Per-user cap on shipping-rate calls — both endpoints can trigger a paid EasyPost lookup. */
+    private static final int SHIPPING_RATE_LIMIT = 20;
+    private static final int SHIPPING_RATE_WINDOW_SECONDS = 60;
+
     private final OrderService orderService;
     private final PaymentService paymentService;
     private final ReturnService returnService;
@@ -243,6 +247,40 @@ public class OrderController {
             rateLimitService.enforce("order:slot", userId.toString(),
                     DELIVERY_SLOT_LIMIT, DELIVERY_SLOT_WINDOW_SECONDS);
             return ResponseEntity.ok(orderService.requestSlot(id, userId, request));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @GetMapping("/{id}/shipping-rates")
+    @RequireAuth
+    public ResponseEntity<List<backend.dtos.shipping.ShippingRate>> getShippingRates(@PathVariable UUID id) {
+        try {
+            UUID userId = resolveUserId();
+            // EasyPost lookups cost money — cap calls per user. Fails open on Redis errors.
+            rateLimitService.enforce("order:shipping-rates", userId.toString(),
+                    SHIPPING_RATE_LIMIT, SHIPPING_RATE_WINDOW_SECONDS);
+            return ResponseEntity.ok(orderService.getShippingRates(userId, id));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{id}/shipping-rate")
+    @RequireAuth
+    public ResponseEntity<OrderResponse> confirmShippingRate(
+            @PathVariable UUID id,
+            @Valid @RequestBody backend.dtos.requests.order.ConfirmShippingRateRequest request) {
+        try {
+            UUID userId = resolveUserId();
+            // The server-side rate re-fetch can hit EasyPost on a cache miss — cap it too.
+            rateLimitService.enforce("order:shipping-rate-confirm", userId.toString(),
+                    SHIPPING_RATE_LIMIT, SHIPPING_RATE_WINDOW_SECONDS);
+            return ResponseEntity.ok(orderService.confirmShippingRate(userId, id, request.getRateId()));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

@@ -118,6 +118,8 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         location.setCode(request.getCode().toUpperCase());
         location.setAddress(request.getAddress());
         location.setCity(request.getCity());
+        location.setStateProvince(request.getStateProvince());
+        location.setPostalCode(request.getPostalCode());
         location.setCountry(request.getCountry());
         location.setDisplayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0);
         location.setLatitude(request.getLatitude());
@@ -148,6 +150,8 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         if (request.getName() != null) location.setName(request.getName());
         if (request.getAddress() != null) location.setAddress(request.getAddress());
         if (request.getCity() != null) location.setCity(request.getCity());
+        if (request.getStateProvince() != null) location.setStateProvince(request.getStateProvince());
+        if (request.getPostalCode() != null) location.setPostalCode(request.getPostalCode());
         if (request.getCountry() != null) location.setCountry(request.getCountry());
         if (request.getActive() != null) location.setActive(request.getActive());
         if (request.getDisplayOrder() != null) location.setDisplayOrder(request.getDisplayOrder());
@@ -542,6 +546,8 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 loc.getCode(),
                 loc.getAddress(),
                 loc.getCity(),
+                loc.getStateProvince(),
+                loc.getPostalCode(),
                 loc.getCountry(),
                 loc.isActive(),
                 loc.getDisplayOrder(),

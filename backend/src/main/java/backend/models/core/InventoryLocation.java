@@ -45,6 +45,14 @@ public class InventoryLocation {
     @Column(nullable = true, length = 100)
     private String city;
 
+    /** State / province / region. Used as the origin for carrier rate lookups (Feature 13). */
+    @Column(nullable = true, length = 100)
+    private String stateProvince;
+
+    /** Postal / ZIP code. Carriers need this for accurate origin rating (Feature 13). */
+    @Column(nullable = true, length = 20)
+    private String postalCode;
+
     @Column(nullable = true, length = 100)
     private String country;
 

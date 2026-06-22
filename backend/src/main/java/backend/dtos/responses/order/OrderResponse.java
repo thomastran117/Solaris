@@ -54,6 +54,15 @@ public class OrderResponse {
     // Refund tracking
     private long refundedAmountCents;
     private UUID assignedDriverId;
+    // Shipping rate selection (Feature 13)
+    private String shippingRateId;
+    private String shippingCarrier;
+    private String shippingServiceCode;
+    private String shippingServiceName;
+    private String shippingRateCurrency;
+    private Integer shippingEstimatedDays;
+    private long shippingCostCents;
+    private Instant shippingRateQuotedAt;
     private Instant createdAt;
     private Instant updatedAt;
 }
