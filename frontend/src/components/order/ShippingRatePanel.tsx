@@ -24,13 +24,22 @@ export default function ShippingRatePanel({ order }: Props) {
   const qc = useQueryClient();
   const [selectedRateId, setSelectedRateId] = useState<string | null>(order.shippingRateId);
 
+  // Rates are only meaningful (and only fetchable from the backend) for a RESERVED delivery
+  // order. Guard at the component level so it stays correct regardless of how it's mounted.
+  const rateable = order.status === "RESERVED" && order.fulfillmentMethod === "DELIVERY";
+
   // Separate top-level key (not nested under ["order", id]) so invalidating the order detail
   // query after a confirm does not prefix-match and trigger a redundant rate re-fetch — each
   // refetch spends the per-user rate-limit budget and can cost a billable EasyPost call.
   const ratesQuery = useQuery({
     queryKey: ["shipping-rates", order.id],
     queryFn: () => ordersApi.getShippingRates(order.id).then((r) => r.data),
+    enabled: rateable,
   });
+
+  if (!rateable) {
+    return null;
+  }
 
   const confirm = useMutation({
     mutationFn: (rateId: string) => ordersApi.confirmShippingRate(order.id, rateId).then((r) => r.data),

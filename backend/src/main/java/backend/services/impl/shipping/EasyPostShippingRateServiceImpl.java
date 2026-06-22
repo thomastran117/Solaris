@@ -157,6 +157,8 @@ public class EasyPostShippingRateServiceImpl implements ShippingRateService {
             mapped.add(new ShippingRate(
                     rate.getId(),
                     rate.getCarrier(),
+                    // EasyPost exposes a single `service` token with no separate display name, so we
+                    // intentionally use it for both the human-readable name and the machine code.
                     rate.getService(),
                     rate.getService(),
                     estimatedDays(rate),

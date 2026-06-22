@@ -333,7 +333,13 @@ public class OrderServiceImpl implements OrderService {
 
     private ShippingRateService shippingRateService;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    /**
+     * Required: the {@code @Service} is always present in the running context. Setter injection here
+     * matches this class's established pattern for additional (non-constructor) collaborators, keeping
+     * the already-large constructor manageable. Marked required so a missing bean fails fast at startup
+     * rather than NPE-ing per request.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public void setShippingRateService(ShippingRateService shippingRateService) {
         this.shippingRateService = shippingRateService;
     }

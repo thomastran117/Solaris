@@ -923,8 +923,12 @@ public class EnvironmentSetting {
             return rateCacheTtlSeconds;
         }
 
+        /**
+         * Capped at 900s: EasyPost rate ids expire ~15 min after quoting, so caching a rate id longer
+         * than that would let the confirm path serve an id EasyPost has already invalidated.
+         */
         public void setRateCacheTtlSeconds(long rateCacheTtlSeconds) {
-            this.rateCacheTtlSeconds = Math.max(1, rateCacheTtlSeconds);
+            this.rateCacheTtlSeconds = Math.max(1, Math.min(900, rateCacheTtlSeconds));
         }
 
         public int getConnectTimeoutMs() {
