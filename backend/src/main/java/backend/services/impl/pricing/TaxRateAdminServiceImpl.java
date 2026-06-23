@@ -16,6 +16,7 @@ import backend.exceptions.http.ResourceNotFoundException;
 import backend.models.core.TaxRate;
 import backend.repositories.TaxRateRepository;
 import backend.services.intf.pricing.TaxRateAdminService;
+import backend.services.pricing.TaxJurisdiction;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -46,9 +47,9 @@ public class TaxRateAdminServiceImpl implements TaxRateAdminService {
     @Override
     @Transactional
     public TaxRateResponse createRate(CreateTaxRateRequest request) {
-        String country = normalize(request.getCountry(), 2);
-        String state = normalize(request.getState(), 2);
-        String postalCode = request.getPostalCode() == null ? "" : request.getPostalCode().trim();
+        String country = TaxJurisdiction.iso2(request.getCountry());
+        String state = TaxJurisdiction.iso2(request.getState());
+        String postalCode = TaxJurisdiction.postal(request.getPostalCode());
         validateRate(request.getRate());
 
         if (country.isEmpty()) {
@@ -106,12 +107,6 @@ public class TaxRateAdminServiceImpl implements TaxRateAdminService {
         if (rate == null || rate.signum() < 0 || rate.compareTo(BigDecimal.ONE) >= 0) {
             throw new BadRequestException("rate must be a fraction in [0, 1) — e.g. 0.08875 for 8.875%");
         }
-    }
-
-    private String normalize(String value, int maxLen) {
-        if (value == null) return "";
-        String v = value.trim().toUpperCase();
-        return v.length() > maxLen ? v.substring(0, maxLen) : v;
     }
 
     private TaxRateResponse toResponse(TaxRate t) {

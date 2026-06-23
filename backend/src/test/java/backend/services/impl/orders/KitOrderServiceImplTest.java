@@ -290,7 +290,7 @@ class KitOrderServiceImplTest {
 
         BigDecimal componentPrice = new BigDecimal("200.00");
         PricingResult pricing = simplePricing(0, componentPrice, 1);
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(pricing);
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(pricing);
 
         RiskAssessment savedRisk = new RiskAssessment();
         savedRisk.setId(UUID.randomUUID());

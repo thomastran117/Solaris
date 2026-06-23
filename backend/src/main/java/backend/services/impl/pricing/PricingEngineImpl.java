@@ -96,6 +96,15 @@ public class PricingEngineImpl implements PricingEngine {
     @Override
     @Transactional(readOnly = true)
     public PricingResult quote(CartContext ctx) {
+        ResolvedTaxRate tax = ctx.destination() != null
+                ? taxService.resolve(ctx.destination())
+                : ResolvedTaxRate.none();
+        return quote(ctx, tax);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PricingResult quote(CartContext ctx, ResolvedTaxRate resolvedTax) {
         if (ctx.lines() == null || ctx.lines().isEmpty()) {
             return emptyResult(ctx);
         }
@@ -105,10 +114,8 @@ public class PricingEngineImpl implements PricingEngine {
                 .collect(Collectors.toCollection(HashSet::new));
         List<PromotionRule> candidates = ruleRepository.findActiveCandidates(companyIds, ctx.now());
         Coupon coupon = resolveCoupon(ctx.couponCode());
-        ResolvedTaxRate tax = ctx.destination() != null
-                ? taxService.resolve(ctx.destination())
-                : ResolvedTaxRate.none();
-        return compute(ctx, candidates, coupon, tax);
+        return compute(ctx, candidates, coupon,
+                resolvedTax == null ? ResolvedTaxRate.none() : resolvedTax);
     }
 
     /**

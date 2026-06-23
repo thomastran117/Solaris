@@ -152,6 +152,7 @@ import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
 import backend.services.pricing.ResolvedTaxRate;
 import backend.services.pricing.TaxDestination;
+import backend.services.pricing.TaxJurisdiction;
 import backend.events.order.OrderReservationExpiredEvent;
 import backend.events.order.SseStatusUpdateEvent;
 
@@ -1048,7 +1049,9 @@ public class OrderServiceImpl implements OrderService {
                     null,
                     Instant.now(),
                     taxDestination);
-            PricingResult pricing = pricingEngine.quote(ctx);
+            // Single resolve: pass the already-resolved rate so the engine doesn't query the
+            // jurisdiction table a second time and the snapshot can't drift from the charged amount.
+            PricingResult pricing = pricingEngine.quote(ctx, resolvedTax);
 
             // If a coupon was supplied but the engine couldn't apply it (e.g. minOrderAmount not met
             // against the post-promotion subtotal), surface that as a hard error rather than silently
@@ -1122,10 +1125,15 @@ public class OrderServiceImpl implements OrderService {
                         .max(BigDecimal.ZERO);
             }
 
-            // --- Premium discount: 5% off the entire order for Premium subscribers ---
+            // --- Premium discount: 5% off the order goods for Premium subscribers. Computed on the
+            //     pre-tax amount so the member discount never erodes collected sales tax (booked tax
+            //     would otherwise exceed what the customer paid). Tax stays fully in finalTotal. ---
             long premiumDiscountCents = 0L;
             if (user.getTier() == backend.models.enums.UserTier.PREMIUM) {
-                premiumDiscountCents = finalTotal.multiply(new BigDecimal("0.05"))
+                BigDecimal premiumBase = finalTotal
+                        .subtract(pricing.taxAmount() == null ? BigDecimal.ZERO : pricing.taxAmount())
+                        .max(BigDecimal.ZERO);
+                premiumDiscountCents = premiumBase.multiply(new BigDecimal("0.05"))
                         .setScale(0, RoundingMode.HALF_UP)
                         .longValue();
                 finalTotal = finalTotal.subtract(BigDecimal.valueOf(premiumDiscountCents).movePointLeft(2))
@@ -1162,9 +1170,9 @@ public class OrderServiceImpl implements OrderService {
             order.setTaxSource(pricing.taxSource());
             order.setShippingTaxable(resolvedTax.shippingTaxable());
             order.setTaxRateId(resolvedTax.taxRateId());
-            order.setTaxCountry(normalizeTaxField(taxDestination.country(), 2));
-            order.setTaxState(normalizeTaxField(taxDestination.state(), 2));
-            order.setTaxPostalCode(taxDestination.postalCode() == null ? "" : taxDestination.postalCode().trim());
+            order.setTaxCountry(TaxJurisdiction.iso2(taxDestination.country()));
+            order.setTaxState(TaxJurisdiction.iso2(taxDestination.state()));
+            order.setTaxPostalCode(TaxJurisdiction.postal(taxDestination.postalCode()));
             order.setCurrency(currency);
             order.setStatus(OrderStatus.RESERVED);
             order.setPriorityOrder(user.getTier() == backend.models.enums.UserTier.PREMIUM);
@@ -2335,13 +2343,6 @@ public class OrderServiceImpl implements OrderService {
                 request.getShipPostalCode());
     }
 
-    /** Uppercases, trims, and truncates a tax jurisdiction field to {@code maxLen}; null becomes "". */
-    private String normalizeTaxField(String value, int maxLen) {
-        if (value == null) return "";
-        String v = value.trim().toUpperCase();
-        return v.length() > maxLen ? v.substring(0, maxLen) : v;
-    }
-
     private void reconcileOrderTotal(List<OrderItem> items,
                                      BigDecimal finalTotal,
                                      BigDecimal couponDiscountAmount,
@@ -3027,8 +3028,15 @@ public class OrderServiceImpl implements OrderService {
                 throw new BadRequestException("Selected shipping rate currency does not match the order currency");
             }
 
-            long baseTotalCents = snapshot.oldTotalCents() - snapshot.currentShippingCents();
-            long newTotalCents = baseTotalCents + selected.totalCents();
+            // Strip the current shipping AND its tax to get a clean base (items + item tax − discounts),
+            // then re-add the new shipping with its own tax. Subtracting the prior shipping tax keeps
+            // re-confirmation idempotent rather than compounding tax across repeated rate changes.
+            long priorShippingTaxCents = shippingTaxCents(
+                    snapshot.currentShippingCents(), snapshot.shippingTaxable(), snapshot.taxRate());
+            long baseTotalCents = snapshot.oldTotalCents() - snapshot.currentShippingCents() - priorShippingTaxCents;
+            long newShippingTaxCents = shippingTaxCents(
+                    selected.totalCents(), snapshot.shippingTaxable(), snapshot.taxRate());
+            long newTotalCents = baseTotalCents + selected.totalCents() + newShippingTaxCents;
             boolean hasPaymentIntent = snapshot.paymentIntentId() != null && !snapshot.paymentIntentId().isBlank();
 
             // Update Stripe first so the charge never exceeds the persisted total. If the DB
@@ -3037,7 +3045,8 @@ public class OrderServiceImpl implements OrderService {
                 paymentService.updatePaymentIntentAmount(snapshot.paymentIntentId(), newTotalCents);
             }
             try {
-                return self().applyConfirmedRate(orderId, userId, selected, baseTotalCents, newTotalCents);
+                return self().applyConfirmedRate(orderId, userId, selected, baseTotalCents, newTotalCents,
+                        newShippingTaxCents);
             } catch (Exception ex) {
                 if (hasPaymentIntent) {
                     try {
@@ -3060,6 +3069,8 @@ public class OrderServiceImpl implements OrderService {
             String paymentIntentId,
             long oldTotalCents,
             long currentShippingCents,
+            boolean shippingTaxable,
+            BigDecimal taxRate,
             ShippingRateRequest request) {}
 
     @Transactional(readOnly = true)
@@ -3071,7 +3082,17 @@ public class OrderServiceImpl implements OrderService {
                 order.getPaymentIntentId(),
                 MoneyUtil.toCents(order.getTotalAmount()),
                 order.getShippingCostCents(),
+                order.isShippingTaxable(),
+                order.getTaxRate(),
                 toRateRequest(order));
+    }
+
+    /** Sales tax on a shipping amount (cents), or 0 when the jurisdiction doesn't tax shipping. */
+    private long shippingTaxCents(long shippingCents, boolean shippingTaxable, BigDecimal taxRate) {
+        if (!shippingTaxable || taxRate == null || taxRate.signum() <= 0) {
+            return 0L;
+        }
+        return MoneyUtil.toCents(MoneyUtil.fromCents(shippingCents).multiply(taxRate));
     }
 
     /**
@@ -3082,12 +3103,19 @@ public class OrderServiceImpl implements OrderService {
      */
     @Transactional
     public OrderResponse applyConfirmedRate(UUID orderId, UUID userId, ShippingRate rate,
-                                            long expectedBaseCents, long newTotalCents) {
+                                            long expectedBaseCents, long newTotalCents,
+                                            long newShippingTaxCents) {
         Order order = orderRepository.findByIdAndUserIdWithItems(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
         requireRateableOrder(order);
 
-        long freshBaseCents = MoneyUtil.toCents(order.getTotalAmount()) - order.getShippingCostCents();
+        // Re-derive the clean base from the freshly-read row (under @Version), stripping the prior
+        // shipping and its tax, so a concurrent change can't be stomped.
+        long priorShippingCents = order.getShippingCostCents();
+        long priorShippingTaxCents = shippingTaxCents(
+                priorShippingCents, order.isShippingTaxable(), order.getTaxRate());
+        long freshBaseCents = MoneyUtil.toCents(order.getTotalAmount())
+                - priorShippingCents - priorShippingTaxCents;
         if (freshBaseCents != expectedBaseCents) {
             throw new ConflictException("Order total changed during rate confirmation, please retry");
         }
@@ -3101,6 +3129,19 @@ public class OrderServiceImpl implements OrderService {
         order.setShippingCostCents(rate.totalCents());
         order.setShippingRateQuotedAt(Instant.now());
         order.setTotalAmount(MoneyUtil.fromCents(newTotalCents));
+
+        // Keep the persisted tax in step with the shipping change: swap the prior shipping tax for the
+        // new one in both taxAmount and (when shipping is taxable) the taxable base snapshot.
+        order.setTaxAmount(order.getTaxAmount()
+                .subtract(MoneyUtil.fromCents(priorShippingTaxCents))
+                .add(MoneyUtil.fromCents(newShippingTaxCents))
+                .max(BigDecimal.ZERO));
+        if (order.isShippingTaxable()) {
+            order.setTaxableAmount(order.getTaxableAmount()
+                    .subtract(MoneyUtil.fromCents(priorShippingCents))
+                    .add(MoneyUtil.fromCents(rate.totalCents()))
+                    .max(BigDecimal.ZERO));
+        }
 
         return toResponse(orderRepository.save(order));
     }
@@ -4104,6 +4145,10 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public Order createRenewalOrder(Subscription subscription, String stripeInvoiceId, long amountPaidCents) {
+        // Sales tax (Feature 14) is intentionally not recomputed here: Stripe has already charged
+        // amountPaidCents for this invoice, so the order total is fixed upstream and adding
+        // destination-based tax on top would mismatch the captured amount. Renewal orders therefore
+        // persist taxAmount=0 / taxSource=NONE. Tax-aware subscription invoicing is a follow-up.
         // Idempotency: invoice.paid can be delivered more than once.
         Order existing = orderRepository.findByStripeInvoiceId(stripeInvoiceId).orElse(null);
         if (existing != null) {
@@ -4271,6 +4316,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponse createOrderFromQuote(backend.services.intf.orders.QuoteOrderSpec spec) {
+        // Sales tax (Feature 14) is not applied here: the B2B quote total is the agreed, invoiced
+        // amount, and B2B sales are frequently tax-exempt (resale certificates). These orders persist
+        // taxAmount=0 / taxSource=NONE; jurisdiction-aware B2B tax is a follow-up.
         if (spec.immediate()) {
             // Same two-phase pattern as createOrder: the Stripe call runs outside any transaction.
             OrderReservation reservation;

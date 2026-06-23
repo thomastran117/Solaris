@@ -12,6 +12,7 @@ import backend.services.intf.pricing.TaxService;
 import backend.services.pricing.ResolvedTaxRate;
 import backend.services.pricing.TaxAmounts;
 import backend.services.pricing.TaxDestination;
+import backend.services.pricing.TaxJurisdiction;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -43,9 +44,9 @@ public class TaxServiceImpl implements TaxService {
         if (dest == null || dest.country() == null || dest.country().isBlank()) {
             return ResolvedTaxRate.none();
         }
-        String country = dest.country().trim().toUpperCase();
-        String state = dest.state() == null ? "" : dest.state().trim().toUpperCase();
-        String postalCode = dest.postalCode() == null ? "" : dest.postalCode().trim();
+        String country = TaxJurisdiction.iso2(dest.country());
+        String state = TaxJurisdiction.iso2(dest.state());
+        String postalCode = TaxJurisdiction.postal(dest.postalCode());
 
         List<TaxRate> matches = taxRateRepository.findBestMatch(country, state, postalCode, PageRequest.of(0, 1));
         if (matches.isEmpty()) {
@@ -62,16 +63,21 @@ public class TaxServiceImpl implements TaxService {
         BigDecimal sub = taxableSubtotal == null ? BigDecimal.ZERO : taxableSubtotal;
         BigDecimal ship = shippingAmount == null ? BigDecimal.ZERO : shippingAmount;
 
-        if (r.rate() == null || r.rate().signum() <= 0) {
-            return TaxAmounts.zero(r.source());
-        }
+        // Always record the taxable base, even for a zero-rate jurisdiction (e.g. Oregon), so the
+        // persisted snapshot shows what a 0% rate was applied to rather than collapsing to zero.
         BigDecimal taxable = sub;
         if (r.shippingTaxable()) {
             taxable = taxable.add(ship);
         }
         taxable = taxable.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal tax = taxable.multiply(r.rate()).setScale(2, RoundingMode.HALF_UP);
-        return new TaxAmounts(taxable, r.rate(), tax, r.source(), r.taxRateId());
+
+        BigDecimal effectiveRate = r.rate() == null ? BigDecimal.ZERO : r.rate();
+        if (effectiveRate.signum() <= 0) {
+            return new TaxAmounts(taxable, BigDecimal.ZERO,
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), r.source(), r.taxRateId());
+        }
+        BigDecimal tax = taxable.multiply(effectiveRate).setScale(2, RoundingMode.HALF_UP);
+        return new TaxAmounts(taxable, effectiveRate, tax, r.source(), r.taxRateId());
     }
 
     /** Determines which jurisdiction granularity the matched row represents. */

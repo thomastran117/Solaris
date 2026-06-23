@@ -134,11 +134,12 @@ class TaxServiceImplTest {
     }
 
     @Test
-    void compute_zeroRate_returnsZeroTaxKeepingSource() {
-        ResolvedTaxRate rate = new ResolvedTaxRate(BigDecimal.ZERO, false, TaxSource.COUNTRY_DEFAULT, null);
+    void compute_zeroRate_returnsZeroTaxButPreservesTaxableBaseAndSource() {
+        ResolvedTaxRate rate = new ResolvedTaxRate(BigDecimal.ZERO, false, TaxSource.STATE_DEFAULT, null);
         TaxAmounts t = service().compute(new BigDecimal("100.00"), BigDecimal.ZERO, rate);
         assertEquals(0, t.taxAmount().compareTo(BigDecimal.ZERO));
-        assertEquals(TaxSource.COUNTRY_DEFAULT, t.source());
+        assertEquals(new BigDecimal("100.00"), t.taxableAmount());
+        assertEquals(TaxSource.STATE_DEFAULT, t.source());
     }
 
     @Test

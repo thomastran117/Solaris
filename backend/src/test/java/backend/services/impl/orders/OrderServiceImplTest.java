@@ -1312,7 +1312,7 @@ class OrderServiceImplTest {
 
     /** Stubs pricingEngine.quote() to return a zero-price result. */
     private void stubPricingSuccess() {
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                         null, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -1448,7 +1448,7 @@ class OrderServiceImplTest {
         backend.services.pricing.LineBreakdown lb = new backend.services.pricing.LineBreakdown(
                 0, PRODUCT_ID, null, 1, new BigDecimal("50.00"), BigDecimal.ZERO,
                 new BigDecimal("50.00"), List.of(), null);
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(
                 new PricingResult(List.of(lb), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
                         null, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -1858,7 +1858,7 @@ class OrderServiceImplTest {
         when(couponRepository.tryIncrementUsedCount(any(), any(), any())).thenReturn(1);
         stubLockSuccess();
         // Pricing returns the coupon code as applied
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, new BigDecimal("5.00"),
                         "SAVE10", BigDecimal.ZERO, BigDecimal.ZERO,
@@ -1891,7 +1891,7 @@ class OrderServiceImplTest {
         stubLockSuccess();
         stubPricingSuccess(); // finalTotal = 0 from pricing, loyalty would make it go to 0 too
         // Override pricing to return non-zero so loyalty has something to deduct
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
                         null, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -1925,7 +1925,7 @@ class OrderServiceImplTest {
         when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
         when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
         stubLockSuccess();
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
                         null, BigDecimal.ZERO, BigDecimal.ZERO,
