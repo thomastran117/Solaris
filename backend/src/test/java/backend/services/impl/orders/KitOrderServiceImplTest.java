@@ -139,6 +139,7 @@ class KitOrderServiceImplTest {
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 pricingEngine,
+                new backend.services.impl.pricing.TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new java.math.BigDecimal("0.00"), false),
                 paymentService,
                 cacheService,
                 mock(StockAlertService.class),
@@ -415,6 +416,8 @@ class KitOrderServiceImplTest {
                 index, null, null, quantity, unitPrice, BigDecimal.ZERO, total, List.of(), null);
         return new PricingResult(
                 List.of(lb), List.of(), total, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, BigDecimal.ZERO, BigDecimal.ZERO, total, List.of());
+                null, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                total, List.of());
     }
 }

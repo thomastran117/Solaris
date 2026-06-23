@@ -86,6 +86,13 @@ public class OrderItem {
     @Column(name = "applied_rule_ids", nullable = true, length = 500)
     private String appliedRuleIdsCsv;
 
+    /**
+     * Sales tax attributed to this line (line-total, not per-unit). Allocated proportionally from the
+     * order tax across lines so {@code sum(items.taxAmount) == order.taxAmount}. Zero when no tax applied.
+     */
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Column(nullable = false, length = 255)
     private String productName;
 

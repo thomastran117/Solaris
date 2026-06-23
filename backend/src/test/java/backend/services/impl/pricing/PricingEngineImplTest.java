@@ -23,6 +23,8 @@ import backend.services.pricing.CartContext;
 import backend.services.pricing.CartLine;
 import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
+import backend.services.pricing.ResolvedTaxRate;
+import backend.models.enums.TaxSource;
 import backend.services.pricing.config.PromotionConfigValidator;
 import backend.services.pricing.evaluators.BogoEvaluator;
 import backend.services.pricing.evaluators.FixedOffEvaluator;
@@ -67,6 +69,7 @@ class PricingEngineImplTest {
                 mock(CouponRepository.class),
                 configValidator,
                 mock(PromotionPerUserCountRepository.class),
+                new TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new BigDecimal("0.00"), false),
                 evaluators);
         ruleCounter = 1;
     }
@@ -697,5 +700,66 @@ class PricingEngineImplTest {
         assertEquals(bd("0.00"), r.subtotal());
         assertEquals(bd("5.99"), r.shippingAmount());
         assertEquals(bd("5.99"), r.finalTotal());
+    }
+
+    // -------------------- sales tax --------------------
+
+    private static ResolvedTaxRate rate(String r, boolean shippingTaxable, TaxSource source) {
+        return new ResolvedTaxRate(new BigDecimal(r), shippingTaxable, source, null);
+    }
+
+    @Test
+    void tax_appliedOnSubtotal_addedToFinalTotal() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        PricingResult r = engine.compute(ctx, List.of(), null, rate("0.10", false, TaxSource.STATE_DEFAULT));
+        assertEquals(bd("100.00"), r.taxableAmount());
+        assertEquals(bd("10.00"), r.taxAmount());
+        assertEquals(TaxSource.STATE_DEFAULT, r.taxSource());
+        assertEquals(bd("110.00"), r.finalTotal());
+    }
+
+    @Test
+    void tax_appliedOnPostPromotionPostCouponSubtotal() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        PromotionRule promo = percentageRule("10", null, "ORDER", false, 100);
+        Coupon c = coupon("SAVE10", DiscountType.PERCENTAGE, "10.00", null);
+        // subtotal 100 → -10 promo → 90 → -9 coupon → 81 taxable → tax 8.10 → final 89.10
+        PricingResult r = engine.compute(ctx, List.of(promo), c, rate("0.10", false, TaxSource.STATE_DEFAULT));
+        assertEquals(bd("81.00"), r.taxableAmount());
+        assertEquals(bd("8.10"), r.taxAmount());
+        assertEquals(bd("89.10"), r.finalTotal());
+    }
+
+    @Test
+    void tax_shippingTaxedOnlyWhenShippingTaxable() {
+        CartContext taxed = contextWithShipping(List.of(line(0, 1, 1, "50.00")), null, Set.of(), "10.00");
+        PricingResult withShipTax = engine.compute(taxed, List.of(), null, rate("0.10", true, TaxSource.STATE_DEFAULT));
+        assertEquals(bd("60.00"), withShipTax.taxableAmount());
+        assertEquals(bd("6.00"), withShipTax.taxAmount());
+        assertEquals(bd("66.00"), withShipTax.finalTotal());
+
+        PricingResult noShipTax = engine.compute(taxed, List.of(), null, rate("0.10", false, TaxSource.STATE_DEFAULT));
+        assertEquals(bd("50.00"), noShipTax.taxableAmount());
+        assertEquals(bd("5.00"), noShipTax.taxAmount());
+        // shipping still charged, just not taxed: 50 + 10 + 5
+        assertEquals(bd("65.00"), noShipTax.finalTotal());
+    }
+
+    @Test
+    void tax_noDestination_quoteReturnsZeroTaxAndNoneSource() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "100.00")), null, Set.of());
+        PricingResult r = engine.quote(ctx); // ctx.destination() == null
+        assertEquals(bd("0.00"), r.taxAmount());
+        assertEquals(TaxSource.NONE, r.taxSource());
+        assertEquals(bd("100.00"), r.finalTotal());
+    }
+
+    @Test
+    void tax_roundsHalfUp() {
+        CartContext ctx = context(List.of(line(0, 1, 1, "33.33")), null, Set.of());
+        // 33.33 * 0.08875 = 2.9580... → 2.96
+        PricingResult r = engine.compute(ctx, List.of(), null, rate("0.08875", false, TaxSource.DESTINATION_MATCH));
+        assertEquals(bd("2.96"), r.taxAmount());
+        assertEquals(bd("36.29"), r.finalTotal());
     }
 }

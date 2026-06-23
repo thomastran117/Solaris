@@ -29,5 +29,6 @@ public class OrderItemResponse {
     private String kitName;
     private List<KitSelectionResponse> kitSelections;
     private BigDecimal discountAmount;
+    private BigDecimal taxAmount;
     private FulfillmentMethod fulfillmentMethod;
 }

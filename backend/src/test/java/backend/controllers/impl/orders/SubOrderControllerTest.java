@@ -199,6 +199,7 @@ class SubOrderControllerTest {
                         null,
                         null,
                         BigDecimal.ZERO,
+                        BigDecimal.ZERO,
                         FulfillmentMethod.DELIVERY
                 ))
         );

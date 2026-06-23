@@ -233,6 +233,7 @@ class CompanyOrderControllerTest {
                         null,
                         null,
                         BigDecimal.ZERO,
+                        BigDecimal.ZERO,
                         FulfillmentMethod.DELIVERY
                 )),
                 "DELIVERY",
@@ -315,6 +316,10 @@ class CompanyOrderControllerTest {
                 "secret",
                 null,
                 BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "NONE",
                 "DELIVERY",
                 null,
                 null,

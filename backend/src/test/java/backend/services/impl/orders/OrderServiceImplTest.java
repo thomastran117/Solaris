@@ -215,6 +215,7 @@ class OrderServiceImplTest {
                 promotionRuleRepository,
                 promotionRedemptionRepository,
                 pricingEngine,
+                new backend.services.impl.pricing.TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new java.math.BigDecimal("0.00"), false),
                 paymentService,
                 cacheService,
                 mock(StockAlertService.class),
@@ -1314,7 +1315,9 @@ class OrderServiceImplTest {
         when(pricingEngine.quote(any(CartContext.class))).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                        BigDecimal.ZERO,
                         List.of()));
     }
 
@@ -1433,6 +1436,49 @@ class OrderServiceImplTest {
         assertNotNull(resp);
         verify(orderRepository, atLeast(2)).save(any(Order.class));
         verify(paymentService).createPaymentIntent(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void createOrder_withTax_persistsTaxFieldsAndAllocatesPerLine() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+        // Pricing returns a taxed result for a single $50 line: taxable 50, rate 0.10, tax 5.00.
+        backend.services.pricing.LineBreakdown lb = new backend.services.pricing.LineBreakdown(
+                0, PRODUCT_ID, null, 1, new BigDecimal("50.00"), BigDecimal.ZERO,
+                new BigDecimal("50.00"), List.of(), null);
+        when(pricingEngine.quote(any(CartContext.class))).thenReturn(
+                new PricingResult(List.of(lb), List.of(),
+                        new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("50.00"), new BigDecimal("0.10"), new BigDecimal("5.00"),
+                        backend.models.enums.TaxSource.STATE_DEFAULT,
+                        new BigDecimal("55.00"),
+                        List.of()));
+        stubRiskAllow();
+        stubPaymentSuccess();
+        ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
+        when(orderRepository.save(saved.capture())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        service.createOrder(USER_ID, deliveryRequest(PRODUCT_ID, 1));
+
+        Order order = saved.getAllValues().get(0);
+        assertEquals(new BigDecimal("5.00"), order.getTaxAmount());
+        assertEquals(new BigDecimal("50.00"), order.getTaxableAmount());
+        assertEquals(new BigDecimal("0.10"), order.getTaxRate());
+        assertEquals(backend.models.enums.TaxSource.STATE_DEFAULT, order.getTaxSource());
+        assertEquals("CA", order.getTaxCountry());
+        assertEquals("", order.getTaxState());
+        // Per-line tax sums to the order tax.
+        BigDecimal lineTaxSum = order.getItems().stream()
+                .map(OrderItem::getTaxAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, lineTaxSum.compareTo(new BigDecimal("5.00")));
     }
 
     @Test
@@ -1815,7 +1861,9 @@ class OrderServiceImplTest {
         when(pricingEngine.quote(any(CartContext.class))).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, new BigDecimal("5.00"),
-                        "SAVE10", BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("45.00"),
+                        "SAVE10", BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                        new BigDecimal("45.00"),
                         List.of()));
         stubRiskAllow();
         stubPaymentSuccess();
@@ -1846,7 +1894,9 @@ class OrderServiceImplTest {
         when(pricingEngine.quote(any(CartContext.class))).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
-                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        null, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                        new BigDecimal("50.00"),
                         List.of()));
 
         LoyaltyRedemptionQuoteResponse quote = new LoyaltyRedemptionQuoteResponse(
@@ -1878,7 +1928,9 @@ class OrderServiceImplTest {
         when(pricingEngine.quote(any(CartContext.class))).thenReturn(
                 new PricingResult(List.of(), List.of(),
                         new BigDecimal("50.00"), BigDecimal.ZERO, BigDecimal.ZERO,
-                        null, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50.00"),
+                        null, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                        new BigDecimal("50.00"),
                         List.of()));
 
         LoyaltyRedemptionQuoteResponse invalidQuote = new LoyaltyRedemptionQuoteResponse(

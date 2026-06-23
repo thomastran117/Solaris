@@ -20,9 +20,13 @@ import backend.services.pricing.CartLine;
 import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
 import backend.services.pricing.WorkingLine;
+import backend.services.intf.pricing.TaxService;
+import backend.services.pricing.ResolvedTaxRate;
+import backend.services.pricing.TaxAmounts;
 import backend.services.pricing.config.FreeShippingConfig;
 import backend.services.pricing.config.PromotionConfigValidator;
 import backend.services.pricing.evaluators.RuleEvaluator;
+import backend.utils.MoneyUtil;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -65,6 +69,7 @@ public class PricingEngineImpl implements PricingEngine {
     private final CouponRepository couponRepository;
     private final PromotionConfigValidator configValidator;
     private final PromotionPerUserCountRepository promotionPerUserCountRepository;
+    private final TaxService taxService;
     private final Map<backend.models.enums.PromotionRuleType, RuleEvaluator> evaluators;
 
     public PricingEngineImpl(
@@ -72,11 +77,13 @@ public class PricingEngineImpl implements PricingEngine {
             CouponRepository couponRepository,
             PromotionConfigValidator configValidator,
             PromotionPerUserCountRepository promotionPerUserCountRepository,
+            TaxService taxService,
             List<RuleEvaluator> evaluatorList) {
         this.ruleRepository = ruleRepository;
         this.couponRepository = couponRepository;
         this.configValidator = configValidator;
         this.promotionPerUserCountRepository = promotionPerUserCountRepository;
+        this.taxService = taxService;
 
         Map<backend.models.enums.PromotionRuleType, RuleEvaluator> map =
                 new EnumMap<>(backend.models.enums.PromotionRuleType.class);
@@ -98,14 +105,25 @@ public class PricingEngineImpl implements PricingEngine {
                 .collect(Collectors.toCollection(HashSet::new));
         List<PromotionRule> candidates = ruleRepository.findActiveCandidates(companyIds, ctx.now());
         Coupon coupon = resolveCoupon(ctx.couponCode());
-        return compute(ctx, candidates, coupon);
+        ResolvedTaxRate tax = ctx.destination() != null
+                ? taxService.resolve(ctx.destination())
+                : ResolvedTaxRate.none();
+        return compute(ctx, candidates, coupon, tax);
+    }
+
+    /**
+     * Package-private no-tax overload used by tests that bypass the repository and don't exercise tax.
+     */
+    PricingResult compute(CartContext ctx, Collection<PromotionRule> candidateRules, Coupon coupon) {
+        return compute(ctx, candidateRules, coupon, ResolvedTaxRate.none());
     }
 
     /**
      * Package-private entry point used by tests to bypass the repository. The real
-     * {@link #quote(CartContext)} delegates here after loading rules + coupon.
+     * {@link #quote(CartContext)} delegates here after loading rules + coupon + the resolved tax rate.
      */
-    PricingResult compute(CartContext ctx, Collection<PromotionRule> candidateRules, Coupon coupon) {
+    PricingResult compute(CartContext ctx, Collection<PromotionRule> candidateRules, Coupon coupon,
+                          ResolvedTaxRate resolvedTax) {
         List<String> warnings = new ArrayList<>();
 
         List<WorkingLine> lines = new ArrayList<>(ctx.lines().size());
@@ -183,11 +201,19 @@ public class PricingEngineImpl implements PricingEngine {
             }
         }
 
-        BigDecimal finalTotal = subtotal
+        BigDecimal postDiscountSubtotal = subtotal
                 .subtract(promotionSavings)
                 .subtract(couponSavings)
                 .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        // Tax applies to the post-discount item subtotal (+ taxable shipping). Loyalty/Premium/credit
+        // are applied later by the order flow as post-tax tender, so they don't reduce the tax base here.
+        TaxAmounts tax = taxService.compute(postDiscountSubtotal, remainingShipping, resolvedTax);
+
+        BigDecimal finalTotal = postDiscountSubtotal
                 .add(remainingShipping)
+                .add(tax.taxAmount())
                 .setScale(2, RoundingMode.HALF_UP);
 
         List<LineBreakdown> breakdowns = lines.stream().map(WorkingLine::toBreakdown).toList();
@@ -200,6 +226,10 @@ public class PricingEngineImpl implements PricingEngine {
                 appliedCouponCode,
                 remainingShipping,
                 shippingSavings.setScale(2, RoundingMode.HALF_UP),
+                tax.taxableAmount(),
+                tax.taxRate(),
+                tax.taxAmount(),
+                tax.source(),
                 finalTotal,
                 List.copyOf(warnings));
     }
@@ -369,27 +399,19 @@ public class PricingEngineImpl implements PricingEngine {
                 .setScale(2, RoundingMode.HALF_UP);
         if (saving.signum() <= 0) return CouponOutcome.none();
 
-        // Distribute saving across lines proportional to remaining; last line absorbs rounding.
-        BigDecimal pool = lines.stream()
-                .map(WorkingLine::remaining)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (pool.signum() > 0) {
+        // Distribute saving across lines proportional to remaining (shared allocator: last line absorbs
+        // rounding). Each share is then capped at the line's remaining via applySavings, so the actual
+        // committed total — not the nominal share sum — is the recorded coupon saving.
+        List<BigDecimal> weights = lines.stream().map(WorkingLine::remaining).toList();
+        List<BigDecimal> shares = MoneyUtil.allocateProportionally(saving, weights);
+        if (!shares.isEmpty()) {
             BigDecimal taken = BigDecimal.ZERO;
-            int lastIdx = lines.size() - 1;
-            for (int i = 0; i <= lastIdx; i++) {
-                WorkingLine line = lines.get(i);
-                BigDecimal share;
-                if (i == lastIdx) {
-                    share = saving.subtract(taken);
-                } else {
-                    share = saving.multiply(line.remaining())
-                            .divide(pool, 2, RoundingMode.HALF_UP);
-                }
+            for (int i = 0; i < lines.size(); i++) {
+                BigDecimal share = shares.get(i);
                 if (share.signum() > 0) {
-                    taken = taken.add(line.applySavings(null, share));
+                    taken = taken.add(lines.get(i).applySavings(null, share));
                 }
             }
-            // if any rounding left uncommitted (cap), use actual taken
             saving = taken.setScale(2, RoundingMode.HALF_UP);
         }
         return new CouponOutcome(saving);
@@ -401,7 +423,9 @@ public class PricingEngineImpl implements PricingEngine {
                 ? ctx.shippingAmount().setScale(2, RoundingMode.HALF_UP)
                 : zero;
         return new PricingResult(
-                List.of(), List.of(), zero, zero, zero, null, shipping, zero, shipping, List.of());
+                List.of(), List.of(), zero, zero, zero, null, shipping, zero,
+                zero, BigDecimal.ZERO, zero, backend.models.enums.TaxSource.NONE,
+                shipping, List.of());
     }
 
     private record CouponOutcome(BigDecimal saving) {

@@ -131,6 +131,7 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                         null,
                         null,
                         i.getDiscountAmount(),
+                        i.getTaxAmount(),
                         i.getFulfillmentMethod()))
                 .toList();
 
@@ -145,6 +146,10 @@ public class ReplacementOrderServiceImpl implements ReplacementOrderService {
                 null,
                 order.getCouponCode(),
                 order.getCouponDiscountAmount(),
+                order.getTaxAmount(),
+                order.getTaxableAmount(),
+                order.getTaxRate(),
+                order.getTaxSource() != null ? order.getTaxSource().name() : null,
                 order.getFulfillmentMethod() != null ? order.getFulfillmentMethod().name() : FulfillmentMethod.DELIVERY.name(),
                 order.getPickupLocationName(),
                 order.getPickupReadyAt(),

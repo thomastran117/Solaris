@@ -97,6 +97,7 @@ class OrderServiceRiskReviewScopeTest {
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 mock(PricingEngine.class),
+                new backend.services.impl.pricing.TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new java.math.BigDecimal("0.00"), false),
                 paymentService,
                 mock(CacheService.class),
                 mock(StockAlertService.class),

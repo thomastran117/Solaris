@@ -237,6 +237,7 @@ public class SubOrderServiceImpl implements SubOrderService {
                 i.getKitName(),
                 null,
                 i.getDiscountAmount(),
+                i.getTaxAmount(),
                 i.getFulfillmentMethod()
         );
     }

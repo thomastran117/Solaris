@@ -37,6 +37,18 @@ public class PricingQuoteRequest {
     private String currency;
     private BigDecimal shippingAmount;
 
+    // Optional tax destination. When omitted, the quote returns zero tax (taxSource=NONE) — a preview
+    // must not show an estimated tax. When supplied, tax is computed for that jurisdiction.
+    @Size(max = 2, message = "destinationCountry must be a 2-letter ISO code")
+    private String destinationCountry;
+
+    @Size(max = 2, message = "destinationState must be a 2-letter code")
+    private String destinationState;
+
+    @SafeIdentifier
+    @Size(max = 20)
+    private String destinationPostalCode;
+
     @Getter
     @Setter
     @NoArgsConstructor
