@@ -3131,7 +3131,9 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(MoneyUtil.fromCents(newTotalCents));
 
         // Keep the persisted tax in step with the shipping change: swap the prior shipping tax for the
-        // new one in both taxAmount and (when shipping is taxable) the taxable base snapshot.
+        // new one in both taxAmount and (when shipping is taxable) the taxable base snapshot. This is an
+        // order-level adjustment only — shipping is not an OrderItem, so per-line item taxAmount is left
+        // untouched (see OrderItem.taxAmount: order.taxAmount == sum(items.taxAmount) + shippingTax).
         order.setTaxAmount(order.getTaxAmount()
                 .subtract(MoneyUtil.fromCents(priorShippingTaxCents))
                 .add(MoneyUtil.fromCents(newShippingTaxCents))
