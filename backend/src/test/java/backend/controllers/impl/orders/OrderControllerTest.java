@@ -319,6 +319,7 @@ class OrderControllerTest {
                         null,
                         null,
                         BigDecimal.ZERO,
+                        BigDecimal.ZERO,
                         FulfillmentMethod.DELIVERY
                 )),
                 new BigDecimal("19.99"),
@@ -328,6 +329,10 @@ class OrderControllerTest {
                 "secret",
                 null,
                 BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "NONE",
                 "DELIVERY",
                 null,
                 null,

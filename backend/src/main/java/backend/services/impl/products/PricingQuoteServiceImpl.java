@@ -26,6 +26,7 @@ import backend.services.pricing.CartContext;
 import backend.services.pricing.CartLine;
 import backend.services.pricing.LineBreakdown;
 import backend.services.pricing.PricingResult;
+import backend.services.pricing.TaxDestination;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -114,6 +115,13 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
                 : Set.of();
 
         String currency = request.getCurrency() != null ? request.getCurrency() : "USD";
+        // Tax destination is optional in a preview. Only build one when a country is supplied;
+        // otherwise the engine returns zero tax (taxSource=NONE) rather than an estimate.
+        TaxDestination destination = (request.getDestinationCountry() != null
+                && !request.getDestinationCountry().isBlank())
+                ? new TaxDestination(request.getDestinationCountry(), request.getDestinationState(),
+                        request.getDestinationPostalCode())
+                : null;
         CartContext ctx = new CartContext(
                 cartLines,
                 userId,
@@ -121,7 +129,8 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
                 currency,
                 request.getCouponCode(),
                 request.getShippingAmount(),
-                Instant.now());
+                Instant.now(),
+                destination);
 
         PricingResult result = pricingEngine.quote(ctx);
         return toResponse(result, currency);
@@ -155,6 +164,10 @@ public class PricingQuoteServiceImpl implements PricingQuoteService {
                 r.appliedCouponCode(),
                 r.shippingAmount(),
                 r.shippingSavings(),
+                r.taxableAmount(),
+                r.taxRate(),
+                r.taxAmount(),
+                r.taxSource(),
                 r.finalTotal(),
                 currency,
                 r.warnings());

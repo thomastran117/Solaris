@@ -23,6 +23,11 @@ public class OrderResponse {
     private String paymentClientSecret;
     private String couponCode;
     private BigDecimal couponDiscountAmount;
+    // Sales tax
+    private BigDecimal taxAmount;
+    private BigDecimal taxableAmount;
+    private BigDecimal taxRate;
+    private String taxSource;
     // Fulfillment method
     private String fulfillmentMethod;
     // Pickup fields (PICKUP orders)

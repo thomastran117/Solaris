@@ -286,7 +286,9 @@ class PricingQuoteServiceImplTest {
         return new PricingResult(
                 List.of(), List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                BigDecimal.ZERO,
                 List.of());
     }
 }

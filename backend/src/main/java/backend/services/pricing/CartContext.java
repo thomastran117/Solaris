@@ -18,6 +18,7 @@ import java.util.Set;
  * @param couponCode      optional redemption code — applied after rule pass
  * @param shippingAmount  pre-discount shipping cost; null treated as zero
  * @param now             evaluation time for time-window filtering
+ * @param destination     tax destination (ship-to / pickup state); null = no tax computed
  */
 public record CartContext(
         List<CartLine> lines,
@@ -26,5 +27,18 @@ public record CartContext(
         String currency,
         String couponCode,
         BigDecimal shippingAmount,
-        Instant now
-) {}
+        Instant now,
+        TaxDestination destination
+) {
+    /** Backwards-compatible constructor for callers that don't supply a tax destination (no tax). */
+    public CartContext(
+            List<CartLine> lines,
+            UUID userId,
+            Set<UUID> userSegmentIds,
+            String currency,
+            String couponCode,
+            BigDecimal shippingAmount,
+            Instant now) {
+        this(lines, userId, userSegmentIds, currency, couponCode, shippingAmount, now, null);
+    }
+}

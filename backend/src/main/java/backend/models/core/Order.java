@@ -95,6 +95,49 @@ public class Order {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal promotionSavings = BigDecimal.ZERO;
 
+    // -------------------------------------------------------------------------
+    // Sales tax (Feature 14) — destination-based, snapshotted at order time.
+    // The jurisdiction snapshot is authoritative: an admin can edit/delete the
+    // TaxRate row later, so taxRateId alone is not enough to explain the charge.
+    // -------------------------------------------------------------------------
+
+    /** Sales tax charged on this order, in major units. Zero when no tax applied. */
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
+    /** Base the tax was applied to (post-discount subtotal + taxable shipping). */
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal taxableAmount = BigDecimal.ZERO;
+
+    /** Fractional rate applied (e.g. 0.08875). Zero when no tax applied. */
+    @Column(nullable = false, precision = 6, scale = 5)
+    private BigDecimal taxRate = BigDecimal.ZERO;
+
+    /** Destination country used for the tax decision (snapshot). Empty when no tax computed. */
+    @Column(nullable = false, length = 2)
+    private String taxCountry = "";
+
+    /** Destination state used for the tax decision (snapshot). Empty for country-level/no tax. */
+    @Column(nullable = false, length = 2)
+    private String taxState = "";
+
+    /** Destination postal code used for the tax decision (snapshot). Empty unless a ZIP rate matched. */
+    @Column(name = "tax_postal_code", nullable = false, length = 20)
+    private String taxPostalCode = "";
+
+    /** Whether shipping was taxed for this order (snapshot of the jurisdiction flag). */
+    @Column(name = "shipping_taxable", nullable = false)
+    private boolean shippingTaxable = false;
+
+    /** Why the rate was chosen — DESTINATION_MATCH / STATE_DEFAULT / COUNTRY_DEFAULT / CONFIG_FALLBACK / NONE. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private backend.models.enums.TaxSource taxSource = backend.models.enums.TaxSource.NONE;
+
+    /** Loose FK to {@code tax_rates.id} of the matched row, for traceability. Null for fallback/none. */
+    @Column(name = "tax_rate_id", nullable = true, columnDefinition = "BINARY(16)")
+    private java.util.UUID taxRateId;
+
     @Column(nullable = false, length = 3)
     private String currency = "USD";
 

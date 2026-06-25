@@ -86,6 +86,19 @@ public class OrderItem {
     @Column(name = "applied_rule_ids", nullable = true, length = 500)
     private String appliedRuleIdsCsv;
 
+    /**
+     * Item-level sales tax attributed to this line (line-total, not per-unit), allocated proportionally
+     * from the order's item tax across lines. Zero when no tax applied.
+     *
+     * <p>Invariant: {@code sum(items.taxAmount)} equals the <em>item</em> portion of
+     * {@code order.taxAmount}. Shipping tax is tracked only at the order level (added to
+     * {@code order.taxAmount} when a rate is confirmed) and is intentionally not re-allocated to lines,
+     * since shipping is not an order item — so once a shipping-taxable order confirms a rate,
+     * {@code order.taxAmount == sum(items.taxAmount) + shippingTax}.
+     */
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Column(nullable = false, length = 255)
     private String productName;
 

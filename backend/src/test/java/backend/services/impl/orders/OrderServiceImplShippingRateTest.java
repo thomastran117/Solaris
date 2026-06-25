@@ -120,6 +120,7 @@ class OrderServiceImplShippingRateTest {
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 mock(PricingEngine.class),
+                new backend.services.impl.pricing.TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new java.math.BigDecimal("0.00"), false),
                 paymentService,
                 cacheService,
                 mock(StockAlertService.class),
@@ -212,6 +213,27 @@ class OrderServiceImplShippingRateTest {
         assertEquals(0, new BigDecimal("27.99").compareTo(response.getTotalAmount()));
         assertEquals(799, response.getShippingCostCents());
         verify(paymentService).updatePaymentIntentAmount(PI, 2799);
+    }
+
+    @Test
+    void confirmShippingRate_taxableJurisdiction_addsShippingTaxToTotalAndTaxAmount() {
+        // Order in a shipping-taxable jurisdiction (10%): base 20.00, no prior shipping.
+        Order order = reservedOrder(new BigDecimal("20.00"), 0);
+        order.setShippingTaxable(true);
+        order.setTaxRate(new BigDecimal("0.10"));
+        order.setTaxAmount(BigDecimal.ZERO);
+        order.setTaxableAmount(BigDecimal.ZERO);
+        when(orderRepository.findByIdAndUserIdWithItems(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+        when(shippingRateService.getRates(any())).thenReturn(RATES);
+        // rate_2 = 599 cents; shipping tax = round(5.99 * 0.10) = 0.60; new total = 20.00 + 5.99 + 0.60 = 26.59
+        when(paymentService.updatePaymentIntentAmount(eq(PI), anyLong()))
+                .thenReturn(new PaymentIntentResult(PI, "secret", 2659, "usd", "requires_payment_method", null));
+
+        OrderResponse response = service.confirmShippingRate(USER_ID, ORDER_ID, "rate_2");
+
+        assertEquals(0, new BigDecimal("26.59").compareTo(response.getTotalAmount()));
+        assertEquals(0, new BigDecimal("0.60").compareTo(response.getTaxAmount()));
+        verify(paymentService).updatePaymentIntentAmount(PI, 2659);
     }
 
     @Test

@@ -153,6 +153,10 @@ class PricingControllerTest {
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                backend.models.enums.TaxSource.NONE,
                 new BigDecimal("39.98"),
                 "USD",
                 List.of()

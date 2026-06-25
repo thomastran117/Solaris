@@ -139,6 +139,7 @@ class KitOrderServiceImplTest {
                 mock(PromotionRuleRepository.class),
                 mock(PromotionRedemptionRepository.class),
                 pricingEngine,
+                new backend.services.impl.pricing.TaxServiceImpl(mock(backend.repositories.TaxRateRepository.class), new java.math.BigDecimal("0.00"), false),
                 paymentService,
                 cacheService,
                 mock(StockAlertService.class),
@@ -289,7 +290,7 @@ class KitOrderServiceImplTest {
 
         BigDecimal componentPrice = new BigDecimal("200.00");
         PricingResult pricing = simplePricing(0, componentPrice, 1);
-        when(pricingEngine.quote(any(CartContext.class))).thenReturn(pricing);
+        when(pricingEngine.quote(any(CartContext.class), any())).thenReturn(pricing);
 
         RiskAssessment savedRisk = new RiskAssessment();
         savedRisk.setId(UUID.randomUUID());
@@ -400,6 +401,7 @@ class KitOrderServiceImplTest {
         req.setShipRecipientName("Jane Doe");
         req.setShipStreet("1 Market St");
         req.setShipCity("San Francisco");
+        req.setShipState("CA");
         req.setShipPostalCode("94105");
         req.setShipCountry("US");
         return req;
@@ -415,6 +417,8 @@ class KitOrderServiceImplTest {
                 index, null, null, quantity, unitPrice, BigDecimal.ZERO, total, List.of(), null);
         return new PricingResult(
                 List.of(lb), List.of(), total, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, BigDecimal.ZERO, BigDecimal.ZERO, total, List.of());
+                null, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, backend.models.enums.TaxSource.NONE,
+                total, List.of());
     }
 }
