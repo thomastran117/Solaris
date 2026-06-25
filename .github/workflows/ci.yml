@@ -62,7 +62,7 @@ jobs:
             tests: BundleIT,ProductQAIT,ProductBatchIT,ReviewIT,PromotionRuleIT,KitIT,PriceWatchIT,UploadIT,PricingIT,GiftCardIT,PremiumIT,UserPreferenceIT
           - shard: 3
             name: marketplace-catalog
-            tests: MarketplaceAnalyticsIT,MarketplaceCatalogControllerIT,MarketplaceIT,MarketplaceCollectionIT,CommissionPolicyIT,CollectionIT,ImportIT
+            tests: MarketplaceAnalyticsIT,MarketplaceCatalogControllerIT,ProductComparisonIT,MarketplaceIT,MarketplaceCollectionIT,CommissionPolicyIT,CollectionIT,ImportIT
           - shard: 4
             name: orders-fulfillment
             tests: SubOrderIT,OrderIssueIT,CompanyOrderIT,OrderIT,DeliverySlotIT,TrackingWebhookIT,OrderSseIT,OrderStatusHistoryIT,DeliveryWebSocketIT,LocationInventoryIT,StockNotificationIT,MarketplaceAvailabilityIT,SearchSuggestionIT,DeviceTokenIT
