@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,15 +15,19 @@ import backend.repositories.TaxRateRepository;
 import java.math.BigDecimal;
 
 /**
- * Seeds baseline US sales-tax rates. Unlike the dev fixtures this is reference data the tax
- * resolver needs in every profile, so it runs unconditionally and is idempotent — it only
- * inserts when the table is empty.
+ * Seeds <em>illustrative</em> US sales-tax rates for local development and tests only.
  *
- * <p>Includes a country-level default ({@code state = ""}), several state rates, and at least one
- * jurisdiction that taxes shipping (TX) so both branches are exercisable out of the box.
+ * <p><b>Dev-only by design.</b> These are state-base rates (CA 7.25%, NY 4%, TX 6.25%, …), not the
+ * combined state+county+city rates a customer legally owes — seeding them in production would silently
+ * undercharge. Production starts with an empty table: with no matching row the resolver returns the
+ * configured fallback ({@code app.tax.default-rate}, default 0%), and operators configure real,
+ * jurisdiction-accurate rates through {@code POST /admin/tax-rates}.
+ *
+ * <p>Idempotent: only inserts when the table is empty.
  */
 @Slf4j
 @Component
+@Profile("dev")
 @Order(0)
 @RequiredArgsConstructor
 public class TaxRateSeeder implements ApplicationRunner {

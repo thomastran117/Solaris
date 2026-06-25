@@ -4,6 +4,7 @@ import backend.annotations.safeIdentifier.SafeIdentifier;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +25,10 @@ public class CreateTaxRateRequest {
     @Size(min = 2, max = 2, message = "country must be a 2-letter ISO code")
     private String country;
 
-    @Size(max = 2, message = "state must be a 2-letter code (or omitted for a country default)")
+    // Empty/blank (country default) or exactly two letters — a 1-letter value would silently normalize
+    // to the country-default wildcard, so reject it outright rather than store a misleading rate.
+    @Pattern(regexp = "^$|^[A-Za-z]{2}$",
+            message = "state must be a 2-letter code, or omitted for a country default")
     private String state;
 
     @SafeIdentifier

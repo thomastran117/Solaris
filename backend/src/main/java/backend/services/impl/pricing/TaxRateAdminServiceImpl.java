@@ -94,8 +94,11 @@ public class TaxRateAdminServiceImpl implements TaxRateAdminService {
     @Override
     @Transactional
     public void deleteRate(UUID id) {
+        // Soft delete: deactivate rather than remove. Orders snapshot taxRateId, so a hard delete would
+        // orphan that reference for historical audit joins. The resolver already ignores inactive rows.
         TaxRate rate = findOrThrow(id);
-        taxRateRepository.delete(rate);
+        rate.setActive(false);
+        taxRateRepository.save(rate);
     }
 
     private TaxRate findOrThrow(UUID id) {

@@ -88,11 +88,17 @@ class TaxRateAdminServiceImplTest {
     }
 
     @Test
-    void delete_existing_callsRepository() {
+    void delete_existing_softDeactivatesInsteadOfRemoving() {
         UUID id = UUID.randomUUID();
         TaxRate existing = new TaxRate();
+        existing.setActive(true);
         when(repo.findById(id)).thenReturn(Optional.of(existing));
+        when(repo.save(any(TaxRate.class))).thenAnswer(inv -> inv.getArgument(0));
+
         service.deleteRate(id);
-        verify(repo).delete(existing);
+
+        assertFalse(existing.isActive());
+        verify(repo, never()).delete(any(TaxRate.class));
+        verify(repo).save(existing);
     }
 }

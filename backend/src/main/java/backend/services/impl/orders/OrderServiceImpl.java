@@ -1148,12 +1148,12 @@ public class OrderServiceImpl implements OrderService {
             //     atomically with the order. SubOrders are wired up after the order is saved.
             boolean hasMarketplaceItems = stampVendorIds(orderItems);
 
-            // Totals reconciliation: cross-check the pricing engine's finalTotal against
-            // sum(line subtotal) - couponDiscount - loyaltyDiscount. Treat any drift
-            // larger than a small rounding allowance as a logged anomaly so a recurring
-            // engine bug is visible in operations, without failing the customer's order.
+            // Totals reconciliation: cross-check the charged finalTotal against the per-line arithmetic
+            // including every adjustment that shaped it (coupon, loyalty, premium, shipping, tax). Any
+            // drift beyond a small rounding allowance is logged so a recurring engine bug is visible in
+            // operations, without failing the customer's order.
             reconcileOrderTotal(orderItems, finalTotal, couponDiscountAmount, loyaltyDiscountCents,
-                    pricing.taxAmount());
+                    premiumDiscountCents, pricing.shippingAmount(), pricing.taxAmount());
 
             Order order = new Order();
             order.setUser(user);
@@ -2361,6 +2361,8 @@ public class OrderServiceImpl implements OrderService {
                                      BigDecimal finalTotal,
                                      BigDecimal couponDiscountAmount,
                                      long loyaltyDiscountCents,
+                                     long premiumDiscountCents,
+                                     BigDecimal shippingAmount,
                                      BigDecimal taxAmount) {
         BigDecimal lineSum = BigDecimal.ZERO;
         for (OrderItem item : items) {
@@ -2370,11 +2372,15 @@ public class OrderServiceImpl implements OrderService {
             lineSum = lineSum.add(lineSubtotal);
         }
         BigDecimal loyaltyDiscount = BigDecimal.valueOf(loyaltyDiscountCents).movePointLeft(2);
-        // finalTotal includes sales tax, so the expected sum must add it back to stay aligned.
+        BigDecimal premiumDiscount = BigDecimal.valueOf(premiumDiscountCents).movePointLeft(2);
+        // Mirror every component folded into finalTotal: post-discount item sum, then the post-tax
+        // tender (loyalty + premium) subtracted, then shipping and sales tax added back.
         BigDecimal expected = lineSum
                 .subtract(couponDiscountAmount == null ? BigDecimal.ZERO : couponDiscountAmount)
                 .subtract(loyaltyDiscount)
+                .subtract(premiumDiscount)
                 .max(BigDecimal.ZERO)
+                .add(shippingAmount == null ? BigDecimal.ZERO : shippingAmount)
                 .add(taxAmount == null ? BigDecimal.ZERO : taxAmount);
         BigDecimal drift = finalTotal.subtract(expected).abs();
         BigDecimal scaledTolerance = TOTAL_RECONCILIATION_PER_LINE_TOLERANCE
