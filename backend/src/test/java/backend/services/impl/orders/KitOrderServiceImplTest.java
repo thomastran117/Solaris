@@ -401,6 +401,7 @@ class KitOrderServiceImplTest {
         req.setShipRecipientName("Jane Doe");
         req.setShipStreet("1 Market St");
         req.setShipCity("San Francisco");
+        req.setShipState("CA");
         req.setShipPostalCode("94105");
         req.setShipCountry("US");
         return req;

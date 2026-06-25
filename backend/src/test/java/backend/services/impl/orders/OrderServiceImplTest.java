@@ -1482,6 +1482,22 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void createOrder_usDeliveryWithoutState_throwsBadRequestException() {
+        // A US ship-to with no state would otherwise resolve to the country default (0%), silently
+        // under-charging tax — so it must be rejected before pricing.
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(premiumUser()));
+        when(productRepository.findAllById(any())).thenReturn(List.of(activeProduct()));
+        when(productRepository.decrementStock(PRODUCT_ID, 1)).thenReturn(1);
+        stubLockSuccess();
+
+        CreateOrderRequest req = deliveryRequest(PRODUCT_ID, 1);
+        req.setShipCountry("US");
+        req.setShipState(null);
+
+        assertThrows(BadRequestException.class, () -> service.createOrder(USER_ID, req));
+    }
+
+    @Test
     void createOrder_sameProductTwoVariants_decrementsBothVariants() {
         // A single order may now contain two variants of the same product (e.g. two sizes);
         // each (productId, variantId) line is reserved independently.

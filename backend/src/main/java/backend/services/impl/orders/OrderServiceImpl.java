@@ -2320,9 +2320,14 @@ public class OrderServiceImpl implements OrderService {
      */
     /**
      * Builds the tax destination from the order's fulfillment details: the ship-to address for
-     * DELIVERY, or the pickup store's address for PICKUP. PICKUP requires the store to have a state —
-     * tax for in-store pickup is origin-based, so a missing state is a hard configuration error rather
-     * than a silent fallback.
+     * DELIVERY, or the pickup store's address for PICKUP. A missing jurisdiction component is a hard
+     * error rather than a silent fallback, because falling through to the country-level default (often
+     * 0%) would quietly under-charge tax:
+     * <ul>
+     *   <li>PICKUP (origin-based) requires the store to have both a state and a country.</li>
+     *   <li>US DELIVERY requires a 2-letter ship-to state — the request only mandates country, so without
+     *       this guard a US customer in a taxed state (CA/NY/…) could omit it and be charged no tax.</li>
+     * </ul>
      */
     private TaxDestination buildTaxDestination(FulfillmentMethod fulfillmentMethod,
                                                CreateOrderRequest request,
@@ -2332,10 +2337,19 @@ public class OrderServiceImpl implements OrderService {
                 throw new BadRequestException(
                         "The selected pickup location has no state configured, so sales tax cannot be determined");
             }
+            if (!StringUtils.hasText(pickupLocation.getCountry())) {
+                throw new BadRequestException(
+                        "The selected pickup location has no country configured, so sales tax cannot be determined");
+            }
             return new TaxDestination(
                     pickupLocation.getCountry(),
                     pickupLocation.getStateProvince(),
                     pickupLocation.getPostalCode());
+        }
+        if (TaxJurisdiction.iso2(request.getShipCountry()).equals("US")
+                && TaxJurisdiction.iso2(request.getShipState()).isEmpty()) {
+            throw new BadRequestException(
+                    "A 2-letter shipping state is required for US delivery orders so sales tax can be determined");
         }
         return new TaxDestination(
                 request.getShipCountry(),
