@@ -43,6 +43,11 @@ public class MfaCredential {
     @Column(nullable = false)
     private boolean verified;
 
+    // Whether this method is currently active. A user can disable a method from their MFA
+    // settings without unenrolling (which would discard the TOTP secret / require re-scanning).
+    @Column(nullable = false)
+    private boolean enabled = true;
+
     // Base32 TOTP secret. Null for EMAIL and SMS.
     // TODO: encrypt at rest using an AttributeConverter once key management is in place.
     @Column(length = 512)

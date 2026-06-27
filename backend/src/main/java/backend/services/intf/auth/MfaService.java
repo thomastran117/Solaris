@@ -38,6 +38,14 @@ public interface MfaService {
     /** Returns all enrolled MFA methods for the user. */
     List<MfaCredentialResponse> listMethods(UUID userId);
 
-    /** Removes the specified MFA method. Throws ResourceNotFoundException if not enrolled. */
+    /**
+     * Enables or disables an already-enrolled MFA method without discarding its secret.
+     * Throws ResourceNotFoundException if the method is not enrolled.
+     *
+     * @return the updated method
+     */
+    MfaCredentialResponse setMethodEnabled(UUID userId, MfaType type, boolean enabled);
+
+    /** Removes (unenrolls) the specified MFA method. Throws ResourceNotFoundException if not enrolled. */
     void removeMethod(UUID userId, MfaType type);
 }

@@ -227,6 +227,7 @@ class MfaServiceImplTest {
     void listMethods_returnsResponsesFromRepository() {
         MfaCredential c = existingCredential(MfaType.EMAIL);
         c.setVerified(true);
+        c.setEnabled(true);
         c.setTarget(USER_EMAIL);
         when(mfaRepo.findByUserId(USER_ID)).thenReturn(List.of(c));
 
@@ -235,6 +236,45 @@ class MfaServiceImplTest {
         assertEquals(1, result.size());
         assertEquals(MfaType.EMAIL, result.get(0).type());
         assertTrue(result.get(0).verified());
+        assertTrue(result.get(0).enabled());
+    }
+
+    // ─── setMethodEnabled ────────────────────────────────────────────────────
+
+    @Test
+    void setMethodEnabled_disablesEnrolledMethod() {
+        MfaCredential c = existingCredential(MfaType.TOTP);
+        c.setVerified(true);
+        c.setEnabled(true);
+        when(mfaRepo.findByUserIdAndType(USER_ID, MfaType.TOTP)).thenReturn(Optional.of(c));
+
+        MfaCredentialResponse result = service.setMethodEnabled(USER_ID, MfaType.TOTP, false);
+
+        assertFalse(c.isEnabled());
+        assertFalse(result.enabled());
+        verify(mfaRepo).save(c);
+    }
+
+    @Test
+    void setMethodEnabled_reEnablesDisabledMethod() {
+        MfaCredential c = existingCredential(MfaType.SMS);
+        c.setVerified(true);
+        c.setEnabled(false);
+        when(mfaRepo.findByUserIdAndType(USER_ID, MfaType.SMS)).thenReturn(Optional.of(c));
+
+        MfaCredentialResponse result = service.setMethodEnabled(USER_ID, MfaType.SMS, true);
+
+        assertTrue(c.isEnabled());
+        assertTrue(result.enabled());
+        verify(mfaRepo).save(c);
+    }
+
+    @Test
+    void setMethodEnabled_notEnrolled_throwsResourceNotFound() {
+        when(mfaRepo.findByUserIdAndType(USER_ID, MfaType.TOTP)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.setMethodEnabled(USER_ID, MfaType.TOTP, false));
+        verify(mfaRepo, never()).save(any());
     }
 
     // ─── removeMethod ─────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ package backend.controllers.impl.auth;
 
 import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.mfa.InitiateSmsEnrollmentRequest;
+import backend.dtos.requests.mfa.UpdateMfaMethodRequest;
 import backend.dtos.requests.mfa.VerifyMfaEnrollmentRequest;
 import backend.dtos.responses.mfa.MfaCredentialResponse;
 import backend.dtos.responses.mfa.TotpEnrollmentResponse;
@@ -142,6 +143,18 @@ public class MfaController {
             return ResponseEntity.ok()
                     .header(HttpHeaders.CACHE_CONTROL, "no-store")
                     .body(new TotpVerifyResponse(backupCodes));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
+    @PatchMapping("/{type}")
+    public ResponseEntity<MfaCredentialResponse> updateMethod(@PathVariable MfaType type,
+                                                              @Valid @RequestBody UpdateMfaMethodRequest request) {
+        try {
+            return ResponseEntity.ok(mfaService.setMethodEnabled(resolveUserId(), type, request.enabled()));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {

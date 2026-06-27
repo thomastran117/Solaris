@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -425,6 +426,114 @@ class MfaIT extends AbstractIntegrationIT {
                 .andExpect(status().isTooManyRequests());
     }
 
+    // ─── Enable / disable ──────────────────────────────────────────────────────
+
+    @Test
+    void newlyEnrolledMethod_isEnabledByDefault() throws Exception {
+        User user  = createActiveUser("enabled-default@example.com", PASSWORD);
+        String token  = bearer(accessTokenFor(user));
+        String userId = user.getId().toString();
+
+        mockMvc.perform(post("/mfa/enroll/email")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk());
+        String code = cacheService.get("mfa:otp:email:" + userId);
+        mockMvc.perform(post("/mfa/verify/email")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("code", code))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/mfa").header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].enabled").value(true));
+    }
+
+    @Test
+    void updateMethod_disableThenEnableTotp_reflectedInSettings() throws Exception {
+        User user  = createActiveUser("totp-toggle@example.com", PASSWORD);
+        String token = bearer(accessTokenFor(user));
+
+        enrollTotpCompletely(token);
+
+        // Disable — the credential (and its secret) is retained, just turned off.
+        mockMvc.perform(patch("/mfa/TOTP")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("enabled", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("TOTP"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        mockMvc.perform(get("/mfa").header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(jsonPath("$.data[0].type").value("TOTP"))
+                .andExpect(jsonPath("$.data[0].enabled").value(false));
+
+        // Re-enable.
+        mockMvc.perform(patch("/mfa/TOTP")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("enabled", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(true));
+    }
+
+    @Test
+    void updateMethod_disableSms_reflectedInSettings() throws Exception {
+        User user  = createActiveUser("sms-toggle@example.com", PASSWORD);
+        String token  = bearer(accessTokenFor(user));
+
+        enrollSmsCompletely(token, user.getId(), PHONE);
+
+        mockMvc.perform(patch("/mfa/SMS")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("enabled", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("SMS"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+    }
+
+    @Test
+    void updateMethod_notEnrolled_returns404() throws Exception {
+        User user  = createActiveUser("toggle-none@example.com", PASSWORD);
+        String token = bearer(accessTokenFor(user));
+
+        mockMvc.perform(patch("/mfa/TOTP")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("enabled", false))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updateMethod_missingEnabledField_returns400() throws Exception {
+        User user  = createActiveUser("toggle-bad@example.com", PASSWORD);
+        String token = bearer(accessTokenFor(user));
+
+        mockMvc.perform(patch("/mfa/TOTP")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unenrollTotp_afterEnroll_returns204AndRemoves() throws Exception {
+        User user  = createActiveUser("totp-unenroll@example.com", PASSWORD);
+        String token = bearer(accessTokenFor(user));
+
+        enrollTotpCompletely(token);
+
+        mockMvc.perform(delete("/mfa/TOTP")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/mfa").header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private String generateTotpCode(String secret) throws Exception {
@@ -446,6 +555,23 @@ class MfaIT extends AbstractIntegrationIT {
                         .header("Authorization", bearerToken).header("User-Agent", TEST_USER_AGENT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("code", totpCode))))
+                .andExpect(status().isOk());
+    }
+
+    private void enrollSmsCompletely(String bearerToken, UUID userId, String phone) throws Exception {
+        mockMvc.perform(post("/mfa/enroll/sms")
+                        .header("Authorization", bearerToken).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("phoneNumber", phone))))
+                .andExpect(status().isOk());
+
+        String json = cacheService.get("mfa:otp:sms:" + userId);
+        String code = (String) objectMapper.readValue(json, Map.class).get("code");
+
+        mockMvc.perform(post("/mfa/verify/sms")
+                        .header("Authorization", bearerToken).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("code", code))))
                 .andExpect(status().isOk());
     }
 }

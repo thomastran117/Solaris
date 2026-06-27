@@ -71,6 +71,7 @@ public class MfaServiceImpl implements MfaService {
         credential.setUser(user);
         credential.setType(MfaType.EMAIL);
         credential.setVerified(true);
+        credential.setEnabled(true);
         credential.setTarget(user.getEmail());
         credential.setSecret(null);
         credential.getBackupCodeHashes().clear();
@@ -96,6 +97,7 @@ public class MfaServiceImpl implements MfaService {
         credential.setUser(user);
         credential.setType(MfaType.SMS);
         credential.setVerified(true);
+        credential.setEnabled(true);
         credential.setTarget(phoneNumber);
         credential.setSecret(null);
         credential.getBackupCodeHashes().clear();
@@ -137,6 +139,7 @@ public class MfaServiceImpl implements MfaService {
         credential.setUser(user);
         credential.setType(MfaType.TOTP);
         credential.setVerified(true);
+        credential.setEnabled(true);
         credential.setSecret(secret);
         credential.setTarget(null);
         credential.getBackupCodeHashes().clear();
@@ -161,6 +164,15 @@ public class MfaServiceImpl implements MfaService {
 
     @Override
     @Transactional
+    public MfaCredentialResponse setMethodEnabled(UUID userId, MfaType type, boolean enabled) {
+        MfaCredential credential = mfaRepo.findByUserIdAndType(userId, type)
+                .orElseThrow(() -> new ResourceNotFoundException("MFA method not enrolled."));
+        credential.setEnabled(enabled);
+        return toResponse(mfaRepo.save(credential));
+    }
+
+    @Override
+    @Transactional
     public void removeMethod(UUID userId, MfaType type) {
         MfaCredential credential = mfaRepo.findByUserIdAndType(userId, type)
                 .orElseThrow(() -> new ResourceNotFoundException("MFA method not enrolled."));
@@ -174,6 +186,7 @@ public class MfaServiceImpl implements MfaService {
                 c.getId(),
                 c.getType(),
                 c.isVerified(),
+                c.isEnabled(),
                 maskTarget(c.getType(), c.getTarget()),
                 c.getCreatedAt()
         );

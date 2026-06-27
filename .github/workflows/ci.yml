@@ -56,7 +56,7 @@ jobs:
         include:
           - shard: 1
             name: products-auth
-            tests: ProductSubResourcesIT,ProductIT,InventoryIT,RestockIT,PurchaseOrderIT,InventoryTransferIT,AuthTokenIT,AuthRefreshIT,AuthOAuthIT,AuthSignupIT,AuthLoginIT,AuthDeviceIT
+            tests: ProductSubResourcesIT,ProductIT,InventoryIT,RestockIT,PurchaseOrderIT,InventoryTransferIT,AuthTokenIT,AuthRefreshIT,AuthOAuthIT,AuthSignupIT,AuthLoginIT,AuthDeviceIT,MfaIT
           - shard: 2
             name: products-extra
             tests: BundleIT,ProductQAIT,ProductBatchIT,ReviewIT,PromotionRuleIT,KitIT,PriceWatchIT,UploadIT,PricingIT,GiftCardIT,PremiumIT,UserPreferenceIT
