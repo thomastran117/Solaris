@@ -165,6 +165,11 @@ public class EmailServiceImpl implements EmailService {
                 totalCents, dueDate, currency, items));
     }
 
+    @Override
+    public void sendMfaOtpEmail(String toEmail, String code) {
+        publish(new EmailEvent.MfaOtpEmail(toEmail, code));
+    }
+
     private void publish(EmailEvent event) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
