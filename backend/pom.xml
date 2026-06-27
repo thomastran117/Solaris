@@ -299,6 +299,13 @@
 			<version>10.6.2</version>
 		</dependency>
 
+		<!-- TOTP (RFC 6238) secret generation and code verification for MFA enrollment. -->
+		<dependency>
+			<groupId>dev.samstevens.totp</groupId>
+			<artifactId>totp</artifactId>
+			<version>1.7.1</version>
+		</dependency>
+
 	</dependencies>
 
 	<build>

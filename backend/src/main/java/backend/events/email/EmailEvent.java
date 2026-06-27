@@ -32,6 +32,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.QuoteReceivedEmail.class,           name = "QUOTE_RECEIVED"),
     @JsonSubTypes.Type(value = EmailEvent.QuoteRespondedEmail.class,          name = "QUOTE_RESPONDED"),
     @JsonSubTypes.Type(value = EmailEvent.InvoiceIssuedEmail.class,           name = "INVOICE_ISSUED"),
+    @JsonSubTypes.Type(value = EmailEvent.MfaOtpEmail.class,                  name = "MFA_OTP"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -54,7 +55,8 @@ public sealed interface EmailEvent
                 EmailEvent.PurchaseOrderEmail,
                 EmailEvent.QuoteReceivedEmail,
                 EmailEvent.QuoteRespondedEmail,
-                EmailEvent.InvoiceIssuedEmail {
+                EmailEvent.InvoiceIssuedEmail,
+                EmailEvent.MfaOtpEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -253,5 +255,11 @@ public sealed interface EmailEvent
         java.time.LocalDate dueDate,
         String currency,
         List<InvoiceLineItem> items
+    ) implements EmailEvent {}
+
+    /** Sent to the user during MFA enrollment to deliver a 6-digit one-time code. */
+    record MfaOtpEmail(
+        String toEmail,
+        String code
     ) implements EmailEvent {}
 }

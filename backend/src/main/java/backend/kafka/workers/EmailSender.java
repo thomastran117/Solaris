@@ -89,6 +89,8 @@ public class EmailSender {
             case EmailEvent.InvoiceIssuedEmail e ->
                 sendInvoiceIssuedEmail(e.buyerEmail(), e.buyerName(), e.vendorName(),
                         e.invoiceNumber(), e.totalCents(), e.dueDate(), e.currency(), e.items());
+            case EmailEvent.MfaOtpEmail e ->
+                sendMfaOtpEmail(e.toEmail(), e.code());
             default -> {}
         }
     }
@@ -1156,5 +1158,29 @@ public class EmailSender {
             );
 
         return wrapInShell("Abandoned Cart", body);
+    }
+
+    // ─── MFA OTP ──────────────────────────────────────────────────────────────
+
+    private void sendMfaOtpEmail(String toEmail, String code) {
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              Your verification code
+            </h1>
+            <p style="margin:0 0 20px 0;font-size:15px;color:#475569;line-height:1.7;">
+              Use the code below to complete your ShopWave verification.
+              It expires in <strong>5 minutes</strong>.
+            </p>
+            <div style="display:inline-block;background:#EFF6FF;border:1px solid #BFDBFE;
+                        border-radius:10px;padding:18px 36px;margin:0 0 20px 0;">
+              <span style="font-size:36px;font-weight:800;letter-spacing:0.18em;color:#1D4ED8;
+                           font-family:'Courier New',Courier,monospace;">%s</span>
+            </div>
+            <p style="margin:0;font-size:13px;color:#94A3B8;line-height:1.6;">
+              Never share this code with anyone, including ShopWave staff.
+              If you did not request this code, you can safely ignore this email.
+            </p>
+            """.formatted(HtmlUtils.htmlEscape(code));
+        sendMimeMessage(toEmail, "Your ShopWave verification code", wrapInShell("Security Code", body));
     }
 }

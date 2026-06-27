@@ -167,4 +167,10 @@ public interface EmailService {
                                 String invoiceNumber, long totalCents, java.time.LocalDate dueDate,
                                 String currency,
                                 java.util.List<backend.events.email.EmailEvent.InvoiceLineItem> items);
+
+    /**
+     * Sends a 6-digit one-time code to {@code toEmail} for MFA enrollment.
+     * The email is dispatched asynchronously via Kafka.
+     */
+    void sendMfaOtpEmail(String toEmail, String code);
 }
