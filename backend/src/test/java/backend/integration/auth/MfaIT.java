@@ -399,6 +399,32 @@ class MfaIT extends AbstractIntegrationIT {
                 .andExpect(status().isTooManyRequests());
     }
 
+    @Test
+    void verifyTotp_exceedsAttemptLimit_returns429() throws Exception {
+        User user  = createActiveUser("totp-hammer@example.com", PASSWORD);
+        String token = bearer(accessTokenFor(user));
+
+        mockMvc.perform(post("/mfa/enroll/totp")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk());
+
+        // The pending secret survives wrong guesses, so verify must be throttled. 10 attempts
+        // are allowed (each a wrong-code 400); the 11th must be rejected before reaching the service.
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/mfa/verify/totp")
+                            .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("code", "000000"))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        mockMvc.perform(post("/mfa/verify/totp")
+                        .header("Authorization", token).header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("code", "000000"))))
+                .andExpect(status().isTooManyRequests());
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private String generateTotpCode(String secret) throws Exception {

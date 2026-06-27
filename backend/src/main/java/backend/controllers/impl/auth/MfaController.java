@@ -35,6 +35,11 @@ public class MfaController {
     private static final int  SMS_PHONE_WINDOW    = 3600; // 1 hour
     private static final int  TOTP_ENROLL_LIMIT   = 10;
 
+    // Verify endpoints are throttled per user too. This matters most for TOTP, whose pending
+    // secret is intentionally preserved across wrong guesses — without a budget that endpoint
+    // would be an unbounded compute sink (and a brute-force surface once reused by the challenge flow).
+    private static final int  VERIFY_LIMIT        = 10;
+
     private final MfaService mfaService;
     private final RateLimitService rateLimitService;
 
@@ -71,7 +76,9 @@ public class MfaController {
     @PostMapping("/verify/email")
     public ResponseEntity<Void> verifyEmailEnrollment(@Valid @RequestBody VerifyMfaEnrollmentRequest request) {
         try {
-            mfaService.verifyEmailEnrollment(resolveUserId(), request.code());
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("mfa:verify:email", userId.toString(), VERIFY_LIMIT, OTP_WINDOW_SECONDS);
+            mfaService.verifyEmailEnrollment(userId, request.code());
             return ResponseEntity.ok().build();
         } catch (AppHttpException e) {
             throw e;
@@ -98,7 +105,9 @@ public class MfaController {
     @PostMapping("/verify/sms")
     public ResponseEntity<Void> verifySmsEnrollment(@Valid @RequestBody VerifyMfaEnrollmentRequest request) {
         try {
-            mfaService.verifySmsEnrollment(resolveUserId(), request.code());
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("mfa:verify:sms", userId.toString(), VERIFY_LIMIT, OTP_WINDOW_SECONDS);
+            mfaService.verifySmsEnrollment(userId, request.code());
             return ResponseEntity.ok().build();
         } catch (AppHttpException e) {
             throw e;
@@ -126,7 +135,9 @@ public class MfaController {
     @PostMapping("/verify/totp")
     public ResponseEntity<TotpVerifyResponse> verifyTotpEnrollment(@Valid @RequestBody VerifyMfaEnrollmentRequest request) {
         try {
-            List<String> backupCodes = mfaService.verifyTotpEnrollment(resolveUserId(), request.code());
+            UUID userId = resolveUserId();
+            rateLimitService.enforce("mfa:verify:totp", userId.toString(), VERIFY_LIMIT, OTP_WINDOW_SECONDS);
+            List<String> backupCodes = mfaService.verifyTotpEnrollment(userId, request.code());
             // Backup codes are shown exactly once — keep them out of client/proxy caches.
             return ResponseEntity.ok()
                     .header(HttpHeaders.CACHE_CONTROL, "no-store")
