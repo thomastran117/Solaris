@@ -239,6 +239,7 @@ class MfaIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("code", totpCode))))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(jsonPath("$.data.backupCodes", hasSize(8)));
 
         mockMvc.perform(get("/mfa").header("Authorization", token).header("User-Agent", TEST_USER_AGENT))

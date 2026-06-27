@@ -127,7 +127,10 @@ public class MfaController {
     public ResponseEntity<TotpVerifyResponse> verifyTotpEnrollment(@Valid @RequestBody VerifyMfaEnrollmentRequest request) {
         try {
             List<String> backupCodes = mfaService.verifyTotpEnrollment(resolveUserId(), request.code());
-            return ResponseEntity.ok(new TotpVerifyResponse(backupCodes));
+            // Backup codes are shown exactly once — keep them out of client/proxy caches.
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(new TotpVerifyResponse(backupCodes));
         } catch (AppHttpException e) {
             throw e;
         } catch (Exception e) {
