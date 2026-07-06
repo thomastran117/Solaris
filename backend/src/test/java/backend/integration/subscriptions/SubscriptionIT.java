@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -458,6 +459,9 @@ class SubscriptionIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(user))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PAUSED"));
+
+        assertEquals(SubscriptionStatus.PAUSED,
+                subscriptionRepository.findById(sub.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -504,6 +508,9 @@ class SubscriptionIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(user))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        assertEquals(SubscriptionStatus.ACTIVE,
+                subscriptionRepository.findById(sub.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -599,6 +606,9 @@ class SubscriptionIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(user))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+
+        assertEquals(SubscriptionStatus.CANCELLED,
+                subscriptionRepository.findById(sub.getId()).orElseThrow().getStatus());
     }
 
     @Test

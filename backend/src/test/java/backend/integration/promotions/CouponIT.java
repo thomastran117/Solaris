@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -207,6 +208,10 @@ class CouponIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.type").value("PERCENTAGE"))
                 .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
                 .andExpect(jsonPath("$.data.id").isNotEmpty());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coupons WHERE code = 'SUMMER20'", Integer.class);
+        assertEquals(1, rows, "Coupon should be persisted");
     }
 
     @Test
@@ -296,6 +301,9 @@ class CouponIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Updated Name"))
                 .andExpect(jsonPath("$.data.code").value("UPDT10"));
+
+        assertEquals("Updated Name",
+                jdbcTemplate.queryForObject("SELECT name FROM coupons", String.class));
     }
 
     @Test
@@ -344,6 +352,10 @@ class CouponIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coupons", Integer.class);
+        assertEquals(0, rows, "Deleted coupon should be removed from the database");
     }
 
     @Test

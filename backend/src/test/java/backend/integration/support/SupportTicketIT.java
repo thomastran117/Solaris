@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -85,6 +86,9 @@ class SupportTicketIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.subject").value("My subject"))
                 .andExpect(jsonPath("$.data.status").value("OPEN"))
                 .andExpect(jsonPath("$.data.category").value("BILLING"));
+
+        assertEquals(1, ticketRepository.count(), "Support ticket should be persisted");
+        assertEquals(TicketStatus.OPEN, ticketRepository.findAll().get(0).getStatus());
     }
 
     @Test
@@ -323,6 +327,9 @@ class SupportTicketIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("RESOLVED"));
+
+        assertEquals(TicketStatus.RESOLVED,
+                ticketRepository.findById(ticketId).orElseThrow().getStatus());
     }
 
     @Test

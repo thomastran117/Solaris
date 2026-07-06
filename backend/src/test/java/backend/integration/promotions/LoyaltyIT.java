@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -112,6 +113,10 @@ class LoyaltyIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
                 .andExpect(jsonPath("$.data.earnMode").value("POINTS"))
                 .andExpect(jsonPath("$.data.active").value(true));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM loyalty_policies WHERE name = 'Standard Rewards'", Integer.class);
+        assertEquals(1, rows, "Loyalty policy should be persisted");
     }
 
     @Test
@@ -209,7 +214,12 @@ class LoyaltyIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("Silver"))
                 .andExpect(jsonPath("$.data.minPoints").value(500))
-                .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()));
+                .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
+                .andReturn();
+
+        assertEquals(1, (int) jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM loyalty_tiers WHERE name = 'Silver'", Integer.class),
+                "Loyalty tier should be persisted");
     }
 
     @Test
@@ -425,6 +435,11 @@ class LoyaltyIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.pointsDelta").value(200))
                 .andExpect(jsonPath("$.data.type").value("EARN_BONUS"))
                 .andExpect(jsonPath("$.data.accountId").isNotEmpty());
+
+        // The bonus must be committed to the account balance in the database.
+        Long balance = jdbcTemplate.queryForObject(
+                "SELECT points_balance FROM loyalty_accounts", Long.class);
+        assertEquals(200L, balance, "Bonus points should be credited to the account balance");
     }
 
     @Test
@@ -485,6 +500,11 @@ class LoyaltyIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointsDelta").value(-100))
                 .andExpect(jsonPath("$.data.reason").value("Manual correction"));
+
+        // 500 (bonus) - 100 (adjustment) must be committed to the account balance.
+        Long balance = jdbcTemplate.queryForObject(
+                "SELECT points_balance FROM loyalty_accounts", Long.class);
+        assertEquals(400L, balance, "Adjusted points balance should be committed to the database");
     }
 
     @Test

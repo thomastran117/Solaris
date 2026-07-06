@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -48,6 +49,10 @@ class FeedbackIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.rating").value(4))
                 .andExpect(jsonPath("$.data.pageContext").value("/checkout"))
                 .andExpect(jsonPath("$.data.submittedById").value(user.getId().toString()));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM platform_feedback WHERE status = 'OPEN'", Integer.class);
+        assertEquals(1, rows, "Feedback should be persisted");
     }
 
     @Test
