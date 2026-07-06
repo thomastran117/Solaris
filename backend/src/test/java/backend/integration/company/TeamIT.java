@@ -16,9 +16,11 @@ import org.springframework.http.MediaType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -114,6 +116,10 @@ class TeamIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.role").value("EMPLOYEE"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
+
+        Integer pending = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_memberships WHERE status = 'PENDING'", Integer.class);
+        assertEquals(1, pending, "A pending membership invite should be persisted");
     }
 
     @Test
@@ -229,6 +235,9 @@ class TeamIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.role").value("MANAGER"));
+
+        assertEquals(CompanyRole.MANAGER,
+                membershipRepository.findById(empMembership.getId()).orElseThrow().getRole());
     }
 
     @Test
@@ -280,6 +289,12 @@ class TeamIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        // The membership must no longer be an active team member — whether hard-deleted or
+        // soft-revoked via a status change.
+        Optional<CompanyMembership> after = membershipRepository.findById(empMembership.getId());
+        assertTrue(after.isEmpty() || after.get().getStatus() != CompanyMembershipStatus.ACTIVE,
+                "Revoked member should be removed or no longer ACTIVE in the database");
     }
 
     @Test

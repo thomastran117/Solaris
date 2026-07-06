@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -115,6 +116,11 @@ class CompanyWebhookIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.secret", hasLength(64)))
                 .andExpect(jsonPath("$.data.subscription.url").value("https://example.com/hook"))
                 .andExpect(jsonPath("$.data.subscription.status").value("PENDING_VERIFICATION"));
+
+        assertEquals("PENDING_VERIFICATION",
+                jdbcTemplate.queryForObject(
+                        "SELECT status FROM company_webhook_subscriptions", String.class),
+                "Webhook subscription should be persisted as PENDING_VERIFICATION");
     }
 
     @Test
@@ -195,6 +201,11 @@ class CompanyWebhookIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.subscription.status").value("ACTIVE"));
+
+        assertEquals("ACTIVE",
+                jdbcTemplate.queryForObject(
+                        "SELECT status FROM company_webhook_subscriptions", String.class),
+                "Verified webhook subscription should be persisted as ACTIVE");
     }
 
     // ── GET /companies/{id}/webhooks ──────────────────────────────────────────
@@ -236,6 +247,10 @@ class CompanyWebhookIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_webhook_subscriptions", Integer.class);
+        assertEquals(0, rows, "Deleted webhook subscription should be removed from the database");
 
         // Verify it's gone
         mockMvc.perform(get("/companies/{id}/webhooks", company.getId())

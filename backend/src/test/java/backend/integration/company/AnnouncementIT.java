@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -91,6 +92,10 @@ class AnnouncementIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.title").value("Big Sale!"))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_announcements WHERE title = 'Big Sale!'", Integer.class);
+        assertEquals(1, rows, "Announcement should be persisted");
     }
 
     @Test
@@ -254,6 +259,10 @@ class AnnouncementIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("New Title"));
+
+        String title = jdbcTemplate.queryForObject(
+                "SELECT title FROM company_announcements", String.class);
+        assertEquals("New Title", title, "Announcement title change should be persisted");
     }
 
     @Test
@@ -301,6 +310,10 @@ class AnnouncementIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_announcements", Integer.class);
+        assertEquals(0, rows, "Deleted announcement should be removed from the database");
     }
 
     @Test

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -337,6 +338,8 @@ class VendorPayoutIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.stripeTransferId").value("tr_test123"))
                 .andExpect(jsonPath("$.data.netAmount").value(10.0))
                 .andExpect(jsonPath("$.data.currency").value("USD"));
+
+        assertEquals(1, vendorPayoutRepository.count(), "A payout record should be persisted");
     }
 
     @Test
@@ -429,6 +432,10 @@ class VendorPayoutIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.amountCents").value(-200))
                 .andExpect(jsonPath("$.data.reason").value("Chargeback deduction"));
+
+        Integer adjRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vendor_adjustments", Integer.class);
+        assertEquals(1, adjRows, "Vendor adjustment should be persisted");
     }
 
     @Test

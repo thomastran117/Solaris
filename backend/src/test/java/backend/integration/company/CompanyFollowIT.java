@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -55,6 +56,10 @@ class CompanyFollowIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.notificationsEnabled").value(true));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_follows", Integer.class);
+        assertEquals(1, rows, "Follow relationship should be persisted");
     }
 
     @Test
@@ -112,6 +117,10 @@ class CompanyFollowIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(follower)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM company_follows", Integer.class);
+        assertEquals(0, rows, "Unfollow should remove the relationship from the database");
     }
 
     @Test
@@ -199,6 +208,10 @@ class CompanyFollowIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.notificationsEnabled").value(false));
+
+        Boolean notif = jdbcTemplate.queryForObject(
+                "SELECT notifications_enabled FROM company_follows", Boolean.class);
+        assertEquals(Boolean.FALSE, notif, "Notification preference change should be persisted");
     }
 
     @Test
