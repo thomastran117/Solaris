@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -128,6 +129,9 @@ class DeliverySlotIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deliverySlotStatus").value("REQUESTED"))
                 .andExpect(jsonPath("$.data.preferredDeliveryWindow").value("MORNING"));
+
+        assertEquals(DeliverySlotStatus.REQUESTED,
+                orderRepository.findById(order.getId()).orElseThrow().getDeliverySlotStatus());
     }
 
     @Test
@@ -197,6 +201,9 @@ class DeliverySlotIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deliverySlotStatus").value("CONFIRMED"));
+
+        assertEquals(DeliverySlotStatus.CONFIRMED,
+                orderRepository.findById(order.getId()).orElseThrow().getDeliverySlotStatus());
     }
 
     @Test
@@ -235,6 +242,9 @@ class DeliverySlotIT extends AbstractIntegrationIT {
                         .content("{\"reason\":\"Outside delivery zone\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deliverySlotStatus").value("UNAVAILABLE"));
+
+        assertEquals(DeliverySlotStatus.UNAVAILABLE,
+                orderRepository.findById(order.getId()).orElseThrow().getDeliverySlotStatus());
     }
 
     @Test
@@ -328,5 +338,8 @@ class DeliverySlotIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("PACKED"));
+
+        assertEquals(OrderStatus.PACKED,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 }

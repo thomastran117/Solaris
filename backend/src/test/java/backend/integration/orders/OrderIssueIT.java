@@ -14,11 +14,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -69,14 +71,21 @@ class OrderIssueIT extends AbstractIntegrationIT {
         User customer = createActiveUser("issue-open@example.com", "Password1!");
         Order order = createOrder(customer, OrderStatus.DELIVERED);
 
-        mockMvc.perform(post("/orders/{oid}/issues", order.getId())
+        MvcResult openResult = mockMvc.perform(post("/orders/{oid}/issues", order.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"type\":\"NOT_RECEIVED\",\"description\":\"Item never arrived\",\"openTicket\":false}")
                         .header("Authorization", bearer(accessTokenFor(customer)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.type").value("NOT_RECEIVED"))
-                .andExpect(jsonPath("$.data.state").value("REPORTED"));
+                .andExpect(jsonPath("$.data.state").value("REPORTED"))
+                .andReturn();
+
+        UUID issueId = UUID.fromString(objectMapper.readTree(
+                openResult.getResponse().getContentAsString()).path("data").path("id").asText());
+        OrderIssue persisted = issueRepository.findById(issueId).orElseThrow();
+        assertEquals(OrderIssueState.REPORTED, persisted.getState());
+        assertEquals(OrderIssueType.NOT_RECEIVED, persisted.getType());
     }
 
     @Test
@@ -225,6 +234,9 @@ class OrderIssueIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.state").value("INVESTIGATING"));
+
+        assertEquals(OrderIssueState.INVESTIGATING,
+                issueRepository.findById(issue.getId()).orElseThrow().getState());
     }
 
     @Test
@@ -282,6 +294,9 @@ class OrderIssueIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.state").value("RESOLVED_REFUND"));
+
+        assertEquals(OrderIssueState.RESOLVED_REFUND,
+                issueRepository.findById(issue.getId()).orElseThrow().getState());
     }
 
     @Test
@@ -327,6 +342,9 @@ class OrderIssueIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.state").value("RESOLVED_CREDIT"));
+
+        assertEquals(OrderIssueState.RESOLVED_CREDIT,
+                issueRepository.findById(issue.getId()).orElseThrow().getState());
     }
 
     @Test
@@ -357,6 +375,9 @@ class OrderIssueIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.state").value("REJECTED"));
+
+        assertEquals(OrderIssueState.REJECTED,
+                issueRepository.findById(issue.getId()).orElseThrow().getState());
     }
 
     @Test

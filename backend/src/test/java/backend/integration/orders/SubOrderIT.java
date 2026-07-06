@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -214,6 +215,9 @@ class SubOrderIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PACKED"))
                 .andExpect(jsonPath("$.data.packedAt").isNotEmpty());
+
+        assertEquals(SubOrderStatus.PACKED,
+                subOrderRepository.findById(so.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -260,6 +264,10 @@ class SubOrderIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.carrier").value("FedEx"))
                 .andExpect(jsonPath("$.data.fulfillmentNote").value("Handle with care"))
                 .andExpect(jsonPath("$.data.shippedAt").isNotEmpty());
+
+        SubOrder shipped = subOrderRepository.findById(so.getId()).orElseThrow();
+        assertEquals(SubOrderStatus.SHIPPED, shipped.getStatus());
+        assertEquals("TRACK123", shipped.getTrackingNumber());
     }
 
     @Test
@@ -334,6 +342,9 @@ class SubOrderIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DELIVERED"))
                 .andExpect(jsonPath("$.data.deliveredAt").isNotEmpty());
+
+        assertEquals(SubOrderStatus.DELIVERED,
+                subOrderRepository.findById(so.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -374,6 +385,9 @@ class SubOrderIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"))
                 .andExpect(jsonPath("$.data.cancellationReason").value("Customer requested cancellation"))
                 .andExpect(jsonPath("$.data.cancelledAt").isNotEmpty());
+
+        assertEquals(SubOrderStatus.CANCELLED,
+                subOrderRepository.findById(so.getId()).orElseThrow().getStatus());
     }
 
     @Test

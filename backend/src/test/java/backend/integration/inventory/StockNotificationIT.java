@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -96,6 +97,10 @@ class StockNotificationIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.productName").isNotEmpty())
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.variantId").doesNotExist());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM stock_notifications WHERE status = 'PENDING'", Integer.class);
+        assertEquals(1, rows, "Stock notification subscription should be persisted");
     }
 
     @Test
@@ -166,6 +171,12 @@ class StockNotificationIT extends AbstractIntegrationIT {
         mockMvc.perform(delete(BASE + "/" + notifId)
                         .header("Authorization", bearer(accessTokenFor(user))))
                 .andExpect(status().isNoContent());
+
+        // The subscription must no longer be active in the database after cancellation
+        // (whether it is hard-deleted or soft-cancelled).
+        Integer pending = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM stock_notifications WHERE status = 'PENDING'", Integer.class);
+        assertEquals(0, pending, "Cancelled notification should no longer be PENDING in the database");
     }
 
     @Test
