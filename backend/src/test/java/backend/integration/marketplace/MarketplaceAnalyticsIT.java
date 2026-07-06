@@ -25,6 +25,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -249,7 +251,7 @@ class MarketplaceAnalyticsIT extends AbstractIntegrationIT {
         User operator = createActiveUser("ma-create-policy@example.com", "Password1!");
         Company marketplace = createMarketplace(operator);
 
-        mockMvc.perform(post("/marketplaces/" + marketplace.getId() + "/sla/policies")
+        MvcResult result = mockMvc.perform(post("/marketplaces/" + marketplace.getId() + "/sla/policies")
                         .header("Authorization", bearer(accessTokenFor(operator)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(policyBody("Standard SLA", "WARN", 30)))
@@ -259,7 +261,16 @@ class MarketplaceAnalyticsIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.name").value("Standard SLA"))
                 .andExpect(jsonPath("$.data.breachAction").value("WARN"))
                 .andExpect(jsonPath("$.data.evaluationWindowDays").value(30))
-                .andExpect(jsonPath("$.data.active").value(true));
+                .andExpect(jsonPath("$.data.active").value(true))
+                .andReturn();
+
+        UUID policyId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        VendorSLAPolicy persisted = policyRepository.findById(policyId).orElseThrow();
+        assertEquals("Standard SLA", persisted.getName());
+        assertEquals(SLABreachAction.WARN, persisted.getBreachAction());
+        assertEquals(30, persisted.getEvaluationWindowDays());
+        assertTrue(persisted.isActive());
     }
 
     @Test
@@ -578,6 +589,10 @@ class MarketplaceAnalyticsIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(breach.getId().toString()))
                 .andExpect(jsonPath("$.data.resolvedAt").isNotEmpty());
+
+        // The resolution timestamp must be committed to the breach row.
+        assertNotNull(breachRepository.findById(breach.getId()).orElseThrow().getResolvedAt(),
+                "Breach should be marked resolved in the database");
     }
 
     @Test

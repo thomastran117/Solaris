@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -152,7 +154,7 @@ class CommissionPolicyIT extends AbstractIntegrationIT {
         User operator = createActiveUser("cp-create-min@example.com", "Password1!");
         Company marketplace = createMarketplace(operator);
 
-        mockMvc.perform(post(base(marketplace.getId()))
+        MvcResult result = mockMvc.perform(post(base(marketplace.getId()))
                         .header("Authorization", bearer(accessTokenFor(operator)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(minimalBody("Base Rate")))
@@ -163,7 +165,15 @@ class CommissionPolicyIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.defaultRate").value(0.15))
                 .andExpect(jsonPath("$.data.active").value(true))
                 .andExpect(jsonPath("$.data.rules").isArray())
-                .andExpect(jsonPath("$.data.rules").isEmpty());
+                .andExpect(jsonPath("$.data.rules").isEmpty())
+                .andReturn();
+
+        UUID policyId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        CommissionPolicy persisted = commissionPolicyRepository.findById(policyId).orElseThrow();
+        assertEquals("Base Rate", persisted.getName());
+        assertTrue(persisted.isActive());
+        assertEquals(0, new BigDecimal("0.1500").compareTo(persisted.getDefaultRate()));
     }
 
     @Test
@@ -193,6 +203,10 @@ class CommissionPolicyIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.rules[0].matchValue").value("Electronics"))
                 .andExpect(jsonPath("$.data.rules[0].rate").value(0.08))
                 .andExpect(jsonPath("$.data.rules[0].priority").value(10));
+
+        Integer ruleRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM commission_rules", Integer.class);
+        assertEquals(1, ruleRows, "Commission rule should be persisted");
     }
 
     @Test
@@ -304,6 +318,9 @@ class CommissionPolicyIT extends AbstractIntegrationIT {
         mockMvc.perform(delete(base(marketplace.getId()) + "/" + policyId)
                         .header("Authorization", token))
                 .andExpect(status().isNoContent());
+
+        assertTrue(commissionPolicyRepository.findById(policyId).isEmpty(),
+                "Deleted commission policy should be removed from the database");
 
         // Verify removed from list
         mockMvc.perform(get(base(marketplace.getId()))

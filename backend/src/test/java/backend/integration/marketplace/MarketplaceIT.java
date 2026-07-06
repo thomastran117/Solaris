@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -130,6 +131,10 @@ class MarketplaceIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.holdPeriodDays").value(7))
                 .andExpect(jsonPath("$.data.defaultCurrency").value("USD"))
                 .andExpect(jsonPath("$.data.acceptingApplications").value(true));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM marketplace_profiles WHERE slug = 'my-market'", Integer.class);
+        assertEquals(1, rows, "Marketplace profile should be persisted");
     }
 
     @Test
@@ -246,6 +251,10 @@ class MarketplaceIT extends AbstractIntegrationIT {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.holdPeriodDays").value(14));
+
+        Integer holdPeriod = jdbcTemplate.queryForObject(
+                "SELECT hold_period_days FROM marketplace_profiles", Integer.class);
+        assertEquals(14, holdPeriod, "Hold period change should be persisted");
     }
 
     @Test
@@ -261,6 +270,10 @@ class MarketplaceIT extends AbstractIntegrationIT {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.acceptingApplications").value(false));
+
+        Boolean accepting = jdbcTemplate.queryForObject(
+                "SELECT accepting_applications FROM marketplace_profiles", Boolean.class);
+        assertEquals(Boolean.FALSE, accepting, "Closing applications should be persisted");
     }
 
     @Test

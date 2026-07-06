@@ -21,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -125,7 +127,7 @@ class ImportIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
         addMember(owner, company, CompanyRole.OWNER);
 
-        mockMvc.perform(post("/companies/{companyId}/imports", company.getId())
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/imports", company.getId())
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -136,7 +138,15 @@ class ImportIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.mode").value("UPSERT"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.progressPercent").value(0))
-                .andExpect(jsonPath("$.data.hasErrorReport").value(false));
+                .andExpect(jsonPath("$.data.hasErrorReport").value(false))
+                .andReturn();
+
+        UUID jobId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        ImportJob persisted = importJobRepository.findById(jobId).orElseThrow();
+        assertEquals(ImportJobStatus.PENDING, persisted.getStatus());
+        assertEquals(ImportJobType.PRODUCT_UPSERT, persisted.getJobType());
+        assertEquals(company.getId(), persisted.getCompanyId());
     }
 
     @Test
@@ -461,6 +471,12 @@ class ImportIT extends AbstractIntegrationIT {
                         .content(attachImagesBody("import-sku-attach", "https://cdn.example.com/img.png", 0)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.attached").value(1));
+
+        // The image must actually be attached to the matched product in the database.
+        Integer imageRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_images WHERE image_url = 'https://cdn.example.com/img.png'",
+                Integer.class);
+        assertEquals(1, imageRows, "Image should be attached to the product");
     }
 
     @Test
