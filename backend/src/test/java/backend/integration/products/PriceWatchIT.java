@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -69,6 +70,10 @@ class PriceWatchIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.productId").value(product.getId().toString()))
                 .andExpect(jsonPath("$.data.productName").value(product.getName()))
                 .andExpect(jsonPath("$.data.watchPriceCents").value(4999));
+
+        Long watchPrice = jdbcTemplate.queryForObject(
+                "SELECT watch_price_cents FROM price_watchers", Long.class);
+        assertEquals(4999L, watchPrice, "Watcher should be persisted at the product's price");
     }
 
     @Test
@@ -91,6 +96,14 @@ class PriceWatchIT extends AbstractIntegrationIT {
         mockMvc.perform(post(path).header("Authorization", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.watchPriceCents").value(3999));
+
+        // The re-watch must update in place (one row) with the new price committed.
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM price_watchers", Integer.class);
+        assertEquals(1, rows, "Re-watching should update the existing row, not create a second");
+        Long watchPrice = jdbcTemplate.queryForObject(
+                "SELECT watch_price_cents FROM price_watchers", Long.class);
+        assertEquals(3999L, watchPrice);
     }
 
     @Test
@@ -125,6 +138,10 @@ class PriceWatchIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/products/" + product.getId() + "/price-watch")
                         .header("Authorization", token))
                 .andExpect(status().isNoContent());
+
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM price_watchers", Integer.class);
+        assertEquals(0, remaining, "Unwatched row should be removed from the database");
 
         // Should no longer appear in list
         mockMvc.perform(get("/price-watches").header("Authorization", token))

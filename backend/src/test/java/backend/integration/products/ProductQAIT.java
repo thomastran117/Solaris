@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -117,6 +118,10 @@ class ProductQAIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.questionText").value("Does this come in blue?"));
+
+        Integer questionRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_questions", Integer.class);
+        assertEquals(1, questionRows, "Question should be persisted");
     }
 
     @Test
@@ -182,6 +187,10 @@ class ProductQAIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.answerText").value("Yes, it comes in blue and red."));
+
+        Integer answerRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_answers", Integer.class);
+        assertEquals(1, answerRows, "Answer should be persisted");
     }
 
     @Test
@@ -268,6 +277,10 @@ class ProductQAIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(reporter)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer reportRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM qa_reports", Integer.class);
+        assertEquals(1, reportRows, "Q&A report should be persisted");
     }
 
     @Test

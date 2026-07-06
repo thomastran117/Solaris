@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -102,6 +103,8 @@ class ProductBatchIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data", hasSize(2)));
+
+        assertEquals(2, productRepository.count(), "Both products should be persisted");
     }
 
     @Test
@@ -185,6 +188,9 @@ class ProductBatchIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        assertTrue(productRepository.findById(p1.getId()).isEmpty());
+        assertTrue(productRepository.findById(p2.getId()).isEmpty());
     }
 
     @Test
@@ -255,6 +261,9 @@ class ProductBatchIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)));
+
+        assertEquals(ProductStatus.ARCHIVED,
+                productRepository.findById(product.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -326,6 +335,9 @@ class ProductBatchIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value(containsString("Original Product")));
+
+        // The duplicate must be persisted alongside the original.
+        assertEquals(2, productRepository.count(), "Duplicated product should be persisted");
     }
 
     @Test
