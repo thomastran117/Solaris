@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -70,6 +72,12 @@ class ProductIT extends AbstractIntegrationIT {
         p.setPrice(price);
         p.setStatus(status);
         return productRepository.save(p);
+    }
+
+    /** Extracts the {@code $.data.id} field from a JSON response envelope as a UUID. */
+    private UUID dataId(MvcResult result) throws Exception {
+        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
     }
 
     private Map<String, Object> validProductBody(String name) {
@@ -219,14 +227,22 @@ class ProductIT extends AbstractIntegrationIT {
         Company company = createCompany(owner);
         addMember(owner, company, CompanyRole.OWNER);
 
-        mockMvc.perform(post("/companies/{companyId}/products", company.getId())
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/products", company.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validProductBody("New Widget")))
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("New Widget"))
-                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andReturn();
+
+        // The row must actually exist in the database, not just be echoed in the response.
+        Product persisted = productRepository.findById(dataId(result)).orElseThrow();
+        assertEquals("New Widget", persisted.getName());
+        assertEquals(ProductStatus.DRAFT, persisted.getStatus());
+        assertEquals(0, BigDecimal.valueOf(19.99).compareTo(persisted.getPrice()));
+        assertEquals(company.getId(), persisted.getCompany().getId());
     }
 
     @Test
@@ -376,6 +392,11 @@ class ProductIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Updated Name"));
+
+        // The update must be persisted, not merely reflected in the response payload.
+        Product updated = productRepository.findById(product.getId()).orElseThrow();
+        assertEquals("Updated Name", updated.getName());
+        assertEquals(0, BigDecimal.valueOf(29.99).compareTo(updated.getPrice()));
     }
 
     @Test
@@ -464,6 +485,10 @@ class ProductIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
 
+        // The row must be removed from the database, not just hidden from the read API.
+        assertTrue(productRepository.findById(product.getId()).isEmpty(),
+                "Deleted product should no longer exist in the database");
+
         // Verify it's gone — anon can't see it (was DRAFT), so use member call
         mockMvc.perform(get("/companies/{companyId}/products/{id}", company.getId(), product.getId())
                         .header("Authorization", bearer(accessTokenFor(owner)))
@@ -532,6 +557,11 @@ class ProductIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.imageUrl").value("https://cdn.example.com/image.jpg"));
+
+        Integer imageRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_images WHERE image_url = ?",
+                Integer.class, "https://cdn.example.com/image.jpg");
+        assertEquals(1, imageRows, "Image row should be persisted");
     }
 
     @Test
@@ -604,6 +634,10 @@ class ProductIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("Color"));
+
+        Integer optionRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_options WHERE name = ?", Integer.class, "Color");
+        assertEquals(1, optionRows, "Option row should be persisted");
     }
 
     @Test
@@ -660,6 +694,11 @@ class ProductIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.price").value(24.99))
                 .andExpect(jsonPath("$.data.option1").value("Red"));
+
+        Integer variantRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_variants WHERE option1 = ? AND stock = ?",
+                Integer.class, "Red", 5);
+        assertEquals(1, variantRows, "Variant row should be persisted with the given stock");
     }
 
     @Test

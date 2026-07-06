@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -140,6 +141,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer imageRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_images", Integer.class);
+        assertEquals(0, imageRows, "Deleted image row should be removed from the database");
     }
 
     @Test
@@ -228,6 +233,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Colour"));
+
+        Integer renamedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_options WHERE name = 'Colour'", Integer.class);
+        assertEquals(1, renamedRows, "Option rename should be persisted");
     }
 
     @Test
@@ -280,6 +289,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer optionRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_options", Integer.class);
+        assertEquals(0, optionRows, "Deleted option row should be removed from the database");
     }
 
     @Test
@@ -345,6 +358,11 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.price").value(19.99));
+
+        BigDecimal persistedPrice = jdbcTemplate.queryForObject(
+                "SELECT price FROM product_variants", BigDecimal.class);
+        assertEquals(0, new BigDecimal("19.99").compareTo(persistedPrice),
+                "Variant price update should be persisted");
     }
 
     @Test
@@ -397,6 +415,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer variantRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_variants", Integer.class);
+        assertEquals(0, variantRows, "Deleted variant row should be removed from the database");
     }
 
     @Test
@@ -437,6 +459,11 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].name").value("Material"))
                 .andExpect(jsonPath("$.data[0].value").value("Cotton"));
+
+        Integer attrRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_attributes WHERE name = 'Material' AND value = 'Cotton'",
+                Integer.class);
+        assertEquals(1, attrRows, "Attribute should be persisted");
     }
 
     @Test
@@ -516,6 +543,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated());
+
+        Integer relRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_relationships", Integer.class);
+        assertEquals(1, relRows, "Relationship row should be persisted");
     }
 
     @Test
@@ -587,6 +618,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer relRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_relationships", Integer.class);
+        assertEquals(0, relRows, "Removed relationship row should be gone from the database");
     }
 
     @Test
@@ -645,6 +680,10 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk());
+
+        Integer boostWeight = jdbcTemplate.queryForObject(
+                "SELECT boost_weight FROM products", Integer.class);
+        assertEquals(5, boostWeight, "boostWeight should be persisted to the database");
     }
 
     @Test
