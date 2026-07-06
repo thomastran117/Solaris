@@ -31,7 +31,7 @@ class ProductQAIT extends AbstractIntegrationIT {
     @AfterEach
     void cleanQA() {
         try { jdbcTemplate.execute("DELETE FROM product_answer_upvotes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM qa_reports"); } catch (Exception ignored) {}
+        try { jdbcTemplate.execute("DELETE FROM product_question_reports"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_answers"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_questions"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
@@ -279,7 +279,7 @@ class ProductQAIT extends AbstractIntegrationIT {
                 .andExpect(status().isNoContent());
 
         Integer reportRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM qa_reports", Integer.class);
+                "SELECT COUNT(*) FROM product_question_reports", Integer.class);
         assertEquals(1, reportRows, "Q&A report should be persisted");
     }
 
