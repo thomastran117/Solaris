@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -96,6 +97,9 @@ class MarketingWorkflowIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.delayHours").value(48))
                 .andExpect(jsonPath("$.data.cooldownDays").value(30));
+
+        assertEquals(1, workflowRepository.count(), "Workflow should be persisted");
+        assertEquals(WorkflowStatus.ACTIVE, workflowRepository.findAll().get(0).getStatus());
     }
 
     @Test
@@ -149,6 +153,9 @@ class MarketingWorkflowIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PAUSED"));
+
+        assertEquals(WorkflowStatus.PAUSED,
+                workflowRepository.findById(wf.getId()).orElseThrow().getStatus());
     }
 
     // ── GET analytics ─────────────────────────────────────────────────────────

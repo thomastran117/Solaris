@@ -144,6 +144,11 @@ class ShippingRateIT extends AbstractIntegrationIT {
 
         // Stripe PaymentIntent moved to the new total (2000 base + 599 shipping).
         verify(paymentService).updatePaymentIntentAmount(eq("pi_ship_test"), eq(2599L));
+
+        // The chosen rate must be committed to the order, not just returned in the response.
+        Order confirmed = orderRepository.findById(order.getId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(599L, confirmed.getShippingCostCents());
+        org.junit.jupiter.api.Assertions.assertEquals("UPS", confirmed.getShippingCarrier());
     }
 
     @Test
