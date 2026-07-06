@@ -77,6 +77,13 @@ public abstract class AbstractSearchKafkaIT {
         ELASTICSEARCH.start();
         KAFKA.start();
 
+        // Pre-create the search indices WITH the custom analyzers before the Spring context
+        // starts. The Spring Data ES repository beans auto-create their index from the entity
+        // mappings at bean-init, but those mappings reference custom analyzers (product_search,
+        // autocomplete_*) that must live in the index *settings* first — which the repos don't
+        // supply. Creating the indices up-front means the repos see them present and skip.
+        createSearchIndices("http://" + ELASTICSEARCH.getHost() + ":" + ELASTICSEARCH.getMappedPort(9200));
+
         registry.add("app.redis.host", REDIS::getHost);
         registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
 
@@ -88,6 +95,43 @@ public abstract class AbstractSearchKafkaIT {
 
         // Nil UUID for the risk VIP-segment sentinel (RiskProperties binds it as UUID).
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
+    }
+
+    /** Index settings defining the custom analyzers referenced by the document mappings. */
+    private static final String INDEX_SETTINGS = """
+            {"settings":{"analysis":{
+              "filter":{
+                "synonym_filter":{"type":"synonym_graph","synonyms":["laptop, notebook, computer"]},
+                "autocomplete_filter":{"type":"edge_ngram","min_gram":1,"max_gram":20}
+              },
+              "analyzer":{
+                "product_search":{"type":"custom","tokenizer":"standard","filter":["lowercase","synonym_filter"]},
+                "autocomplete_index":{"type":"custom","tokenizer":"standard","filter":["lowercase","autocomplete_filter"]},
+                "autocomplete_search":{"type":"custom","tokenizer":"standard","filter":["lowercase"]}
+              }
+            }}}""";
+
+    private static void createSearchIndices(String esBaseUrl) {
+        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+        for (String index : new String[]{"products", "bundles", "reports", "reviews"}) {
+            try {
+                java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(esBaseUrl + "/" + index))
+                        .header("Content-Type", "application/json")
+                        .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(INDEX_SETTINGS))
+                        .build();
+                java.net.http.HttpResponse<String> resp =
+                        client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                // 200 = created; 400 with resource_already_exists_exception is fine on reuse.
+                if (resp.statusCode() != 200
+                        && !resp.body().contains("resource_already_exists_exception")) {
+                    throw new IllegalStateException(
+                            "Failed to pre-create ES index '" + index + "': " + resp.statusCode() + " " + resp.body());
+                }
+            } catch (Exception e) {
+                throw new IllegalStateException("Could not pre-create ES index '" + index + "'", e);
+            }
+        }
     }
 
     // ── Injected infrastructure ───────────────────────────────────────────────
