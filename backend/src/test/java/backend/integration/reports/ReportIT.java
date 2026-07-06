@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -60,6 +61,10 @@ class ReportIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.targetType").value("USER"))
                 .andExpect(jsonPath("$.data.status").value("OPEN"))
                 .andExpect(jsonPath("$.data.reason").value("HARASSMENT"));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reports WHERE status = 'OPEN'", Integer.class);
+        assertEquals(1, rows, "Report should be persisted");
     }
 
     @Test

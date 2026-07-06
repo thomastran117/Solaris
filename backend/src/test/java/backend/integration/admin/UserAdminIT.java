@@ -44,6 +44,9 @@ class UserAdminIT extends AbstractIntegrationIT {
                         .content(roleBody("MODERATOR")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.message", containsString("MODERATOR")));
+
+        org.junit.jupiter.api.Assertions.assertEquals(UserRole.MODERATOR,
+                userRepository.findById(target.getId()).orElseThrow().getRole());
     }
 
     @Test

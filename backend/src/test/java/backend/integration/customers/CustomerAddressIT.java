@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -145,6 +146,10 @@ class CustomerAddressIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.label").value("Work"))
                 .andExpect(jsonPath("$.data.city").value("Chicago"))
                 .andExpect(jsonPath("$.data.country").value("US"));
+
+        CustomerAddress persisted = addressRepository.findAll().get(0);
+        assertEquals("Work", persisted.getLabel());
+        assertEquals("Chicago", persisted.getCity());
     }
 
     @Test
@@ -205,6 +210,10 @@ class CustomerAddressIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.label").value("New Label"))
                 .andExpect(jsonPath("$.data.city").value("Rockford"));
+
+        CustomerAddress updated = addressRepository.findById(addr.getId()).orElseThrow();
+        assertEquals("New Label", updated.getLabel());
+        assertEquals("Rockford", updated.getCity());
     }
 
     @Test
@@ -252,6 +261,9 @@ class CustomerAddressIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
 
+        assertTrue(addressRepository.findById(addr.getId()).isEmpty(),
+                "Deleted address should be removed from the database");
+
         mockMvc.perform(get("/addresses/{id}", addr.getId())
                         .header("Authorization", bearer(accessTokenFor(user)))
                         .header("User-Agent", TEST_USER_AGENT))
@@ -284,6 +296,9 @@ class CustomerAddressIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(second.getId().toString()))
                 .andExpect(jsonPath("$.data['default']").value(true));
+
+        assertTrue(addressRepository.findById(second.getId()).orElseThrow().isDefault(),
+                "Address should be marked default in the database");
     }
 
     @Test
