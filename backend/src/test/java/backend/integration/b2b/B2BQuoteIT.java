@@ -123,6 +123,11 @@ class B2BQuoteIT extends AbstractIntegrationIT {
 
         // Buyer B2BAccount auto-created.
         org.junit.jupiter.api.Assertions.assertTrue(accountRepository.findByUserId(buyer.getId()).isPresent());
+
+        // The quote itself must be persisted in PENDING_VENDOR.
+        org.junit.jupiter.api.Assertions.assertEquals(1, quoteRepository.count());
+        org.junit.jupiter.api.Assertions.assertEquals(QuoteStatus.PENDING_VENDOR,
+                quoteRepository.findAll().get(0).getStatus());
     }
 
     @Test
@@ -144,6 +149,9 @@ class B2BQuoteIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_BUYER"));
+
+        org.junit.jupiter.api.Assertions.assertEquals(QuoteStatus.PENDING_BUYER,
+                quoteRepository.findById(quote.getId()).orElseThrow().getStatus());
     }
 
     @Test

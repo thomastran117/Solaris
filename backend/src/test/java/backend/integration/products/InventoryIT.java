@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -320,6 +321,14 @@ class InventoryIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stock").value(15))
                 .andExpect(jsonPath("$.data.productId").value(product.getId().toString()));
+
+        // Stock is consistency-critical: the new level must be committed to MySQL, and an
+        // audit row must be written — not just returned in the response.
+        assertEquals(15, productRepository.findById(product.getId()).orElseThrow().getStock());
+        Integer adjustments = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory_adjustments WHERE delta = ? AND reason = ?",
+                Integer.class, 5, "RESTOCK");
+        assertEquals(1, adjustments, "An inventory adjustment row should be persisted");
     }
 
     @Test
@@ -337,6 +346,8 @@ class InventoryIT extends AbstractIntegrationIT {
                         .content(adjustBody(-3, "DAMAGE")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stock").value(17));
+
+        assertEquals(17, productRepository.findById(product.getId()).orElseThrow().getStock());
     }
 
     @Test
@@ -452,6 +463,10 @@ class InventoryIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(2)));
+
+        // Both products' stock must be committed to the database.
+        assertEquals(15, productRepository.findById(p1.getId()).orElseThrow().getStock());
+        assertEquals(18, productRepository.findById(p2.getId()).orElseThrow().getStock());
     }
 
     @Test
@@ -518,6 +533,10 @@ class InventoryIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.lowStockThreshold").value(10))
                 .andExpect(jsonPath("$.data.maxStock").value(100));
+
+        Product updated = productRepository.findById(product.getId()).orElseThrow();
+        assertEquals(10, updated.getLowStockThreshold());
+        assertEquals(100, updated.getMaxStock());
     }
 
     @Test

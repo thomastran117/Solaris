@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -251,6 +252,9 @@ class CompanyOrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("PACKED"));
+
+        assertEquals(OrderStatus.PACKED,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -303,6 +307,10 @@ class CompanyOrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("SHIPPED"));
+
+        Order shipped = orderRepository.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.SHIPPED, shipped.getStatus());
+        assertEquals("TRACK123456", shipped.getTrackingNumber());
     }
 
     @Test
@@ -359,6 +367,9 @@ class CompanyOrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("DELIVERED"));
+
+        assertEquals(OrderStatus.DELIVERED,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -409,6 +420,9 @@ class CompanyOrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("CANCELLED"));
+
+        assertEquals(OrderStatus.CANCELLED,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 
     @Test

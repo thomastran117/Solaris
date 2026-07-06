@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -148,6 +149,10 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.onboardingStep").value("PROFILE"))
                 .andExpect(jsonPath("$.data.tier").value("STANDARD"));
+
+        assertEquals("DRAFT",
+                jdbcTemplate.queryForObject("SELECT status FROM marketplace_vendors", String.class),
+                "Vendor application should be persisted in DRAFT");
     }
 
     @Test
@@ -478,6 +483,10 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.id").isNotEmpty())
                 .andExpect(jsonPath("$.data.documentType").value("BUSINESS_LICENSE"))
                 .andExpect(jsonPath("$.data.s3Key").value("vendors/" + vendorId + "/business_license.pdf"));
+
+        Integer docRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vendor_onboarding_documents", Integer.class);
+        assertEquals(1, docRows, "Onboarding document should be persisted");
     }
 
     @Test
@@ -610,6 +619,9 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("APPLIED"))
                 .andExpect(jsonPath("$.data.onboardingStep").value("REVIEW"));
+
+        assertEquals("APPLIED",
+                jdbcTemplate.queryForObject("SELECT status FROM marketplace_vendors", String.class));
     }
 
     @Test
@@ -816,6 +828,9 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("APPROVED"))
                 .andExpect(jsonPath("$.data.onboardingStep").value("COMPLETE"));
+
+        assertEquals("APPROVED",
+                jdbcTemplate.queryForObject("SELECT status FROM marketplace_vendors", String.class));
     }
 
     @Test
@@ -861,6 +876,9 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectionReason").value("Does not meet our standards"));
+
+        assertEquals("REJECTED",
+                jdbcTemplate.queryForObject("SELECT status FROM marketplace_vendors", String.class));
     }
 
     @Test
@@ -921,6 +939,9 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
                         .content(actionBody("Policy violation")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUSPENDED"));
+
+        assertEquals("SUSPENDED",
+                jdbcTemplate.queryForObject("SELECT status FROM marketplace_vendors", String.class));
     }
 
     @Test

@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -77,7 +78,7 @@ class GiftCardIT extends AbstractIntegrationIT {
         User buyer = createActiveUser("gc-redeem-full@example.com", "Password1!");
         User redeemer = createActiveUser("gc-redeem-user@example.com", "Password1!");
         Company company = createCompany(buyer);
-        createCard(buyer, company, "ABCD1234EFGH5678", 5000L, GiftCardStatus.ACTIVE);
+        GiftCard card = createCard(buyer, company, "ABCD1234EFGH5678", 5000L, GiftCardStatus.ACTIVE);
 
         mockMvc.perform(post("/gift-cards/redeem")
                         .header("Authorization", bearer(accessTokenFor(redeemer)))
@@ -87,6 +88,11 @@ class GiftCardIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.code").value("ABCD1234EFGH5678"))
                 .andExpect(jsonPath("$.data.remainingBalanceCents").value(0))
                 .andExpect(jsonPath("$.data.status").value("REDEEMED"));
+
+        // The debited balance and terminal status must be committed to the database.
+        GiftCard persisted = giftCardRepository.findById(card.getId()).orElseThrow();
+        assertEquals(0L, persisted.getRemainingBalanceCents());
+        assertEquals(GiftCardStatus.REDEEMED, persisted.getStatus());
     }
 
     @Test
@@ -94,7 +100,7 @@ class GiftCardIT extends AbstractIntegrationIT {
         User buyer = createActiveUser("gc-redeem-partial-buyer@example.com", "Password1!");
         User redeemer = createActiveUser("gc-redeem-partial-user@example.com", "Password1!");
         Company company = createCompany(buyer);
-        createCard(buyer, company, "PARTIAL123456789", 5000L, GiftCardStatus.ACTIVE);
+        GiftCard card = createCard(buyer, company, "PARTIAL123456789", 5000L, GiftCardStatus.ACTIVE);
 
         mockMvc.perform(post("/gift-cards/redeem")
                         .header("Authorization", bearer(accessTokenFor(redeemer)))
@@ -103,6 +109,10 @@ class GiftCardIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.remainingBalanceCents").value(3000))
                 .andExpect(jsonPath("$.data.status").value("PARTIALLY_USED"));
+
+        GiftCard persisted = giftCardRepository.findById(card.getId()).orElseThrow();
+        assertEquals(3000L, persisted.getRemainingBalanceCents());
+        assertEquals(GiftCardStatus.PARTIALLY_USED, persisted.getStatus());
     }
 
     @Test
@@ -270,6 +280,10 @@ class GiftCardIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/gift-cards/admin/" + card.getId() + "/void")
                         .header("Authorization", bearer(accessTokenFor(admin))))
                 .andExpect(status().isNoContent());
+
+        // The VOID status must be committed to the database.
+        assertEquals(GiftCardStatus.VOID,
+                giftCardRepository.findById(card.getId()).orElseThrow().getStatus());
 
         // Verify balance endpoint shows VOID status
         mockMvc.perform(get("/gift-cards/VOIDME1234567890/balance"))

@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -30,6 +31,10 @@ class DeviceTokenIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(tokenBody("ANDROID", "fcm-token-android-abc123")))
                 .andExpect(status().isNoContent());
+
+        // The token must be persisted onto the user's device row (204 returns no body).
+        assertEquals("fcm-token-android-abc123",
+                userDeviceRepository.findAll().get(0).getFcmToken());
     }
 
     @Test
@@ -115,6 +120,10 @@ class DeviceTokenIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/devices/push-token/fcm-revoke-test-token")
                         .header("Authorization", bearer(accessTokenFor(user))))
                 .andExpect(status().isNoContent());
+
+        // The token must be cleared from the device row after revocation.
+        assertNull(userDeviceRepository.findAll().get(0).getFcmToken(),
+                "Revoked push token should be cleared in the database");
     }
 
     @Test

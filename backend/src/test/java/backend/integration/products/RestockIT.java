@@ -18,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -175,7 +177,7 @@ class RestockIT extends AbstractIntegrationIT {
         addMember(owner, company, CompanyRole.OWNER);
         Product product = createProduct(company);
 
-        mockMvc.perform(post("/companies/{companyId}/inventory/restock", company.getId())
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/inventory/restock", company.getId())
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -183,7 +185,15 @@ class RestockIT extends AbstractIntegrationIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.requestedQty").value(100))
-                .andExpect(jsonPath("$.data.productId").value(product.getId().toString()));
+                .andExpect(jsonPath("$.data.productId").value(product.getId().toString()))
+                .andReturn();
+
+        UUID id = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        RestockRequest persisted = restockRepository.findById(id).orElseThrow();
+        assertEquals(RestockStatus.PENDING, persisted.getStatus());
+        assertEquals(100, persisted.getRequestedQty());
+        assertEquals(product.getId(), persisted.getProduct().getId());
     }
 
     @Test
@@ -345,6 +355,9 @@ class RestockIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.supplierNote").value("Updated supplier note"));
+
+        assertEquals("Updated supplier note",
+                restockRepository.findById(rr.getId()).orElseThrow().getSupplierNote());
     }
 
     @Test
@@ -405,6 +418,9 @@ class RestockIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        assertTrue(restockRepository.findById(rr.getId()).isEmpty(),
+                "Deleted restock request should be removed from the database");
     }
 
     @Test

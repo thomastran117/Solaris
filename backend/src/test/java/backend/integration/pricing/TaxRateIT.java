@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -83,6 +84,9 @@ class TaxRateIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.country").value("US"))
                 .andExpect(jsonPath("$.data.state").value("CA"));
+
+        Integer rows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tax_rates", Integer.class);
+        assertEquals(1, rows, "Tax rate should be persisted");
     }
 
     @Test
@@ -151,6 +155,10 @@ class TaxRateIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.rate").value(closeTo(0.09000, 0.00001)))
                 .andExpect(jsonPath("$.data.active").value(false));
+
+        assertEquals(Boolean.FALSE,
+                jdbcTemplate.queryForObject("SELECT active FROM tax_rates", Boolean.class),
+                "Active-flag change should be persisted");
     }
 
     // ── soft delete ──────────────────────────────────────────────────────────────
@@ -163,6 +171,15 @@ class TaxRateIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/admin/tax-rates/" + id)
                         .header("Authorization", bearer(accessTokenFor(admin))))
                 .andExpect(status().isNoContent());
+
+        // Soft delete: the row must physically remain in the table (for historical
+        // order.taxRateId joins) but be marked inactive.
+        assertEquals(1, (int) jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM tax_rates", Integer.class),
+                "Soft-deleted tax rate row should remain in the database");
+        assertEquals(Boolean.FALSE,
+                jdbcTemplate.queryForObject("SELECT active FROM tax_rates", Boolean.class),
+                "Soft-deleted tax rate should be inactive in the database");
 
         // Row still exists (so historical order.taxRateId joins resolve), but is now inactive.
         mockMvc.perform(get("/admin/tax-rates/" + id)

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -153,6 +154,10 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.code").value("GOLD"))
                 .andExpect(jsonPath("$.data.name").value("Gold Members"))
                 .andExpect(jsonPath("$.data.createdAt").isNotEmpty());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer_segments WHERE code = 'GOLD'", Integer.class);
+        assertEquals(1, rows, "Segment should be persisted");
     }
 
     @Test
@@ -234,6 +239,9 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Bronze Members Updated"))
                 .andExpect(jsonPath("$.data.code").value("BRONZE"));
+
+        assertEquals("Bronze Members Updated",
+                jdbcTemplate.queryForObject("SELECT name FROM customer_segments", String.class));
     }
 
     @Test
@@ -276,6 +284,10 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/admin/customer-segments/" + segmentId)
                         .header("Authorization", bearer(accessTokenFor(admin))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer_segments", Integer.class);
+        assertEquals(0, rows, "Deleted segment should be removed from the database");
     }
 
     @Test
@@ -327,6 +339,10 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
         mockMvc.perform(post("/admin/users/" + customer.getId() + "/segments/" + segmentId)
                         .header("Authorization", bearer(accessTokenFor(admin))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_segments", Integer.class);
+        assertEquals(1, rows, "Segment assignment should be persisted");
     }
 
     @Test
@@ -379,6 +395,10 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
         mockMvc.perform(delete("/admin/users/" + customer.getId() + "/segments/" + segmentId)
                         .header("Authorization", bearer(accessTokenFor(admin))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_segments", Integer.class);
+        assertEquals(0, rows, "Segment assignment should be removed from the database");
     }
 
     @Test

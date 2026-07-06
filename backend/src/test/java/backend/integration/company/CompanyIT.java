@@ -13,12 +13,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -188,13 +191,18 @@ class CompanyIT extends AbstractIntegrationIT {
     void createCompany_returns201WithName() throws Exception {
         User user = createActiveUser("co-create@example.com", "Password1!");
 
-        mockMvc.perform(post("/companies")
+        MvcResult result = mockMvc.perform(post("/companies")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createCompanyBody("Brand New Co")))
                         .header("Authorization", bearer(accessTokenFor(user)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.name").value("Brand New Co"));
+                .andExpect(jsonPath("$.data.name").value("Brand New Co"))
+                .andReturn();
+
+        UUID companyId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        assertEquals("Brand New Co", companyRepository.findById(companyId).orElseThrow().getName());
     }
 
     @Test
@@ -253,6 +261,9 @@ class CompanyIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"));
+
+        assertEquals("New Name",
+                companyRepository.findById(company.getId()).orElseThrow().getName());
     }
 
     @Test
@@ -307,6 +318,12 @@ class CompanyIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        // The company must no longer be an active, retrievable record — whether the delete
+        // is a hard delete or a soft delete (status change).
+        Optional<Company> after = companyRepository.findById(company.getId());
+        assertTrue(after.isEmpty() || after.get().getStatus() != CompanyStatus.ACTIVE,
+                "Deleted company should be removed or no longer ACTIVE in the database");
     }
 
     @Test

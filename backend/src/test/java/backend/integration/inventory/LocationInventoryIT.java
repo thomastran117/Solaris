@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -164,6 +165,10 @@ class LocationInventoryIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.type").value("WAREHOUSE"))
                 .andExpect(jsonPath("$.data.active").value(true))
                 .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory_locations WHERE code = 'EAST-01'", Integer.class);
+        assertEquals(1, rows, "Location should be persisted");
     }
 
     @Test
@@ -323,6 +328,9 @@ class LocationInventoryIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"))
                 .andExpect(jsonPath("$.data.code").value("OLD-NAME"));
+
+        String name = jdbcTemplate.queryForObject("SELECT name FROM inventory_locations", String.class);
+        assertEquals("New Name", name, "Location rename should be persisted");
     }
 
     @Test
@@ -391,6 +399,10 @@ class LocationInventoryIT extends AbstractIntegrationIT {
         mockMvc.perform(delete(base(company.getId()) + "/" + locationId)
                         .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory_locations", Integer.class);
+        assertEquals(0, rows, "Deleted location should be removed from the database");
     }
 
     @Test
@@ -536,6 +548,9 @@ class LocationInventoryIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.locationId").value(locationId.toString()))
                 .andExpect(jsonPath("$.data.stock").value(50))
                 .andExpect(jsonPath("$.data.stockStatus").value("IN_STOCK"));
+
+        Integer stock = jdbcTemplate.queryForObject("SELECT stock FROM location_stocks", Integer.class);
+        assertEquals(50, stock, "Location stock should be persisted");
     }
 
     @Test
@@ -621,6 +636,9 @@ class LocationInventoryIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stock").value(15))
                 .andExpect(jsonPath("$.data.stockStatus").value("IN_STOCK"));
+
+        Integer stock = jdbcTemplate.queryForObject("SELECT stock FROM location_stocks", Integer.class);
+        assertEquals(15, stock, "Adjusted location stock should be persisted");
     }
 
     @Test

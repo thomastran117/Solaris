@@ -121,6 +121,9 @@ class ReviewAdminIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(actionBody("HIDE")))
                 .andExpect(status().isNoContent());
+
+        assertEquals(ReviewStatus.HIDDEN,
+                reviewRepository.findById(review.getId()).orElseThrow().getStatus());
     }
 
     @Test

@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -36,7 +37,7 @@ class BundleIT extends AbstractIntegrationIT {
     @AfterEach
     void cleanBundles() {
         try { jdbcTemplate.execute("DELETE FROM bundle_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM bundles"); } catch (Exception ignored) {}
+        try { jdbcTemplate.execute("DELETE FROM product_bundles"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
@@ -137,6 +138,14 @@ class BundleIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("Starter Bundle"));
+
+        // The bundle and its item must actually be persisted.
+        Integer bundleRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_bundles WHERE name = 'Starter Bundle'", Integer.class);
+        assertEquals(1, bundleRows, "Bundle should be persisted");
+        Integer itemRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bundle_items", Integer.class);
+        assertEquals(1, itemRows, "Bundle item should be persisted");
     }
 
     @Test
@@ -279,6 +288,10 @@ class BundleIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"));
+
+        Integer renamedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_bundles WHERE name = 'New Name'", Integer.class);
+        assertEquals(1, renamedRows, "Bundle rename should be persisted");
     }
 
     @Test
@@ -327,6 +340,10 @@ class BundleIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_bundles", Integer.class);
+        assertEquals(0, remaining, "Deleted bundle should be removed from the database");
 
         mockMvc.perform(get("/companies/{companyId}/bundles/{bundleId}", company.getId(), bundleId)
                         .header("User-Agent", TEST_USER_AGENT))
@@ -382,6 +399,9 @@ class BundleIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)));
+
+        String status = jdbcTemplate.queryForObject("SELECT status FROM product_bundles", String.class);
+        assertEquals("ARCHIVED", status, "Batch status update should be persisted");
     }
 
     @Test
@@ -438,6 +458,10 @@ class BundleIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_bundles", Integer.class);
+        assertEquals(0, remaining, "Batch-deleted bundle should be removed from the database");
     }
 
     @Test

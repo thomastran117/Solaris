@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -117,6 +118,14 @@ class KitIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("Starter Kit"));
+
+        // The kit and its slot must actually be persisted.
+        Integer kitRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_kits WHERE name = 'Starter Kit'", Integer.class);
+        assertEquals(1, kitRows, "Kit should be persisted");
+        Integer slotRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM kit_slots", Integer.class);
+        assertEquals(1, slotRows, "Kit slot should be persisted");
     }
 
     @Test
@@ -245,6 +254,10 @@ class KitIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"));
+
+        Integer renamedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_kits WHERE name = 'New Name'", Integer.class);
+        assertEquals(1, renamedRows, "Kit rename should be persisted");
     }
 
     @Test
@@ -291,6 +304,10 @@ class KitIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_kits", Integer.class);
+        assertEquals(0, remaining, "Deleted kit should be removed from the database");
 
         mockMvc.perform(get("/companies/{companyId}/kits/{kitId}", company.getId(), kitId)
                         .header("User-Agent", TEST_USER_AGENT))

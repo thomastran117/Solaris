@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -232,6 +233,10 @@ class CollectionIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
                 .andExpect(jsonPath("$.data.createdAt").isNotEmpty());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM collections WHERE slug = 'new-arrivals'", Integer.class);
+        assertEquals(1, rows, "Collection should be persisted");
     }
 
     @Test
@@ -327,6 +332,9 @@ class CollectionIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"))
                 .andExpect(jsonPath("$.data.slug").value("old-name"));
+
+        String name = jdbcTemplate.queryForObject("SELECT name FROM collections", String.class);
+        assertEquals("New Name", name, "Collection rename should be persisted");
     }
 
     @Test
@@ -342,6 +350,9 @@ class CollectionIT extends AbstractIntegrationIT {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        String status = jdbcTemplate.queryForObject("SELECT status FROM collections", String.class);
+        assertEquals("ACTIVE", status, "Collection status change should be persisted");
     }
 
     @Test
@@ -411,6 +422,10 @@ class CollectionIT extends AbstractIntegrationIT {
         mockMvc.perform(delete(base(company.getId()) + "/" + collectionId)
                         .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM collections", Integer.class);
+        assertEquals(0, rows, "Deleted collection should be removed from the database");
     }
 
     @Test
@@ -527,6 +542,10 @@ class CollectionIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.productName").isNotEmpty())
                 .andExpect(jsonPath("$.data.source").value("MANUAL"))
                 .andExpect(jsonPath("$.data.collectionId").value(collectionId.toString()));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM collection_products", Integer.class);
+        assertEquals(1, rows, "Collection-product membership should be persisted");
     }
 
     @Test
@@ -646,6 +665,11 @@ class CollectionIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.boostWeight").value(5))
                 .andExpect(jsonPath("$.data.pinnedRank").value(1));
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT boost_weight, pinned_rank FROM collection_products");
+        assertEquals(5, ((Number) row.get("boost_weight")).intValue());
+        assertEquals(1, ((Number) row.get("pinned_rank")).intValue());
     }
 
     @Test
@@ -709,6 +733,10 @@ class CollectionIT extends AbstractIntegrationIT {
         mockMvc.perform(delete(base(company.getId()) + "/" + collectionId + "/products/" + product.getId())
                         .header("Authorization", bearer(accessTokenFor(owner))))
                 .andExpect(status().isNoContent());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM collection_products", Integer.class);
+        assertEquals(0, rows, "Removed collection-product row should be gone from the database");
     }
 
     @Test

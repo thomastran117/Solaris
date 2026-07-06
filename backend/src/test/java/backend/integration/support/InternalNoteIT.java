@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -83,6 +84,10 @@ class InternalNoteIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.body").value("Internal note body"))
                 .andExpect(jsonPath("$.data.entityType").value("TICKET"))
                 .andExpect(jsonPath("$.data.entityId").value(entityId.toString()));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM internal_notes", Integer.class);
+        assertEquals(1, rows, "Internal note should be persisted");
     }
 
     @Test

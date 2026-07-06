@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -133,6 +134,10 @@ class CustomerCreditIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.type").value("COMPENSATION_ISSUED"))
                 .andExpect(jsonPath("$.data.currency").value("USD"))
                 .andExpect(jsonPath("$.data.issuedById").value(support.getId().toString()));
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer_credits WHERE amount_cents = 500", Integer.class);
+        assertEquals(1, rows, "Credit entry should be persisted");
     }
 
     @Test
@@ -206,6 +211,11 @@ class CustomerCreditIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.type").value("REVERSED"))
                 .andExpect(jsonPath("$.data.amountCents").value(-800));
+
+        // A compensating reversal entry (negative amount) must be persisted alongside the original.
+        Integer reversalRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer_credits WHERE amount_cents = -800", Integer.class);
+        assertEquals(1, reversalRows, "Reversal entry should be persisted");
     }
 
     @Test

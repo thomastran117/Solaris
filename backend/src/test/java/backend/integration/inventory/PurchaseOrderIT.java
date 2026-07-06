@@ -80,6 +80,11 @@ class PurchaseOrderIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.supplierId").value(supplier.getId().toString()))
                 .andExpect(jsonPath("$.data.items", hasSize(1)))
                 .andExpect(jsonPath("$.data.items[0].orderedQty").value(5));
+
+        // A DRAFT purchase order must actually be persisted (one PO per test after @AfterEach cleanup).
+        Integer draftRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM purchase_orders WHERE status = 'DRAFT'", Integer.class);
+        assertThat(draftRows).isEqualTo(1);
     }
 
     // ── POST /companies/{companyId}/purchase-orders/{id}/send ─────────────────
@@ -100,6 +105,12 @@ class PurchaseOrderIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SENT"))
                 .andExpect(jsonPath("$.data.sentAt").isNotEmpty());
+
+        // The SENT transition and sent_at timestamp must be committed to the database.
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT status, sent_at FROM purchase_orders");
+        assertThat(row.get("status")).isEqualTo("SENT");
+        assertThat(row.get("sent_at")).isNotNull();
     }
 
     // ── POST /companies/{companyId}/purchase-orders/{id}/confirm ──────────────
@@ -120,6 +131,10 @@ class PurchaseOrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CONFIRMED"));
+
+        Integer confirmedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM purchase_orders WHERE status = 'CONFIRMED'", Integer.class);
+        assertThat(confirmedRows).isEqualTo(1);
     }
 
     // ── POST /companies/{companyId}/purchase-orders/{id}/receive ──────────────

@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -55,6 +56,10 @@ class ProfileIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.firstName").value("Alice"))
                 .andExpect(jsonPath("$.data.lastName").value("Smith"))
                 .andExpect(jsonPath("$.data.email").value("profile-update@example.com"));
+
+        User updated = userRepository.findById(user.getId()).orElseThrow();
+        assertEquals("Alice", updated.getFirstName());
+        assertEquals("Smith", updated.getLastName());
     }
 
     @Test
@@ -71,6 +76,9 @@ class ProfileIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phoneNumber").value("+1 555-123-4567"));
+
+        assertEquals("+1 555-123-4567",
+                userRepository.findById(user.getId()).orElseThrow().getPhoneNumber());
     }
 
     @Test

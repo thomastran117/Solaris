@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -64,6 +65,11 @@ class UserPreferenceIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("optOut", true))))
                 .andExpect(status().isNoContent());
+
+        // The opt-out must be committed to the user_preference row (204 returns no body to trust).
+        Boolean optOut = jdbcTemplate.queryForObject(
+                "SELECT tracking_opt_out FROM user_preference", Boolean.class);
+        assertEquals(Boolean.TRUE, optOut, "Tracking opt-out should be persisted");
     }
 
     @Test
@@ -143,6 +149,11 @@ class UserPreferenceIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.smsEnabled").value(true))
                 .andExpect(jsonPath("$.data.smsPhoneNumber").value("+12025551234"));
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT sms_enabled, sms_phone_number FROM user_preference");
+        assertEquals(Boolean.TRUE, row.get("sms_enabled"));
+        assertEquals("+12025551234", row.get("sms_phone_number"));
     }
 
     @Test

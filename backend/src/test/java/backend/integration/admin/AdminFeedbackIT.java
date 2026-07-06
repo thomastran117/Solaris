@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -139,6 +140,10 @@ class AdminFeedbackIT extends AbstractIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("UNDER_REVIEW"))
                 .andExpect(jsonPath("$.data.reviewedById").value(admin.getId().toString()));
+
+        PlatformFeedback updated = feedbackRepository.findById(feedback.getId()).orElseThrow();
+        assertEquals(FeedbackStatus.UNDER_REVIEW, updated.getStatus());
+        assertEquals(admin.getId(), updated.getReviewedById());
     }
 
     @Test
@@ -153,6 +158,9 @@ class AdminFeedbackIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(Map.of("status", "RESOLVED"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("RESOLVED"));
+
+        assertEquals(FeedbackStatus.RESOLVED,
+                feedbackRepository.findById(feedback.getId()).orElseThrow().getStatus());
     }
 
     @Test

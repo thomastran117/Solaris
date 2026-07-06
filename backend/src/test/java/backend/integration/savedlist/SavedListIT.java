@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -249,6 +250,10 @@ class SavedListIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.shareSlug").doesNotExist())
                 .andExpect(jsonPath("$.data.items").isArray())
                 .andExpect(jsonPath("$.data.items").isEmpty());
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM saved_lists WHERE name = 'Holiday List'", Integer.class);
+        assertEquals(1, rows, "Saved list should be persisted");
     }
 
     @Test
@@ -334,6 +339,9 @@ class SavedListIT extends AbstractIntegrationIT {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("New Name"));
+
+        assertEquals("New Name",
+                jdbcTemplate.queryForObject("SELECT name FROM saved_lists", String.class));
     }
 
     @Test
@@ -459,6 +467,10 @@ class SavedListIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.productName").value(product.getName()))
                 .andExpect(jsonPath("$.data.quantity").value(1))
                 .andExpect(jsonPath("$.data.purchased").value(false));
+
+        Integer itemRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM saved_list_items", Integer.class);
+        assertEquals(1, itemRows, "Saved list item should be persisted");
     }
 
     @Test

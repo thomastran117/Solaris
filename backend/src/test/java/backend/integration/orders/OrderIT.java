@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -183,6 +184,10 @@ class OrderIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+
+        // The cancellation must be committed to the database, not just echoed in the response.
+        assertEquals(OrderStatus.CANCELLED,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 
     @Test

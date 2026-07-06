@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -122,6 +123,10 @@ class PromotionRuleIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.name").value("10% Off Everything"))
                 .andExpect(jsonPath("$.data.ruleType").value("PERCENTAGE_OFF"))
                 .andExpect(jsonPath("$.data.id").isNotEmpty());
+
+        Integer ruleRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM promotion_rules WHERE name = '10% Off Everything'", Integer.class);
+        assertEquals(1, ruleRows, "Promotion rule should be persisted");
     }
 
     @Test
@@ -297,6 +302,10 @@ class PromotionRuleIT extends AbstractIntegrationIT {
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Updated Name"));
+
+        Integer renamedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM promotion_rules WHERE name = 'Updated Name'", Integer.class);
+        assertEquals(1, renamedRows, "Promotion rule rename should be persisted");
     }
 
     @Test
@@ -342,6 +351,10 @@ class PromotionRuleIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNoContent());
+
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM promotion_rules", Integer.class);
+        assertEquals(0, remaining, "Deleted promotion rule should be removed from the database");
     }
 
     @Test
