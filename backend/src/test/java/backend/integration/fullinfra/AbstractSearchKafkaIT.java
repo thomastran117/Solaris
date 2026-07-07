@@ -102,9 +102,9 @@ public abstract class AbstractSearchKafkaIT {
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
     }
 
-    /** Index settings defining the custom analyzers referenced by the document mappings. */
-    private static final String INDEX_SETTINGS = """
-            {"settings":{"analysis":{
+    /** Analysis block defining the custom analyzers referenced by the document mappings. */
+    private static final String ANALYSIS = """
+            "analysis":{
               "filter":{
                 "synonym_filter":{"type":"synonym_graph","synonyms":["laptop, notebook, computer"]},
                 "autocomplete_filter":{"type":"edge_ngram","min_gram":1,"max_gram":20}
@@ -114,16 +114,63 @@ public abstract class AbstractSearchKafkaIT {
                 "autocomplete_index":{"type":"custom","tokenizer":"standard","filter":["lowercase","autocomplete_filter"]},
                 "autocomplete_search":{"type":"custom","tokenizer":"standard","filter":["lowercase"]}
               }
-            }}}""";
+            }""";
+
+    /**
+     * Explicit field mappings for the {@code products} index, mirroring {@link backend.documents.ProductDocument}.
+     * The read path (catalog search) filters on keyword fields, runs {@code terms}/{@code range} aggregations,
+     * and applies a {@code function_score} — all of which need correct types. Without an explicit mapping the
+     * index is created settings-only and ES dynamic-maps everything from the first document, which mis-types
+     * numeric/keyword fields (e.g. a {@code BigDecimal} price serialized as a string becomes {@code text}) and
+     * makes the {@code price_ranges} range aggregation fail. Write-path tests only do get-by-id and never hit
+     * this; the search path does.
+     */
+    private static final String PRODUCTS_MAPPINGS = """
+            "mappings":{"properties":{
+              "companyId":{"type":"keyword"},
+              "marketplaceId":{"type":"keyword"},
+              "vendorId":{"type":"keyword"},
+              "vendorCompanyId":{"type":"keyword"},
+              "vendorName":{"type":"keyword"},
+              "marketplaceListed":{"type":"boolean"},
+              "name":{"type":"text","search_analyzer":"product_search"},
+              "description":{"type":"text","search_analyzer":"product_search"},
+              "sku":{"type":"keyword"},
+              "category":{"type":"keyword"},
+              "brand":{"type":"keyword"},
+              "tags":{"type":"text","search_analyzer":"product_search"},
+              "nameCompletion":{"type":"text","analyzer":"autocomplete_index","search_analyzer":"autocomplete_search"},
+              "status":{"type":"keyword"},
+              "scheduledPublishAt":{"type":"date"},
+              "publishedAt":{"type":"date"},
+              "featured":{"type":"boolean"},
+              "listed":{"type":"boolean"},
+              "thumbnailUrl":{"type":"keyword"},
+              "price":{"type":"double"},
+              "discountCategories":{"type":"keyword"},
+              "hasActiveDiscount":{"type":"boolean"},
+              "discountedPrice":{"type":"double"},
+              "boostWeight":{"type":"integer"},
+              "pinnedUntil":{"type":"date"},
+              "pinnedRank":{"type":"integer"},
+              "collectionIds":{"type":"keyword"},
+              "attributeText":{"type":"text","search_analyzer":"product_search"}
+            }}""";
+
+    private static final String SETTINGS_ONLY_BODY = "{\"settings\":{" + ANALYSIS + "}}";
+    private static final String PRODUCTS_BODY = "{\"settings\":{" + ANALYSIS + "}," + PRODUCTS_MAPPINGS + "}";
 
     private static void createSearchIndices(String esBaseUrl) {
         java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
         for (String index : new String[]{"products", "bundles", "reports", "reviews"}) {
+            // The products index gets explicit mappings (its read path aggregates/filters on typed
+            // fields); the others only need the analyzer settings for get-by-id round-trips.
+            String body = "products".equals(index) ? PRODUCTS_BODY : SETTINGS_ONLY_BODY;
             try {
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(esBaseUrl + "/" + index))
                         .header("Content-Type", "application/json")
-                        .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(INDEX_SETTINGS))
+                        .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(body))
                         .build();
                 java.net.http.HttpResponse<String> resp =
                         client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
