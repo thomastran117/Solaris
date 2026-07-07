@@ -298,12 +298,26 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
                         .param("q", "laptop"))
                 .andReturn();
         if (searchResult.getResponse().getStatus() != 200) {
-            String mapping = esGet("/products/_mapping/field/price,category,brand,marketplaceId,status");
-            String rawAgg = esPost("/products/_search",
-                    "{\"size\":0,\"aggs\":{\"pr\":{\"range\":{\"field\":\"price\",\"ranges\":[{\"to\":25.0}]}}}}");
+            String mp = marketplace.getId().toString();
+            String fullQuery = "{"
+                + "\"query\":{\"function_score\":{"
+                + "\"query\":{\"bool\":{\"filter\":["
+                + "{\"term\":{\"marketplaceId\":\"" + mp + "\"}},"
+                + "{\"term\":{\"marketplaceListed\":true}},"
+                + "{\"term\":{\"status\":\"ACTIVE\"}}],"
+                + "\"must\":[{\"multi_match\":{\"fields\":[\"name^3\",\"description\",\"brand^2\",\"category\",\"tags\",\"vendorName\"],\"query\":\"laptop\",\"fuzziness\":\"AUTO\"}}]}},"
+                + "\"functions\":[{\"filter\":{\"range\":{\"pinnedUntil\":{\"gt\":\"now\"}}},\"weight\":10000.0},"
+                + "{\"field_value_factor\":{\"field\":\"boostWeight\",\"factor\":1.0,\"modifier\":\"log1p\",\"missing\":1.0}}],"
+                + "\"score_mode\":\"multiply\",\"boost_mode\":\"multiply\"}},"
+                + "\"aggs\":{\"categories\":{\"terms\":{\"field\":\"category\",\"size\":20,\"min_doc_count\":1}},"
+                + "\"brands\":{\"terms\":{\"field\":\"brand\",\"size\":20,\"min_doc_count\":1}},"
+                + "\"price_ranges\":{\"range\":{\"field\":\"price\",\"ranges\":[{\"to\":25.0},{\"from\":25.0,\"to\":50.0},{\"from\":50.0,\"to\":100.0},{\"from\":100.0,\"to\":200.0},{\"from\":200.0}]}}}"
+                + "}";
+            String fullResult = esPost("/products/_search", fullQuery);
+            String source = esPost("/products/_search", "{\"query\":{\"match_all\":{}}}");
             org.junit.jupiter.api.Assertions.fail("CATALOG 503 DIAG >>> status="
                     + searchResult.getResponse().getStatus()
-                    + " | MAPPING=" + mapping + " | RAWAGG=" + rawAgg);
+                    + " | FULLQUERY=" + fullResult + " | SOURCE=" + source);
         }
         org.junit.jupiter.api.Assertions.assertTrue(
                 searchResult.getResponse().getContentAsString().contains(product.getId().toString()),
