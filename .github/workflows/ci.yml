@@ -129,7 +129,7 @@ jobs:
       # Spring context are shared across the classes in this job rather than restarted.
       - name: Run full-infrastructure integration tests
         run: >-
-          ./mvnw test -Dtest=ProductSearchKafkaIT
+          ./mvnw test -Dtest=ProductSearchKafkaIT,BundleSearchKafkaIT
           -DreuseForks=true
           -Dsurefire.timeout=600
           -Djacoco.skip=true

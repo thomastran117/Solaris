@@ -75,6 +75,19 @@ class ProductSearchKafkaIT extends AbstractSearchKafkaIT {
         membershipRepository.save(m);
     }
 
+    /** Seeds a plain (non-marketplace) product — reindexed via the bulk service path, not Kafka. */
+    private Product createProduct(Company company, String name) {
+        Product p = new Product();
+        p.setCompany(company);
+        p.setName(name);
+        p.setSku("SK-" + UUID.randomUUID().toString().substring(0, 8));
+        p.setPrice(new BigDecimal("29.99"));
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        p.setPurchasable(true);
+        return productRepository.save(p);
+    }
+
     /** Seeds a marketplace-listed product so its mutations flow through Kafka to the indexer. */
     private Product createMarketplaceProduct(Company company, String name) {
         Product p = new Product();
@@ -161,5 +174,31 @@ class ProductSearchKafkaIT extends AbstractSearchKafkaIT {
 
         assertTrue(afterDelete.isEmpty(),
                 "Product document should have been removed from Elasticsearch via the Kafka pipeline");
+    }
+
+    @Test
+    void reindexEndpoint_bulkIndexesCompanyProductsIntoElasticsearch() throws Exception {
+        User owner = createActiveUser("fi-reindex-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addOwner(owner, company);
+        // Plain products (no marketplace) are not picked up by the incremental Kafka path — the
+        // reindex endpoint drives ProductIndexingService.reindexCompany, exercising the bulk
+        // Elasticsearch write path against the live cluster.
+        Product a = createProduct(company, "Reindex Widget A");
+        Product b = createProduct(company, "Reindex Widget B");
+
+        mockMvc.perform(post("/companies/{companyId}/products/reindex", company.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isAccepted());
+
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(a.getId()), Optional::isPresent);
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(b.getId()), Optional::isPresent);
+
+        assertTrue(productSearchRepository.findById(a.getId()).isPresent()
+                        && productSearchRepository.findById(b.getId()).isPresent(),
+                "Both products should be bulk-indexed into Elasticsearch by the reindex endpoint");
     }
 }
