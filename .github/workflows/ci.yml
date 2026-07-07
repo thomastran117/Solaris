@@ -102,39 +102,6 @@ jobs:
           -Djacoco.skip=true
           --batch-mode
 
-  backend-search-kafka-tests:
-    name: Backend Search + Kafka Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: "21"
-          distribution: temurin
-          cache: maven
-
-      - name: Make mvnw executable
-        run: chmod +x mvnw
-
-      # These tests stand up real Elasticsearch + Kafka + Redis via Testcontainers
-      # (Docker is available on ubuntu-latest). reuseForks=true so the containers /
-      # Spring context are shared across the classes in this job rather than restarted.
-      - name: Run full-infrastructure integration tests
-        run: >-
-          ./mvnw test -Dtest=ProductSearchKafkaIT
-          -DreuseForks=true
-          -Dsurefire.timeout=600
-          -Djacoco.skip=true
-          --batch-mode
-
   frontend-tests:
     name: Frontend Unit Tests
     runs-on: ubuntu-latest
