@@ -71,18 +71,23 @@ public abstract class AbstractSearchKafkaIT {
     static final KafkaContainer KAFKA =
             new KafkaContainer(DockerImageName.parse("apache/kafka:3.8.0"));
 
+    /** Base URL of the live Elasticsearch container — captured for index refresh helpers. */
+    protected static String esBaseUrl;
+
     @DynamicPropertySource
     static void containerProperties(DynamicPropertyRegistry registry) {
         REDIS.start();
         ELASTICSEARCH.start();
         KAFKA.start();
 
+        esBaseUrl = "http://" + ELASTICSEARCH.getHost() + ":" + ELASTICSEARCH.getMappedPort(9200);
+
         // Pre-create the search indices WITH the custom analyzers before the Spring context
         // starts. The Spring Data ES repository beans auto-create their index from the entity
         // mappings at bean-init, but those mappings reference custom analyzers (product_search,
         // autocomplete_*) that must live in the index *settings* first — which the repos don't
         // supply. Creating the indices up-front means the repos see them present and skip.
-        createSearchIndices("http://" + ELASTICSEARCH.getHost() + ":" + ELASTICSEARCH.getMappedPort(9200));
+        createSearchIndices(esBaseUrl);
 
         registry.add("app.redis.host", REDIS::getHost);
         registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
@@ -195,5 +200,26 @@ public abstract class AbstractSearchKafkaIT {
 
     protected String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    /**
+     * Forces a refresh on all live search indices so freshly-indexed documents become visible to
+     * <em>query</em> operations immediately. A GET-by-id is real-time in Elasticsearch, but search
+     * queries only see documents after the (default ~1s) refresh — so tests that assert on a search
+     * endpoint should await the document via {@code findById} and then call this before querying,
+     * to avoid a near-real-time race (and, where results are cached, poisoning the cache with an
+     * empty page).
+     */
+    protected void refreshSearchIndices() {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(esBaseUrl + "/_refresh"))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.noBody())
+                    .build();
+            client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to refresh Elasticsearch indices", e);
+        }
     }
 }

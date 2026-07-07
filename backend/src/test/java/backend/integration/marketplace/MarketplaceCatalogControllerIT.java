@@ -1,28 +1,39 @@
 package backend.integration.marketplace;
 
-import backend.integration.AbstractIntegrationIT;
+import backend.documents.ProductDocument;
+import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
+import backend.models.core.CompanyMembership;
 import backend.models.core.MarketplaceProfile;
 import backend.models.core.MarketplaceVendor;
 import backend.models.core.Product;
 import backend.models.core.User;
+import backend.models.enums.CompanyMembershipStatus;
+import backend.models.enums.CompanyRole;
 import backend.models.enums.CompanyStatus;
 import backend.models.enums.ProductStatus;
 import backend.models.enums.VendorStatus;
 import backend.models.enums.VendorTier;
+import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.MarketplaceProfileRepository;
 import backend.repositories.MarketplaceVendorRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.search.ProductSearchRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -36,24 +47,29 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *    with no purchase/wishlist history, falls back to findFeaturedFeed
  *    (status=ACTIVE, marketplaceListed=true, featured=true)
  *  - GET  /marketplaces/{marketplaceId}/catalog/products                   — 404 if no
- *    MarketplaceProfile exists for the company; otherwise always 503
- *    (elasticsearchOperations is @MockitoBean'd/null, NPEs, no JPA fallback here)
+ *    MarketplaceProfile exists for the company; otherwise queries live Elasticsearch
+ *    (this class runs on real ES+Kafka via {@link AbstractSearchKafkaIT}), so the search
+ *    happy-path indexes a product and asserts it comes back through the real query path
  *  - GET  /marketplaces/{marketplaceId}/catalog/products/{productId}       — DB-backed,
  *    matches on Product.marketplaceId
  *  - GET  /marketplaces/{marketplaceId}/catalog/vendors/{vendorId}/storefront — DB-backed,
  *    matches MarketplaceVendor.id + MarketplaceVendor.marketplace.id
  */
-class MarketplaceCatalogControllerIT extends AbstractIntegrationIT {
+class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
 
     @Autowired private CompanyRepository companyRepository;
+    @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
     @Autowired private MarketplaceProfileRepository marketplaceProfileRepository;
     @Autowired private MarketplaceVendorRepository marketplaceVendorRepository;
+    @Autowired private ProductSearchRepository productSearchRepository;
 
     @AfterEach
     void clean() {
+        try { productSearchRepository.deleteAll(); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
+        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
     }
@@ -95,6 +111,27 @@ class MarketplaceCatalogControllerIT extends AbstractIntegrationIT {
         p.setMarketplaceListed(marketplaceListed);
         p.setFeatured(featured);
         return productRepository.save(p);
+    }
+
+    private void addMember(User user, Company company, CompanyRole role) {
+        CompanyMembership m = new CompanyMembership();
+        m.setCompany(company);
+        m.setUser(user);
+        m.setRole(role);
+        m.setStatus(CompanyMembershipStatus.ACTIVE);
+        membershipRepository.save(m);
+    }
+
+    /** Polls up to {@code timeout} for the async indexing pipeline to reach the expected state. */
+    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
+        long deadline = System.currentTimeMillis() + timeout.toMillis();
+        T last = null;
+        while (System.currentTimeMillis() < deadline) {
+            last = check.call();
+            if (done.test(last)) return last;
+            Thread.sleep(500);
+        }
+        return last;
     }
 
     // ── POST /marketplaces/{marketplaceId}/catalog/products/{productId}/view ──
@@ -229,13 +266,37 @@ class MarketplaceCatalogControllerIT extends AbstractIntegrationIT {
     }
 
     @Test
-    void searchCatalog_existingMarketplace_returns503WhenEsUnavailable() throws Exception {
+    void searchCatalog_existingMarketplace_returnsIndexedProductFromElasticsearch() throws Exception {
         User owner = createActiveUser("mkt-search-owner1@example.com", "Password1!");
         Company marketplace = createCompany(owner, "Search Marketplace");
         createMarketplaceProfile(marketplace);
+        Company vendor = createCompany(owner, "Search Vendor");
+        addMember(owner, vendor, CompanyRole.OWNER);
+        createVendor(marketplace, vendor, VendorTier.STANDARD, VendorStatus.APPROVED);
+        // marketplaceId on the product is what the catalog ES query filters on.
+        Product product = createProduct(vendor, "Ergonomic Laptop Stand", new BigDecimal("49.99"),
+                ProductStatus.ACTIVE, marketplace.getId(), true, false);
 
-        mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products"))
-                .andExpect(status().isServiceUnavailable());
+        // Drive the real bulk indexing path into the live Elasticsearch cluster.
+        mockMvc.perform(post("/companies/" + vendor.getId() + "/products/reindex")
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isAccepted());
+
+        // Wait for the async worker to write the document, then force a refresh so the search
+        // query (as opposed to a real-time get-by-id) can see it and we don't cache an empty page.
+        Optional<ProductDocument> indexed = await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(product.getId()), Optional::isPresent);
+        assertTrue(indexed.isPresent(), "Product should have been indexed into Elasticsearch");
+        refreshSearchIndices();
+
+        // The public catalog search must now return the indexed product — proving the real ES
+        // query path (marketplace filter + product_search analyzer + fuzzy match) works, where the
+        // mocked-ES suite could only ever assert a 503.
+        mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
+                        .param("q", "laptop"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem(product.getId().toString())));
     }
 
     @Test
