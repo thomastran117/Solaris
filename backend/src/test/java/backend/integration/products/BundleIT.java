@@ -1,6 +1,7 @@
 package backend.integration.products;
 
-import backend.integration.AbstractIntegrationIT;
+import backend.documents.BundleDocument;
+import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.Product;
 import backend.models.core.User;
@@ -10,38 +11,64 @@ import backend.models.enums.ProductStatus;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.search.BundleSearchRepository;
 import backend.models.core.CompanyMembership;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class BundleIT extends AbstractIntegrationIT {
+/**
+ * Runs against live Elasticsearch + Kafka (via {@link AbstractSearchKafkaIT}): besides the HTTP,
+ * DB, and authorization assertions, the create/delete happy paths also verify that the change
+ * flows through the real bundle-events topic to the real indexer and lands in / leaves the
+ * Elasticsearch bundles index — so the search-indexing pipeline is covered in-place rather than
+ * in a separate test class.
+ */
+class BundleIT extends AbstractSearchKafkaIT {
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
+    @Autowired private BundleSearchRepository bundleSearchRepository;
 
     @AfterEach
     void cleanBundles() {
+        try { bundleSearchRepository.deleteAll(); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM bundle_items"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_bundles"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
+    }
+
+    /** Polls up to {@code timeout} for the supplier to satisfy {@code done}. */
+    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
+        long deadline = System.currentTimeMillis() + timeout.toMillis();
+        T last = null;
+        while (System.currentTimeMillis() < deadline) {
+            last = check.call();
+            if (done.test(last)) return last;
+            Thread.sleep(500);
+        }
+        return last;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -131,13 +158,14 @@ class BundleIT extends AbstractIntegrationIT {
 
         Map<String, Object> body = validBundleBody("Starter Bundle", List.of(bundleItem(product.getId())));
 
-        mockMvc.perform(post("/companies/{companyId}/bundles", company.getId())
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/bundles", company.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body))
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.name").value("Starter Bundle"));
+                .andExpect(jsonPath("$.data.name").value("Starter Bundle"))
+                .andReturn();
 
         // The bundle and its item must actually be persisted.
         Integer bundleRows = jdbcTemplate.queryForObject(
@@ -146,6 +174,15 @@ class BundleIT extends AbstractIntegrationIT {
         Integer itemRows = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM bundle_items", Integer.class);
         assertEquals(1, itemRows, "Bundle item should be persisted");
+
+        // …and the change must flow through the real bundle-events topic to the real indexer and
+        // land in the live Elasticsearch bundles index.
+        UUID bundleId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+        Optional<BundleDocument> indexed = await(Duration.ofSeconds(30),
+                () -> bundleSearchRepository.findById(bundleId), Optional::isPresent);
+        assertTrue(indexed.isPresent(), "Bundle should be indexed into Elasticsearch via Kafka");
+        assertEquals("Starter Bundle", indexed.get().getName());
     }
 
     @Test
@@ -344,6 +381,12 @@ class BundleIT extends AbstractIntegrationIT {
         Integer remaining = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM product_bundles", Integer.class);
         assertEquals(0, remaining, "Deleted bundle should be removed from the database");
+
+        // …and the delete must propagate through Kafka to remove the document from Elasticsearch.
+        UUID bundleUuid = UUID.fromString(bundleId);
+        Optional<BundleDocument> afterDelete = await(Duration.ofSeconds(30),
+                () -> bundleSearchRepository.findById(bundleUuid), Optional::isEmpty);
+        assertTrue(afterDelete.isEmpty(), "Bundle document should be removed from Elasticsearch via Kafka");
 
         mockMvc.perform(get("/companies/{companyId}/bundles/{bundleId}", company.getId(), bundleId)
                         .header("User-Agent", TEST_USER_AGENT))
