@@ -269,4 +269,30 @@ public abstract class AbstractSearchKafkaIT {
             throw new IllegalStateException("Failed to refresh Elasticsearch indices", e);
         }
     }
+
+    /** Raw GET against the live ES container (diagnostics). */
+    protected String esGet(String path) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(esBaseUrl + path)).GET().build();
+            return client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+        } catch (Exception e) {
+            return "esGet failed: " + e;
+        }
+    }
+
+    /** Raw POST against the live ES container (diagnostics). */
+    protected String esPost(String path, String body) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(esBaseUrl + path))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+            return client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+        } catch (Exception e) {
+            return "esPost failed: " + e;
+        }
+    }
 }

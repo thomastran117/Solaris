@@ -293,10 +293,20 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         // The public catalog search must now return the indexed product — proving the real ES
         // query path (marketplace filter + product_search analyzer + fuzzy match) works, where the
         // mocked-ES suite could only ever assert a 503.
-        mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
+        MvcResult searchResult = mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
                         .param("q", "laptop"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[*].id", hasItem(product.getId().toString())));
+                .andReturn();
+        if (searchResult.getResponse().getStatus() != 200) {
+            String mapping = esGet("/products/_mapping/field/price,category,brand,marketplaceId,status");
+            String rawAgg = esPost("/products/_search",
+                    "{\"size\":0,\"aggs\":{\"pr\":{\"range\":{\"field\":\"price\",\"ranges\":[{\"to\":25.0}]}}}}");
+            org.junit.jupiter.api.Assertions.fail("CATALOG 503 DIAG >>> status="
+                    + searchResult.getResponse().getStatus()
+                    + " | MAPPING=" + mapping + " | RAWAGG=" + rawAgg);
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(
+                searchResult.getResponse().getContentAsString().contains(product.getId().toString()),
+                "Catalog search should return the indexed product");
     }
 
     @Test
