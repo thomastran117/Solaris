@@ -81,6 +81,18 @@ class SearchSuggestionIT extends AbstractSearchKafkaIT {
         return productRepository.save(p);
     }
 
+    /** A plain (non-marketplace) product — company suggestions filter on companyId, not marketplace. */
+    private Product createProduct(Company company, String name) {
+        Product p = new Product();
+        p.setCompany(company);
+        p.setName(name);
+        p.setPrice(new BigDecimal("19.99"));
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        p.setPurchasable(true);
+        return productRepository.save(p);
+    }
+
     private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         T last = null;
@@ -203,6 +215,30 @@ class SearchSuggestionIT extends AbstractSearchKafkaIT {
         // could only ever return empty suggestions).
         mockMvc.perform(get("/marketplaces/" + marketplaceId + "/catalog/search/suggestions")
                         .param("q", "Ergon"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.products[*].id", hasItem(product.getId().toString())));
+    }
+
+    @Test
+    void company_prefixQuery_returnsIndexedProductViaAutocompleteAnalyzer() throws Exception {
+        User owner = createActiveUser("suggest-company-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        // Company suggestions filter on companyId + status only, so a plain (non-marketplace)
+        // product is a valid match once the reindex writes it to the live index.
+        Product product = createProduct(company, "Wireless Keyboard");
+
+        mockMvc.perform(post("/companies/" + company.getId() + "/products/reindex")
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isAccepted());
+
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(product.getId()), Optional::isPresent);
+        refreshSearchIndices();
+
+        mockMvc.perform(get("/companies/" + company.getId() + "/catalog/search/suggestions")
+                        .param("q", "Wirel"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.products[*].id", hasItem(product.getId().toString())));
     }
