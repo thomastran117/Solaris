@@ -298,11 +298,14 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         // "createdAt", which ProductDocument does not index, so the ES sort can't resolve it
         // ("No mapping found for [createdAt] in order to sort on") and the whole search fails —
         // a pre-existing catalog limitation, out of scope for this test's read-path assertion.
+        // CatalogSearchResponse extends PagedResponse but adds facets, so ApiResponseAdvice (which
+        // unwraps only the exact PagedResponse class) leaves it serialized as-is: the page content
+        // is under $.data.items, not $.data.
         mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
                         .param("q", "laptop")
                         .param("sort", "price"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[*].id", hasItem(product.getId().toString())));
+                .andExpect(jsonPath("$.data.items[*].id", hasItem(product.getId().toString())));
     }
 
     @Test
