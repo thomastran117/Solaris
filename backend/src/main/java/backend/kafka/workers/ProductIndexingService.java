@@ -381,11 +381,20 @@ public class ProductIndexingService implements ApplicationRunner {
             pinnedRank = null;
         }
 
-        String attributeText = p.getAttributes() == null || p.getAttributes().isEmpty() ? null
-                : p.getAttributes().stream()
+        // Attributes are a lazy collection and this runs on an async worker thread with no open
+        // session — guard the access like vendorName / collectionIds above so an incremental
+        // re-index (whose fetch query doesn't JOIN FETCH attributes) doesn't crash the whole batch.
+        String attributeText = null;
+        try {
+            if (p.getAttributes() != null && !p.getAttributes().isEmpty()) {
+                attributeText = p.getAttributes().stream()
                         .filter(a -> a.getName() != null && a.getValue() != null)
                         .map(a -> a.getName() + ":" + a.getValue())
                         .collect(java.util.stream.Collectors.joining(" "));
+            }
+        } catch (Exception e) {
+            log.warn("[SEARCH INDEX] Failed to load attributes for product {}: {}", p.getId(), e.getMessage());
+        }
 
         return new ProductDocument(
                 p.getId(),
