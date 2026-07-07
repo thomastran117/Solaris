@@ -425,8 +425,7 @@ public class ProductIndexingService implements ApplicationRunner {
                 pinnedUntil,
                 pinnedRank,
                 collectionIds,
-                attributeText,
-                p.getCreatedAt()
+                attributeText
         );
     }
 

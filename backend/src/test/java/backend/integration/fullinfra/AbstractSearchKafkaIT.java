@@ -154,8 +154,7 @@ public abstract class AbstractSearchKafkaIT {
               "pinnedUntil":{"type":"date"},
               "pinnedRank":{"type":"integer"},
               "collectionIds":{"type":"keyword"},
-              "attributeText":{"type":"text","search_analyzer":"product_search"},
-              "createdAt":{"type":"date"}
+              "attributeText":{"type":"text","search_analyzer":"product_search"}
             }}""";
 
     private static final String SETTINGS_ONLY_BODY = "{\"settings\":{" + ANALYSIS + "}}";

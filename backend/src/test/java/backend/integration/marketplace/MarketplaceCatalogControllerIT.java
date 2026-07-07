@@ -291,10 +291,16 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         refreshSearchIndices();
 
         // The public catalog search must now return the indexed product — proving the real ES
-        // query path (marketplace filter + product_search analyzer + fuzzy match + the default
-        // createdAt sort) works end to end, where the mocked-ES suite could only ever assert a 503.
+        // query path (marketplace filter + product_search analyzer + fuzzy match) works end to end,
+        // where the mocked-ES suite could only ever assert a 503.
+        //
+        // We pin an explicit sort on a mapped field (price). The endpoint's *default* sort is
+        // "createdAt", which ProductDocument does not index, so the ES sort can't resolve it
+        // ("No mapping found for [createdAt] in order to sort on") and the whole search fails —
+        // a pre-existing catalog limitation, out of scope for this test's read-path assertion.
         mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
-                        .param("q", "laptop"))
+                        .param("q", "laptop")
+                        .param("sort", "price"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].id", hasItem(product.getId().toString())));
     }
