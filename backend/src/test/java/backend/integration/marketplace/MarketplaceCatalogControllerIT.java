@@ -24,7 +24,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -292,36 +291,12 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         refreshSearchIndices();
 
         // The public catalog search must now return the indexed product — proving the real ES
-        // query path (marketplace filter + product_search analyzer + fuzzy match) works, where the
-        // mocked-ES suite could only ever assert a 503.
-        MvcResult searchResult = mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
+        // query path (marketplace filter + product_search analyzer + fuzzy match + the default
+        // createdAt sort) works end to end, where the mocked-ES suite could only ever assert a 503.
+        mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
                         .param("q", "laptop"))
-                .andReturn();
-        if (searchResult.getResponse().getStatus() != 200) {
-            String mp = marketplace.getId().toString();
-            String fullQuery = "{"
-                + "\"query\":{\"function_score\":{"
-                + "\"query\":{\"bool\":{\"filter\":["
-                + "{\"term\":{\"marketplaceId\":\"" + mp + "\"}},"
-                + "{\"term\":{\"marketplaceListed\":true}},"
-                + "{\"term\":{\"status\":\"ACTIVE\"}}],"
-                + "\"must\":[{\"multi_match\":{\"fields\":[\"name^3\",\"description\",\"brand^2\",\"category\",\"tags\",\"vendorName\"],\"query\":\"laptop\",\"fuzziness\":\"AUTO\"}}]}},"
-                + "\"functions\":[{\"filter\":{\"range\":{\"pinnedUntil\":{\"gt\":\"now\"}}},\"weight\":10000.0},"
-                + "{\"field_value_factor\":{\"field\":\"boostWeight\",\"factor\":1.0,\"modifier\":\"log1p\",\"missing\":1.0}}],"
-                + "\"score_mode\":\"multiply\",\"boost_mode\":\"multiply\"}},"
-                + "\"aggs\":{\"categories\":{\"terms\":{\"field\":\"category\",\"size\":20,\"min_doc_count\":1}},"
-                + "\"brands\":{\"terms\":{\"field\":\"brand\",\"size\":20,\"min_doc_count\":1}},"
-                + "\"price_ranges\":{\"range\":{\"field\":\"price\",\"ranges\":[{\"to\":25.0},{\"from\":25.0,\"to\":50.0},{\"from\":50.0,\"to\":100.0},{\"from\":100.0,\"to\":200.0},{\"from\":200.0}]}}}"
-                + "}";
-            String fullResult = esPost("/products/_search", fullQuery);
-            String source = esPost("/products/_search", "{\"query\":{\"match_all\":{}}}");
-            org.junit.jupiter.api.Assertions.fail("CATALOG 503 DIAG >>> status="
-                    + searchResult.getResponse().getStatus()
-                    + " | FULLQUERY=" + fullResult + " | SOURCE=" + source);
-        }
-        org.junit.jupiter.api.Assertions.assertTrue(
-                searchResult.getResponse().getContentAsString().contains(product.getId().toString()),
-                "Catalog search should return the indexed product");
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem(product.getId().toString())));
     }
 
     @Test

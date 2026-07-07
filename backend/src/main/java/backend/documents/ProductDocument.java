@@ -141,4 +141,13 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Text, searchAnalyzer = "product_search")
     private String attributeText;
+
+    /**
+     * Creation timestamp, mirrored from the {@code Product} entity. {@code createdAt} is a member of
+     * the search layer's sortable fields (and the catalog's default sort), so it must be indexed for
+     * the Elasticsearch sort to resolve — otherwise the search fails with "No mapping found for
+     * [createdAt] in order to sort on".
+     */
+    @Field(type = FieldType.Date)
+    private Instant createdAt;
 }

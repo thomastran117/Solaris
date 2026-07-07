@@ -372,6 +372,13 @@ class BundleIT extends AbstractSearchKafkaIT {
         addMember(owner, company, CompanyRole.OWNER);
         Product product = createProduct(company, "Widget", BigDecimal.valueOf(10));
         String bundleId = createBundleAndGetId(company, owner, "To Delete", product.getId());
+        UUID bundleUuid = UUID.fromString(bundleId);
+
+        // Wait until the create/index event has actually landed in Elasticsearch before deleting.
+        // Otherwise the delete-remove event can be consumed before the create-index event, which
+        // would then re-index the document after the delete — leaving it present forever.
+        await(Duration.ofSeconds(30),
+                () -> bundleSearchRepository.findById(bundleUuid), Optional::isPresent);
 
         mockMvc.perform(delete("/companies/{companyId}/bundles/{bundleId}", company.getId(), bundleId)
                         .header("Authorization", bearer(accessTokenFor(owner)))
@@ -383,7 +390,6 @@ class BundleIT extends AbstractSearchKafkaIT {
         assertEquals(0, remaining, "Deleted bundle should be removed from the database");
 
         // …and the delete must propagate through Kafka to remove the document from Elasticsearch.
-        UUID bundleUuid = UUID.fromString(bundleId);
         Optional<BundleDocument> afterDelete = await(Duration.ofSeconds(30),
                 () -> bundleSearchRepository.findById(bundleUuid), Optional::isEmpty);
         assertTrue(afterDelete.isEmpty(), "Bundle document should be removed from Elasticsearch via Kafka");

@@ -4,7 +4,8 @@
       "Bash(npx tsc *)",
       "Bash(npm run *)",
       "Bash(./mvnw compile *)",
-      "Bash(./mvnw clean *)"
+      "Bash(./mvnw clean *)",
+      "PowerShell($s=\"$env:TEMP\\\\claude\\\\c--Users-thoma-Documents-ShopWave\\\\3412cc05-c0ce-4c83-9d0f-09f6504ad9f2\\\\scratchpad\"; $out=\"$s\\\\tc5-out.txt\"; $err=\"$s\\\\tc5-err.txt\"; Remove-Item $out,$err -ErrorAction SilentlyContinue; $p=Start-Process -FilePath \"c:\\\\Users\\\\thoma\\\\Documents\\\\ShopWave\\\\backend\\\\mvnw.cmd\" -ArgumentList \"clean\",\"test-compile\",\"-q\",\"-DskipTests\",\"--batch-mode\" -WorkingDirectory \"c:\\\\Users\\\\thoma\\\\Documents\\\\ShopWave\\\\backend\" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err; \"EXIT=$\\($p.ExitCode\\)\")"
     ]
   }
 }
