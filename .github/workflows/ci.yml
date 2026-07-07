@@ -102,6 +102,14 @@ jobs:
           -Djacoco.skip=true
           --batch-mode
 
+      # TEMP DIAGNOSTIC: surface the ES/search errors that services swallow into a
+      # generic 503 (the WARN is captured in the forked surefire output, not the console).
+      - name: Dump search errors on failure
+        if: failure()
+        run: |
+          echo "==== grepping surefire output for swallowed search errors ===="
+          grep -rniE "CATALOG SEARCH|SEARCH\]|Elasticsearch unavailable|illegal_argument|fielddata|search_phase|all shards failed|Caused by|graph|fuzz|x_content|parsing_exception|too_many" target/surefire-reports/ 2>/dev/null | cut -c1-400 | head -80 || true
+
   frontend-tests:
     name: Frontend Unit Tests
     runs-on: ubuntu-latest
