@@ -1,6 +1,7 @@
 package backend.integration.products;
 
-import backend.integration.AbstractIntegrationIT;
+import backend.documents.ProductDocument;
+import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.CompanyMembership;
 import backend.models.core.Product;
@@ -11,6 +12,7 @@ import backend.models.enums.ProductStatus;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.search.ProductSearchRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,8 +20,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
@@ -27,14 +31,32 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class ProductIT extends AbstractIntegrationIT {
+/**
+ * Runs against live Elasticsearch + Kafka (via {@link AbstractSearchKafkaIT}). Alongside the HTTP,
+ * DB, and authorization coverage, a few tests exercise the real search-indexing pipeline in-place:
+ * a marketplace product mutation flows through the product-events Kafka topic into the ES index,
+ * a delete flows through as a removal, and the reindex endpoint drives the bulk indexing path.
+ *
+ * <p><b>Why the whole class extends the full-infra base rather than isolating those cases:</b> this
+ * is a deliberate choice. The alternative — keeping ProductIT on {@code AbstractIntegrationIT} and
+ * splitting the live-indexing cases into a separate full-infra class — was rejected because it
+ * re-creates the search/event "silo" we set out to remove: duplicated company/product/membership
+ * fixtures, duplicated auth setup, and two places to keep in sync for one domain. Folding the
+ * assertions in keeps each scenario expressed once next to the endpoint it exercises. The cost is
+ * that this class's shard starts ES+Kafka containers; that is accepted (each IT class is its own
+ * JVM fork, so the containers are scoped to this class and the fast H2+Redis suite is untouched).
+ * The container startup is a fixed per-fork cost, not per-test. See {@link AbstractSearchKafkaIT}.
+ */
+class ProductIT extends AbstractSearchKafkaIT {
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
+    @Autowired private ProductSearchRepository productSearchRepository;
 
     @AfterEach
     void cleanProducts() {
+        try { productSearchRepository.deleteAll(); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_attributes"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_images"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM product_option_values"); } catch (Exception ignored) {}
@@ -86,6 +108,24 @@ class ProductIT extends AbstractIntegrationIT {
         body.put("price", 19.99);
         body.put("stock", 10);
         return body;
+    }
+
+    /**
+     * Seeds a marketplace-listed product. Only marketplace products flow through the incremental
+     * Kafka indexing path — {@code ProductChangedPublisher} guards on {@code marketplaceId != null} —
+     * so a mutation on one of these reaches the live Elasticsearch index.
+     */
+    private Product createMarketplaceProduct(Company company, String name) {
+        Product p = new Product();
+        p.setCompany(company);
+        p.setName(name);
+        p.setPrice(new BigDecimal("19.99"));
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        p.setPurchasable(true);
+        p.setMarketplaceId(UUID.randomUUID());
+        p.setMarketplaceListed(true);
+        return productRepository.save(p);
     }
 
     // ── GET /companies/{companyId}/products ────────────────────────────────────
@@ -730,5 +770,99 @@ class ProductIT extends AbstractIntegrationIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    // ── Live search indexing (real Kafka + Elasticsearch) ──────────────────────
+    //
+    // These prove the request didn't just return a green HTTP status but actually drove the
+    // real indexing pipeline end-to-end: API mutation → ProductIndexEvent (AFTER_COMMIT) →
+    // product-events Kafka topic → ProductIndexingKafkaConsumer → indexing worker → live ES,
+    // read back through the real ProductSearchRepository.
+
+    @Test
+    void updateMarketplaceProduct_indexesUpdatedDocumentIntoElasticsearchViaKafka() throws Exception {
+        User owner = createActiveUser("prod-es-index@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        Product product = createMarketplaceProduct(company, "Original Name");
+
+        mockMvc.perform(patch("/companies/{companyId}/products/{id}", company.getId(), product.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "Indexed Widget")))
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk());
+
+        // DB is the source of truth — confirm the update landed there first.
+        Product persisted = productRepository.findById(product.getId()).orElseThrow();
+        assertEquals("Indexed Widget", persisted.getName());
+
+        // Then confirm the async Kafka→ES pipeline propagated the same change to the live index.
+        Optional<ProductDocument> indexed = await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(product.getId()),
+                Optional::isPresent);
+        assertTrue(indexed.isPresent(),
+                "Product should have been indexed into Elasticsearch via the Kafka pipeline");
+        assertEquals("Indexed Widget", indexed.get().getName(),
+                "Indexed document should reflect the updated product name");
+    }
+
+    @Test
+    void deleteMarketplaceProduct_removesDocumentFromElasticsearchViaKafka() throws Exception {
+        User owner = createActiveUser("prod-es-remove@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        Product product = createMarketplaceProduct(company, "To Be Removed");
+
+        // Get it indexed first.
+        mockMvc.perform(patch("/companies/{companyId}/products/{id}", company.getId(), product.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "Still Here")))
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk());
+        // Assert the document actually landed in ES first — otherwise the later "removed" check
+        // would pass trivially against a document that was never indexed, hiding a broken delete.
+        Optional<ProductDocument> indexed = await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(product.getId()), Optional::isPresent);
+        assertTrue(indexed.isPresent(),
+                "Product should be indexed into Elasticsearch before we exercise the delete path");
+
+        mockMvc.perform(delete("/companies/{companyId}/products/{id}", company.getId(), product.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isNoContent());
+
+        assertTrue(productRepository.findById(product.getId()).isEmpty(),
+                "Product row should be gone from the database after delete");
+        Optional<ProductDocument> afterDelete = await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(product.getId()),
+                Optional::isEmpty);
+        assertTrue(afterDelete.isEmpty(),
+                "Product document should have been removed from Elasticsearch via the Kafka pipeline");
+    }
+
+    @Test
+    void reindexEndpoint_bulkIndexesCompanyProductsIntoElasticsearch() throws Exception {
+        User owner = createActiveUser("prod-es-reindex@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+        // Plain products are not picked up by the incremental Kafka path; the reindex endpoint
+        // drives ProductIndexingService.reindexCompany — the bulk ES write path — directly.
+        Product a = createProduct(company, "Reindex Widget A", new BigDecimal("29.99"), ProductStatus.ACTIVE);
+        Product b = createProduct(company, "Reindex Widget B", new BigDecimal("39.99"), ProductStatus.ACTIVE);
+
+        mockMvc.perform(post("/companies/{companyId}/products/reindex", company.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isAccepted());
+
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(a.getId()), Optional::isPresent);
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(b.getId()), Optional::isPresent);
+        assertTrue(productSearchRepository.findById(a.getId()).isPresent()
+                        && productSearchRepository.findById(b.getId()).isPresent(),
+                "Both products should be bulk-indexed into Elasticsearch by the reindex endpoint");
     }
 }
