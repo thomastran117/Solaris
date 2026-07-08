@@ -10,6 +10,9 @@ import backend.services.intf.auth.TokenService;
 import backend.services.intf.support.EmailService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.internet.MimeMessage;
+import java.time.Duration;
+import java.util.concurrent.Callable;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -268,5 +271,21 @@ public abstract class AbstractSearchKafkaIT {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to refresh Elasticsearch indices", e);
         }
+    }
+
+    /**
+     * Polls {@code check} up to {@code timeout} until {@code done} is satisfied, returning the last
+     * observed value. Used to wait for asynchronous indexing / event propagation (Kafka → consumer →
+     * Elasticsearch) to reach the expected state without sleeping a fixed duration.
+     */
+    protected <T> T await(Duration timeout, Callable<T> check, Predicate<T> done) throws Exception {
+        long deadline = System.currentTimeMillis() + timeout.toMillis();
+        T last = null;
+        while (System.currentTimeMillis() < deadline) {
+            last = check.call();
+            if (done.test(last)) return last;
+            Thread.sleep(500);
+        }
+        return last;
     }
 }

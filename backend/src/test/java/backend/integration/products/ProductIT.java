@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,10 +33,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Runs against live Elasticsearch + Kafka (via {@link AbstractSearchKafkaIT}). Alongside the HTTP,
- * DB, and authorization coverage, two tests exercise the real search-indexing pipeline in-place:
+ * DB, and authorization coverage, a few tests exercise the real search-indexing pipeline in-place:
  * a marketplace product mutation flows through the product-events Kafka topic into the ES index,
- * and the reindex endpoint drives the bulk indexing path — so this coverage lives with the product
- * tests rather than in a separate class.
+ * a delete flows through as a removal, and the reindex endpoint drives the bulk indexing path.
+ *
+ * <p><b>Why the whole class extends the full-infra base rather than isolating those cases:</b> this
+ * is a deliberate choice. The alternative — keeping ProductIT on {@code AbstractIntegrationIT} and
+ * splitting the live-indexing cases into a separate full-infra class — was rejected because it
+ * re-creates the search/event "silo" we set out to remove: duplicated company/product/membership
+ * fixtures, duplicated auth setup, and two places to keep in sync for one domain. Folding the
+ * assertions in keeps each scenario expressed once next to the endpoint it exercises. The cost is
+ * that this class's shard starts ES+Kafka containers; that is accepted (each IT class is its own
+ * JVM fork, so the containers are scoped to this class and the fast H2+Redis suite is untouched).
+ * The container startup is a fixed per-fork cost, not per-test. See {@link AbstractSearchKafkaIT}.
  */
 class ProductIT extends AbstractSearchKafkaIT {
 
@@ -118,18 +126,6 @@ class ProductIT extends AbstractSearchKafkaIT {
         p.setMarketplaceId(UUID.randomUUID());
         p.setMarketplaceListed(true);
         return productRepository.save(p);
-    }
-
-    /** Polls up to {@code timeout} for the async indexing pipeline to reach the expected state. */
-    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
-        long deadline = System.currentTimeMillis() + timeout.toMillis();
-        T last = null;
-        while (System.currentTimeMillis() < deadline) {
-            last = check.call();
-            if (done.test(last)) return last;
-            Thread.sleep(500);
-        }
-        return last;
     }
 
     // ── GET /companies/{companyId}/products ────────────────────────────────────
@@ -825,8 +821,12 @@ class ProductIT extends AbstractSearchKafkaIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk());
-        await(Duration.ofSeconds(30),
+        // Assert the document actually landed in ES first — otherwise the later "removed" check
+        // would pass trivially against a document that was never indexed, hiding a broken delete.
+        Optional<ProductDocument> indexed = await(Duration.ofSeconds(30),
                 () -> productSearchRepository.findById(product.getId()), Optional::isPresent);
+        assertTrue(indexed.isPresent(),
+                "Product should be indexed into Elasticsearch before we exercise the delete path");
 
         mockMvc.perform(delete("/companies/{companyId}/products/{id}", company.getId(), product.getId())
                         .header("Authorization", bearer(accessTokenFor(owner)))

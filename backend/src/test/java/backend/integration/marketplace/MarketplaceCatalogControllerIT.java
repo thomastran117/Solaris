@@ -29,7 +29,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.nullValue;
@@ -122,17 +121,6 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         membershipRepository.save(m);
     }
 
-    /** Polls up to {@code timeout} for the async indexing pipeline to reach the expected state. */
-    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
-        long deadline = System.currentTimeMillis() + timeout.toMillis();
-        T last = null;
-        while (System.currentTimeMillis() < deadline) {
-            last = check.call();
-            if (done.test(last)) return last;
-            Thread.sleep(500);
-        }
-        return last;
-    }
 
     // ── POST /marketplaces/{marketplaceId}/catalog/products/{productId}/view ──
 

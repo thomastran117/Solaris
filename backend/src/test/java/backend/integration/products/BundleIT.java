@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -57,18 +56,6 @@ class BundleIT extends AbstractSearchKafkaIT {
         try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
         try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
-
-    /** Polls up to {@code timeout} for the supplier to satisfy {@code done}. */
-    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
-        long deadline = System.currentTimeMillis() + timeout.toMillis();
-        T last = null;
-        while (System.currentTimeMillis() < deadline) {
-            last = check.call();
-            if (done.test(last)) return last;
-            Thread.sleep(500);
-        }
-        return last;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -376,9 +363,12 @@ class BundleIT extends AbstractSearchKafkaIT {
 
         // Wait until the create/index event has actually landed in Elasticsearch before deleting.
         // Otherwise the delete-remove event can be consumed before the create-index event, which
-        // would then re-index the document after the delete — leaving it present forever.
-        await(Duration.ofSeconds(30),
+        // would then re-index the document after the delete — leaving it present forever. Asserting
+        // it is present also stops the later "removed" check from passing against a never-indexed doc.
+        Optional<BundleDocument> indexed = await(Duration.ofSeconds(30),
                 () -> bundleSearchRepository.findById(bundleUuid), Optional::isPresent);
+        assertTrue(indexed.isPresent(),
+                "Bundle should be indexed into Elasticsearch before we exercise the delete path");
 
         mockMvc.perform(delete("/companies/{companyId}/bundles/{bundleId}", company.getId(), bundleId)
                         .header("Authorization", bearer(accessTokenFor(owner)))

@@ -22,7 +22,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -91,17 +90,6 @@ class SearchSuggestionIT extends AbstractSearchKafkaIT {
         p.setListed(true);
         p.setPurchasable(true);
         return productRepository.save(p);
-    }
-
-    private <T> T await(Duration timeout, Callable<T> check, java.util.function.Predicate<T> done) throws Exception {
-        long deadline = System.currentTimeMillis() + timeout.toMillis();
-        T last = null;
-        while (System.currentTimeMillis() < deadline) {
-            last = check.call();
-            if (done.test(last)) return last;
-            Thread.sleep(500);
-        }
-        return last;
     }
 
     // ── /marketplaces/{id}/catalog/search/suggestions ─────────────────────────
