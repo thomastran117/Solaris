@@ -12,7 +12,7 @@ A full-stack e-commerce application.
 - **Backend**: Java 21, Spring Boot
 - **Messaging**: Apache Kafka
 - **Cache**: Redis
-- **Database**: MySQL + Hibernate (JPA)
+- **Database**: PostgreSQL + Hibernate (JPA), schema managed by Flyway
 
 ---
 
@@ -31,7 +31,7 @@ Orders and stock levels are **strongly consistent**. Never sacrifice correctness
 - **Kafka events for orders** (e.g. `order.created`, `order.cancelled`) are published **after** the DB transaction commits — never inside it. Use a transactional outbox pattern or `@TransactionalEventListener(phase = AFTER_COMMIT)`.
 - **Idempotency keys** must be validated before processing any order mutation. Duplicate requests must be detected and short-circuited cleanly.
 - Do not use `@Async` or fire-and-forget patterns for anything that mutates order or stock state.
-- Redis must **not** be the source of truth for stock levels. It is a read cache only. Stock writes always go to MySQL first.
+- Redis must **not** be the source of truth for stock levels. It is a read cache only. Stock writes always go to PostgreSQL first.
 
 #### Products — Prioritise Availability
 
@@ -40,7 +40,7 @@ Product catalogue reads are **eventually consistent** and optimised for availabi
 - Product reads should be served from **Redis cache** wherever possible. Cache-aside pattern: check Redis → on miss, load from DB and populate cache.
 - Cache TTL for products: **5 minutes** by default. Configure per entity type if needed.
 - Product writes (create, update, delete) must **invalidate** the relevant Redis keys immediately after committing.
-- It is acceptable for a product page to briefly show slightly stale data (price, description). It is **not** acceptable for stock availability to be stale at checkout time — always revalidate stock against MySQL at the point of order creation.
+- It is acceptable for a product page to briefly show slightly stale data (price, description). It is **not** acceptable for stock availability to be stale at checkout time — always revalidate stock against PostgreSQL at the point of order creation.
 - Product listing queries should use pagination. Never load unbounded result sets.
 
 ---
@@ -87,8 +87,17 @@ Product catalogue reads are **eventually consistent** and optimised for availabi
 - All entities must have a `@Version` field for optimistic locking unless there is an explicit documented reason not to.
 - Use `@CreationTimestamp` and `@UpdateTimestamp` on all entities.
 - Avoid N+1 queries. Use `JOIN FETCH` or `@EntityGraph` for associations that are always needed together.
-- Database migrations are managed with **Flyway**. Never alter a committed migration script — always add a new one.
-- Use `snake_case` for all column and table names. Configure `SpringPhysicalNamingStrategy` or equivalent.
+- Database migrations are managed with **Flyway**, in `backend/src/main/resources/db/migration`.
+  Never alter a committed migration script — always add a new `V<n>__<description>.sql`. Flyway
+  verifies checksums, so editing an applied script breaks every existing database.
+- `spring.jpa.hibernate.ddl-auto` is **`validate`** everywhere, including tests. Hibernate never
+  creates or alters the schema. A validate failure at startup means a migration is missing — write
+  one; do not change `ddl-auto` to work around it.
+- Use `snake_case` for all column and table names. This comes from Spring Boot's default
+  `CamelCaseToUnderscoresNamingStrategy`; do not override it.
+- Let the dialect choose physical column types. Avoid `columnDefinition` unless a type genuinely
+  cannot be inferred — hard-coding a vendor type is what made the MySQL→PostgreSQL migration
+  expensive, and it also breaks `ddl-auto=validate` when the dialect disagrees.
 
 ---
 
@@ -294,7 +303,7 @@ Before marking any feature done, verify all of the following:
 
 ### Backend Testing
 
-**Stack**: JUnit 5, Mockito, Spring Boot Test, Testcontainers (MySQL, Kafka, Redis).
+**Stack**: JUnit 5, Mockito, Spring Boot Test, Testcontainers (PostgreSQL, Kafka, Redis, Elasticsearch).
 
 #### Unit tests
 
@@ -308,10 +317,18 @@ Before marking any feature done, verify all of the following:
 
 - Location: `src/test/java/integration/`
 - Use `@SpringBootTest` + Testcontainers for real database/broker interactions.
-- **Order and stock tests must use real MySQL** — do not mock the database for consistency-critical paths. Test that optimistic locking (`@Version`) actually throws `OptimisticLockException` under concurrent writes.
+- **Order and stock tests must use real PostgreSQL** — do not mock the database for consistency-critical paths. Test that optimistic locking (`@Version`) actually throws `OptimisticLockException` under concurrent writes.
 - **Kafka integration tests** must verify that events are published only after the transaction commits (not on rollback) and that consumers are idempotent (replaying the same event twice has no additional side effect).
 - **Redis integration tests** must verify cache-aside behaviour: a cache miss loads from DB and populates the cache; a product update invalidates the correct key.
-- Use `@Sql` or Flyway test migrations to seed deterministic state before each test. Never rely on leftover data from a prior test.
+- Seed deterministic state per test via the factory helpers on the IT base classes. Never rely on
+  leftover data from a prior test — the shared base truncates every table after each test.
+- Integration tests share one PostgreSQL and one Redis, held as JVM-wide singletons in
+  `IntegrationContainers`. Register connection details onto `app.database.*` / `app.redis.*`;
+  `@ServiceConnection` does **not** work here, because `AppDatabase` builds its Hikari pool by
+  hand rather than through Spring Boot's datasource auto-configuration.
+- To reuse the local Postgres container across runs (much faster), add
+  `testcontainers.reuse.enable=true` to `~/.testcontainers.properties`. After changing a Flyway
+  migration, delete the reused container or the next run fails on a checksum mismatch.
 
 #### Naming conventions
 
@@ -382,6 +399,6 @@ If any test fails, fix it before considering the feature complete. Do not disabl
 npm install
 npm run dev
 
-# Infrastructure (Kafka, Redis, MySQL)
+# Infrastructure (Kafka, Redis, PostgreSQL)
 docker compose up -d
 ```

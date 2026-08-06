@@ -50,6 +50,24 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # One PostgreSQL per shard job. Surefire runs with -DreuseForks=false (a JVM per
+    # test class, executed sequentially), so a single shared database is safe, and
+    # sourcing it here avoids paying a Testcontainers start in each of those forks.
+    # IntegrationContainers skips its own container when SHOPWAVE_TEST_DB_URL is set.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: shopwave_it
+          POSTGRES_USER: shopwave
+          POSTGRES_PASSWORD: shopwave
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shopwave -d shopwave_it"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +112,10 @@ jobs:
         run: chmod +x mvnw
 
       - name: Run integration tests
+        env:
+          SHOPWAVE_TEST_DB_URL: jdbc:postgresql://localhost:5432/shopwave_it
+          SHOPWAVE_TEST_DB_USERNAME: shopwave
+          SHOPWAVE_TEST_DB_PASSWORD: shopwave
         run: >-
           ./mvnw test -Dtest=${{ matrix.tests }}
           -DreuseForks=false

@@ -17,6 +17,12 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     Optional<ProductVariant> findByIdAndProductCompanyId(java.util.UUID id, java.util.UUID companyId);
     List<ProductVariant> findAllByProductIdOrderByDisplayOrderAsc(java.util.UUID productId);
     boolean existsBySkuAndProductCompanyId(String sku, java.util.UUID companyId);
+
+    /**
+     * Case-insensitive variant-SKU uniqueness check within a company. See
+     * {@code ProductRepository#existsBySkuIgnoreCaseAndCompanyId} for why this is explicit.
+     */
+    boolean existsBySkuIgnoreCaseAndProductCompanyId(String sku, java.util.UUID companyId);
     boolean existsByProductId(java.util.UUID productId);
 
     /**

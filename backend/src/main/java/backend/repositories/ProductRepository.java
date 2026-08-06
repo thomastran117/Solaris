@@ -124,6 +124,16 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     Optional<Product> findByIdWithCompanyOwner(@Param("id") java.util.UUID id);
     List<Product> findAllByIdInAndCompanyId(Collection<java.util.UUID> ids, java.util.UUID companyId);
     boolean existsBySkuAndCompanyId(String sku, java.util.UUID companyId);
+
+    /**
+     * Case-insensitive SKU uniqueness check within a company.
+     * <p>
+     * Preserves the guarantee the schema had under MySQL, whose case-insensitive collation made
+     * the derived {@code existsBySkuAndCompanyId} reject {@code sku-1} as a duplicate of
+     * {@code SKU-1}. PostgreSQL compares text exactly, so the comparison is spelled out here
+     * rather than changing how SKUs are stored — they stay in the casing the merchant entered.
+     */
+    boolean existsBySkuIgnoreCaseAndCompanyId(String sku, java.util.UUID companyId);
     Optional<Product> findBySkuAndCompanyId(String sku, java.util.UUID companyId);
     List<Product> findAllBySkuInAndCompanyId(Collection<String> skus, java.util.UUID companyId);
 

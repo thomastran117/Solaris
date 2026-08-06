@@ -391,7 +391,7 @@ public class ProductServiceImpl implements ProductService {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_PRODUCTS);
 
         if (request.getSku() != null && !request.getSku().isBlank()
-                && productRepository.existsBySkuAndCompanyId(request.getSku(), companyId)) {
+                && productRepository.existsBySkuIgnoreCaseAndCompanyId(request.getSku(), companyId)) {
             throw new ConflictException("A product with this SKU already exists in this company");
         }
 
@@ -445,7 +445,7 @@ public class ProductServiceImpl implements ProductService {
         boolean originalListed = product.isListed();
 
         if (request.getSku() != null && !request.getSku().equals(product.getSku())) {
-            if (productRepository.existsBySkuAndCompanyId(request.getSku(), companyId)) {
+            if (productRepository.existsBySkuIgnoreCaseAndCompanyId(request.getSku(), companyId)) {
                 throw new ConflictException("A product with this SKU already exists in this company");
             }
             product.setSku(request.getSku());
@@ -572,7 +572,7 @@ public class ProductServiceImpl implements ProductService {
                 if (!batchSkus.add(req.getSku().toLowerCase())) {
                     throw new ConflictException("Duplicate SKU '" + req.getSku() + "' within this batch");
                 }
-                if (productRepository.existsBySkuAndCompanyId(req.getSku(), companyId)) {
+                if (productRepository.existsBySkuIgnoreCaseAndCompanyId(req.getSku(), companyId)) {
                     throw new ConflictException("A product with SKU '" + req.getSku() + "' already exists in this company");
                 }
             }
@@ -1031,7 +1031,7 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
         if (request.getSku() != null && !request.getSku().isBlank()
-                && productVariantRepository.existsBySkuAndProductCompanyId(request.getSku(), companyId)) {
+                && productVariantRepository.existsBySkuIgnoreCaseAndProductCompanyId(request.getSku(), companyId)) {
             throw new ConflictException("A variant with this SKU already exists in this company");
         }
 
@@ -1075,7 +1075,7 @@ public class ProductServiceImpl implements ProductService {
         ProductVariant variantBefore = productChangeLogger.snapshot(variant);
 
         if (request.getSku() != null && !request.getSku().equals(variant.getSku())) {
-            if (productVariantRepository.existsBySkuAndProductCompanyId(request.getSku(), companyId)) {
+            if (productVariantRepository.existsBySkuIgnoreCaseAndProductCompanyId(request.getSku(), companyId)) {
                 throw new ConflictException("A variant with this SKU already exists in this company");
             }
             variant.setSku(request.getSku());

@@ -395,11 +395,74 @@ class VendorPayoutIT extends AbstractIntegrationIT {
 
     // ── POST /marketplaces/{marketplaceId}/vendors/{vendorId}/adjustments ─────
 
-    // NOTE: createAdjustment with positive amountCents calls balanceRepository.upsertPending(),
-    // a native MySQL INSERT ... ON DUPLICATE KEY UPDATE that omits the NOT NULL `id` column.
-    // MySQL defers NOT NULL validation until the row is inserted; H2 validates upfront and
-    // throws 23502 even when the duplicate-key UPDATE path would be taken. Positive credit
-    // adjustments are tested in unit tests against a real MySQL container instead.
+    /**
+     * Positive adjustments are the only coverage for VendorBalanceRepository.upsertPending.
+     * The service calls it twice — once with zeroes to materialise the row, then with the
+     * amount — so a single request drives both the INSERT and the ON CONFLICT DO UPDATE
+     * branch. This was previously untestable: the query omitted the NOT NULL id column,
+     * which MySQL tolerated and H2 rejected outright.
+     */
+    @Test
+    void createAdjustment_positive_creditsPendingBalance() throws Exception {
+        User vendorOwner = createActiveUser("vp-adj-pos@example.com", "Password1!");
+        User operator = createActiveUser("vp-adj-op-pos@example.com", "Password1!");
+        Company marketplace = createMarketplace(operator);
+        MarketplaceVendor vendor = createVendor(marketplace, createVendorCompany(vendorOwner));
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "amountCents", 750L,
+                "currency", "USD",
+                "reason", "Goodwill credit"
+        ));
+
+        mockMvc.perform(post("/marketplaces/" + marketplace.getId() + "/vendors/" + vendor.getId() + "/adjustments")
+                        .header("Authorization", bearer(accessTokenFor(operator)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.amountCents").value(750));
+
+        Long pending = jdbcTemplate.queryForObject(
+                "SELECT pending_cents FROM vendor_balances WHERE vendor_id = ?",
+                Long.class, vendor.getId());
+        assertEquals(750L, pending, "Upsert should have created the balance row and credited it");
+    }
+
+    /** Second credit must accumulate onto the existing row rather than conflict or replace it. */
+    @Test
+    void createAdjustment_positive_onExistingBalance_accumulates() throws Exception {
+        User vendorOwner = createActiveUser("vp-adj-pos2@example.com", "Password1!");
+        User operator = createActiveUser("vp-adj-op-pos2@example.com", "Password1!");
+        Company marketplace = createMarketplace(operator);
+        MarketplaceVendor vendor = createVendor(marketplace, createVendorCompany(vendorOwner));
+        createBalance(vendor.getId(), 5000L);
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "amountCents", 250L,
+                "currency", "USD",
+                "reason", "Second goodwill credit"
+        ));
+
+        mockMvc.perform(post("/marketplaces/" + marketplace.getId() + "/vendors/" + vendor.getId() + "/adjustments")
+                        .header("Authorization", bearer(accessTokenFor(operator)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        Long pending = jdbcTemplate.queryForObject(
+                "SELECT pending_cents FROM vendor_balances WHERE vendor_id = ?",
+                Long.class, vendor.getId());
+        assertEquals(250L, pending, "Credit should land on the existing balance row");
+
+        Long available = jdbcTemplate.queryForObject(
+                "SELECT available_cents FROM vendor_balances WHERE vendor_id = ?",
+                Long.class, vendor.getId());
+        assertEquals(5000L, available, "Existing available balance must be left untouched");
+
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vendor_balances WHERE vendor_id = ?", Integer.class, vendor.getId());
+        assertEquals(1, rows, "Upsert must not insert a duplicate balance row");
+    }
 
     @Test
     void createAdjustment_negative_returns201() throws Exception {

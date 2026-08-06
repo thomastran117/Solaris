@@ -104,7 +104,12 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
     public LocationResponse createLocation(UUID companyId, UUID ownerId, CreateLocationRequest request) {
         Company company = companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
 
-        if (locationRepository.existsByCodeAndCompanyId(request.getCode(), companyId)) {
+        // Compare in the same form the code is stored in. Codes are persisted upper-cased, so
+        // checking the raw input would let "abc" duplicate an existing "ABC" on PostgreSQL,
+        // which — unlike MySQL's case-insensitive collation — compares text exactly.
+        String code = normalizeLocationCode(request.getCode());
+
+        if (locationRepository.existsByCodeAndCompanyId(code, companyId)) {
             throw new ConflictException("A location with code '" + request.getCode() + "' already exists in this company");
         }
 
@@ -114,7 +119,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         InventoryLocation location = new InventoryLocation();
         location.setCompany(company);
         location.setName(request.getName());
-        location.setCode(request.getCode().toUpperCase());
+        location.setCode(code);
         location.setAddress(request.getAddress());
         location.setCity(request.getCity());
         location.setStateProvince(request.getStateProvince());
@@ -140,10 +145,11 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with id: " + locationId));
 
         if (request.getCode() != null && !request.getCode().equalsIgnoreCase(location.getCode())) {
-            if (locationRepository.existsByCodeAndCompanyIdAndIdNot(request.getCode(), companyId, locationId)) {
+            String code = normalizeLocationCode(request.getCode());
+            if (locationRepository.existsByCodeAndCompanyIdAndIdNot(code, companyId, locationId)) {
                 throw new ConflictException("A location with code '" + request.getCode() + "' already exists in this company");
             }
-            location.setCode(request.getCode().toUpperCase());
+            location.setCode(code);
         }
 
         if (request.getName() != null) location.setName(request.getName());
@@ -530,6 +536,11 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     private void assertCompanyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
+    }
+
+    /** Canonical stored form of a location code — uniqueness is checked against this. */
+    private static String normalizeLocationCode(String code) {
+        return code == null ? null : code.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     private LocationResponse toLocationResponse(InventoryLocation loc) {
