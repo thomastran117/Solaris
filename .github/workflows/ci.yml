@@ -1,13 +1,23 @@
 name: CI
 
+# Runs on a push to any branch, not just main, so feature branches get CI before a PR
+# exists — and so a PR whose head fails to sync (a push ref-lock race leaves the branch
+# updated but fires no `synchronize` event) is still covered by the push run.
+#
+# `pull_request` is limited to opened/reopened deliberately. The default type list
+# includes `synchronize`, which would fire on every push to an open PR branch and run
+# the whole 8-shard matrix a second time for the same commit.
 on:
+  push:
+    branches: ["**"]
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+    types: [opened, reopened]
 
+# Keyed on the PR number when there is one, so a pull_request run and a push run for the
+# same PR collapse into a single group instead of racing as two independent runs.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
