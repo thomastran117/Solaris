@@ -27,20 +27,24 @@ public interface VendorBalanceRepository extends JpaRepository<VendorBalance, ja
 
     /**
      * Upserts the pending balance for a vendor. Creates the row if it doesn't exist,
-     * otherwise increments pendingCents atomically. Uses native MySQL ON DUPLICATE KEY UPDATE.
+     * otherwise increments pendingCents atomically.
+     * <p>
+     * Conflict target is {@code vendor_id}, which carries a unique constraint. Increments
+     * read through {@code EXCLUDED} so each named parameter is bound exactly once.
      */
     @Modifying
     @Query(nativeQuery = true, value = """
             INSERT INTO vendor_balances
-                (vendor_id, pending_cents, available_cents, in_transit_cents,
+                (id, vendor_id, pending_cents, available_cents, in_transit_cents,
                  lifetime_gross_cents, lifetime_commission_cents, lifetime_paid_out_cents,
                  currency, updated_at)
-            VALUES (:vendorId, :pendingAmount, 0, 0, :grossAmount, :commissionAmount, 0, :currency, NOW())
-            ON DUPLICATE KEY UPDATE
-                pending_cents              = pending_cents + :pendingAmount,
-                lifetime_gross_cents       = lifetime_gross_cents + :grossAmount,
-                lifetime_commission_cents  = lifetime_commission_cents + :commissionAmount,
-                updated_at                 = NOW()
+            VALUES (gen_random_uuid(), :vendorId, :pendingAmount, 0, 0,
+                    :grossAmount, :commissionAmount, 0, :currency, NOW())
+            ON CONFLICT (vendor_id) DO UPDATE SET
+                pending_cents             = vendor_balances.pending_cents             + EXCLUDED.pending_cents,
+                lifetime_gross_cents      = vendor_balances.lifetime_gross_cents      + EXCLUDED.lifetime_gross_cents,
+                lifetime_commission_cents = vendor_balances.lifetime_commission_cents + EXCLUDED.lifetime_commission_cents,
+                updated_at                = NOW()
             """)
     void upsertPending(
             @Param("vendorId") UUID vendorId,

@@ -651,10 +651,27 @@ public class EnvironmentSetting {
     }
 
     public static class Database {
-        private String url = "jdbc:mysql://localhost:3306/shopland";
-        private String username = "root";
+        private static final String DEFAULT_DRIVER = "org.postgresql.Driver";
+
+        /**
+         * Executed on every new pooled connection.
+         * <p>
+         * {@code TimeZone=UTC} pins the session zone so that {@code CAST(ts AS date)}
+         * day-bucketing in the analytics native queries is deterministic regardless of
+         * host/JVM zone. {@code hibernate.jdbc.time_zone} is not sufficient — it governs
+         * Hibernate's binding, not the server-side GUC that native SQL casts resolve against.
+         * <p>
+         * {@code lock_timeout} bounds {@code SELECT ... FOR UPDATE} waits. PostgreSQL blocks
+         * indefinitely by default, where InnoDB had {@code innodb_lock_wait_timeout=50s}.
+         */
+        private static final String DEFAULT_CONNECTION_INIT_SQL =
+                "SELECT set_config('TimeZone','UTC',false), set_config('lock_timeout','5s',false)";
+
+        private String url = "jdbc:postgresql://localhost:5432/shopwave";
+        private String username = "shopwave";
         private String password = "password123";
-        private String driverClassName = "com.mysql.cj.jdbc.Driver";
+        private String driverClassName = DEFAULT_DRIVER;
+        private String connectionInitSql = DEFAULT_CONNECTION_INIT_SQL;
         private int maximumPoolSize = 10;
         private int minimumIdle = 2;
         private long connectionTimeout = 30_000;
@@ -685,11 +702,19 @@ public class EnvironmentSetting {
         }
 
         public String getDriverClassName() {
-            return driverClassName != null ? driverClassName : "com.mysql.cj.jdbc.Driver";
+            return driverClassName != null ? driverClassName : DEFAULT_DRIVER;
         }
 
         public void setDriverClassName(String driverClassName) {
-            this.driverClassName = driverClassName != null ? driverClassName : "com.mysql.cj.jdbc.Driver";
+            this.driverClassName = driverClassName != null ? driverClassName : DEFAULT_DRIVER;
+        }
+
+        public String getConnectionInitSql() {
+            return connectionInitSql != null ? connectionInitSql : "";
+        }
+
+        public void setConnectionInitSql(String connectionInitSql) {
+            this.connectionInitSql = connectionInitSql != null ? connectionInitSql : "";
         }
 
         public int getMaximumPoolSize() {

@@ -1,5 +1,6 @@
 package backend.integration.orders;
 
+import backend.integration.IntegrationContainers;
 import backend.models.core.Order;
 import backend.models.core.User;
 import backend.models.enums.OrderStatus;
@@ -38,7 +39,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
-import org.testcontainers.containers.GenericContainer;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import jakarta.mail.internet.MimeMessage;
@@ -57,20 +57,14 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("integration-test")
 class DeliveryWebSocketIT {
 
-    @SuppressWarnings("resource")
-    static final GenericContainer<?> REDIS =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
     @DynamicPropertySource
     static void containerProperties(DynamicPropertyRegistry registry) {
-        REDIS.start();
-        registry.add("app.redis.host", REDIS::getHost);
-        registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
+        // Shares the one PostgreSQL instance with every other IT. The previous isolated H2
+        // database existed only because two create-drop contexts fought over a single
+        // in-memory instance; forks run sequentially, so one database is safe.
+        IntegrationContainers.registerDatabase(registry);
+        IntegrationContainers.registerRedis(registry);
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
-        // Use a separate H2 database so this context's create-drop lifecycle does not
-        // touch shopwave_it, which is owned by AbstractIntegrationIT's MOCK context.
-        registry.add("app.database.url",
-                () -> "jdbc:h2:mem:shopwave_ws;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=VALUE,DAY");
         // Allow all origins so the Java StandardWebSocketClient (which sends no
         // Origin header) is not rejected by the STOMP endpoint's origin check.
         registry.add("app.cors.allowed-origins", () -> "*");

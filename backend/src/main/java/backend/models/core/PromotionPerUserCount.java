@@ -7,7 +7,7 @@ import lombok.Setter;
 
 /**
  * Per-user redemption counter for PromotionRule.maxUsesPerUser enforcement.
- * Unique constraint on (rule_id, user_id) enables atomic ON DUPLICATE KEY UPDATE increments,
+ * Unique constraint on (rule_id, user_id) is the ON CONFLICT target for atomic upsert increments,
  * mirroring CouponPerUserCount.
  */
 @Entity

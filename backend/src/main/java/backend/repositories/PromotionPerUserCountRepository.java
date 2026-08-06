@@ -19,9 +19,11 @@ public interface PromotionPerUserCountRepository extends JpaRepository<Promotion
      */
     @Modifying
     @Query(value = """
-            INSERT INTO promotion_per_user_counts (rule_id, user_id, count)
-            VALUES (:ruleId, :userId, 1)
-            ON DUPLICATE KEY UPDATE count = IF(count < :maxUses, count + 1, count)
+            INSERT INTO promotion_per_user_counts (id, rule_id, user_id, count)
+            VALUES (gen_random_uuid(), :ruleId, :userId, 1)
+            ON CONFLICT (rule_id, user_id) DO UPDATE
+               SET count = promotion_per_user_counts.count + 1
+             WHERE promotion_per_user_counts.count < :maxUses
             """, nativeQuery = true)
     int tryIncrementUserCount(
             @Param("ruleId") java.util.UUID ruleId,

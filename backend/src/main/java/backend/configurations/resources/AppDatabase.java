@@ -34,6 +34,12 @@ public class AppDatabase {
         config.setIdleTimeout(db.getIdleTimeout());
         config.setPoolName("ShopWaveHikariPool");
 
+        // Pins session TimeZone and lock_timeout on every pooled connection.
+        // See EnvironmentSetting.Database#connectionInitSql for why both matter.
+        if (!db.getConnectionInitSql().isBlank()) {
+            config.setConnectionInitSql(db.getConnectionInitSql());
+        }
+
         return new HikariDataSource(config);
     }
 }

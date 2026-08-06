@@ -29,7 +29,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     /** Returns IDs of users whose birth month and day match today, for birthday reward processing. */
     @Query(value = "SELECT id FROM users WHERE birth_date IS NOT NULL " +
-                   "AND MONTH(birth_date) = :month AND DAY(birth_date) = :day",
+                   "AND EXTRACT(MONTH FROM birth_date) = :month " +
+                   "AND EXTRACT(DAY FROM birth_date) = :day",
            nativeQuery = true)
     List<UUID> findUserIdsWithBirthday(@Param("month") int month, @Param("day") int day);
 }

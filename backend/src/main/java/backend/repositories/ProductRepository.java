@@ -184,8 +184,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
                 AND o.status = 'PAID'
-                AND (:from IS NULL OR o.created_at >= :from)
-                AND (:to   IS NULL OR o.created_at <= :to)
+                AND (CAST(:from AS timestamptz) IS NULL OR o.created_at >= CAST(:from AS timestamptz))
+                AND (CAST(:to AS timestamptz)   IS NULL OR o.created_at <= CAST(:to AS timestamptz))
             WHERE p.company_id = :companyId
             GROUP BY p.id, p.name, p.sku, p.stock, p.price, p.currency
             ORDER BY totalUnitsSold DESC
@@ -215,8 +215,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
                 AND o.status = 'PAID'
-                AND (:from IS NULL OR o.created_at >= :from)
-                AND (:to   IS NULL OR o.created_at <= :to)
+                AND (CAST(:from AS timestamptz) IS NULL OR o.created_at >= CAST(:from AS timestamptz))
+                AND (CAST(:to AS timestamptz)   IS NULL OR o.created_at <= CAST(:to AS timestamptz))
             WHERE p.company_id = :companyId
             GROUP BY p.id, p.name, p.sku, p.stock, p.price, p.currency
             ORDER BY totalRevenue DESC
@@ -297,7 +297,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     @Query(nativeQuery = true, value = """
             SELECT
                 p.id                                    AS productId,
-                CAST(DATE(o.created_at) AS DATE)        AS day,
+                CAST(o.created_at AS date)        AS day,
                 SUM(oi.quantity)                        AS units
             FROM products p
             JOIN order_items oi ON oi.product_id = p.id
@@ -306,7 +306,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
               AND o.status      = 'PAID'
               AND o.created_at >= :since
               AND oi.product_id IS NOT NULL
-            GROUP BY p.id, DATE(o.created_at)
+            GROUP BY p.id, CAST(o.created_at AS date)
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandSince(
@@ -320,7 +320,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     @Query(nativeQuery = true, value = """
             SELECT
                 p.id                                    AS productId,
-                CAST(DATE(o.created_at) AS DATE)        AS day,
+                CAST(o.created_at AS date)        AS day,
                 SUM(oi.quantity)                        AS units
             FROM products p
             JOIN order_items oi ON oi.product_id = p.id
@@ -330,7 +330,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
               AND o.created_at >= :from
               AND o.created_at <= :to
               AND oi.product_id IS NOT NULL
-            GROUP BY p.id, DATE(o.created_at)
+            GROUP BY p.id, CAST(o.created_at AS date)
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandBetween(

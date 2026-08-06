@@ -7,7 +7,7 @@ import lombok.Setter;
 
 /**
  * Tracks per-user redemption counts for coupons that have a maxUsesPerUser cap.
- * The unique constraint on (coupon_id, user_id) enables an atomic ON DUPLICATE KEY UPDATE
+ * The unique constraint on (coupon_id, user_id) is the ON CONFLICT target for an atomic upsert
  * increment, so concurrent orders by the same user cannot both pass the per-user limit check.
  */
 @Entity
