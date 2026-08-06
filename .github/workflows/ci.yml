@@ -1,13 +1,27 @@
 name: CI
 
+# `push` covers any branch, so a feature branch gets CI before a PR exists, and a commit is
+# still built if the PR event is delayed or dropped.
+#
+# `pull_request` keeps its default types (opened, synchronize, reopened). `synchronize` is
+# required, not redundant: `push` events fire in the fork for a fork-based PR, never here, so
+# dropping it would leave a fork PR with no CI on every commit after the first.
+#
+# The cost is that a same-repo PR branch runs twice per push — once via `push`, once via
+# `synchronize`. Accepted deliberately in exchange for fork coverage and for not depending on a
+# single event type; the concurrency group below caps the waste to one in-flight run per branch,
+# but it does not deduplicate the two events (they carry different `github.ref` values).
 on:
+  push:
+    branches: ["**"]
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
 
+# `github.ref` is the branch for a push and `refs/pull/N/merge` for a pull_request, so this
+# collapses repeated pushes to the same branch — superseded runs are cancelled — but a push and
+# its matching pull_request run are in different groups and both execute.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -95,7 +109,7 @@ jobs:
             tests: SavedListIT,LoyaltyIT,CouponIT,SubscriptionIT,CompanyReturnLocationIT,CompanyReturnIT,ReturnIT,SupportTicketIT,InternalNoteIT,FeedbackIT
           - shard: 8
             name: marketing-workflows
-            tests: MarketingWorkflowIT,WorkflowEnrollmentIT,B2BQuoteIT,ShippingRateIT,TaxRateIT
+            tests: MarketingWorkflowIT,WorkflowEnrollmentIT,B2BQuoteIT,ShippingRateIT,TaxRateIT,DisputeIT
 
     steps:
       - name: Checkout

@@ -45,6 +45,7 @@ import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
 import AdminWebhooksPage from "./pages/admin/AdminWebhooksPage";
 import AdminMarketingPage from "./pages/admin/AdminMarketingPage";
 import AdminPurchaseOrdersPage from "./pages/admin/AdminPurchaseOrdersPage";
+import AdminDisputesPage from "./pages/admin/AdminDisputesPage";
 import AdminInventoryTransfersPage from "./pages/admin/AdminInventoryTransfersPage";
 import B2BQuotesPage from "./pages/B2BQuotesPage";
 import AdminB2BQuotesPage from "./pages/admin/AdminB2BQuotesPage";
@@ -137,6 +138,7 @@ function App() {
               <Route path="/admin/orders" element={<CompanyOrdersPage />} />
               <Route path="/admin/orders/:orderId" element={<CompanyOrderDetailPage />} />
               <Route path="/admin/drivers" element={<DriverDispatchPage />} />
+              <Route path="/admin/disputes" element={<AdminDisputesPage />} />
             </Route>
           </Routes>
         </div>

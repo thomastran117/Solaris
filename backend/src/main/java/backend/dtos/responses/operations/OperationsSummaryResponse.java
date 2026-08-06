@@ -24,4 +24,10 @@ public class OperationsSummaryResponse {
     private StockoutMetricResponse stockouts;
     private SupplierLatenessMetricResponse supplierLateness;
     private CancellationMetricResponse cancellations;
+
+    /**
+     * Non-closed chargebacks against orders containing this company's products. Not windowed by
+     * {@code lookbackDays} — an open dispute is outstanding work regardless of when it landed.
+     */
+    private long openDisputeCount;
 }

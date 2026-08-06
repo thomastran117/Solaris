@@ -12,6 +12,7 @@ import backend.annotations.requireAuth.RequireAuth;
 import backend.dtos.requests.issue.ResolveWithReplacementRequest;
 import backend.dtos.requests.order.CreateOrderRequest;
 import backend.dtos.requests.order.SetDeliverySlotRequest;
+import backend.dtos.responses.dispute.DisputeCaseResponse;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderResponse;
 import backend.dtos.responses.order.OrderStatusHistoryResponse;
@@ -30,6 +31,7 @@ import backend.services.intf.orders.OrderService;
 import backend.services.intf.orders.TrackingService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import backend.services.intf.payments.DisputeService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.orders.ReplacementOrderService;
 import backend.services.intf.returns.ReturnService;
@@ -87,6 +89,7 @@ public class OrderController {
     private final OrderSseService orderSseService;
     private final ObjectMapper objectMapper;
     private final RateLimitService rateLimitService;
+    private final DisputeService disputeService;
 
     private static final long TRACKING_CACHE_TTL_SECONDS = 60;
 
@@ -100,7 +103,8 @@ public class OrderController {
                            TrackingService trackingService,
                            OrderSseService orderSseService,
                            ObjectMapper objectMapper,
-                           RateLimitService rateLimitService) {
+                           RateLimitService rateLimitService,
+                           DisputeService disputeService) {
         this.orderService = orderService;
         this.paymentService = paymentService;
         this.returnService = returnService;
@@ -114,6 +118,7 @@ public class OrderController {
         this.orderSseService = orderSseService;
         this.objectMapper = objectMapper;
         this.rateLimitService = rateLimitService;
+        this.disputeService = disputeService;
     }
 
     @PostMapping
@@ -315,14 +320,16 @@ public class OrderController {
         // SETNX-style claim — if another delivery (or another replica) already started
         // processing this event id, we return 200 OK so Stripe stops retrying without
         // running the side-effects a second time.
+        String dedupKey = null;
         if (event.eventId() != null && !event.eventId().isBlank()) {
-            String dedupKey = "stripe:event:" + event.eventId();
+            dedupKey = "stripe:event:" + event.eventId();
             boolean firstDelivery = cacheService.tryLock(dedupKey, "1", STRIPE_EVENT_DEDUP_TTL_SECONDS);
             if (!firstDelivery) {
                 return ResponseEntity.ok().build();
             }
         }
 
+        try {
         switch (event.type()) {
                 case "payment_intent.succeeded"      -> orderService.handlePaymentSuccess(event.objectId());
                 case "payment_intent.payment_failed" -> orderService.handlePaymentFailure(event.objectId());
@@ -384,7 +391,30 @@ public class OrderController {
                         vendorPayoutService.handleTransferFailed(event.objectId(), reason);
                     }
                 }
+                case "charge.dispute.created" -> {
+                    if (event.objectId() != null) {
+                        disputeService.handleDisputeCreated(toStripeDispute(event));
+                    }
+                }
+                case "charge.dispute.updated" -> {
+                    if (event.objectId() != null) {
+                        disputeService.handleDisputeUpdated(toStripeDispute(event));
+                    }
+                }
+                case "charge.dispute.closed" -> {
+                    if (event.objectId() != null) {
+                        disputeService.handleDisputeClosed(toStripeDispute(event));
+                    }
+                }
             default -> { }
+        }
+        } catch (RuntimeException e) {
+            // The claim above is taken *before* processing, with a 31-day TTL. If processing
+            // fails, leaving it in place means Stripe's retry of the same event id short-circuits
+            // to 200 at the guard and the event is silently lost — for a dispute, that is a
+            // chargeback nobody ever sees. Release it so the retry can genuinely reprocess.
+            releaseWebhookClaim(dedupKey);
+            throw e;
         }
 
         return ResponseEntity.ok().build();
@@ -460,6 +490,23 @@ public class OrderController {
         }
     }
 
+    /**
+     * Chargebacks raised against an order. Staff-only: customer-facing dispute status is
+     * deliberately out of scope, and telling a customer we are contesting their chargeback
+     * would work against the case.
+     */
+    @GetMapping("/{orderId}/disputes")
+    @RequireAuth(roles = {"SUPPORT", "MODERATOR", "ADMIN"})
+    public ResponseEntity<List<DisputeCaseResponse>> getOrderDisputes(@PathVariable UUID orderId) {
+        try {
+            return ResponseEntity.ok(disputeService.getDisputesByOrder(orderId));
+        } catch (AppHttpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InternalServerErrorException();
+        }
+    }
+
     @GetMapping("/{id}/tracking")
     @RequireAuth
     public ResponseEntity<List<TrackingEvent>> getTracking(@PathVariable UUID id) {
@@ -502,6 +549,40 @@ public class OrderController {
      * when the field is absent or malformed. A NumberFormatException here would produce
      * an HTTP 500, causing Stripe to retry the webhook indefinitely.
      */
+    /**
+     * Drops the dedup claim for a webhook whose processing failed, so Stripe's retry is treated
+     * as a first delivery. Best-effort by design: a Redis failure here must not replace the
+     * original processing error, which is what the caller actually needs to surface.
+     */
+    private void releaseWebhookClaim(String dedupKey) {
+        if (dedupKey == null) return;
+        try {
+            cacheService.delete(dedupKey);
+        } catch (Exception ignored) {
+            // Claim expires on its own TTL; nothing better to do here.
+        }
+    }
+
+    /**
+     * Flattens a {@code charge.dispute.*} webhook into the provider-agnostic record the dispute
+     * service consumes. Every field is parsed defensively: a malformed value here would surface as
+     * an HTTP 500 and make Stripe retry the webhook for 30 days.
+     */
+    private static DisputeService.StripeDispute toStripeDispute(PaymentService.WebhookEvent event) {
+        java.util.Map<String, String> meta = event.metadata();
+        long dueBySeconds = safeMetadataLong(meta, "evidenceDueBy", 0L);
+        return new DisputeService.StripeDispute(
+                event.objectId(),
+                meta.get("chargeId"),
+                meta.get("paymentIntentId"),
+                safeMetadataLong(meta, "amountCents", 0L),
+                meta.getOrDefault("currency", "usd"),
+                meta.get("disputeReason"),
+                meta.get("disputeStatus"),
+                dueBySeconds > 0 ? java.time.Instant.ofEpochSecond(dueBySeconds) : null,
+                Boolean.parseBoolean(meta.get("hasEvidence")));
+    }
+
     private static long safeMetadataLong(java.util.Map<String, String> metadata, String key, long defaultValue) {
         String raw = metadata != null ? metadata.get(key) : null;
         if (raw == null || raw.isBlank()) return defaultValue;
