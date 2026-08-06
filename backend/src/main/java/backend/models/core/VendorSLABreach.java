@@ -27,15 +27,14 @@ public class VendorSLABreach {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** FK to MarketplaceVendor.id */
-    @Column(nullable = false, name = "vendor_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "vendor_id")
     private java.util.UUID vendorId;
 
     /** FK to VendorSLAPolicy.id */
-    @Column(nullable = false, name = "policy_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "policy_id")
     private java.util.UUID policyId;
 
     /** Which metric threshold was violated (e.g. "cancellationRate", "lateShipmentRate"). */

@@ -36,14 +36,6 @@ class CommissionPolicyIT extends AbstractIntegrationIT {
     @Autowired private MarketplaceProfileRepository marketplaceProfileRepository;
     @Autowired private CommissionPolicyRepository commissionPolicyRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM commission_rules"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM commission_policies"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

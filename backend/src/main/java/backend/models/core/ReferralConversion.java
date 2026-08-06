@@ -27,20 +27,19 @@ public class ReferralConversion {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
-    @Column(nullable = false, name = "referrer_account_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "referrer_account_id")
     private UUID referrerAccountId;
 
-    @Column(nullable = false, name = "referred_account_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "referred_account_id")
     private UUID referredAccountId;
 
-    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "company_id")
     private UUID companyId;
 
     /** The order that triggered the referral conversion. */
-    @Column(nullable = true, name = "order_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = true, name = "order_id")
     private UUID orderId;
 
     /** Points that were awarded to the referrer. */

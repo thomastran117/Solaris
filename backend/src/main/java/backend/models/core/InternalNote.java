@@ -24,14 +24,13 @@ public class InternalNote {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 15)
     private NoteEntityType entityType;
 
-    @Column(nullable = false, columnDefinition = "BINARY(16)")
+    @Column(nullable = false)
     private UUID entityId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

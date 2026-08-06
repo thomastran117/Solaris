@@ -29,15 +29,14 @@ public class RiskReview {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** Order held under review. Unique to prevent duplicate queue rows. */
-    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "order_id", nullable = false)
     private UUID orderId;
 
     /** FK to the {@code risk_assessments} row that produced this review (not a JPA relationship). */
-    @Column(name = "assessment_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "assessment_id", nullable = false)
     private UUID assessmentId;
 
     @Enumerated(EnumType.STRING)
@@ -45,7 +44,7 @@ public class RiskReview {
     private RiskReviewStatus status = RiskReviewStatus.PENDING;
 
     /** User id of the merchant who approved/rejected. Null while PENDING. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID decidedByUserId;
 
     @Column(nullable = true)

@@ -32,8 +32,8 @@ public interface PromotionRedemptionRepository extends JpaRepository<PromotionRe
                 COUNT(DISTINCT pr.order_id)            AS uniqueOrderCount
             FROM promotion_redemptions pr
             JOIN companies c ON pr.funded_by_company_id = c.id
-            WHERE (:from IS NULL OR pr.redeemed_at >= :from)
-              AND (:to   IS NULL OR pr.redeemed_at <= :to)
+            WHERE (CAST(:from AS timestamptz) IS NULL OR pr.redeemed_at >= CAST(:from AS timestamptz))
+              AND (CAST(:to AS timestamptz)   IS NULL OR pr.redeemed_at <= CAST(:to AS timestamptz))
             GROUP BY c.id, c.name
             ORDER BY totalSavings DESC
             """)
@@ -53,8 +53,8 @@ public interface PromotionRedemptionRepository extends JpaRepository<PromotionRe
                 COUNT(DISTINCT pr.user_id)           AS uniqueUserCount
             FROM promotion_redemptions pr
             WHERE pr.rule_id = :ruleId
-              AND (:from IS NULL OR pr.redeemed_at >= :from)
-              AND (:to   IS NULL OR pr.redeemed_at <= :to)
+              AND (CAST(:from AS timestamptz) IS NULL OR pr.redeemed_at >= CAST(:from AS timestamptz))
+              AND (CAST(:to AS timestamptz)   IS NULL OR pr.redeemed_at <= CAST(:to AS timestamptz))
             """)
     PromotionRuleAnalyticsProjection aggregateRuleAnalytics(
             @Param("ruleId") java.util.UUID ruleId,

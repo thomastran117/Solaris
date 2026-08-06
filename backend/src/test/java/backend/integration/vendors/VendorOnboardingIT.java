@@ -38,15 +38,6 @@ class VendorOnboardingIT extends AbstractIntegrationIT {
     @Autowired private MarketplaceProfileRepository marketplaceProfileRepository;
     @MockitoBean private PaymentService paymentService;
 
-    @AfterEach
-    void cleanVendors() {
-        try { jdbcTemplate.execute("DELETE FROM vendor_audit_logs"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_onboarding_documents"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

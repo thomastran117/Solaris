@@ -36,13 +36,6 @@ class PricingReportControllerIT extends AbstractIntegrationIT {
     @Autowired private PromotionRuleRepository promotionRuleRepository;
     @Autowired private PromotionRedemptionRepository promotionRedemptionRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM promotion_redemptions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM promotion_rules"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

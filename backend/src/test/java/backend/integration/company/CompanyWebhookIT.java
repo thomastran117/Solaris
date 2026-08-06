@@ -40,14 +40,6 @@ class CompanyWebhookIT extends AbstractIntegrationIT {
     @Qualifier("webhookRestTemplate")
     RestTemplate webhookRestTemplate;
 
-    @AfterEach
-    void cleanWebhooks() {
-        try { jdbcTemplate.execute("DELETE FROM webhook_delivery_logs"); }       catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM webhook_subscription_events"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_webhook_subscriptions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); }         catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); }                   catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

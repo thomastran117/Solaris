@@ -28,15 +28,6 @@ class CouponIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
 
-    @AfterEach
-    void cleanCoupons() {
-        try { jdbcTemplate.execute("DELETE FROM coupon_redemptions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM coupon_per_user_counts"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM coupons"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM promotion_rules"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     private Company createCompany(User owner) {
         Company c = new Company();

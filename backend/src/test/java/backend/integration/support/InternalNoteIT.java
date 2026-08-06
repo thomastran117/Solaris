@@ -21,10 +21,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class InternalNoteIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void cleanNotes() {
-        try { jdbcTemplate.execute("DELETE FROM internal_notes"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -29,14 +29,6 @@ class KitIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
 
-    @AfterEach
-    void cleanKits() {
-        try { jdbcTemplate.execute("DELETE FROM kit_slot_choices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM kit_slots"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_kits"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

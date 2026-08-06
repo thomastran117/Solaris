@@ -34,15 +34,6 @@ class CollectionIT extends AbstractIntegrationIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void cleanCollections() {
-        try { jdbcTemplate.execute("DELETE FROM collection_products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM collections"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

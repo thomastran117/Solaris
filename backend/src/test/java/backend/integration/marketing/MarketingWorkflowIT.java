@@ -38,14 +38,6 @@ class MarketingWorkflowIT extends AbstractIntegrationIT {
     @Autowired private MarketingWorkflowRepository workflowRepository;
     @Autowired private WorkflowEnrollmentRepository enrollmentRepository;
 
-    @AfterEach
-    void cleanMarketing() {
-        try { jdbcTemplate.execute("DELETE FROM workflow_delivery_logs"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM workflow_enrollments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketing_workflows"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

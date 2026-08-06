@@ -26,11 +26,6 @@ class SupportTicketIT extends AbstractIntegrationIT {
 
     @Autowired private SupportTicketRepository ticketRepository;
 
-    @AfterEach
-    void cleanTickets() {
-        try { jdbcTemplate.execute("DELETE FROM support_ticket_messages"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM support_tickets"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

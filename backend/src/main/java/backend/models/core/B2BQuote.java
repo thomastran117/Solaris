@@ -31,13 +31,12 @@ public class B2BQuote {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
-    @Column(name = "vendor_company_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "vendor_company_id", nullable = false)
     private UUID vendorCompanyId;
 
-    @Column(name = "buyer_user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "buyer_user_id", nullable = false)
     private UUID buyerUserId;
 
     @Enumerated(EnumType.STRING)
@@ -61,7 +60,7 @@ public class B2BQuote {
     @Column(nullable = false, length = 3)
     private String currency = "USD";
 
-    @Column(name = "converted_order_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "converted_order_id", nullable = true)
     private UUID convertedOrderId;
 
     @OneToMany(mappedBy = "quote", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

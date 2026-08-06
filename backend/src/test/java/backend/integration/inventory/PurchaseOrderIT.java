@@ -46,18 +46,6 @@ class PurchaseOrderIT extends AbstractIntegrationIT {
     @Autowired private RestockRequestRepository restockRepository;
     @Autowired private InventoryAdjustmentRepository adjustmentRepository;
 
-    @AfterEach
-    void cleanPO() {
-        try { jdbcTemplate.execute("DELETE FROM inventory_adjustments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM purchase_order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM purchase_orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM suppliers"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM restock_requests"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── POST /companies/{companyId}/purchase-orders ───────────────────────────
 

@@ -25,10 +25,6 @@ class AdminFeedbackIT extends AbstractIntegrationIT {
 
     @Autowired private PlatformFeedbackRepository feedbackRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM platform_feedback"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

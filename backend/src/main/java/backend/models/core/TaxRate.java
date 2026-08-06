@@ -18,7 +18,7 @@ import java.time.Instant;
  * state-level row ({@code postalCode = ""}), then a country-level default ({@code state = "" } and
  * {@code postalCode = ""}). Wildcards are stored as the empty string rather than NULL so the unique
  * constraint on {@code (country, state, postalCode)} actually prevents duplicate state-/country-level
- * defaults — MySQL allows multiple rows when a unique-key column is NULL.
+ * defaults — a unique constraint permits multiple rows when the column is NULL.
  *
  * <p>{@code country} and {@code state} are stored uppercase; callers normalise before lookup/save.
  */
@@ -37,7 +37,6 @@ public class TaxRate {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /**

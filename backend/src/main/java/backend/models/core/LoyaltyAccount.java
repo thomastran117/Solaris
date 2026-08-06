@@ -30,17 +30,16 @@ public class LoyaltyAccount {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Version
     @Column(nullable = false)
     private Long version;
 
-    @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "user_id")
     private UUID userId;
 
-    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "company_id")
     private UUID companyId;
 
     /** Current redeemable points balance. Never negative. */
@@ -52,7 +51,7 @@ public class LoyaltyAccount {
     private long lifetimePoints = 0L;
 
     /** Loose FK to LoyaltyTier.id. Null until the account earns enough for a tier. */
-    @Column(nullable = true, name = "current_tier_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = true, name = "current_tier_id")
     private UUID currentTierId;
 
     @Column(nullable = true)

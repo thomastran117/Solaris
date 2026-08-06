@@ -36,14 +36,13 @@ public class RiskAssessment {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** Null for assessments captured before the order row exists (not currently used, reserved for future). */
-    @Column(name = "order_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "order_id", nullable = true)
     private UUID orderId;
 
-    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "user_id", nullable = false)
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
@@ -62,7 +61,6 @@ public class RiskAssessment {
     private RiskAssessmentKind kind;
 
     /** Serialised {@code List<RiskSignal>}. Review APIs re-parse this to present reasons to merchants. */
-    @Lob
     @Column(nullable = true, columnDefinition = "TEXT")
     private String reasonsJson;
 

@@ -29,14 +29,13 @@ public class ProductQuestionReport {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "target_type", nullable = false, length = 10)
     private QAReportType targetType;
 
-    @Column(name = "target_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "target_id", nullable = false)
     private UUID targetId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

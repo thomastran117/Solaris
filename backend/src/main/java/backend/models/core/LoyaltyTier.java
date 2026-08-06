@@ -28,14 +28,13 @@ public class LoyaltyTier {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Version
     @Column(nullable = false)
     private Long version;
 
-    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "company_id")
     private UUID companyId;
 
     @Column(nullable = false, length = 60)

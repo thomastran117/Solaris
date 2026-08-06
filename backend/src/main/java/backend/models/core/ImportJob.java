@@ -30,13 +30,12 @@ public class ImportJob {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "company_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "company_id", nullable = false)
     private UUID companyId;
 
-    @Column(name = "uploaded_by", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "uploaded_by", nullable = false)
     private UUID uploadedBy;
 
     @Enumerated(EnumType.STRING)

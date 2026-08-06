@@ -50,7 +50,7 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             @Param("to") Instant to);
 
     @Query(value =
-            "SELECT DATE(so.created_at) AS day, " +
+            "SELECT CAST(so.created_at AS date) AS day, " +
             "       COALESCE(SUM(cr.gross_amount), 0) AS gross, " +
             "       COALESCE(SUM(cr.commission_amount), 0) AS commission, " +
             "       COALESCE(SUM(cr.net_vendor_amount), 0) AS net, " +
@@ -61,8 +61,8 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             "AND so.marketplace_id = :marketplaceId " +
             "AND so.created_at BETWEEN :from AND :to " +
             "AND so.status != 'CANCELLED' " +
-            "GROUP BY DATE(so.created_at) " +
-            "ORDER BY DATE(so.created_at)",
+            "GROUP BY CAST(so.created_at AS date) " +
+            "ORDER BY CAST(so.created_at AS date)",
             nativeQuery = true)
     List<VendorRevenueDailyProjection> vendorRevenueDaily(
             @Param("vendorId") UUID vendorId,
@@ -114,13 +114,13 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             @Param("to") Instant to);
 
     @Query(value =
-            "SELECT DATE(so.created_at) AS day, COUNT(*) AS count " +
+            "SELECT CAST(so.created_at AS date) AS day, COUNT(*) AS count " +
             "FROM sub_orders so " +
             "WHERE so.marketplace_vendor_id = :vendorId " +
             "AND so.marketplace_id = :marketplaceId " +
             "AND so.created_at BETWEEN :from AND :to " +
-            "GROUP BY DATE(so.created_at) " +
-            "ORDER BY DATE(so.created_at)",
+            "GROUP BY CAST(so.created_at AS date) " +
+            "ORDER BY CAST(so.created_at AS date)",
             nativeQuery = true)
     List<DailyCountProjection> vendorOrdersDaily(
             @Param("vendorId") UUID vendorId,
@@ -157,14 +157,14 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             @Param("to") Instant to);
 
     @Query(value =
-            "SELECT DATE(so.cancelled_at) AS day, COUNT(*) AS count " +
+            "SELECT CAST(so.cancelled_at AS date) AS day, COUNT(*) AS count " +
             "FROM sub_orders so " +
             "WHERE so.marketplace_vendor_id = :vendorId " +
             "AND so.marketplace_id = :marketplaceId " +
             "AND so.status = 'CANCELLED' " +
             "AND so.cancelled_at BETWEEN :from AND :to " +
-            "GROUP BY DATE(so.cancelled_at) " +
-            "ORDER BY DATE(so.cancelled_at)",
+            "GROUP BY CAST(so.cancelled_at AS date) " +
+            "ORDER BY CAST(so.cancelled_at AS date)",
             nativeQuery = true)
     List<DailyCountProjection> vendorRefundsDaily(
             @Param("vendorId") UUID vendorId,
@@ -177,9 +177,9 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
     // -------------------------------------------------------------------------
 
     @Query(value =
-            "SELECT AVG(TIMESTAMPDIFF(SECOND, so.paid_at, so.shipped_at) / 3600.0) AS avgShipHours, " +
+            "SELECT AVG(CAST(EXTRACT(EPOCH FROM (so.shipped_at - so.paid_at)) / 3600.0 AS double precision)) AS avgShipHours, " +
             "       COUNT(*) AS totalShipped, " +
-            "       SUM(CASE WHEN TIMESTAMPDIFF(SECOND, so.paid_at, so.shipped_at) / 3600.0 > :targetHours " +
+            "       SUM(CASE WHEN CAST(EXTRACT(EPOCH FROM (so.shipped_at - so.paid_at)) / 3600.0 AS double precision) > :targetHours " +
             "                THEN 1 ELSE 0 END) AS totalLate " +
             "FROM sub_orders so " +
             "WHERE so.marketplace_vendor_id = :vendorId " +
@@ -219,7 +219,9 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             "       COUNT(DISTINCT so.id) AS totalSubOrders, " +
             "       COALESCE(SUM(cr.gross_amount), 0) AS totalGrossRevenue, " +
             "       COALESCE(SUM(cr.commission_amount), 0) AS totalCommission, " +
-            "       COALESCE(SUM(CASE WHEN so.status = 'CANCELLED' THEN 1 ELSE 0 END) " +
+            // Numerator is cast before dividing: both operands are bigint in PostgreSQL, so
+            // an uncast division truncates every rate below 1.0 to 0 (MySQL returned a decimal).
+            "       COALESCE(CAST(SUM(CASE WHEN so.status = 'CANCELLED' THEN 1 ELSE 0 END) AS double precision) " +
             "                / NULLIF(COUNT(DISTINCT so.id), 0), 0) AS cancellationRate " +
             "FROM sub_orders so " +
             "JOIN marketplace_vendors mv ON mv.id = so.marketplace_vendor_id " +
@@ -238,12 +240,12 @@ public interface VendorAnalyticsRepository extends JpaRepository<SubOrder, UUID>
             @Param("lim") int limit);
 
     @Query(value =
-            "SELECT DATE(so.created_at) AS day, COUNT(DISTINCT so.id) AS count " +
+            "SELECT CAST(so.created_at AS date) AS day, COUNT(DISTINCT so.id) AS count " +
             "FROM sub_orders so " +
             "WHERE so.marketplace_id = :marketplaceId " +
             "AND so.created_at BETWEEN :from AND :to " +
-            "GROUP BY DATE(so.created_at) " +
-            "ORDER BY DATE(so.created_at)",
+            "GROUP BY CAST(so.created_at AS date) " +
+            "ORDER BY CAST(so.created_at AS date)",
             nativeQuery = true)
     List<DailyCountProjection> marketplaceOrdersDaily(
             @Param("marketplaceId") UUID marketplaceId,

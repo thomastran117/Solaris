@@ -21,25 +21,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Covers OperationsController (/companies/{companyId}/operations/*).
  *
- * NOTE: fulfillment, refunds, pick-delays, supplier-lateness, and cancellations
- * all trigger native SQL with TIMESTAMPDIFF/DATE/DATEDIFF which H2 MySQL-compat
- * mode cannot execute. Happy-path tests for those five endpoints are omitted.
- * They work correctly against production MySQL.
+ * <p>Every endpoint now has a happy path. Fulfillment, refunds, pick-delays,
+ * supplier-lateness and cancellations were previously untested because their native SQL
+ * (TIMESTAMPDIFF/DATE/DATEDIFF) could not run on H2 in MySQL-compat mode; the suite runs
+ * on real PostgreSQL and that SQL has been rewritten to portable equivalents.
  *
- * getStockouts uses JPQL exclusively and is fully tested.
- * Access-control tests (403/401) are safe for all endpoints because the auth
- * check fires before any DB query.
+ * <p>The happy-path assertions deliberately cover the empty-data case. That is enough to
+ * catch the failure these tests exist to catch — the controller converts any SQL error into
+ * a 500, so a 200 with a well-formed body proves the aggregate query parsed, executed, and
+ * bound its result to the projection. Value-level aggregation is covered by unit tests.
  */
 class OperationsIT extends AbstractIntegrationIT {
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -175,5 +171,91 @@ class OperationsIT extends AbstractIntegrationIT {
         mockMvc.perform(get(ops(company.getId(), "stockouts"))
                         .header("Authorization", bearer(accessTokenFor(employee))))
                 .andExpect(status().isForbidden());
+    }
+
+    // ── Native-SQL metrics ────────────────────────────────────────────────────
+    // These exercise the interval/date-truncation queries in OperationsMetricsRepository.
+
+    /** Creates a company whose owner can read analytics, and returns a bearer header value. */
+    private String ownerTokenFor(Company company, User owner) {
+        addMember(company, owner, CompanyRole.OWNER);
+        return bearer(accessTokenFor(owner));
+    }
+
+    @Test
+    void getFulfillment_owner_returns200() throws Exception {
+        User owner = createActiveUser("ops-ful-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "fulfillment"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.daily").isArray());
+    }
+
+    @Test
+    void getRefunds_owner_returns200() throws Exception {
+        User owner = createActiveUser("ops-ref2-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "refunds"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.daily").isArray());
+    }
+
+    @Test
+    void getPickDelays_owner_returns200() throws Exception {
+        User owner = createActiveUser("ops-pick-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "pick-delays"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.daily").isArray());
+    }
+
+    @Test
+    void getSupplierLateness_owner_returns200() throws Exception {
+        User owner = createActiveUser("ops-sup2-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "supplier-lateness"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.late").value(0))
+                .andExpect(jsonPath("$.data.daily").isArray());
+    }
+
+    @Test
+    void getCancellations_owner_returns200() throws Exception {
+        User owner = createActiveUser("ops-can-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "cancellations"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.byReason").isArray())
+                .andExpect(jsonPath("$.data.daily").isArray());
+    }
+
+    /** Summary fans out to every metric above in one request. */
+    @Test
+    void getSummary_owner_returns200WithAllMetrics() throws Exception {
+        User owner = createActiveUser("ops-sum-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "summary"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
+                .andExpect(jsonPath("$.data.fulfillment").exists())
+                .andExpect(jsonPath("$.data.refunds").exists())
+                .andExpect(jsonPath("$.data.pickDelays").exists());
     }
 }

@@ -35,7 +35,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.GenericContainer;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import java.time.Instant;
@@ -48,10 +47,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * Base class for all auth integration tests.
  *
  * Infrastructure provided:
- *  - TestContainers MySQL 8.0 (schema created by Hibernate create-drop)
- *  - TestContainers Redis for refresh tokens, rate limiting, and verification tokens
+ *  - Shared PostgreSQL and Redis from {@link IntegrationContainers} (schema created by
+ *    Hibernate create-drop)
  *  - @MockBean for JavaMailSender, OAuthService, ElasticsearchClient, S3Client
- *  - @AfterEach cleanup of users and user_devices tables
+ *  - @AfterEach truncation of every table
  *  - Helper methods for creating users, generating access tokens, and building
  *    device fingerprints that match what the filter chain produces.
  */
@@ -60,17 +59,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @AutoConfigureMockMvc
 public abstract class AbstractIntegrationIT {
 
-    // Shared static Redis container — started once and reused across all test classes.
-    // Database uses H2 in-memory (MySQL-compat mode), configured in the test properties file.
-    @SuppressWarnings("resource")
-    static final GenericContainer<?> REDIS =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
     @DynamicPropertySource
     static void containerProperties(DynamicPropertyRegistry registry) {
-        REDIS.start();
-        registry.add("app.redis.host", REDIS::getHost);
-        registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
+        IntegrationContainers.registerDatabase(registry);
+        IntegrationContainers.registerRedis(registry);
 
         // Nil UUID for the risk VIP-segment sentinel — production uses -1 which is not a valid UUID
         registry.add("app.risk.vip-segment-id", () -> "00000000-0000-0000-0000-000000000000");
@@ -134,11 +126,7 @@ public abstract class AbstractIntegrationIT {
 
     @AfterEach
     void cleanDatabase() {
-        // Use try-catch so a missing table (e.g. user_segments, which may fail DDL in H2
-        // due to reserved-word or FK issues) never blocks the users DELETE.
-        try { jdbcTemplate.execute("DELETE FROM user_devices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM user_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM users"); } catch (Exception ignored) {}
+        IntegrationContainers.truncateAll(jdbcTemplate);
     }
 
     // ── User factory helpers ──────────────────────────────────────────────────

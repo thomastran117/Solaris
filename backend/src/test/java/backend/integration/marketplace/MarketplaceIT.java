@@ -38,16 +38,6 @@ class MarketplaceIT extends AbstractIntegrationIT {
     @Autowired private ProductRepository productRepository;
     @Autowired private CollectionRepository collectionRepository;
 
-    @AfterEach
-    void cleanMarketplace() {
-        try { jdbcTemplate.execute("DELETE FROM collection_products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM collections"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

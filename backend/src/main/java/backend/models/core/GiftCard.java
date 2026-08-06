@@ -33,7 +33,6 @@ public class GiftCard {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Version
@@ -66,11 +65,11 @@ public class GiftCard {
     private User redeemedByUser;
 
     /** Loose FK to orders.id — the order that triggered this card's issuance. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID purchasedOnOrderId;
 
     /** Loose FK to order_items.id — used as idempotency key in issueCardsForOrder. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID purchasedOnOrderItemId;
 
     /**

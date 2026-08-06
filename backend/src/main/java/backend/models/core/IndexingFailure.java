@@ -23,16 +23,15 @@ public class IndexingFailure {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Column(nullable = false, length = 20)
     private String documentType;
 
-    @Column(nullable = false, columnDefinition = "BINARY(16)")
+    @Column(nullable = false)
     private UUID documentId;
 
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID companyId;
 
     @Column(nullable = false, length = 10)

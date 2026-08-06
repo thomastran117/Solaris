@@ -26,7 +26,6 @@ public class CommissionRecord {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
@@ -34,10 +33,10 @@ public class CommissionRecord {
     private SubOrder subOrder;
 
     /** MarketplaceVendor.id — denormalized for efficient payout queries. */
-    @Column(nullable = false, name = "vendor_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "vendor_id")
     private java.util.UUID vendorId;
 
-    @Column(nullable = false, name = "marketplace_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "marketplace_id")
     private java.util.UUID marketplaceId;
 
     /** Commission rate applied. E.g. 0.1500 = 15%. */

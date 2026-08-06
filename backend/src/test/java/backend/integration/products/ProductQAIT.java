@@ -28,16 +28,6 @@ class ProductQAIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void cleanQA() {
-        try { jdbcTemplate.execute("DELETE FROM product_answer_upvotes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_question_reports"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_answers"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_questions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

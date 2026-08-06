@@ -39,7 +39,6 @@ public class Product {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -50,7 +49,7 @@ public class Product {
      * Non-null when this product is listed on a marketplace. Null for standalone (non-marketplace) products.
      * The FK points to the marketplace Company (the operator), not the vendor Company.
      */
-    @Column(name = "marketplace_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "marketplace_id", nullable = true)
     private UUID marketplaceId;
 
     /** When true, the vendor has enabled this product for marketplace display. Ignored when marketplaceId is null. */
@@ -241,11 +240,11 @@ public class Product {
     private Instant updatedAt;
 
     @CreatedBy
-    @Column(name = "created_by", nullable = true, updatable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "created_by", nullable = true, updatable = false)
     private UUID createdBy;
 
     @LastModifiedBy
-    @Column(name = "updated_by", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "updated_by", nullable = true)
     private UUID updatedBy;
 
     @Version

@@ -34,7 +34,6 @@ public class PromotionRule {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** Owning vendor. All CRUD is scoped to this company. */
@@ -99,10 +98,10 @@ public class PromotionRule {
     /**
      * Per-type configuration JSON — shape depends on ruleType.
      * Parsed in PricingEngine via Jackson into typed records under backend.services.pricing.config.
-     * Stored as native MySQL JSON.
+     * Stored as the dialect's native JSON type (jsonb on PostgreSQL).
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "config_json", nullable = false, columnDefinition = "json")
+    @Column(name = "config_json", nullable = false)
     private String configJson;
 
     /**

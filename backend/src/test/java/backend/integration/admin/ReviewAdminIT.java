@@ -42,12 +42,6 @@ class ReviewAdminIT extends AbstractIntegrationIT {
     @Autowired private ProductRepository productRepository;
     @Autowired private ProductReviewRepository reviewRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM product_reviews"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

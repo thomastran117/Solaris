@@ -29,7 +29,6 @@ public class StockNotification {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -44,7 +43,7 @@ public class StockNotification {
     @JoinColumn(name = "variant_ref", insertable = false, updatable = false)
     private ProductVariant variant;
 
-    @Column(name = "variant_ref", columnDefinition = "BINARY(16)")
+    @Column(name = "variant_ref")
     private UUID variantRef;
 
     @Enumerated(EnumType.STRING)

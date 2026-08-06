@@ -47,16 +47,6 @@ class MarketplaceAnalyticsIT extends AbstractIntegrationIT {
     @Autowired private VendorSLAMetricRepository metricRepository;
     @Autowired private VendorSLABreachRepository breachRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM vendor_sla_breaches"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_sla_metrics"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_sla_policies"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

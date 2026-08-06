@@ -28,7 +28,6 @@ public class RiskBlocklist {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Enumerated(EnumType.STRING)

@@ -37,15 +37,6 @@ class RestockIT extends AbstractIntegrationIT {
     @Autowired private ProductRepository productRepository;
     @Autowired private RestockRequestRepository restockRepository;
 
-    @AfterEach
-    void cleanRestock() {
-        try { jdbcTemplate.execute("DELETE FROM inventory_adjustments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM restock_requests"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Setup helpers ─────────────────────────────────────────────────────────
 

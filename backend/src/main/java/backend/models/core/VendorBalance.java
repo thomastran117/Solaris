@@ -21,11 +21,10 @@ public class VendorBalance {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** MarketplaceVendor.id — unique, one balance row per vendor. */
-    @Column(nullable = false, unique = true, name = "vendor_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, unique = true, name = "vendor_id")
     private java.util.UUID vendorId;
 
     /** Funds within the hold period — not yet available for payout (in smallest currency unit). */

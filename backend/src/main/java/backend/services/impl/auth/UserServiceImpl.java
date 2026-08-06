@@ -45,9 +45,23 @@ public class UserServiceImpl implements UserService {
     private static final String DUMMY_HASH =
             "$2a$10$7EqJtq98hPqEX7fNZaFWoOhJ1XIZZ3w1J3M1P1jOdFkjT3NQ5NeFe";
 
+    /**
+     * Normalises an address before it is stored or looked up.
+     *
+     * <p>Applied at the service boundary rather than in the controller so that every entry
+     * point — form login, signup, and the OAuth providers, which supply the address
+     * themselves — agrees on the stored form. Under MySQL's case-insensitive collation this
+     * was harmless; PostgreSQL compares text exactly, so without it an address registered as
+     * {@code User@example.com} could never be matched by a login for {@code user@example.com},
+     * and the unique constraint on {@code users.email} would permit both rows to coexist.
+     */
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
     @Override
     public User login(String email, String password) {
-        Optional<User> user = userRepository.findByEmail(email);
+        Optional<User> user = userRepository.findByEmail(normalizeEmail(email));
 
         // Always run bcrypt regardless of whether the user exists — this equalises response
         // time and prevents enumeration via timing or distinct error messages.
@@ -65,12 +79,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User signup(String email, String password) {
-        if (userRepository.findByEmail(email).isPresent()) {
+        String normalized = normalizeEmail(email);
+        if (userRepository.findByEmail(normalized).isPresent()) {
             throw new ConflictException("An account with these credentials already exists");
         }
 
         User user = new User();
-        user.setEmail(email);
+        user.setEmail(normalized);
         user.setPassword(passwordEncoder.encode(password));
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.PENDING_VERIFICATION);
@@ -112,7 +127,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UUID getID(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmail(normalizeEmail(email))
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email))
                 .getId();
     }
@@ -149,7 +164,7 @@ public class UserServiceImpl implements UserService {
         }
 
         // 2. Email fallback: existing local account linking for first-time Google login.
-        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        Optional<User> byEmail = userRepository.findByEmail(normalizeEmail(oauthUser.email()));
         if (byEmail.isPresent()) {
             User user = byEmail.get();
             validateAccountAccessible(user);
@@ -166,7 +181,7 @@ public class UserServiceImpl implements UserService {
 
         // 3. New user.
         User user = new User();
-        user.setEmail(oauthUser.email());
+        user.setEmail(normalizeEmail(oauthUser.email()));
         user.setGoogleId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);
@@ -182,7 +197,7 @@ public class UserServiceImpl implements UserService {
             return bySub.get();
         }
 
-        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        Optional<User> byEmail = userRepository.findByEmail(normalizeEmail(oauthUser.email()));
         if (byEmail.isPresent()) {
             User user = byEmail.get();
             validateAccountAccessible(user);
@@ -197,7 +212,7 @@ public class UserServiceImpl implements UserService {
         }
 
         User user = new User();
-        user.setEmail(oauthUser.email());
+        user.setEmail(normalizeEmail(oauthUser.email()));
         user.setMicrosoftId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);
@@ -213,7 +228,7 @@ public class UserServiceImpl implements UserService {
             return bySub.get();
         }
 
-        Optional<User> byEmail = userRepository.findByEmail(oauthUser.email());
+        Optional<User> byEmail = userRepository.findByEmail(normalizeEmail(oauthUser.email()));
         if (byEmail.isPresent()) {
             User user = byEmail.get();
             validateAccountAccessible(user);
@@ -228,7 +243,7 @@ public class UserServiceImpl implements UserService {
         }
 
         User user = new User();
-        user.setEmail(oauthUser.email());
+        user.setEmail(normalizeEmail(oauthUser.email()));
         user.setAppleId(oauthUser.sub());
         user.setPassword(null);
         user.setRole(UserRole.USER);

@@ -27,7 +27,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -44,12 +43,12 @@ import static org.mockito.Mockito.when;
  * search repositories and points Kafka at a dead broker), this base starts real
  * Testcontainers for Elasticsearch and Kafka and lets the production beans, indexing
  * workers, and {@code @KafkaListener} consumers run for real. It is deliberately used by
- * only a handful of classes so the fast H2+Redis suite is unaffected.
+ * only a handful of classes so the fast default suite is unaffected.
  *
  * <p>Infrastructure:
  * <ul>
- *   <li>Database: H2 in-memory (MySQL-compat), inherited from the {@code integration-test} profile.</li>
- *   <li>Redis / Elasticsearch / Kafka: real, via shared static Testcontainers.</li>
+ *   <li>Database / Redis: shared singletons from {@link backend.integration.IntegrationContainers}.</li>
+ *   <li>Elasticsearch / Kafka: real, via shared static Testcontainers.</li>
  *   <li>Only genuinely-external deps (mail, OAuth, captcha, S3) remain mocked.</li>
  * </ul>
  */
@@ -59,10 +58,6 @@ import static org.mockito.Mockito.when;
 public abstract class AbstractSearchKafkaIT {
 
     // Shared static containers — started once and reused across all subclasses in the JVM.
-    @SuppressWarnings("resource")
-    static final GenericContainer<?> REDIS =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
     @SuppressWarnings("resource")
     static final ElasticsearchContainer ELASTICSEARCH =
             new ElasticsearchContainer(DockerImageName.parse(
@@ -79,9 +74,11 @@ public abstract class AbstractSearchKafkaIT {
 
     @DynamicPropertySource
     static void containerProperties(DynamicPropertyRegistry registry) {
-        REDIS.start();
         ELASTICSEARCH.start();
         KAFKA.start();
+
+        backend.integration.IntegrationContainers.registerDatabase(registry);
+        backend.integration.IntegrationContainers.registerRedis(registry);
 
         esBaseUrl = "http://" + ELASTICSEARCH.getHost() + ":" + ELASTICSEARCH.getMappedPort(9200);
 
@@ -91,9 +88,6 @@ public abstract class AbstractSearchKafkaIT {
         // autocomplete_*) that must live in the index *settings* first — which the repos don't
         // supply. Creating the indices up-front means the repos see them present and skip.
         createSearchIndices(esBaseUrl);
-
-        registry.add("app.redis.host", REDIS::getHost);
-        registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
 
         registry.add("app.elasticsearch.host", ELASTICSEARCH::getHost);
         registry.add("app.elasticsearch.port", () -> ELASTICSEARCH.getMappedPort(9200));
@@ -227,10 +221,8 @@ public abstract class AbstractSearchKafkaIT {
     }
 
     @AfterEach
-    void cleanUsers() {
-        try { jdbcTemplate.execute("DELETE FROM user_devices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM user_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM users"); } catch (Exception ignored) {}
+    void cleanDatabase() {
+        backend.integration.IntegrationContainers.truncateAll(jdbcTemplate);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

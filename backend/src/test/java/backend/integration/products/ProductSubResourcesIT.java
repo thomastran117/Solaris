@@ -39,20 +39,6 @@ class ProductSubResourcesIT extends AbstractIntegrationIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void cleanProducts() {
-        try { jdbcTemplate.execute("DELETE FROM product_relationships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_attributes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_images"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_option_values"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_options"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_variants"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_similarities"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

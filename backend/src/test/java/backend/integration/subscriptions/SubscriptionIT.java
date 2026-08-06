@@ -50,16 +50,6 @@ class SubscriptionIT extends AbstractIntegrationIT {
     private static final Instant NOW = Instant.now();
     private static final Instant PERIOD_END = NOW.plus(30, ChronoUnit.DAYS);
 
-    @AfterEach
-    void cleanSubscriptions() {
-        try { jdbcTemplate.execute("DELETE FROM subscription_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM subscriptions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM saved_payment_methods"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

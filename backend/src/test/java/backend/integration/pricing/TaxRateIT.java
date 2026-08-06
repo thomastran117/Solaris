@@ -24,10 +24,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class TaxRateIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void cleanTaxRates() {
-        try { jdbcTemplate.execute("DELETE FROM tax_rates"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

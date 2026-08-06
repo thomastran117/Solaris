@@ -16,10 +16,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class FeedbackIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM platform_feedback"); } catch (Exception ignored) {}
-    }
 
     private String submitBody(String category, String message, Integer rating, String pageContext) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();

@@ -30,12 +30,6 @@ class CompanyReturnLocationIT extends AbstractIntegrationIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private CompanyReturnLocationRepository locationRepository;
 
-    @AfterEach
-    void cleanLocations() {
-        try { jdbcTemplate.execute("DELETE FROM company_return_locations"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

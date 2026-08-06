@@ -50,12 +50,6 @@ class BundleIT extends AbstractSearchKafkaIT {
     @AfterEach
     void cleanBundles() {
         try { bundleSearchRepository.deleteAll(); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM bundle_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_bundles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

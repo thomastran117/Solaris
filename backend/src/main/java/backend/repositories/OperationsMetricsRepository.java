@@ -20,9 +20,15 @@ import java.util.UUID;
  * solely so Spring Data has an entity to attach to — there is no entity-level
  * use of these methods. All queries are company-scoped and time-windowed.
  *
- * Native SQL is used wherever {@code DATE(...)} or {@code TIMESTAMPDIFF(...)} is
- * needed, since these have no portable JPQL equivalent. Aggregate "headline"
- * stats use JPQL where possible.
+ * Native SQL is used wherever date truncation or interval arithmetic is needed,
+ * since these have no portable JPQL equivalent. Aggregate "headline" stats use
+ * JPQL where possible.
+ *
+ * <p>Elapsed seconds are computed as {@code EXTRACT(EPOCH FROM (b - a))} and cast to
+ * {@code double precision}. The cast is required, not cosmetic: PostgreSQL 14+ returns
+ * {@code numeric} from {@code EXTRACT}, and {@code AVG(numeric)} is also {@code numeric},
+ * which arrives as a {@code BigDecimal} and fails to bind to the {@code Double} getters
+ * on the projection interfaces.
  */
 @Repository
 public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> {
@@ -33,7 +39,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT COUNT(*) AS count, AVG(avgSeconds) AS avgSeconds FROM (" +
-            "  SELECT DISTINCT o.id, TIMESTAMPDIFF(SECOND, o.created_at, o.shipped_at) AS avgSeconds " +
+            "  SELECT DISTINCT o.id, CAST(EXTRACT(EPOCH FROM (o.shipped_at - o.created_at)) AS double precision) AS avgSeconds " +
             "  FROM orders o " +
             "  JOIN order_items i ON i.order_id = o.id " +
             "  JOIN products p ON p.id = i.product_id " +
@@ -47,8 +53,8 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT day, COUNT(*) AS count, AVG(avgSeconds) AS avgSeconds FROM (" +
-            "  SELECT DISTINCT o.id, DATE(o.shipped_at) AS day, " +
-            "         TIMESTAMPDIFF(SECOND, o.created_at, o.shipped_at) AS avgSeconds " +
+            "  SELECT DISTINCT o.id, CAST(o.shipped_at AS date) AS day, " +
+            "         CAST(EXTRACT(EPOCH FROM (o.shipped_at - o.created_at)) AS double precision) AS avgSeconds " +
             "  FROM orders o " +
             "  JOIN order_items i ON i.order_id = o.id " +
             "  JOIN products p ON p.id = i.product_id " +
@@ -66,7 +72,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT COUNT(DISTINCT r.id) AS count, " +
-            "       AVG(TIMESTAMPDIFF(SECOND, r.created_at, r.completed_at)) AS avgSeconds " +
+            "       AVG(CAST(EXTRACT(EPOCH FROM (r.completed_at - r.created_at)) AS double precision)) AS avgSeconds " +
             "FROM returns r " +
             "JOIN return_items ri ON ri.return_id = r.id " +
             "JOIN order_items oi ON oi.id = ri.order_item_id " +
@@ -80,9 +86,9 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT day, count, avgSeconds FROM (" +
-            "  SELECT DATE(r.completed_at) AS day, " +
+            "  SELECT CAST(r.completed_at AS date) AS day, " +
             "         COUNT(DISTINCT r.id) AS count, " +
-            "         AVG(TIMESTAMPDIFF(SECOND, r.created_at, r.completed_at)) AS avgSeconds " +
+            "         AVG(CAST(EXTRACT(EPOCH FROM (r.completed_at - r.created_at)) AS double precision)) AS avgSeconds " +
             "  FROM returns r " +
             "  JOIN return_items ri ON ri.return_id = r.id " +
             "  JOIN order_items oi ON oi.id = ri.order_item_id " +
@@ -90,7 +96,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
             "  WHERE p.company_id = :companyId " +
             "  AND r.completed_at IS NOT NULL " +
             "  AND r.completed_at BETWEEN :from AND :to " +
-            "  GROUP BY DATE(r.completed_at)" +
+            "  GROUP BY CAST(r.completed_at AS date)" +
             ") t ORDER BY day",
             nativeQuery = true)
     List<DailyDurationProjection> refundDaily(@Param("companyId") UUID companyId,
@@ -102,7 +108,7 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT COUNT(*) AS count, AVG(avgSeconds) AS avgSeconds FROM (" +
-            "  SELECT DISTINCT o.id, TIMESTAMPDIFF(SECOND, o.paid_at, o.packed_at) AS avgSeconds " +
+            "  SELECT DISTINCT o.id, CAST(EXTRACT(EPOCH FROM (o.packed_at - o.paid_at)) AS double precision) AS avgSeconds " +
             "  FROM orders o " +
             "  JOIN order_items i ON i.order_id = o.id " +
             "  JOIN products p ON p.id = i.product_id " +
@@ -116,8 +122,8 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT day, COUNT(*) AS count, AVG(avgSeconds) AS avgSeconds FROM (" +
-            "  SELECT DISTINCT o.id, DATE(o.packed_at) AS day, " +
-            "         TIMESTAMPDIFF(SECOND, o.paid_at, o.packed_at) AS avgSeconds " +
+            "  SELECT DISTINCT o.id, CAST(o.packed_at AS date) AS day, " +
+            "         CAST(EXTRACT(EPOCH FROM (o.packed_at - o.paid_at)) AS double precision) AS avgSeconds " +
             "  FROM orders o " +
             "  JOIN order_items i ON i.order_id = o.id " +
             "  JOIN products p ON p.id = i.product_id " +
@@ -135,9 +141,9 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
 
     @Query(value =
             "SELECT COUNT(*) AS total, " +
-            "       SUM(CASE WHEN DATE(rr.received_at) > rr.expected_arrival_date THEN 1 ELSE 0 END) AS late, " +
-            "       AVG(CASE WHEN DATE(rr.received_at) > rr.expected_arrival_date " +
-            "                THEN DATEDIFF(DATE(rr.received_at), rr.expected_arrival_date) END) AS avgLateDays " +
+            "       SUM(CASE WHEN CAST(rr.received_at AS date) > rr.expected_arrival_date THEN 1 ELSE 0 END) AS late, " +
+            "       AVG(CASE WHEN CAST(rr.received_at AS date) > rr.expected_arrival_date " +
+            "                THEN CAST(CAST(rr.received_at AS date) - rr.expected_arrival_date AS double precision) END) AS avgLateDays " +
             "FROM restock_requests rr " +
             "WHERE rr.company_id = :companyId " +
             "AND rr.expected_arrival_date IS NOT NULL AND rr.received_at IS NOT NULL " +
@@ -147,14 +153,14 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
                                                      @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
-            "SELECT DATE(rr.received_at) AS day, " +
-            "       SUM(CASE WHEN DATE(rr.received_at) > rr.expected_arrival_date THEN 1 ELSE 0 END) AS count " +
+            "SELECT CAST(rr.received_at AS date) AS day, " +
+            "       SUM(CASE WHEN CAST(rr.received_at AS date) > rr.expected_arrival_date THEN 1 ELSE 0 END) AS count " +
             "FROM restock_requests rr " +
             "WHERE rr.company_id = :companyId " +
             "AND rr.expected_arrival_date IS NOT NULL AND rr.received_at IS NOT NULL " +
             "AND rr.received_at BETWEEN :from AND :to " +
-            "GROUP BY DATE(rr.received_at) " +
-            "ORDER BY DATE(rr.received_at)",
+            "GROUP BY CAST(rr.received_at AS date) " +
+            "ORDER BY CAST(rr.received_at AS date)",
             nativeQuery = true)
     List<DailyCountProjection> supplierLatenessDaily(@Param("companyId") UUID companyId,
                                                      @Param("from") Instant from, @Param("to") Instant to);
@@ -173,15 +179,15 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
                                                                   @Param("from") Instant from, @Param("to") Instant to);
 
     @Query(value =
-            "SELECT DATE(o.cancelled_at) AS day, COUNT(DISTINCT o.id) AS count " +
+            "SELECT CAST(o.cancelled_at AS date) AS day, COUNT(DISTINCT o.id) AS count " +
             "FROM orders o " +
             "JOIN order_items i ON i.order_id = o.id " +
             "JOIN products p ON p.id = i.product_id " +
             "WHERE p.company_id = :companyId " +
             "AND o.cancelled_at IS NOT NULL " +
             "AND o.cancelled_at BETWEEN :from AND :to " +
-            "GROUP BY DATE(o.cancelled_at) " +
-            "ORDER BY DATE(o.cancelled_at)",
+            "GROUP BY CAST(o.cancelled_at AS date) " +
+            "ORDER BY CAST(o.cancelled_at AS date)",
             nativeQuery = true)
     List<DailyCountProjection> cancellationsDaily(@Param("companyId") UUID companyId,
                                                   @Param("from") Instant from, @Param("to") Instant to);

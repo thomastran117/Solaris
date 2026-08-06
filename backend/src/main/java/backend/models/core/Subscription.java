@@ -36,7 +36,6 @@ public class Subscription {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Version
@@ -61,7 +60,7 @@ public class Subscription {
     /**
      * Stripe subscription id. Nullable to support the local-first create flow: a PENDING
      * (INCOMPLETE) row is persisted BEFORE the Stripe subscription exists, then this id is set at
-     * finalize. The unique index permits multiple NULLs (MySQL/H2), so pending rows don't collide.
+     * finalize. The unique index permits multiple NULLs, so pending rows don't collide.
      */
     @Column(name = "stripe_subscription_id", nullable = true, length = 100, unique = true)
     private String stripeSubscriptionId;

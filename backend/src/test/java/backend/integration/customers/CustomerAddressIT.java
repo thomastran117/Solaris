@@ -22,10 +22,6 @@ class CustomerAddressIT extends AbstractIntegrationIT {
 
     @Autowired private CustomerAddressRepository addressRepository;
 
-    @AfterEach
-    void cleanAddresses() {
-        try { jdbcTemplate.execute("DELETE FROM customer_addresses"); } catch (Exception ignored) {}
-    }
 
     // All responses wrapped: { success, data, message, meta }
     // List responses:   data = [items]

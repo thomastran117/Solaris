@@ -193,7 +193,7 @@ class ProductServiceImplTest {
 
     @Test
     void createProduct_duplicateSku_throwsConflict() {
-        when(productRepository.existsBySkuAndCompanyId("SKU-1", COMPANY_ID)).thenReturn(true);
+        when(productRepository.existsBySkuIgnoreCaseAndCompanyId("SKU-1", COMPANY_ID)).thenReturn(true);
 
         CreateProductRequest req = new CreateProductRequest();
         req.setName("Widget");
@@ -213,7 +213,7 @@ class ProductServiceImplTest {
 
         service.createProduct(COMPANY_ID, OWNER_ID, req);
 
-        verify(productRepository, never()).existsBySkuAndCompanyId(any(), any());
+        verify(productRepository, never()).existsBySkuIgnoreCaseAndCompanyId(any(), any());
     }
 
     @Test
@@ -225,7 +225,7 @@ class ProductServiceImplTest {
 
         service.createProduct(COMPANY_ID, OWNER_ID, req);
 
-        verify(productRepository, never()).existsBySkuAndCompanyId(any(), any());
+        verify(productRepository, never()).existsBySkuIgnoreCaseAndCompanyId(any(), any());
     }
 
     @Test
@@ -328,7 +328,7 @@ class ProductServiceImplTest {
         Product existing = makeProduct(PRODUCT_ID);
         existing.setSku("OLD-SKU");
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(existing));
-        when(productRepository.existsBySkuAndCompanyId("NEW-SKU", COMPANY_ID)).thenReturn(true);
+        when(productRepository.existsBySkuIgnoreCaseAndCompanyId("NEW-SKU", COMPANY_ID)).thenReturn(true);
 
         UpdateProductRequest req = new UpdateProductRequest();
         req.setSku("NEW-SKU");
@@ -349,7 +349,7 @@ class ProductServiceImplTest {
 
         service.updateProduct(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
 
-        verify(productRepository, never()).existsBySkuAndCompanyId(any(), any());
+        verify(productRepository, never()).existsBySkuIgnoreCaseAndCompanyId(any(), any());
     }
 
     @Test
@@ -540,7 +540,7 @@ class ProductServiceImplTest {
 
     @Test
     void batchCreateProducts_skuExistsInDb_throwsConflict() {
-        when(productRepository.existsBySkuAndCompanyId("SKU-1", COMPANY_ID)).thenReturn(true);
+        when(productRepository.existsBySkuIgnoreCaseAndCompanyId("SKU-1", COMPANY_ID)).thenReturn(true);
         BatchCreateProductsRequest req = new BatchCreateProductsRequest();
         req.setProducts(List.of(makeCreateRequest("Widget A", "SKU-1")));
 
@@ -558,7 +558,7 @@ class ProductServiceImplTest {
 
         service.batchCreateProducts(COMPANY_ID, OWNER_ID, req);
 
-        verify(productRepository, never()).existsBySkuAndCompanyId(any(), any());
+        verify(productRepository, never()).existsBySkuIgnoreCaseAndCompanyId(any(), any());
     }
 
     // ─── batchDeleteProducts ──────────────────────────────────────────────────
@@ -878,7 +878,7 @@ class ProductServiceImplTest {
     @Test
     void createProductVariant_duplicateSku_throwsConflict() {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
-        when(productVariantRepository.existsBySkuAndProductCompanyId("VAR-1", COMPANY_ID)).thenReturn(true);
+        when(productVariantRepository.existsBySkuIgnoreCaseAndProductCompanyId("VAR-1", COMPANY_ID)).thenReturn(true);
 
         CreateProductVariantRequest req = new CreateProductVariantRequest();
         req.setPrice(new BigDecimal("14.99"));
@@ -903,7 +903,7 @@ class ProductServiceImplTest {
 
         service.createProductVariant(COMPANY_ID, PRODUCT_ID, OWNER_ID, req);
 
-        verify(productVariantRepository, never()).existsBySkuAndProductCompanyId(any(), any());
+        verify(productVariantRepository, never()).existsBySkuIgnoreCaseAndProductCompanyId(any(), any());
     }
 
     // ─── updateProductVariant ─────────────────────────────────────────────────
@@ -962,7 +962,7 @@ class ProductServiceImplTest {
         when(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).thenReturn(Optional.of(makeProduct(PRODUCT_ID)));
         // Pre-check passes (no existing SKU) but a concurrent insert wins the race; the DB unique
         // index then rejects our insert and the service maps it to a clean 409.
-        when(productVariantRepository.existsBySkuAndProductCompanyId("RACE-SKU", COMPANY_ID)).thenReturn(false);
+        when(productVariantRepository.existsBySkuIgnoreCaseAndProductCompanyId("RACE-SKU", COMPANY_ID)).thenReturn(false);
         when(productVariantRepository.save(any(ProductVariant.class)))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"));
 
@@ -980,7 +980,7 @@ class ProductServiceImplTest {
         ProductVariant variant = makeVariant(VARIANT_ID);
         variant.setSku("OLD-SKU");
         when(productVariantRepository.findByIdAndProductId(VARIANT_ID, PRODUCT_ID)).thenReturn(Optional.of(variant));
-        when(productVariantRepository.existsBySkuAndProductCompanyId("NEW-SKU", COMPANY_ID)).thenReturn(true);
+        when(productVariantRepository.existsBySkuIgnoreCaseAndProductCompanyId("NEW-SKU", COMPANY_ID)).thenReturn(true);
 
         UpdateProductVariantRequest req = new UpdateProductVariantRequest();
         req.setSku("NEW-SKU");
@@ -1002,7 +1002,7 @@ class ProductServiceImplTest {
 
         service.updateProductVariant(COMPANY_ID, PRODUCT_ID, VARIANT_ID, OWNER_ID, req);
 
-        verify(productVariantRepository, never()).existsBySkuAndProductCompanyId(any(), any());
+        verify(productVariantRepository, never()).existsBySkuIgnoreCaseAndProductCompanyId(any(), any());
     }
 
     @Test

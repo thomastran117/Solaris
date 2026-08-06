@@ -28,7 +28,7 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, UUID> {
 
     @Query(nativeQuery = true, value = """
             SELECT
-                DATE(o.created_at)                          AS day,
+                CAST(o.created_at AS date)                          AS day,
                 SUM(oi.quantity * oi.unit_price)            AS totalRevenue,
                 SUM(oi.quantity)                            AS totalUnits,
                 COUNT(DISTINCT o.id)                        AS orderCount
@@ -38,8 +38,8 @@ public interface CompanyAnalyticsRepository extends JpaRepository<Order, UUID> {
             WHERE p.company_id = :companyId
               AND o.status = 'PAID'
               AND o.created_at BETWEEN :from AND :to
-            GROUP BY DATE(o.created_at)
-            ORDER BY DATE(o.created_at)
+            GROUP BY CAST(o.created_at AS date)
+            ORDER BY CAST(o.created_at AS date)
             """)
     List<DailyRevProjection> getDailyRevenue(
             @Param("companyId") UUID companyId,

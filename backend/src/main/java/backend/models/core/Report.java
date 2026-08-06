@@ -35,17 +35,16 @@ public class Report {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "target_type", nullable = false, length = 20)
     private ReportTargetType targetType;
 
-    @Column(name = "target_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "target_id", nullable = false)
     private UUID targetId;
 
-    @Column(name = "reporter_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "reporter_id", nullable = false)
     private UUID reporterId;
 
     @Enumerated(EnumType.STRING)
@@ -73,6 +72,6 @@ public class Report {
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
-    @Column(name = "resolved_by", columnDefinition = "BINARY(16)")
+    @Column(name = "resolved_by")
     private UUID resolvedBy;
 }

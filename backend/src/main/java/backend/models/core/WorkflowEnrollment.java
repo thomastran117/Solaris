@@ -26,17 +26,16 @@ public class WorkflowEnrollment {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Version
     @Column(nullable = false)
     private Long version;
 
-    @Column(nullable = false, name = "workflow_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "workflow_id")
     private UUID workflowId;
 
-    @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "user_id")
     private UUID userId;
 
     @Column(nullable = false, name = "enrolled_at")

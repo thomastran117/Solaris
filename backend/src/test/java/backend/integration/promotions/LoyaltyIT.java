@@ -28,16 +28,6 @@ class LoyaltyIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
 
-    @AfterEach
-    void cleanLoyalty() {
-        try { jdbcTemplate.execute("DELETE FROM referral_conversions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM loyalty_transactions"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM loyalty_accounts"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM loyalty_tiers"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM loyalty_policies"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     private Company createCompany(User owner) {
         Company c = new Company();

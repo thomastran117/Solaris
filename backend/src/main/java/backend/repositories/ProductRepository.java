@@ -124,6 +124,16 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     Optional<Product> findByIdWithCompanyOwner(@Param("id") java.util.UUID id);
     List<Product> findAllByIdInAndCompanyId(Collection<java.util.UUID> ids, java.util.UUID companyId);
     boolean existsBySkuAndCompanyId(String sku, java.util.UUID companyId);
+
+    /**
+     * Case-insensitive SKU uniqueness check within a company.
+     * <p>
+     * Preserves the guarantee the schema had under MySQL, whose case-insensitive collation made
+     * the derived {@code existsBySkuAndCompanyId} reject {@code sku-1} as a duplicate of
+     * {@code SKU-1}. PostgreSQL compares text exactly, so the comparison is spelled out here
+     * rather than changing how SKUs are stored — they stay in the casing the merchant entered.
+     */
+    boolean existsBySkuIgnoreCaseAndCompanyId(String sku, java.util.UUID companyId);
     Optional<Product> findBySkuAndCompanyId(String sku, java.util.UUID companyId);
     List<Product> findAllBySkuInAndCompanyId(Collection<String> skus, java.util.UUID companyId);
 
@@ -184,8 +194,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
                 AND o.status = 'PAID'
-                AND (:from IS NULL OR o.created_at >= :from)
-                AND (:to   IS NULL OR o.created_at <= :to)
+                AND (CAST(:from AS timestamptz) IS NULL OR o.created_at >= CAST(:from AS timestamptz))
+                AND (CAST(:to AS timestamptz)   IS NULL OR o.created_at <= CAST(:to AS timestamptz))
             WHERE p.company_id = :companyId
             GROUP BY p.id, p.name, p.sku, p.stock, p.price, p.currency
             ORDER BY totalUnitsSold DESC
@@ -215,8 +225,8 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
             LEFT JOIN order_items oi ON oi.product_id = p.id
             LEFT JOIN orders o ON oi.order_id = o.id
                 AND o.status = 'PAID'
-                AND (:from IS NULL OR o.created_at >= :from)
-                AND (:to   IS NULL OR o.created_at <= :to)
+                AND (CAST(:from AS timestamptz) IS NULL OR o.created_at >= CAST(:from AS timestamptz))
+                AND (CAST(:to AS timestamptz)   IS NULL OR o.created_at <= CAST(:to AS timestamptz))
             WHERE p.company_id = :companyId
             GROUP BY p.id, p.name, p.sku, p.stock, p.price, p.currency
             ORDER BY totalRevenue DESC
@@ -297,7 +307,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     @Query(nativeQuery = true, value = """
             SELECT
                 p.id                                    AS productId,
-                CAST(DATE(o.created_at) AS DATE)        AS day,
+                CAST(o.created_at AS date)        AS day,
                 SUM(oi.quantity)                        AS units
             FROM products p
             JOIN order_items oi ON oi.product_id = p.id
@@ -306,7 +316,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
               AND o.status      = 'PAID'
               AND o.created_at >= :since
               AND oi.product_id IS NOT NULL
-            GROUP BY p.id, DATE(o.created_at)
+            GROUP BY p.id, CAST(o.created_at AS date)
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandSince(
@@ -320,7 +330,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
     @Query(nativeQuery = true, value = """
             SELECT
                 p.id                                    AS productId,
-                CAST(DATE(o.created_at) AS DATE)        AS day,
+                CAST(o.created_at AS date)        AS day,
                 SUM(oi.quantity)                        AS units
             FROM products p
             JOIN order_items oi ON oi.product_id = p.id
@@ -330,7 +340,7 @@ public interface ProductRepository extends JpaRepository<Product, java.util.UUID
               AND o.created_at >= :from
               AND o.created_at <= :to
               AND oi.product_id IS NOT NULL
-            GROUP BY p.id, DATE(o.created_at)
+            GROUP BY p.id, CAST(o.created_at AS date)
             ORDER BY p.id, day
             """)
     List<DailyDemandProjection> findDailyDemandBetween(

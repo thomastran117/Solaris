@@ -26,10 +26,9 @@ public class B2BAccount {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
-    @Column(name = "user_id", nullable = false, unique = true, columnDefinition = "BINARY(16)")
+    @Column(name = "user_id", nullable = false, unique = true)
     private UUID userId;
 
     @Column(nullable = false, length = 255)
