@@ -314,7 +314,7 @@ class InventoryIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.stock").value(15))
                 .andExpect(jsonPath("$.data.productId").value(product.getId().toString()));
 
-        // Stock is consistency-critical: the new level must be committed to MySQL, and an
+        // Stock is consistency-critical: the new level must be committed to PostgreSQL, and an
         // audit row must be written — not just returned in the response.
         assertEquals(15, productRepository.findById(product.getId()).orElseThrow().getStock());
         Integer adjustments = jdbcTemplate.queryForObject(

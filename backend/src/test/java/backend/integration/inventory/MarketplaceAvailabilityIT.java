@@ -160,9 +160,55 @@ class MarketplaceAvailabilityIT extends AbstractIntegrationIT {
                 .andExpect(status().isNotFound());
     }
 
-    // NOTE: tests providing buyer lat/lng are omitted. The distance-ordered path calls
-    // findByProductOrderedByDistance, a native query using POW/SIN/RADIANS/ASIN which
-    // H2 (MySQL-compat mode) cannot parse. The query works correctly in production MySQL.
+    // ── Distance-ordered path ─────────────────────────────────────────────────
+    // Exercises findByProductOrderedByDistance, whose haversine SQL (POW/SIN/RADIANS/ASIN)
+    // H2 could not parse. PostgreSQL supports all of it, so the path is covered here.
+
+    @Test
+    void getAvailability_withCoords_returns200() throws Exception {
+        User owner = createActiveUser("avail-coords@example.com", "Password1!");
+        Company company = createCompany(owner);
+        UUID marketplaceId = UUID.randomUUID();
+        Product product = createProduct(company, marketplaceId);
+        InventoryLocation location = createLocation(company, 40.7128, -74.0060); // New York
+        createStock(location, product, 25);
+
+        mockMvc.perform(get(availabilityUrl(marketplaceId, product.getId()))
+                        .param("lat", "40.7128")
+                        .param("lng", "-74.0060"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.inStock").value(true));
+    }
+
+    /** The nearer of two stocked locations must win, which is the whole point of the ordering. */
+    @Test
+    void getAvailability_withCoords_prefersNearestStockedLocation() throws Exception {
+        User owner = createActiveUser("avail-nearest@example.com", "Password1!");
+        Company company = createCompany(owner);
+        UUID marketplaceId = UUID.randomUUID();
+        Product product = createProduct(company, marketplaceId);
+
+        // Los Angeles — far from the buyer, and slow to hand off.
+        InventoryLocation farLocation = createLocation(company, 34.0522, -118.2437);
+        farLocation.setHandlingDays(9);
+        locationRepository.save(farLocation);
+        createStock(farLocation, product, 5);
+
+        // Newark — essentially next door to the buyer, and quick.
+        InventoryLocation nearLocation = createLocation(company, 40.7357, -74.1724);
+        nearLocation.setHandlingDays(1);
+        locationRepository.save(nearLocation);
+        createStock(nearLocation, product, 5);
+
+        // Buyer in New York. Ordering by distance must select Newark, so the ETA reflects
+        // its 1-day handling rather than the 9 days of the Los Angeles location.
+        mockMvc.perform(get(availabilityUrl(marketplaceId, product.getId()))
+                        .param("lat", "40.7128")
+                        .param("lng", "-74.0060"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.inStock").value(true))
+                .andExpect(jsonPath("$.data.etaDaysMin").value(org.hamcrest.Matchers.lessThan(9)));
+    }
 
     @Test
     void getAvailability_onlyLatProvided_returns400() throws Exception {

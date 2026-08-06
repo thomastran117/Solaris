@@ -19,8 +19,10 @@ import java.util.UUID;
         @Index(name = "idx_variant_product", columnList = "product_id"),
         @Index(name = "idx_variant_sku", columnList = "sku"),
         // Enforces company-scoped SKU uniqueness at the DB so a concurrent create cannot slip a
-        // duplicate past the service-level existsBy check. NULL skus are exempt (MySQL/H2 treat
-        // NULLs in a unique index as distinct), so variants without a SKU are unaffected.
+        // duplicate past the service-level existsBy check. NULL skus are exempt (a unique index
+        // treats NULLs as distinct), so variants without a SKU are unaffected. Note the index is
+        // case-sensitive on PostgreSQL; the service check uses an IgnoreCase query, so it rejects
+        // case-variant duplicates before they reach this constraint.
         @Index(name = "uq_variant_company_sku", columnList = "company_id, sku", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)

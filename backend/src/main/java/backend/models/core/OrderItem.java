@@ -79,7 +79,7 @@ public class OrderItem {
 
     /**
      * Comma-separated snapshot of promotion rule ids that applied to this line.
-     * Kept as a simple string (not JSON) to stay portable across MySQL/H2 without
+     * Kept as a simple string (not JSON) to stay dialect-agnostic without
      * pulling {@code @JdbcTypeCode(SqlTypes.JSON)} into the item table.
      */
     @Column(name = "applied_rule_ids", nullable = true, length = 500)
