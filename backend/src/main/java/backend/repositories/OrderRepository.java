@@ -225,8 +225,17 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
             """)
     List<Object[]> findTopPurchasedBrandsByUserId(@Param("userId") UUID userId);
 
+    /**
+     * Distinct products the user has bought, most recently purchased first.
+     * <p>
+     * Grouped rather than {@code SELECT DISTINCT ... ORDER BY o.createdAt}: PostgreSQL rejects
+     * ordering a DISTINCT projection by a column outside the select list (SQLSTATE 42P10).
+     * Grouping also makes the ordering well-defined, which it was not before — a product bought
+     * more than once had several candidate {@code createdAt} values and MySQL picked arbitrarily.
+     * {@code MAX(o.createdAt)} states the intended one.
+     */
     @Query("""
-            SELECT DISTINCT oi.product.id
+            SELECT oi.product.id
             FROM Order o JOIN o.items oi
             WHERE o.user.id = :userId
               AND o.status IN (
@@ -236,7 +245,8 @@ public interface OrderRepository extends JpaRepository<Order, java.util.UUID> {
                 backend.models.enums.OrderStatus.SHIPPED,
                 backend.models.enums.OrderStatus.DELIVERED
               )
-            ORDER BY o.createdAt DESC
+            GROUP BY oi.product.id
+            ORDER BY MAX(o.createdAt) DESC
             """)
     List<UUID> findPurchasedProductIdsByUserId(@Param("userId") UUID userId, Pageable pageable);
 
