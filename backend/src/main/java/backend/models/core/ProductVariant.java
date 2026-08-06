@@ -31,7 +31,6 @@ public class ProductVariant {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -43,7 +42,7 @@ public class ProductVariant {
      * Exists solely to back the {@code (company_id, sku)} unique index — variants are always scoped
      * to their product's company.
      */
-    @Column(name = "company_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "company_id", nullable = true)
     private java.util.UUID companyId;
 
     @Column(nullable = true, length = 100)
@@ -110,11 +109,11 @@ public class ProductVariant {
     private Instant updatedAt;
 
     @CreatedBy
-    @Column(name = "created_by", nullable = true, updatable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "created_by", nullable = true, updatable = false)
     private UUID createdBy;
 
     @LastModifiedBy
-    @Column(name = "updated_by", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "updated_by", nullable = true)
     private UUID updatedBy;
 
     @Version

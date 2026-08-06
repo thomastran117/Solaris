@@ -29,7 +29,6 @@ public class CustomerSegment {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     /** Stored uppercase. E.g. "VIP", "WHOLESALE". Immutable after create. */

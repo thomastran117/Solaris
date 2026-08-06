@@ -31,7 +31,6 @@ public class PlatformFeedback {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -58,7 +57,7 @@ public class PlatformFeedback {
     @Column(name = "reviewed_at", nullable = true)
     private Instant reviewedAt;
 
-    @Column(name = "reviewed_by_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "reviewed_by_id", nullable = true)
     private UUID reviewedById;
 
     @Version

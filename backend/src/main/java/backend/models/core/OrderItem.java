@@ -27,7 +27,6 @@ public class OrderItem {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Version
@@ -154,10 +153,10 @@ public class OrderItem {
      * Null for standalone (non-marketplace) orders. Set at order creation time from
      * product.company so historic attribution survives product ownership changes.
      */
-    @Column(name = "vendor_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "vendor_id", nullable = true)
     private java.util.UUID vendorId;
 
     /** FK to the SubOrder this item belongs to. Null for non-marketplace orders. */
-    @Column(name = "sub_order_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "sub_order_id", nullable = true)
     private java.util.UUID subOrderId;
 }

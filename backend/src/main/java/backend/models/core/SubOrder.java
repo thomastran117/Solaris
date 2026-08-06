@@ -30,7 +30,6 @@ public class SubOrder {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /**
@@ -51,7 +50,7 @@ public class SubOrder {
     private MarketplaceVendor marketplaceVendor;
 
     /** Denormalized from marketplaceVendor.marketplace.id for efficient filtering. */
-    @Column(nullable = false, name = "marketplace_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "marketplace_id")
     private java.util.UUID marketplaceId;
 
     @Enumerated(EnumType.STRING)
@@ -123,7 +122,7 @@ public class SubOrder {
     private String cancellationReason;
 
     /** Loose FK to VendorPayout.id — set when this sub-order is included in a payout batch (Phase 4). */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private java.util.UUID payoutId;
 
     // -------------------------------------------------------------------------

@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Test;
 
 import backend.models.core.ProductVariant;
 import java.math.BigDecimal;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -647,11 +646,10 @@ class LocationInventoryServiceImplTest {
     @Test
     void getNearbyPickupLocations_returnsMappedResponse() {
         UUID storeId = TestIds.uuid(20);
-        byte[] uuidBytes = uuidToBytes(storeId);
         // row order: [0]=id, [1]=name, [2]=code, [3]=address, [4]=city, [5]=country,
         //            [6]=pickupReadyHours, [7]=type, [8]=distanceKm
         Object[] row = new Object[]{
-            uuidBytes, "Downtown Store", "DWNTN", "123 Main St", "Toronto", "CA",
+            storeId, "Downtown Store", "DWNTN", "123 Main St", "Toronto", "CA",
             4, "STORE", 2.5
         };
         when(locationRepository.findNearbyPickupLocations(eq(COMPANY_ID), eq(43.65), eq(-79.38), eq(5)))
@@ -670,7 +668,7 @@ class LocationInventoryServiceImplTest {
     void getNearbyPickupLocations_nullPickupHours_handledGracefully() {
         UUID storeId = TestIds.uuid(21);
         Object[] row = new Object[]{
-            uuidToBytes(storeId), "Corner Store", "CRNR", "456 Elm St", "Vancouver", "CA",
+            storeId, "Corner Store", "CRNR", "456 Elm St", "Vancouver", "CA",
             null, "STORE", 0.8
         };
         when(locationRepository.findNearbyPickupLocations(any(), anyDouble(), anyDouble(), anyInt()))
@@ -727,12 +725,6 @@ class LocationInventoryServiceImplTest {
         assertEquals(3, existing.getPickupReadyHours());
     }
 
-    private static byte[] uuidToBytes(UUID uuid) {
-        ByteBuffer bb = ByteBuffer.allocate(16);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return bb.array();
-    }
 
     // ─── adjustLocationStock with variant ─────────────────────────────────────
 

@@ -28,10 +28,9 @@ public class CommissionPolicy {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(nullable = false, name = "marketplace_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "marketplace_id")
     private java.util.UUID marketplaceId;
 
     @Column(nullable = false, length = 255)

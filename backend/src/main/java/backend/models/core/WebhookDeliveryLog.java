@@ -31,14 +31,13 @@ public class WebhookDeliveryLog {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "subscription_id", nullable = false)
     private CompanyWebhookSubscription subscription;
 
-    @Column(name = "event_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "event_id", nullable = false)
     private UUID eventId;
 
     @Enumerated(EnumType.STRING)

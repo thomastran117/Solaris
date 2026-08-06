@@ -24,11 +24,10 @@ public class VendorAdjustment {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /** MarketplaceVendor.id. */
-    @Column(nullable = false, name = "vendor_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "vendor_id")
     private UUID vendorId;
 
     /** Signed amount in smallest currency unit (positive = credit, negative = debit). */
@@ -41,7 +40,7 @@ public class VendorAdjustment {
     @Column(nullable = false, length = 500)
     private String reason;
 
-    @Column(nullable = false, name = "created_by_user_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "created_by_user_id")
     private UUID createdByUserId;
 
     /** Loose FK to vendor_payouts.id — set when this adjustment is included in a payout batch. */

@@ -31,7 +31,6 @@ public class User {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Column(unique = true, nullable = false)

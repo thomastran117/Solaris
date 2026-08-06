@@ -24,7 +24,6 @@ public class WorkflowDeliveryLog {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @Version
@@ -38,7 +37,7 @@ public class WorkflowDeliveryLog {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
-    @Column(nullable = false, name = "enrollment_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "enrollment_id")
     private UUID enrollmentId;
 
     @Enumerated(EnumType.STRING)

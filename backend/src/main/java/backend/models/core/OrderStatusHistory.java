@@ -24,10 +24,9 @@ public class OrderStatusHistory {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
-    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "order_id", nullable = false)
     private UUID orderId;
 
     @Enumerated(EnumType.STRING)
@@ -43,7 +42,7 @@ public class OrderStatusHistory {
     private Instant occurredAt;
 
     /** Null for system-generated events (webhooks, carrier callbacks). */
-    @Column(name = "actor_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "actor_id", nullable = true)
     private UUID actorId;
 
     @Column(nullable = true, length = 500)

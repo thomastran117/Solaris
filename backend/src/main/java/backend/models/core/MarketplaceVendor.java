@@ -34,7 +34,6 @@ public class MarketplaceVendor {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @Version
@@ -62,7 +61,7 @@ public class MarketplaceVendor {
     private OnboardingStep onboardingStep = OnboardingStep.PROFILE;
 
     /** Override commission policy for this vendor; null means use marketplace default. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private java.util.UUID commissionPolicyId;
 
     @Column(nullable = true, length = 255)

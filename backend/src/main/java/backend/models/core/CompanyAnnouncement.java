@@ -28,7 +28,6 @@ public class CompanyAnnouncement {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -49,7 +48,7 @@ public class CompanyAnnouncement {
     @Column(nullable = false, length = 10)
     private AnnouncementStatus status = AnnouncementStatus.DRAFT;
 
-    @Column(name = "product_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "product_id", nullable = true)
     private java.util.UUID productId;
 
     @ManyToOne(fetch = FetchType.LAZY)

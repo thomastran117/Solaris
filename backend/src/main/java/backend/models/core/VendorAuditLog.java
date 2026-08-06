@@ -28,7 +28,6 @@ public class VendorAuditLog {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -36,7 +35,7 @@ public class VendorAuditLog {
     private MarketplaceVendor marketplaceVendor;
 
     /** Null for system-generated events (e.g. scheduled stripe status sync). */
-    @Column(nullable = true, name = "actor_user_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = true, name = "actor_user_id")
     private UUID actorUserId;
 
     @Enumerated(EnumType.STRING)

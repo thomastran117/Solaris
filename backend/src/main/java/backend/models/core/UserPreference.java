@@ -21,7 +21,7 @@ import java.util.UUID;
 public class UserPreference {
 
     @Id
-    @Column(name = "user_id", columnDefinition = "BINARY(16)")
+    @Column(name = "user_id")
     private UUID userId;
 
     @Column(nullable = false)

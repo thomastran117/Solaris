@@ -31,7 +31,6 @@ public class LocationStock {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -51,7 +50,7 @@ public class LocationStock {
     private ProductVariant variant;
 
     /** Variant discriminator for variant-level inventory. Null means product-level stock. */
-    @Column(name = "variant_ref", columnDefinition = "BINARY(16)")
+    @Column(name = "variant_ref")
     private UUID variantRef;
 
     @Column(nullable = false)

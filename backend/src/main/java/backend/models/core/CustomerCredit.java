@@ -26,7 +26,6 @@ public class CustomerCredit {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -52,15 +51,15 @@ public class CustomerCredit {
     private User issuedBy;
 
     /** Loose FK to support_tickets.id. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID sourceTicketId;
 
     /** Loose FK to order_issues.id. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID sourceOrderIssueId;
 
     /** Loose FK to orders.id — set on REDEEMED entries. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID redeemedOnOrderId;
 
     @Column(nullable = true)

@@ -30,7 +30,6 @@ public class LoyaltyTransaction {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -38,11 +37,11 @@ public class LoyaltyTransaction {
     private LoyaltyAccount account;
 
     /** Denormalized from account.userId for efficient user-scoped queries. */
-    @Column(nullable = false, name = "user_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "user_id")
     private UUID userId;
 
     /** Denormalized from account.companyId. */
-    @Column(nullable = false, name = "company_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = false, name = "company_id")
     private UUID companyId;
 
     @Enumerated(EnumType.STRING)
@@ -58,7 +57,7 @@ public class LoyaltyTransaction {
     private long valueCents = 0L;
 
     /** Loose FK to orders.id. Set on EARN_ORDER, REDEEM_ORDER, and CONVERT_TO_CREDIT entries. */
-    @Column(nullable = true, name = "source_order_id", columnDefinition = "BINARY(16)")
+    @Column(nullable = true, name = "source_order_id")
     private UUID sourceOrderId;
 
     /** When this earn entry's points expire. Null if the policy has no expiry or for non-earn entries. */

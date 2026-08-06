@@ -45,7 +45,6 @@ public class Order {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     /**
@@ -135,7 +134,7 @@ public class Order {
     private backend.models.enums.TaxSource taxSource = backend.models.enums.TaxSource.NONE;
 
     /** Loose FK to {@code tax_rates.id} of the matched row, for traceability. Null for fallback/none. */
-    @Column(name = "tax_rate_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "tax_rate_id", nullable = true)
     private java.util.UUID taxRateId;
 
     @Column(nullable = false, length = 3)
@@ -390,10 +389,10 @@ public class Order {
      * one order — the DB constraint makes {@code createOrderFromQuote} idempotent even if the accept
      * lock expires mid-flight or a post-creation step fails and the buyer retries.
      */
-    @Column(name = "b2b_quote_id", nullable = true, unique = true, columnDefinition = "BINARY(16)")
+    @Column(name = "b2b_quote_id", nullable = true, unique = true)
     private UUID b2bQuoteId;
 
-    @Column(name = "assigned_driver_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "assigned_driver_id", nullable = true)
     private UUID assignedDriverId;
 
     // -------------------------------------------------------------------------

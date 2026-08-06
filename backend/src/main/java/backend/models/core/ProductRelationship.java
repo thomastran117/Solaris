@@ -29,7 +29,6 @@ public class ProductRelationship {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -60,11 +59,11 @@ public class ProductRelationship {
     private Instant updatedAt;
 
     @CreatedBy
-    @Column(name = "created_by", nullable = true, updatable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "created_by", nullable = true, updatable = false)
     private UUID createdBy;
 
     @LastModifiedBy
-    @Column(name = "updated_by", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "updated_by", nullable = true)
     private UUID updatedBy;
 
     @Version

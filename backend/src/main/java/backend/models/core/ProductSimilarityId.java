@@ -19,9 +19,9 @@ import java.util.UUID;
 @EqualsAndHashCode
 public class ProductSimilarityId implements Serializable {
 
-    @Column(name = "source_product_id", columnDefinition = "BINARY(16)", nullable = false)
+    @Column(name = "source_product_id", nullable = false)
     private UUID sourceProductId;
 
-    @Column(name = "target_product_id", columnDefinition = "BINARY(16)", nullable = false)
+    @Column(name = "target_product_id", nullable = false)
     private UUID targetProductId;
 }

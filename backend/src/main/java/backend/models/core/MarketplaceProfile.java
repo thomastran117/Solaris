@@ -27,7 +27,6 @@ public class MarketplaceProfile {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
@@ -38,7 +37,7 @@ public class MarketplaceProfile {
     private String slug;
 
     /** Default commission policy ID applied to all vendors unless overridden on MarketplaceVendor. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private java.util.UUID defaultCommissionPolicyId;
 
     @Enumerated(EnumType.STRING)

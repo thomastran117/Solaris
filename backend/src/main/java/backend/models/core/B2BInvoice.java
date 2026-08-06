@@ -30,19 +30,18 @@ public class B2BInvoice {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
-    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "order_id", nullable = false)
     private UUID orderId;
 
-    @Column(name = "quote_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "quote_id", nullable = false)
     private UUID quoteId;
 
-    @Column(name = "vendor_company_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "vendor_company_id", nullable = false)
     private UUID vendorCompanyId;
 
-    @Column(name = "buyer_user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "buyer_user_id", nullable = false)
     private UUID buyerUserId;
 
     @Column(name = "invoice_number", nullable = false, unique = true, length = 40)

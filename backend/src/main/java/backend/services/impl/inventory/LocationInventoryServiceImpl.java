@@ -36,7 +36,6 @@ import backend.repositories.UserRepository;
 import backend.services.intf.CacheService;
 import backend.services.intf.inventory.LocationInventoryService;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.UUID;
 
@@ -514,7 +513,7 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
         return locationRepository.findNearbyPickupLocations(companyId, lat, lng, limit)
                 .stream()
                 .map(row -> new NearbyPickupLocationResponse(
-                        bytesToUuid((byte[]) row[0]),
+                        (UUID) row[0],
                         (String) row[1],
                         (String) row[2],
                         (String) row[3],
@@ -531,11 +530,6 @@ public class LocationInventoryServiceImpl implements LocationInventoryService {
 
     private void assertCompanyOwnership(UUID companyId, UUID ownerId) {
         companyAccessService.require(companyId, ownerId, CompanyCapability.MANAGE_INVENTORY);
-    }
-
-    private static UUID bytesToUuid(byte[] bytes) {
-        ByteBuffer bb = ByteBuffer.wrap(bytes);
-        return new UUID(bb.getLong(), bb.getLong());
     }
 
     private LocationResponse toLocationResponse(InventoryLocation loc) {

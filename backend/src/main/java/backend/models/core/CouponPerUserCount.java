@@ -22,13 +22,12 @@ public class CouponPerUserCount {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "coupon_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "coupon_id", nullable = false)
     private java.util.UUID couponId;
 
-    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "user_id", nullable = false)
     private java.util.UUID userId;
 
     @Column(nullable = false)

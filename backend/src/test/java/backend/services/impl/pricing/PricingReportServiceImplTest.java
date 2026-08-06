@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -133,7 +132,7 @@ class PricingReportServiceImplTest {
     private PayoutAttributionProjection payoutRow(
             UUID companyId, String name, BigDecimal savings, Long count, Long orders) {
         return new PayoutAttributionProjection() {
-            @Override public byte[] getFundedByCompanyId() { return uuidToBytes(companyId); }
+            @Override public UUID getFundedByCompanyId() { return companyId; }
             @Override public String getCompanyName() { return name; }
             @Override public BigDecimal getTotalSavings() { return savings; }
             @Override public Long getRedemptionCount() { return count; }
@@ -141,12 +140,6 @@ class PricingReportServiceImplTest {
         };
     }
 
-    private static byte[] uuidToBytes(UUID uuid) {
-        ByteBuffer bb = ByteBuffer.allocate(16);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return bb.array();
-    }
 
     private PromotionRuleAnalyticsProjection ruleAnalytics(
             Long redemptions, BigDecimal savings, Long orders, Long users) {

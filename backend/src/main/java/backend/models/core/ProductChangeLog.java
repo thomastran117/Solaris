@@ -37,7 +37,6 @@ public class ProductChangeLog {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -49,7 +48,7 @@ public class ProductChangeLog {
     @JoinColumn(name = "variant_id", nullable = true)
     private ProductVariant variant;
 
-    @Column(name = "company_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "company_id", nullable = false)
     private java.util.UUID companyId;
 
     @Column(name = "field_name", nullable = false, length = 64)
@@ -73,7 +72,7 @@ public class ProductChangeLog {
     @JoinColumn(name = "changed_by", nullable = true)
     private User changedBy;
 
-    @Column(name = "reverted_from_log_id", nullable = true, columnDefinition = "BINARY(16)")
+    @Column(name = "reverted_from_log_id", nullable = true)
     private java.util.UUID revertedFromLogId;
 
     @CreatedDate

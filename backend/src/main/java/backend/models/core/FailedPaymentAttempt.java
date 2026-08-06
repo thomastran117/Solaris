@@ -29,13 +29,12 @@ public class FailedPaymentAttempt {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "order_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "order_id", nullable = false)
     private UUID orderId;
 
     /** Best-effort IP copied from the {@code RiskAssessment} written at checkout. Null if assessment missing. */

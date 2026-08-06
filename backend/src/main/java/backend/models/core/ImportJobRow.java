@@ -28,10 +28,9 @@ public class ImportJobRow {
 
     @Id
     @org.hibernate.annotations.UuidGenerator(style = org.hibernate.annotations.UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private java.util.UUID id;
 
-    @Column(name = "job_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "job_id", nullable = false)
     private java.util.UUID jobId;
 
     /** 1-based row number in the source CSV (excluding the header). */

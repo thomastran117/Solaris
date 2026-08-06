@@ -31,7 +31,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -378,7 +377,7 @@ class InventoryServiceImplTest {
             Long totalUnitsSold,
             BigDecimal totalRevenue) {
         return new ProductSalesProjection() {
-            @Override public byte[] getProductId() { return uuidToBytes(productId); }
+            @Override public UUID getProductId() { return productId; }
             @Override public String getProductName() { return productName; }
             @Override public String getSku() { return sku; }
             @Override public Integer getCurrentStock() { return currentStock; }
@@ -389,12 +388,6 @@ class InventoryServiceImplTest {
         };
     }
 
-    private static byte[] uuidToBytes(UUID uuid) {
-        ByteBuffer bb = ByteBuffer.allocate(16);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return bb.array();
-    }
 
     // ─── Additional tests for uncovered methods ───────────────────────────────
 

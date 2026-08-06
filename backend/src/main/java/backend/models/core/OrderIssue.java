@@ -30,7 +30,6 @@ public class OrderIssue {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.TIME)
-    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -72,7 +71,7 @@ public class OrderIssue {
     private Long replacementOrderId;
 
     /** Loose FK to customer_credits.id — set when resolved via store credit. */
-    @Column(nullable = true, columnDefinition = "BINARY(16)")
+    @Column(nullable = true)
     private UUID customerCreditId;
 
     /** Loose FK to sub_orders.id — set for issues on marketplace vendor sub-orders. */
