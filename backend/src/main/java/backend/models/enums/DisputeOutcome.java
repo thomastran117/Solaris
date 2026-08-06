@@ -3,17 +3,23 @@ package backend.models.enums;
 /**
  * Result of a chargeback case. {@link #PENDING} until Stripe closes the dispute.
  *
- * <p>Stripe has no distinct "accepted" status — accepting a dispute simply closes it as
- * {@code lost}. The two are told apart by {@code evidence_details.has_evidence}: a loss with no
- * evidence submitted is a concession, not a ruling against us.
+ * <p>Stripe has no distinct "accepted" status — conceding a dispute simply closes it as
+ * {@code lost}, and so does letting the evidence deadline expire unanswered. Because the provider
+ * cannot tell those apart, {@link #ACCEPTED} is <b>never inferred</b>: every provider
+ * {@code lost} maps to {@link #LOST}. Inferring acceptance from
+ * {@code evidence_details.has_evidence == false} would relabel a missed deadline as a deliberate
+ * business decision and hide the failure this feature exists to prevent.
  */
 public enum DisputeOutcome {
     /** Still open, or closed with a status we could not classify. */
     PENDING,
     /** Stripe ruled in our favour. */
     WON,
-    /** Stripe ruled against us after we submitted evidence. */
+    /** Stripe closed the dispute against us, however that came about. */
     LOST,
-    /** We conceded — closed as lost with no evidence submitted. */
+    /**
+     * Reserved for an explicit, locally recorded decision to concede a dispute. No such action
+     * exists in v1, so nothing currently produces this value.
+     */
     ACCEPTED
 }

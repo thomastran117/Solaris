@@ -320,14 +320,16 @@ public class OrderController {
         // SETNX-style claim — if another delivery (or another replica) already started
         // processing this event id, we return 200 OK so Stripe stops retrying without
         // running the side-effects a second time.
+        String dedupKey = null;
         if (event.eventId() != null && !event.eventId().isBlank()) {
-            String dedupKey = "stripe:event:" + event.eventId();
+            dedupKey = "stripe:event:" + event.eventId();
             boolean firstDelivery = cacheService.tryLock(dedupKey, "1", STRIPE_EVENT_DEDUP_TTL_SECONDS);
             if (!firstDelivery) {
                 return ResponseEntity.ok().build();
             }
         }
 
+        try {
         switch (event.type()) {
                 case "payment_intent.succeeded"      -> orderService.handlePaymentSuccess(event.objectId());
                 case "payment_intent.payment_failed" -> orderService.handlePaymentFailure(event.objectId());
@@ -405,6 +407,14 @@ public class OrderController {
                     }
                 }
             default -> { }
+        }
+        } catch (RuntimeException e) {
+            // The claim above is taken *before* processing, with a 31-day TTL. If processing
+            // fails, leaving it in place means Stripe's retry of the same event id short-circuits
+            // to 200 at the guard and the event is silently lost — for a dispute, that is a
+            // chargeback nobody ever sees. Release it so the retry can genuinely reprocess.
+            releaseWebhookClaim(dedupKey);
+            throw e;
         }
 
         return ResponseEntity.ok().build();
@@ -539,6 +549,20 @@ public class OrderController {
      * when the field is absent or malformed. A NumberFormatException here would produce
      * an HTTP 500, causing Stripe to retry the webhook indefinitely.
      */
+    /**
+     * Drops the dedup claim for a webhook whose processing failed, so Stripe's retry is treated
+     * as a first delivery. Best-effort by design: a Redis failure here must not replace the
+     * original processing error, which is what the caller actually needs to surface.
+     */
+    private void releaseWebhookClaim(String dedupKey) {
+        if (dedupKey == null) return;
+        try {
+            cacheService.delete(dedupKey);
+        } catch (Exception ignored) {
+            // Claim expires on its own TTL; nothing better to do here.
+        }
+    }
+
     /**
      * Flattens a {@code charge.dispute.*} webhook into the provider-agnostic record the dispute
      * service consumes. Every field is parsed defensively: a malformed value here would surface as

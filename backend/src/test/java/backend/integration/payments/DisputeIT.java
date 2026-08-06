@@ -177,16 +177,42 @@ class DisputeIT extends AbstractIntegrationIT {
                 disputeCaseRepository.findByStripeDisputeId("dp_7").orElseThrow().getOutcome());
     }
 
+    /**
+     * A missed evidence deadline also closes as {@code lost} with no evidence, so acceptance is
+     * never inferred — labelling that ACCEPTED would hide the failure this feature prevents.
+     */
     @Test
-    void shouldRecordAcceptedOutcomeWhenClosedAsLostWithoutEvidence() throws Exception {
+    void shouldRecordLostNotAcceptedWhenClosedAsLostWithoutEvidence() throws Exception {
         seedOrder("pi_dispute_8");
         postWebhook("evt_8a", "charge.dispute.created", "dp_8", createdMetadata("pi_dispute_8"));
 
         postWebhook("evt_8b", "charge.dispute.closed", "dp_8",
                 Map.of("disputeStatus", "lost", "hasEvidence", "false"));
 
-        assertEquals(DisputeOutcome.ACCEPTED,
+        assertEquals(DisputeOutcome.LOST,
                 disputeCaseRepository.findByStripeDisputeId("dp_8").orElseThrow().getOutcome());
+    }
+
+    /** Out-of-order delivery must not resurrect a settled dispute into the support queue. */
+    @Test
+    void shouldIgnoreStaleUpdateArrivingAfterDisputeWasClosed() throws Exception {
+        seedOrder("pi_dispute_10");
+        postWebhook("evt_10a", "charge.dispute.created", "dp_10", createdMetadata("pi_dispute_10"));
+        postWebhook("evt_10b", "charge.dispute.closed", "dp_10",
+                Map.of("disputeStatus", "won", "hasEvidence", "true"));
+
+        postWebhook("evt_10c", "charge.dispute.updated", "dp_10",
+                Map.of("disputeStatus", "under_review", "hasEvidence", "true"));
+
+        DisputeCase saved = disputeCaseRepository.findByStripeDisputeId("dp_10").orElseThrow();
+        assertEquals(DisputeStatus.CLOSED, saved.getStatus());
+        assertEquals(DisputeOutcome.WON, saved.getOutcome());
+
+        // And it must stay out of the open-dispute work queue.
+        String token = accessTokenFor(createStaffUser("dispute-stale@example.com"));
+        mockMvc.perform(get(ADMIN).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
     }
 
     @Test

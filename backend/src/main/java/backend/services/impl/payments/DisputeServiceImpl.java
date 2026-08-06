@@ -48,15 +48,19 @@ import java.util.stream.Collectors;
  *   won | lost | warning_closed              -> CLOSED
  * </pre>
  *
- * <p><b>Outcome mapping.</b> Stripe has no "accepted" status: accepting a dispute simply closes it
- * as {@code lost}. The two are told apart by whether evidence was ever submitted.
+ * <p><b>Outcome mapping.</b> Stripe reports every loss as {@code lost}, whether we conceded,
+ * fought and lost, or never responded — so the outcome is taken at face value rather than
+ * inferred. See {@link DisputeOutcome} for why {@code ACCEPTED} is never derived from
+ * {@code has_evidence}.
  *
  * <pre>
- *   won                          -> WON
- *   lost, hasEvidence == true    -> LOST      (ruled against us)
- *   lost, hasEvidence == false   -> ACCEPTED  (we conceded)
- *   anything else                -> PENDING
+ *   won           -> WON
+ *   lost          -> LOST
+ *   anything else -> PENDING
  * </pre>
+ *
+ * <p>A loss with no evidence submitted is still surfaced, as a {@code [CHARGEBACK-UNCONTESTED]}
+ * warning on close, since that is most likely a missed deadline.
  */
 @Service
 public class DisputeServiceImpl implements DisputeService {
@@ -157,7 +161,7 @@ public class DisputeServiceImpl implements DisputeService {
         disputeCase.setReason(dispute.reason());
         disputeCase.setStripeStatus(dispute.stripeStatus());
         disputeCase.setStatus(mapStatus(dispute.stripeStatus()));
-        disputeCase.setOutcome(mapOutcome(dispute.stripeStatus(), dispute.hasEvidence()));
+        disputeCase.setOutcome(mapOutcome(dispute.stripeStatus()));
         disputeCase.setEvidenceDeadline(dispute.evidenceDeadline());
 
         // saveAndFlush, not save: the unique-index violation must surface here rather than at
@@ -191,9 +195,19 @@ public class DisputeServiceImpl implements DisputeService {
     @RetryOnConcurrency
     public void handleDisputeUpdated(StripeDispute dispute) {
         disputeCaseRepository.findByStripeDisputeId(dispute.disputeId()).ifPresentOrElse(c -> {
+            // Webhook delivery order is not guaranteed, so a stale `.updated` can arrive after
+            // `.closed`. CLOSED is terminal in Stripe (won/lost are final) — letting a late
+            // in-flight status overwrite it would put a settled dispute back in the support
+            // queue and the company's open count permanently.
+            if (c.getStatus() == DisputeStatus.CLOSED
+                    && mapStatus(dispute.stripeStatus()) != DisputeStatus.CLOSED) {
+                log.info("Ignoring out-of-order charge.dispute.updated ({}) for already-closed dispute {}",
+                        dispute.stripeStatus(), dispute.disputeId());
+                return;
+            }
             c.setStripeStatus(dispute.stripeStatus());
             c.setStatus(mapStatus(dispute.stripeStatus()));
-            c.setOutcome(mapOutcome(dispute.stripeStatus(), dispute.hasEvidence()));
+            c.setOutcome(mapOutcome(dispute.stripeStatus()));
             // Stripe can extend a deadline; only overwrite when it actually sent one.
             if (dispute.evidenceDeadline() != null) c.setEvidenceDeadline(dispute.evidenceDeadline());
             if (c.getStatus() == DisputeStatus.CLOSED && c.getClosedAt() == null) {
@@ -210,10 +224,20 @@ public class DisputeServiceImpl implements DisputeService {
         disputeCaseRepository.findByStripeDisputeId(dispute.disputeId()).ifPresentOrElse(c -> {
             c.setStripeStatus(dispute.stripeStatus());
             c.setStatus(DisputeStatus.CLOSED);
-            c.setOutcome(mapOutcome(dispute.stripeStatus(), dispute.hasEvidence()));
+            c.setOutcome(mapOutcome(dispute.stripeStatus()));
             if (c.getClosedAt() == null) c.setClosedAt(Instant.now());
             disputeCaseRepository.save(c);
-            log.info("Dispute {} closed with outcome {}", dispute.disputeId(), c.getOutcome());
+            if (c.getOutcome() == DisputeOutcome.LOST && !dispute.hasEvidence()) {
+                // Lost with nothing submitted: either we conceded or — the case worth catching —
+                // the deadline passed unanswered, which is the failure this feature exists to
+                // prevent. Escalated to WARN rather than being silently labelled as accepted.
+                log.warn("[CHARGEBACK-UNCONTESTED] Dispute {} (order {}) closed as LOST with no evidence "
+                        + "submitted to Stripe — confirm this was a deliberate concession, not a missed deadline",
+                        dispute.disputeId(),
+                        c.getOrder() != null ? c.getOrder().getId() : "unresolved");
+            } else {
+                log.info("Dispute {} closed with outcome {}", dispute.disputeId(), c.getOutcome());
+            }
         }, () -> log.warn("charge.dispute.closed for unknown dispute {} — ignoring", dispute.disputeId()));
     }
 
@@ -319,11 +343,19 @@ public class DisputeServiceImpl implements DisputeService {
         };
     }
 
-    static DisputeOutcome mapOutcome(String stripeStatus, boolean hasEvidence) {
+    /**
+     * Stripe reports a loss as {@code lost} whether we conceded, fought and lost, or never
+     * responded at all. An earlier version inferred {@link DisputeOutcome#ACCEPTED} from
+     * {@code has_evidence == false}, which quietly relabelled a <em>missed deadline</em> — the
+     * exact failure this feature exists to prevent — as a deliberate concession. A provider
+     * {@code lost} is now always {@code LOST}; {@code ACCEPTED} is reserved for an explicit
+     * local accept action, which v1 does not have.
+     */
+    static DisputeOutcome mapOutcome(String stripeStatus) {
         if (stripeStatus == null) return DisputeOutcome.PENDING;
         return switch (stripeStatus.toLowerCase(Locale.ROOT)) {
             case "won"  -> DisputeOutcome.WON;
-            case "lost" -> hasEvidence ? DisputeOutcome.LOST : DisputeOutcome.ACCEPTED;
+            case "lost" -> DisputeOutcome.LOST;
             default     -> DisputeOutcome.PENDING;
         };
     }

@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -234,6 +235,42 @@ class DisputeServiceImplTest {
         assertEquals(DEADLINE, existing.getEvidenceDeadline());
     }
 
+    /**
+     * Stripe does not guarantee delivery order, so a stale `.updated` can land after `.closed`.
+     * Letting it through would put a settled dispute back in the support queue and the company's
+     * open count permanently.
+     */
+    @Test
+    void shouldIgnoreStaleUpdateWhenDisputeIsAlreadyClosed() {
+        Instant closedAt = Instant.parse("2026-08-01T12:00:00Z");
+        DisputeCase existing = existingCase(DisputeStatus.CLOSED, DisputeOutcome.WON);
+        existing.setStripeStatus("won");
+        existing.setClosedAt(closedAt);
+        when(disputeCaseRepository.findByStripeDisputeId(DISPUTE_ID)).thenReturn(Optional.of(existing));
+
+        service.handleDisputeUpdated(dispute("under_review", true));
+
+        assertEquals(DisputeStatus.CLOSED, existing.getStatus());
+        assertEquals(DisputeOutcome.WON, existing.getOutcome());
+        assertEquals("won", existing.getStripeStatus());
+        assertEquals(closedAt, existing.getClosedAt());
+        verify(disputeCaseRepository, never()).save(any());
+    }
+
+    /** A terminal-to-terminal correction (won → lost) is still applied. */
+    @Test
+    void shouldApplyUpdateWhenClosedDisputeReceivesAnotherTerminalStatus() {
+        DisputeCase existing = existingCase(DisputeStatus.CLOSED, DisputeOutcome.WON);
+        existing.setClosedAt(Instant.parse("2026-08-01T12:00:00Z"));
+        when(disputeCaseRepository.findByStripeDisputeId(DISPUTE_ID)).thenReturn(Optional.of(existing));
+
+        service.handleDisputeUpdated(dispute("lost", true));
+
+        assertEquals(DisputeStatus.CLOSED, existing.getStatus());
+        assertEquals(DisputeOutcome.LOST, existing.getOutcome());
+        verify(disputeCaseRepository).save(existing);
+    }
+
     @Test
     void shouldIgnoreUpdateWhenDisputeIsUnknown() {
         when(disputeCaseRepository.findByStripeDisputeId(DISPUTE_ID)).thenReturn(Optional.empty());
@@ -267,15 +304,26 @@ class DisputeServiceImplTest {
         assertEquals(DisputeOutcome.LOST, existing.getOutcome());
     }
 
-    /** Stripe reports a concession as "lost" too; only has_evidence tells them apart. */
+    /**
+     * A missed deadline also closes as {@code lost} with no evidence, so acceptance must never be
+     * inferred — that would relabel the exact failure this feature exists to catch.
+     */
     @Test
-    void shouldRecordAcceptedOutcomeWhenClosedAsLostWithNoEvidenceSubmitted() {
+    void shouldRecordLostNotAcceptedWhenClosedAsLostWithNoEvidenceSubmitted() {
         DisputeCase existing = existingCase(DisputeStatus.OPEN, DisputeOutcome.PENDING);
         when(disputeCaseRepository.findByStripeDisputeId(DISPUTE_ID)).thenReturn(Optional.of(existing));
 
         service.handleDisputeClosed(dispute("lost", false));
 
-        assertEquals(DisputeOutcome.ACCEPTED, existing.getOutcome());
+        assertEquals(DisputeOutcome.LOST, existing.getOutcome());
+    }
+
+    @Test
+    void shouldNeverInferAcceptedOutcomeFromAnyProviderStatus() {
+        for (String status : List.of("won", "lost", "warning_closed", "needs_response", "under_review")) {
+            assertNotEquals(DisputeOutcome.ACCEPTED, DisputeServiceImpl.mapOutcome(status),
+                    "ACCEPTED must come from an explicit local action, never from " + status);
+        }
     }
 
     @Test
@@ -317,8 +365,8 @@ class DisputeServiceImplTest {
     void shouldTreatUnknownOrNullStatusAsOpen() {
         assertEquals(DisputeStatus.OPEN, DisputeServiceImpl.mapStatus("something_new"));
         assertEquals(DisputeStatus.OPEN, DisputeServiceImpl.mapStatus(null));
-        assertEquals(DisputeOutcome.PENDING, DisputeServiceImpl.mapOutcome("something_new", true));
-        assertEquals(DisputeOutcome.PENDING, DisputeServiceImpl.mapOutcome(null, true));
+        assertEquals(DisputeOutcome.PENDING, DisputeServiceImpl.mapOutcome("something_new"));
+        assertEquals(DisputeOutcome.PENDING, DisputeServiceImpl.mapOutcome(null));
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────

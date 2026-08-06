@@ -365,6 +365,64 @@ class OrderControllerTest {
         assertNull(captor.getValue().evidenceDeadline());
     }
 
+    /**
+     * The dedup claim is taken before processing with a 31-day TTL. If a failure left it in
+     * place, Stripe's retry would short-circuit to 200 at the guard and the event would be lost
+     * for good — for a dispute, a chargeback nobody ever sees.
+     */
+    @Test
+    void stripeWebhook_releasesEventClaimWhenProcessingFails() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_fail", "charge.dispute.created", "dp_fail", "charge", Map.of()));
+        when(cacheService.tryLock("stripe:event:evt_fail", "1", 2678400L)).thenReturn(true);
+        when(disputeService.handleDisputeCreated(any()))
+                .thenThrow(new IllegalStateException("transient DB failure"));
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isInternalServerError());
+
+        verify(cacheService).delete("stripe:event:evt_fail");
+    }
+
+    @Test
+    void stripeWebhook_keepsEventClaimWhenProcessingSucceeds() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_ok", "payment_intent.succeeded", "pi_ok", "payment_intent", Map.of()));
+        when(cacheService.tryLock("stripe:event:evt_ok", "1", 2678400L)).thenReturn(true);
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(cacheService, never()).delete(any());
+    }
+
+    /** A Redis failure while releasing must not mask the original processing error. */
+    @Test
+    void stripeWebhook_surfacesOriginalErrorWhenClaimReleaseFails() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_fail2", "charge.dispute.created", "dp_fail2", "charge", Map.of()));
+        when(cacheService.tryLock("stripe:event:evt_fail2", "1", 2678400L)).thenReturn(true);
+        when(disputeService.handleDisputeCreated(any()))
+                .thenThrow(new IllegalStateException("transient DB failure"));
+        when(cacheService.delete("stripe:event:evt_fail2"))
+                .thenThrow(new RuntimeException("redis down"));
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isInternalServerError());
+    }
+
     @Test
     void getOrderDisputes_returnsDisputesForOrder() throws Exception {
         authenticateAs(USER_ID);
