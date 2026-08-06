@@ -4,6 +4,7 @@ import backend.annotations.safeRichText.SafeRichText;
 import backend.models.enums.DisputeEvidenceType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,6 +26,13 @@ public class AddEvidenceRequest {
     @SafeRichText
     private String content;
 
+    /**
+     * Rendered back as an {@code <a href>} on the admin page, so the scheme is constrained
+     * server-side rather than trusting the client: HTTPS only, which also rules out a
+     * {@code javascript:} URL being persisted by anything calling the API directly.
+     * Optional — null and empty both pass.
+     */
     @Size(max = 500, message = "Attachment URL must not exceed 500 characters")
+    @Pattern(regexp = "^(https://\\S+)?$", message = "Attachment URL must be an HTTPS URL")
     private String attachmentUrl;
 }

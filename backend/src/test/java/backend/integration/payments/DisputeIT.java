@@ -311,6 +311,50 @@ class DisputeIT extends AbstractIntegrationIT {
                 .andExpect(status().isBadRequest());
     }
 
+    /**
+     * The value is rendered back as an {@code <a href>}, so the scheme is enforced server-side —
+     * a {@code javascript:} URL must not be persistable by calling the API directly.
+     */
+    @Test
+    void shouldReturnBadRequestWhenAttachmentUrlIsNotHttps() throws Exception {
+        seedOrder("pi_evidence_4");
+        postWebhook("evt_e4", "charge.dispute.created", "dp_evidence4", createdMetadata("pi_evidence_4"));
+        DisputeCase saved = disputeCaseRepository.findByStripeDisputeId("dp_evidence4").orElseThrow();
+        String token = accessTokenFor(createStaffUser("dispute-badurl@example.com"));
+
+        for (String badUrl : List.of("javascript:alert(1)", "http://files.example.com/x.pdf", "not-a-url")) {
+            mockMvc.perform(post(ADMIN + "/" + saved.getId() + "/evidence")
+                            .header("Authorization", bearer(token))
+                            .contentType("application/json")
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "evidenceType", "OTHER",
+                                    "content", "proof",
+                                    "attachmentUrl", badUrl))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        assertEquals(0, disputeEvidenceRepository.findAllByDisputeCaseIdOrderByCreatedAtAsc(saved.getId())
+                .stream().filter(e -> e.getAttachmentUrl() != null).count());
+    }
+
+    @Test
+    void shouldAcceptHttpsAttachmentUrlWhenAddingEvidence() throws Exception {
+        seedOrder("pi_evidence_5");
+        postWebhook("evt_e5", "charge.dispute.created", "dp_evidence5", createdMetadata("pi_evidence_5"));
+        DisputeCase saved = disputeCaseRepository.findByStripeDisputeId("dp_evidence5").orElseThrow();
+        String token = accessTokenFor(createStaffUser("dispute-goodurl@example.com"));
+
+        mockMvc.perform(post(ADMIN + "/" + saved.getId() + "/evidence")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "evidenceType", "OTHER",
+                                "content", "Signed POD",
+                                "attachmentUrl", "https://files.example.com/pod.pdf"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.attachmentUrl").value("https://files.example.com/pod.pdf"));
+    }
+
     @Test
     void shouldReturnForbiddenWhenPlainUserAddsEvidence() throws Exception {
         seedOrder("pi_evidence_3");

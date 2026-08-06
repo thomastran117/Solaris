@@ -199,6 +199,40 @@ describe("AdminDisputesPage", () => {
     expect(mockAdd).not.toHaveBeenCalled();
   });
 
+  it("rejects a non-HTTPS attachment URL before submitting", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText(/25\.00 USD/));
+    await user.click(await screen.findByRole("button", { name: /add evidence/i }));
+    await user.type(screen.getByLabelText(/content/i), "Signed proof of delivery.");
+    await user.type(screen.getByLabelText(/attachment url/i), "http://files.example.com/pod.pdf");
+    await user.click(screen.getByRole("button", { name: /save evidence/i }));
+
+    expect(await screen.findByText("Attachment URL must use HTTPS")).toBeInTheDocument();
+    expect(mockAdd).not.toHaveBeenCalled();
+  });
+
+  it("accepts an HTTPS attachment URL", async () => {
+    const user = userEvent.setup();
+    mockAdd.mockResolvedValue(stubEvidence({ id: "ev-3", createdById: "staff-1" }));
+    renderPage();
+
+    await user.click(await screen.findByText(/25\.00 USD/));
+    await user.click(await screen.findByRole("button", { name: /add evidence/i }));
+    await user.type(screen.getByLabelText(/content/i), "Signed proof of delivery.");
+    await user.type(screen.getByLabelText(/attachment url/i), "https://files.example.com/pod.pdf");
+    await user.click(screen.getByRole("button", { name: /save evidence/i }));
+
+    await waitFor(() =>
+      expect(mockAdd).toHaveBeenCalledWith(CASE_ID, {
+        evidenceType: "OTHER",
+        content: "Signed proof of delivery.",
+        attachmentUrl: "https://files.example.com/pod.pdf",
+      })
+    );
+  });
+
   it("surfaces the backend message when adding evidence fails", async () => {
     const user = userEvent.setup();
     mockAdd.mockRejectedValue({
