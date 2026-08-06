@@ -45,6 +45,28 @@ public class DisputeCase {
     @JoinColumn(name = "order_id", nullable = true)
     private Order order;
 
+    /**
+     * The same FK, mapped read-only, so callers that only need the order id never touch the lazy
+     * proxy. {@link Order} annotates {@code @Id} on the field, so Hibernate cannot serve
+     * {@code getId()} from the proxy without initialising it — reading it while mapping a page of
+     * cases would fire one SELECT per row.
+     *
+     * <p>Null on a freshly constructed entity until it is reloaded; use {@link #resolveOrderId()}
+     * rather than this field directly.
+     */
+    @Column(name = "order_id", insertable = false, updatable = false)
+    private UUID orderId;
+
+    /**
+     * The disputed order's id without initialising the lazy association. Falls back to the
+     * association for an entity built in memory (create path), where it is already a fully
+     * loaded instance rather than a proxy.
+     */
+    public UUID resolveOrderId() {
+        if (orderId != null) return orderId;
+        return order != null ? order.getId() : null;
+    }
+
     @Column(name = "stripe_dispute_id", nullable = false, length = 100)
     private String stripeDisputeId;
 

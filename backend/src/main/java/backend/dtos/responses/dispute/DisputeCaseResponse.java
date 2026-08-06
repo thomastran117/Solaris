@@ -36,8 +36,9 @@ public class DisputeCaseResponse {
     public static DisputeCaseResponse from(DisputeCase c, long evidenceCount) {
         return new DisputeCaseResponse(
                 c.getId(),
-                // Reads the FK without initialising the lazy proxy.
-                c.getOrder() != null ? c.getOrder().getId() : null,
+                // Read-only FK column, not the lazy association: Order maps @Id on the field, so
+                // getOrder().getId() would initialise the proxy and fire a SELECT per row here.
+                c.resolveOrderId(),
                 c.getStripeDisputeId(),
                 c.getStripeChargeId(),
                 c.getAmountCents(),

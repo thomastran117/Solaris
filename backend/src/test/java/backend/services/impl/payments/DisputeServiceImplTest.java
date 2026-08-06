@@ -257,6 +257,24 @@ class DisputeServiceImplTest {
         verify(disputeCaseRepository, never()).save(any());
     }
 
+    /**
+     * {@code warning_closed} maps to CLOSED, so it clears the status guard — but it carries no
+     * classifiable outcome, and letting it through wiped a decided WON back to PENDING.
+     */
+    @Test
+    void shouldIgnoreTerminalUpdateThatWouldWipeADecidedOutcome() {
+        DisputeCase existing = existingCase(DisputeStatus.CLOSED, DisputeOutcome.WON);
+        existing.setStripeStatus("won");
+        when(disputeCaseRepository.findByStripeDisputeId(DISPUTE_ID)).thenReturn(Optional.of(existing));
+
+        service.handleDisputeUpdated(dispute("warning_closed", true));
+
+        assertEquals(DisputeOutcome.WON, existing.getOutcome());
+        assertEquals(DisputeStatus.CLOSED, existing.getStatus());
+        assertEquals("won", existing.getStripeStatus());
+        verify(disputeCaseRepository, never()).save(any());
+    }
+
     /** A terminal-to-terminal correction (won → lost) is still applied. */
     @Test
     void shouldApplyUpdateWhenClosedDisputeReceivesAnotherTerminalStatus() {
@@ -375,21 +393,21 @@ class DisputeServiceImplTest {
     void shouldReturnOnlyNonClosedDisputesWhenListingOpenCases() {
         Pageable pageable = PageRequest.of(0, 20);
         DisputeCase open = existingCase(DisputeStatus.OPEN, DisputeOutcome.PENDING);
-        when(disputeCaseRepository.findAllByStatusNotOrderByCreatedAtDesc(DisputeStatus.CLOSED, pageable))
+        when(disputeCaseRepository.findOpenByDeadline(DisputeStatus.CLOSED, pageable))
                 .thenReturn(new PageImpl<>(List.of(open), pageable, 1));
 
         PagedResponse<DisputeCaseResponse> page = service.getOpenDisputes(pageable);
 
         assertEquals(1, page.getItems().size());
         assertEquals(DISPUTE_ID, page.getItems().get(0).getStripeDisputeId());
-        verify(disputeCaseRepository).findAllByStatusNotOrderByCreatedAtDesc(DisputeStatus.CLOSED, pageable);
+        verify(disputeCaseRepository).findOpenByDeadline(DisputeStatus.CLOSED, pageable);
     }
 
     /** Evidence counts come from one grouped query, not a count per row. */
     @Test
     void shouldCountEvidenceInOneQueryWhenListingOpenCases() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(disputeCaseRepository.findAllByStatusNotOrderByCreatedAtDesc(DisputeStatus.CLOSED, pageable))
+        when(disputeCaseRepository.findOpenByDeadline(DisputeStatus.CLOSED, pageable))
                 .thenReturn(new PageImpl<>(List.of(existingCase(DisputeStatus.OPEN, DisputeOutcome.PENDING)),
                         pageable, 1));
         when(disputeEvidenceRepository.countByDisputeCaseIds(List.of(CASE_ID)))

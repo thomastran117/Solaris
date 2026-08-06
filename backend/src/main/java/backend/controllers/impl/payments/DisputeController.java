@@ -43,8 +43,8 @@ public class DisputeController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         try {
-            // Sort lives in the repository method name so the deadline ordering cannot be
-            // overridden by a caller-supplied sort param.
+            // No caller-supplied sort: the query fixes the order to soonest-deadline-first so
+            // the most urgent cases cannot be pushed off page 1.
             Pageable pageable = PageRequest.of(page, size);
             return ResponseEntity.ok(disputeService.getOpenDisputes(pageable));
         } catch (AppHttpException e) {

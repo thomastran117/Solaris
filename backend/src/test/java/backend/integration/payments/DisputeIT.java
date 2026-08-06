@@ -244,6 +244,54 @@ class DisputeIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.meta.totalElements").value(1));
     }
 
+    /**
+     * The list is a work queue: the case closest to expiring must lead, regardless of when the
+     * chargeback landed. Ordering by createdAt would bury the urgent ones on the last page.
+     */
+    @Test
+    void shouldOrderOpenDisputesBySoonestDeadlineFirst() throws Exception {
+        // Seeded newest-first, so creation order is the exact inverse of deadline order.
+        seedDisputeWithDeadline("pi_urgent_3", "dp_far", "evt_far", DEADLINE_EPOCH + 30 * 86_400L);
+        seedDisputeWithDeadline("pi_urgent_2", "dp_mid", "evt_mid", DEADLINE_EPOCH + 10 * 86_400L);
+        seedDisputeWithDeadline("pi_urgent_1", "dp_soon", "evt_soon", DEADLINE_EPOCH);
+        String token = accessTokenFor(createStaffUser("dispute-order@example.com"));
+
+        mockMvc.perform(get(ADMIN).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].stripeDisputeId").value("dp_soon"))
+                .andExpect(jsonPath("$.data[1].stripeDisputeId").value("dp_mid"))
+                .andExpect(jsonPath("$.data[2].stripeDisputeId").value("dp_far"));
+    }
+
+    /** A case with no deadline is not urgent, so it sorts behind everything that has one. */
+    @Test
+    void shouldSortDisputesWithoutADeadlineLast() throws Exception {
+        seedOrder("pi_nodeadline");
+        postWebhook("evt_nodl", "charge.dispute.created", "dp_no_deadline",
+                Map.of("paymentIntentId", "pi_nodeadline", "amountCents", "2500",
+                        "currency", "usd", "disputeStatus", "needs_response"));
+        seedDisputeWithDeadline("pi_hasdeadline", "dp_has_deadline", "evt_hasdl", DEADLINE_EPOCH);
+        String token = accessTokenFor(createStaffUser("dispute-nulls@example.com"));
+
+        mockMvc.perform(get(ADMIN).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].stripeDisputeId").value("dp_has_deadline"))
+                .andExpect(jsonPath("$.data[1].stripeDisputeId").value("dp_no_deadline"))
+                .andExpect(jsonPath("$.data[1].evidenceDeadline").doesNotExist());
+    }
+
+    /** The list maps orderId off the read-only FK column rather than the lazy association. */
+    @Test
+    void shouldReturnOrderIdOnListedDisputesWithoutTouchingTheAssociation() throws Exception {
+        Order order = seedOrder("pi_orderid");
+        postWebhook("evt_orderid", "charge.dispute.created", "dp_orderid", createdMetadata("pi_orderid"));
+        String token = accessTokenFor(createStaffUser("dispute-orderid@example.com"));
+
+        mockMvc.perform(get(ADMIN).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].orderId").value(order.getId().toString()));
+    }
+
     @Test
     void shouldPaginateWhenMoreDisputesExistThanPageSize() throws Exception {
         for (int i = 0; i < 3; i++) {
@@ -445,6 +493,15 @@ class DisputeIT extends AbstractIntegrationIT {
                         .contentType("application/json")
                         .content("{}"))
                 .andExpect(status().isOk());
+    }
+
+    /** Seeds one open dispute whose evidence deadline is {@code dueByEpochSeconds}. */
+    private void seedDisputeWithDeadline(String paymentIntentId, String disputeId,
+                                         String eventId, long dueByEpochSeconds) throws Exception {
+        seedOrder(paymentIntentId);
+        Map<String, String> metadata = new java.util.HashMap<>(createdMetadata(paymentIntentId));
+        metadata.put("evidenceDueBy", String.valueOf(dueByEpochSeconds));
+        postWebhook(eventId, "charge.dispute.created", disputeId, metadata);
     }
 
     private Map<String, String> createdMetadata(String paymentIntentId) {

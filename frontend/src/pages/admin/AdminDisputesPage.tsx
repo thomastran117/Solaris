@@ -78,32 +78,37 @@ function formatAmount(cents: number, currency: string): string {
 }
 
 /**
- * Whole days from now until the evidence deadline. Negative once the deadline has passed —
- * an overdue dispute is effectively already lost, so it must read differently from an urgent one.
+ * Milliseconds until the evidence deadline; negative once it has passed.
+ *
+ * Overdue is decided on the raw milliseconds, not on the day count: `Math.ceil` returns `-0`
+ * for anything inside the last 24 hours, and `-0 < 0` is false while `-0 === 0` is true, so a
+ * dispute that expired an hour ago would otherwise render as a neutral "due today".
  */
-function daysUntil(deadline: string): number {
-  const ms = new Date(deadline).getTime() - Date.now();
-  return Math.ceil(ms / 86_400_000);
+function msUntil(deadline: string): number {
+  return new Date(deadline).getTime() - Date.now();
 }
 
 function DeadlineLabel({ deadline }: { deadline: string | null }) {
   if (!deadline) {
     return <span className="text-xs text-white/40">No deadline supplied</span>;
   }
-  const days = daysUntil(deadline);
+  const ms = msUntil(deadline);
+  const overdue = ms < 0;
+  // Anything inside the next 24h is "due today". Math.ceil never yields 0 for a positive
+  // remainder, so keying this off the day count would silently turn six hours into "1 day left".
+  const dueToday = !overdue && ms < 86_400_000;
+  const days = Math.ceil(ms / 86_400_000);
   const date = new Date(deadline).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
-  const tone =
-    days < 0 ? "text-red-400" : days <= 3 ? "text-yellow-400" : "text-white/60";
-  const suffix =
-    days < 0
-      ? "overdue"
-      : days === 0
-        ? "due today"
-        : `${days} day${days === 1 ? "" : "s"} left`;
+  const tone = overdue || dueToday
+    ? "text-red-400"
+    : days <= 3
+      ? "text-yellow-400"
+      : "text-white/60";
+  const suffix = overdue ? "overdue" : dueToday ? "due today" : `${days} days left`;
   return (
     <span className={`text-xs flex items-center gap-1.5 ${tone}`}>
       <Clock className="w-3.5 h-3.5" />

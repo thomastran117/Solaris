@@ -197,13 +197,22 @@ public class DisputeServiceImpl implements DisputeService {
         disputeCaseRepository.findByStripeDisputeId(dispute.disputeId()).ifPresentOrElse(c -> {
             // Webhook delivery order is not guaranteed, so a stale `.updated` can arrive after
             // `.closed`. CLOSED is terminal in Stripe (won/lost are final) — letting a late
-            // in-flight status overwrite it would put a settled dispute back in the support
-            // queue and the company's open count permanently.
-            if (c.getStatus() == DisputeStatus.CLOSED
-                    && mapStatus(dispute.stripeStatus()) != DisputeStatus.CLOSED) {
-                log.info("Ignoring out-of-order charge.dispute.updated ({}) for already-closed dispute {}",
-                        dispute.stripeStatus(), dispute.disputeId());
-                return;
+            // event overwrite it would put a settled dispute back in the support queue and the
+            // company's open count permanently.
+            //
+            // Two ways a late event can damage a closed case, and both are refused:
+            //   * a non-terminal status (under_review) regressing the status, and
+            //   * a terminal-but-unclassified status (warning_closed maps to CLOSED/PENDING)
+            //     silently wiping a decided WON/LOST outcome back to PENDING.
+            // A genuine terminal correction (won -> lost) still applies.
+            if (c.getStatus() == DisputeStatus.CLOSED) {
+                DisputeStatus incomingStatus = mapStatus(dispute.stripeStatus());
+                DisputeOutcome incomingOutcome = mapOutcome(dispute.stripeStatus());
+                if (incomingStatus != DisputeStatus.CLOSED || incomingOutcome == DisputeOutcome.PENDING) {
+                    log.info("Ignoring out-of-order charge.dispute.updated ({}) for already-closed dispute {}",
+                            dispute.stripeStatus(), dispute.disputeId());
+                    return;
+                }
             }
             c.setStripeStatus(dispute.stripeStatus());
             c.setStatus(mapStatus(dispute.stripeStatus()));
@@ -234,7 +243,7 @@ public class DisputeServiceImpl implements DisputeService {
                 log.warn("[CHARGEBACK-UNCONTESTED] Dispute {} (order {}) closed as LOST with no evidence "
                         + "submitted to Stripe — confirm this was a deliberate concession, not a missed deadline",
                         dispute.disputeId(),
-                        c.getOrder() != null ? c.getOrder().getId() : "unresolved");
+                        c.resolveOrderId() != null ? c.resolveOrderId() : "unresolved");
             } else {
                 log.info("Dispute {} closed with outcome {}", dispute.disputeId(), c.getOutcome());
             }
@@ -249,7 +258,7 @@ public class DisputeServiceImpl implements DisputeService {
     @Transactional(readOnly = true)
     public PagedResponse<DisputeCaseResponse> getOpenDisputes(Pageable pageable) {
         Page<DisputeCase> page =
-                disputeCaseRepository.findAllByStatusNotOrderByCreatedAtDesc(DisputeStatus.CLOSED, pageable);
+                disputeCaseRepository.findOpenByDeadline(DisputeStatus.CLOSED, pageable);
 
         // One grouped count for the whole page rather than a count per row.
         Map<UUID, Long> counts = evidenceCounts(page.getContent());

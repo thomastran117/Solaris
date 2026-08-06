@@ -1,23 +1,27 @@
 name: CI
 
-# Runs on a push to any branch, not just main, so feature branches get CI before a PR
-# exists — and so a PR whose head fails to sync (a push ref-lock race leaves the branch
-# updated but fires no `synchronize` event) is still covered by the push run.
+# `push` covers any branch, so a feature branch gets CI before a PR exists, and a commit is
+# still built if the PR event is delayed or dropped.
 #
-# `pull_request` is limited to opened/reopened deliberately. The default type list
-# includes `synchronize`, which would fire on every push to an open PR branch and run
-# the whole 8-shard matrix a second time for the same commit.
+# `pull_request` keeps its default types (opened, synchronize, reopened). `synchronize` is
+# required, not redundant: `push` events fire in the fork for a fork-based PR, never here, so
+# dropping it would leave a fork PR with no CI on every commit after the first.
+#
+# The cost is that a same-repo PR branch runs twice per push — once via `push`, once via
+# `synchronize`. Accepted deliberately in exchange for fork coverage and for not depending on a
+# single event type; the concurrency group below caps the waste to one in-flight run per branch,
+# but it does not deduplicate the two events (they carry different `github.ref` values).
 on:
   push:
     branches: ["**"]
   pull_request:
     branches: [main]
-    types: [opened, reopened]
 
-# Keyed on the PR number when there is one, so a pull_request run and a push run for the
-# same PR collapse into a single group instead of racing as two independent runs.
+# `github.ref` is the branch for a push and `refs/pull/N/merge` for a pull_request, so this
+# collapses repeated pushes to the same branch — superseded runs are cancelled — but a push and
+# its matching pull_request run are in different groups and both execute.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -150,6 +150,34 @@ describe("AdminDisputesPage", () => {
     expect(await screen.findByText(/overdue/)).toBeInTheDocument();
   });
 
+  /**
+   * The first 24 hours past the deadline: Math.ceil yields -0 there, and -0 is neither < 0 nor
+   * distinguishable from 0, so this window used to render as a neutral "due today".
+   */
+  it.each([
+    ["an hour ago", -1 / 24],
+    ["twelve hours ago", -0.5],
+    ["a minute ago", -1 / 1440],
+  ])("shows a deadline that passed %s as overdue, not due today", async (_label, offsetDays) => {
+    mockList.mockResolvedValue(
+      stubPage([stubDispute({ evidenceDeadline: futureDeadline(offsetDays) })])
+    );
+    renderPage();
+
+    expect(await screen.findByText(/overdue/)).toBeInTheDocument();
+    expect(screen.queryByText(/due today/)).not.toBeInTheDocument();
+  });
+
+  it("shows a deadline later today as due today, not overdue", async () => {
+    mockList.mockResolvedValue(
+      stubPage([stubDispute({ evidenceDeadline: futureDeadline(0.25) })])
+    );
+    renderPage();
+
+    expect(await screen.findByText(/due today/)).toBeInTheDocument();
+    expect(screen.queryByText(/overdue/)).not.toBeInTheDocument();
+  });
+
   it("opens the detail view with pre-populated evidence when a dispute is selected", async () => {
     const user = userEvent.setup();
     renderPage();
