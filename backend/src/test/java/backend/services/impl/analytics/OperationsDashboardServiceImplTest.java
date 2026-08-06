@@ -99,7 +99,8 @@ class OperationsDashboardServiceImplTest {
                 new DurationMetricResponse(3L, 0.5, List.of()),
                 new StockoutMetricResponse(10, 1, 0.1, 50, 5, 0.1),
                 new SupplierLatenessMetricResponse(8, 2, 0.25, 1.5, List.of()),
-                new CancellationMetricResponse(4, List.of(), List.of()));
+                new CancellationMetricResponse(4, List.of(), List.of()),
+                2L);
         when(cacheService.get(anyString())).thenReturn(objectMapper.writeValueAsString(cached));
 
         OperationsSummaryResponse out = service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 30);
@@ -236,6 +237,26 @@ class OperationsDashboardServiceImplTest {
         verify(metricsRepository).fulfillmentStats(eq(TestIds.uuid(1)), any(), any());
         verify(metricsRepository).refundStats(eq(TestIds.uuid(1)), any(), any());
         verify(metricsRepository).pickDelayStats(eq(TestIds.uuid(1)), any(), any());
+    }
+
+    @Test
+    void getSummary_includesOpenDisputeCount() {
+        stubAllBuilderDeps(TestIds.uuid(1));
+        when(metricsRepository.openDisputeCount(TestIds.uuid(1))).thenReturn(3L);
+
+        OperationsSummaryResponse out = service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 30);
+
+        assertEquals(3L, out.getOpenDisputeCount());
+        verify(metricsRepository).openDisputeCount(TestIds.uuid(1));
+    }
+
+    /** The count is outstanding work, not a windowed metric — lookback must not filter it. */
+    @Test
+    void getSummary_openDisputeCountIgnoresLookbackWindow() {
+        stubAllBuilderDeps(TestIds.uuid(1));
+        when(metricsRepository.openDisputeCount(TestIds.uuid(1))).thenReturn(7L);
+
+        assertEquals(7L, service.getSummary(TestIds.uuid(1), TestIds.uuid(99), 365).getOpenDisputeCount());
     }
 
     // ─── individual metric methods not tested above ──────────────────────────

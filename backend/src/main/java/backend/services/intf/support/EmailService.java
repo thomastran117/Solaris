@@ -173,4 +173,18 @@ public interface EmailService {
      * The email is dispatched asynchronously via Kafka.
      */
     void sendMfaOtpEmail(String toEmail, String code);
+
+    /**
+     * Alerts the support team that a new chargeback has been opened against a charge.
+     * Dispatched asynchronously via Kafka after the enclosing transaction commits.
+     *
+     * @param recipientEmail   support team address ({@code app.email.support-team-email})
+     * @param orderId          the disputed order; null when the charge could not be mapped to one
+     * @param amountCents      disputed amount in the smallest currency unit
+     * @param reason           raw Stripe dispute reason code
+     * @param evidenceDeadline when evidence must be submitted by; may be null
+     */
+    void sendDisputeAlertEmail(String recipientEmail, String stripeDisputeId, UUID orderId,
+                               long amountCents, String currency, String reason,
+                               java.time.Instant evidenceDeadline);
 }

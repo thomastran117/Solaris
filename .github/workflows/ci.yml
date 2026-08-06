@@ -95,7 +95,7 @@ jobs:
             tests: SavedListIT,LoyaltyIT,CouponIT,SubscriptionIT,CompanyReturnLocationIT,CompanyReturnIT,ReturnIT,SupportTicketIT,InternalNoteIT,FeedbackIT
           - shard: 8
             name: marketing-workflows
-            tests: MarketingWorkflowIT,WorkflowEnrollmentIT,B2BQuoteIT,ShippingRateIT,TaxRateIT
+            tests: MarketingWorkflowIT,WorkflowEnrollmentIT,B2BQuoteIT,ShippingRateIT,TaxRateIT,DisputeIT
 
     steps:
       - name: Checkout

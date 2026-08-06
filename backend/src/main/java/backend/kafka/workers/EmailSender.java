@@ -91,6 +91,9 @@ public class EmailSender {
                         e.invoiceNumber(), e.totalCents(), e.dueDate(), e.currency(), e.items());
             case EmailEvent.MfaOtpEmail e ->
                 sendMfaOtpEmail(e.toEmail(), e.code());
+            case EmailEvent.DisputeAlertEmail e ->
+                sendDisputeAlertEmail(e.recipientEmail(), e.stripeDisputeId(), e.orderId(),
+                        e.amountCents(), e.currency(), e.reason(), e.evidenceDeadline());
             default -> {}
         }
     }
@@ -409,6 +412,56 @@ public class EmailSender {
             mailSender.send(message);
             return null;
         });
+    }
+
+    // ─── Chargeback & Dispute Automation (Feature 15) ──────────────────────────
+
+    private void sendDisputeAlertEmail(String recipientEmail, String stripeDisputeId,
+                                       java.util.UUID orderId, long amountCents, String currency,
+                                       String reason, java.time.Instant evidenceDeadline) {
+        String safeDisputeId = HtmlUtils.htmlEscape(stripeDisputeId != null ? stripeDisputeId : "");
+        String safeReason    = HtmlUtils.htmlEscape(reason != null && !reason.isBlank() ? reason : "unspecified");
+        String currencyLabel = currency != null ? currency.toUpperCase() : "USD";
+        String orderLine = orderId != null
+                ? "<p style=\"margin:12px 0 0 0;font-size:14px;color:#475569;\">Order: <strong>"
+                    + orderId + "</strong></p>"
+                // No order match is itself actionable — support has to reconcile the charge by hand.
+                : "<p style=\"margin:12px 0 0 0;font-size:14px;color:#DC2626;\">"
+                    + "No matching order found for this charge — reconcile manually.</p>";
+        String deadlineLabel = evidenceDeadline != null
+                ? DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy 'at' HH:mm 'UTC'")
+                        .withZone(ZoneId.of("UTC")).format(evidenceDeadline)
+                : "not supplied by Stripe";
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-0.5px;">
+              New chargeback opened
+            </h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#475569;line-height:1.7;">
+              A customer has disputed a charge. Evidence must be submitted to Stripe before the
+              deadline below — an unanswered dispute is lost automatically.
+            </p>
+            <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.06em;
+                         text-transform:uppercase;color:#F87171;">Evidence due by</p>
+              <p style="margin:6px 0 0 0;font-size:16px;color:#0F172A;font-weight:600;line-height:1.4;">%s</p>
+            </div>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:16px 0;">
+              <p style="margin:0;font-size:13px;color:#64748B;">Amount disputed</p>
+              <p style="margin:6px 0 0 0;font-size:22px;font-weight:800;color:#1D4ED8;">%s&nbsp;%.2f</p>
+              <p style="margin:12px 0 0 0;font-size:14px;color:#475569;">Reason: <strong>%s</strong></p>
+              <p style="margin:8px 0 0 0;font-size:14px;color:#475569;">Dispute: <strong>%s</strong></p>
+              %s
+            </div>
+            <p style="margin:16px 0 0 0;font-size:14px;color:#475569;line-height:1.7;">
+              Evidence from the order, tracking and support history has already been pre-populated
+              on the case. Review it, add anything missing, then submit through the Stripe dashboard.
+            </p>
+            %s
+            """.formatted(deadlineLabel, currencyLabel, amountCents / 100.0, safeReason,
+                safeDisputeId, orderLine,
+                primaryButton(env.getEmail().getVerificationBaseUrl() + "/admin/disputes", "Review Dispute"));
+        sendMimeMessage(recipientEmail, "Chargeback opened: " + safeDisputeId + " — ShopWave",
+                wrapInShell("Chargeback", body));
     }
 
     private void sendMimeMessage(String toEmail, String subject, String htmlBody) {

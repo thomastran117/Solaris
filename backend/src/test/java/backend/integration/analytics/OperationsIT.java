@@ -256,6 +256,22 @@ class OperationsIT extends AbstractIntegrationIT {
                 .andExpect(jsonPath("$.data.companyId").value(company.getId().toString()))
                 .andExpect(jsonPath("$.data.fulfillment").exists())
                 .andExpect(jsonPath("$.data.refunds").exists())
-                .andExpect(jsonPath("$.data.pickDelays").exists());
+                .andExpect(jsonPath("$.data.pickDelays").exists())
+                .andExpect(jsonPath("$.data.openDisputeCount").exists());
+    }
+
+    /**
+     * Feature 15, AC 6. A company with no chargebacks reports zero — which also proves the
+     * native dispute-count join parses and executes against real PostgreSQL.
+     */
+    @Test
+    void getSummary_includesZeroOpenDisputeCountWhenCompanyHasNoChargebacks() throws Exception {
+        User owner = createActiveUser("ops-disputes-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+
+        mockMvc.perform(get(ops(company.getId(), "summary"))
+                        .header("Authorization", ownerTokenFor(company, owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.openDisputeCount").value(0));
     }
 }

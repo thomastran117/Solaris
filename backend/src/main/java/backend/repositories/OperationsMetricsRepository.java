@@ -191,4 +191,26 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
             nativeQuery = true)
     List<DailyCountProjection> cancellationsDaily(@Param("companyId") UUID companyId,
                                                   @Param("from") Instant from, @Param("to") Instant to);
+
+    // -------------------------------------------------------------------------
+    // 7) Open chargebacks (Feature 15)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Count of non-CLOSED disputes against orders containing at least one of this company's
+     * products. Deliberately not time-windowed: an open dispute matters until it is resolved,
+     * however long ago the chargeback landed.
+     *
+     * <p>{@code COUNT(DISTINCT dc.id)} because a multi-item order joins once per item, and a
+     * multi-vendor order legitimately surfaces the same dispute to more than one company.
+     */
+    @Query(value =
+            "SELECT COUNT(DISTINCT dc.id) " +
+            "FROM dispute_cases dc " +
+            "JOIN order_items i ON i.order_id = dc.order_id " +
+            "JOIN products p ON p.id = i.product_id " +
+            "WHERE p.company_id = :companyId " +
+            "AND dc.status <> 'CLOSED'",
+            nativeQuery = true)
+    long openDisputeCount(@Param("companyId") UUID companyId);
 }

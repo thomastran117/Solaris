@@ -1,6 +1,7 @@
 package backend.controllers.impl.orders;
 
 import backend.configurations.application.GlobalExceptionHandler;
+import backend.dtos.responses.dispute.DisputeCaseResponse;
 import backend.dtos.responses.general.PagedResponse;
 import backend.dtos.responses.order.OrderItemResponse;
 import backend.dtos.responses.order.OrderResponse;
@@ -15,6 +16,7 @@ import backend.services.intf.IdempotencyService;
 import backend.services.intf.orders.OrderService;
 import backend.services.intf.orders.ReplacementOrderService;
 import backend.services.intf.orders.TrackingService;
+import backend.services.intf.payments.DisputeService;
 import backend.services.intf.payments.PaymentService;
 import backend.services.intf.payments.VendorPayoutService;
 import backend.services.intf.returns.ReturnService;
@@ -72,6 +74,7 @@ class OrderControllerTest {
     private IdempotencyService idempotencyService;
     private CacheService cacheService;
     private backend.services.intf.RateLimitService rateLimitService;
+    private DisputeService disputeService;
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
@@ -87,6 +90,7 @@ class OrderControllerTest {
         idempotencyService = mock(IdempotencyService.class);
         cacheService = mock(CacheService.class);
         rateLimitService = mock(backend.services.intf.RateLimitService.class);
+        disputeService = mock(DisputeService.class);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(
                         orderService,
@@ -101,7 +105,8 @@ class OrderControllerTest {
                         mock(TrackingService.class),
                         mock(OrderSseService.class),
                         new ObjectMapper().findAndRegisterModules(),
-                        rateLimitService))
+                        rateLimitService,
+                        disputeService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(new NoOpValidator())
                 .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON))
@@ -254,6 +259,127 @@ class OrderControllerTest {
                 .andExpect(status().isOk());
 
         verify(returnService).handleRefundWebhookEvent("re_1", "succeeded", 900L);
+    }
+
+    @Test
+    void stripeWebhook_disputeCreatedDelegatesToDisputeService() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_dp_1",
+                        "charge.dispute.created",
+                        "dp_1",
+                        "charge",
+                        Map.of(
+                                "chargeId", "ch_9",
+                                "paymentIntentId", "pi_9",
+                                "amountCents", "2500",
+                                "currency", "usd",
+                                "disputeReason", "fraudulent",
+                                "disputeStatus", "needs_response",
+                                "evidenceDueBy", "1760000000",
+                                "hasEvidence", "false"
+                        )));
+        when(cacheService.tryLock("stripe:event:evt_dp_1", "1", 2678400L)).thenReturn(true);
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<DisputeService.StripeDispute> captor =
+                ArgumentCaptor.forClass(DisputeService.StripeDispute.class);
+        verify(disputeService).handleDisputeCreated(captor.capture());
+        DisputeService.StripeDispute d = captor.getValue();
+        assertEquals("dp_1", d.disputeId());
+        assertEquals("ch_9", d.chargeId());
+        assertEquals("pi_9", d.paymentIntentId());
+        assertEquals(2500L, d.amountCents());
+        assertEquals("fraudulent", d.reason());
+        assertEquals("needs_response", d.stripeStatus());
+        assertEquals(Instant.ofEpochSecond(1760000000L), d.evidenceDeadline());
+        assertEquals(false, d.hasEvidence());
+    }
+
+    @Test
+    void stripeWebhook_disputeUpdatedDelegatesToDisputeService() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_dp_2", "charge.dispute.updated", "dp_2", "charge",
+                        Map.of("disputeStatus", "under_review")));
+        when(cacheService.tryLock("stripe:event:evt_dp_2", "1", 2678400L)).thenReturn(true);
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(disputeService).handleDisputeUpdated(any());
+        verify(disputeService, never()).handleDisputeCreated(any());
+    }
+
+    @Test
+    void stripeWebhook_disputeClosedDelegatesToDisputeService() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_dp_3", "charge.dispute.closed", "dp_3", "charge",
+                        Map.of("disputeStatus", "won", "hasEvidence", "true")));
+        when(cacheService.tryLock("stripe:event:evt_dp_3", "1", 2678400L)).thenReturn(true);
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<DisputeService.StripeDispute> captor =
+                ArgumentCaptor.forClass(DisputeService.StripeDispute.class);
+        verify(disputeService).handleDisputeClosed(captor.capture());
+        assertEquals("won", captor.getValue().stripeStatus());
+        assertEquals(true, captor.getValue().hasEvidence());
+    }
+
+    /**
+     * Malformed metadata must not produce a 500 — that would make Stripe retry the webhook for
+     * 30 days over a field the handler does not even need.
+     */
+    @Test
+    void stripeWebhook_disputeWithMalformedMetadataStillReturnsOk() throws Exception {
+        when(paymentService.constructWebhookEvent("{}", "sig"))
+                .thenReturn(new PaymentService.WebhookEvent(
+                        "evt_dp_4", "charge.dispute.created", "dp_4", "charge",
+                        Map.of("amountCents", "not-a-number", "evidenceDueBy", "garbage")));
+        when(cacheService.tryLock("stripe:event:evt_dp_4", "1", 2678400L)).thenReturn(true);
+
+        mockMvc.perform(post("/orders/webhook/stripe")
+                        .header("Stripe-Signature", "sig")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<DisputeService.StripeDispute> captor =
+                ArgumentCaptor.forClass(DisputeService.StripeDispute.class);
+        verify(disputeService).handleDisputeCreated(captor.capture());
+        assertEquals(0L, captor.getValue().amountCents());
+        assertNull(captor.getValue().evidenceDeadline());
+    }
+
+    @Test
+    void getOrderDisputes_returnsDisputesForOrder() throws Exception {
+        authenticateAs(USER_ID);
+        DisputeCaseResponse dispute = new DisputeCaseResponse(
+                TestIds.uuid(30), ORDER_ID, "dp_5", "ch_5", 2500L, "usd", "fraudulent",
+                backend.models.enums.DisputeStatus.OPEN, backend.models.enums.DisputeOutcome.PENDING,
+                "needs_response", Instant.parse("2026-09-01T00:00:00Z"), null, 3L,
+                Instant.parse("2026-08-01T00:00:00Z"), Instant.parse("2026-08-01T00:00:00Z"));
+        when(disputeService.getDisputesByOrder(ORDER_ID)).thenReturn(List.of(dispute));
+
+        mockMvc.perform(get("/orders/" + ORDER_ID + "/disputes"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stripeDisputeId").value("dp_5"))
+                .andExpect(jsonPath("$[0].status").value("OPEN"))
+                .andExpect(jsonPath("$[0].evidenceCount").value(3));
     }
 
     @Test
