@@ -28,13 +28,6 @@ class GiftCardIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private GiftCardRepository giftCardRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM customer_credits"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM gift_cards"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

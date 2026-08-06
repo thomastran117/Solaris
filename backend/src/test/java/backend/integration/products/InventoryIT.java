@@ -33,14 +33,6 @@ class InventoryIT extends AbstractIntegrationIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void cleanInventory() {
-        try { jdbcTemplate.execute("DELETE FROM inventory_adjustments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Setup helpers ─────────────────────────────────────────────────────────
 

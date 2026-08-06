@@ -29,14 +29,6 @@ class MarketplaceAvailabilityIT extends AbstractIntegrationIT {
     @Autowired private InventoryLocationRepository locationRepository;
     @Autowired private LocationStockRepository locationStockRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM location_stocks"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM inventory_locations"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -21,10 +21,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class CustomerCreditIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void cleanCredits() {
-        try { jdbcTemplate.execute("DELETE FROM customer_credits"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

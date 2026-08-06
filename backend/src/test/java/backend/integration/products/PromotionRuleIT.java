@@ -27,15 +27,6 @@ class PromotionRuleIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
 
-    @AfterEach
-    void cleanPromotions() {
-        try { jdbcTemplate.execute("DELETE FROM promotion_rule_target_products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM promotion_rule_target_bundles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM promotion_rule_target_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM promotion_rules"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Setup helpers ─────────────────────────────────────────────────────────
 

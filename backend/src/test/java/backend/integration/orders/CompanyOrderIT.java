@@ -37,16 +37,6 @@ class CompanyOrderIT extends AbstractIntegrationIT {
     @Autowired private ProductRepository productRepository;
     @Autowired private OrderRepository orderRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM order_status_history"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

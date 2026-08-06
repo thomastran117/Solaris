@@ -37,17 +37,6 @@ class VendorPayoutIT extends AbstractIntegrationIT {
 
     @MockitoBean private PaymentService paymentService;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM vendor_adjustments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_payout_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_payouts"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM vendor_balances"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

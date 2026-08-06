@@ -88,4 +88,32 @@ public final class IntegrationContainers {
         registry.add("app.redis.host", REDIS::getHost);
         registry.add("app.redis.port", () -> REDIS.getMappedPort(6379));
     }
+
+    /**
+     * Cached because the table set is fixed for the JVM's lifetime, and re-reading
+     * {@code pg_tables} per test would cost more than the truncate itself.
+     */
+    private static volatile String truncateAllSql;
+
+    /**
+     * Empties every table in the {@code public} schema in one statement.
+     *
+     * <p>Replaces the hand-ordered {@code DELETE FROM} chains the suite used to carry. Those
+     * were each wrapped in {@code catch (Exception ignored)}, which on PostgreSQL would have
+     * silently swallowed the foreign-key violations that a wrong delete order now raises,
+     * leaving rows behind to contaminate the next test. {@code CASCADE} removes the ordering
+     * problem altogether.
+     */
+    public static void truncateAll(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+        String sql = truncateAllSql;
+        if (sql == null) {
+            java.util.List<String> tables = jdbcTemplate.queryForList(
+                    "SELECT quote_ident(tablename) FROM pg_tables " +
+                    "WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history'",
+                    String.class);
+            sql = "TRUNCATE TABLE " + String.join(", ", tables) + " RESTART IDENTITY CASCADE";
+            truncateAllSql = sql;
+        }
+        jdbcTemplate.execute(sql);
+    }
 }

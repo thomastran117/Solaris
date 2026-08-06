@@ -65,17 +65,6 @@ class ShippingRateIT extends AbstractIntegrationIT {
                         inv.getArgument(0), "secret", inv.getArgument(1), "usd", "requires_payment_method", null));
     }
 
-    @AfterEach
-    void cleanShipping() {
-        try { jdbcTemplate.execute("DELETE FROM order_status_history"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM location_stocks"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM inventory_locations"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── GET /orders/{id}/shipping-rates ───────────────────────────────────────
 

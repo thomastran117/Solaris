@@ -221,10 +221,8 @@ public abstract class AbstractSearchKafkaIT {
     }
 
     @AfterEach
-    void cleanUsers() {
-        try { jdbcTemplate.execute("DELETE FROM user_devices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM user_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM users"); } catch (Exception ignored) {}
+    void cleanDatabase() {
+        backend.integration.IntegrationContainers.truncateAll(jdbcTemplate);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

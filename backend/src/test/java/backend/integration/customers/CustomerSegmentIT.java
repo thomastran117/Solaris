@@ -25,8 +25,6 @@ class CustomerSegmentIT extends AbstractIntegrationIT {
         // user_segments must be deleted before customer_segments (FK).
         // The base @AfterEach also deletes user_segments, but runs after this method,
         // so we delete it here first to unblock the customer_segments DELETE.
-        try { jdbcTemplate.execute("DELETE FROM user_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM customer_segments"); } catch (Exception ignored) {}
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -44,12 +44,6 @@ class TrackingWebhookIT extends AbstractIntegrationIT {
     @Autowired private OrderRepository orderRepository;
     @Autowired private OrderStatusHistoryRepository historyRepository;
 
-    @AfterEach
-    void cleanOrders() {
-        try { jdbcTemplate.execute("DELETE FROM order_status_history"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

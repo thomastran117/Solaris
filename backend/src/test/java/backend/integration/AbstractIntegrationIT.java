@@ -124,37 +124,9 @@ public abstract class AbstractIntegrationIT {
         when(captchaService.verify(any(), any())).thenReturn(true);
     }
 
-    /**
-     * Cached because the table list is fixed for the lifetime of the JVM, and rebuilding it
-     * from {@code pg_tables} on every test would dominate the cost of the truncate itself.
-     */
-    private static volatile String truncateAllSql;
-
     @AfterEach
     void cleanDatabase() {
-        jdbcTemplate.execute(truncateAllStatement());
-    }
-
-    /**
-     * Single {@code TRUNCATE ... CASCADE} over every table in the schema.
-     *
-     * <p>This replaces per-class {@code DELETE FROM} chains. PostgreSQL enforces foreign-key
-     * ordering strictly, so a hand-ordered delete list becomes a maintenance burden that fails
-     * loudly the moment a relationship is added — and the previous {@code catch (Exception
-     * ignored)} form would have hidden that, leaving rows behind to poison the next test.
-     * {@code CASCADE} makes ordering irrelevant.
-     */
-    protected String truncateAllStatement() {
-        String sql = truncateAllSql;
-        if (sql == null) {
-            java.util.List<String> tables = jdbcTemplate.queryForList(
-                    "SELECT quote_ident(tablename) FROM pg_tables " +
-                    "WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history'",
-                    String.class);
-            sql = "TRUNCATE TABLE " + String.join(", ", tables) + " RESTART IDENTITY CASCADE";
-            truncateAllSql = sql;
-        }
-        return sql;
+        IntegrationContainers.truncateAll(jdbcTemplate);
     }
 
     // ── User factory helpers ──────────────────────────────────────────────────

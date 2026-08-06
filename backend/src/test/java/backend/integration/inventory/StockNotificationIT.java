@@ -35,14 +35,6 @@ class StockNotificationIT extends AbstractIntegrationIT {
 
     private static final String BASE = "/stock-notifications";
 
-    @AfterEach
-    void cleanNotifications() {
-        try { jdbcTemplate.execute("DELETE FROM stock_notifications"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

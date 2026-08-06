@@ -37,12 +37,6 @@ class ProductComparisonIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM product_attributes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

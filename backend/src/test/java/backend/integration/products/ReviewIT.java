@@ -38,16 +38,6 @@ class ReviewIT extends AbstractIntegrationIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
 
-    @AfterEach
-    void cleanReviews() {
-        try { jdbcTemplate.execute("DELETE FROM review_helpful_votes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM review_media"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_reviews"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

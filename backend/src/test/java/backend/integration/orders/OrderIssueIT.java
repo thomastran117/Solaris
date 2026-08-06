@@ -29,12 +29,6 @@ class OrderIssueIT extends AbstractIntegrationIT {
     @Autowired private OrderRepository orderRepository;
     @Autowired private OrderIssueRepository issueRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM order_issues"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

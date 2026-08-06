@@ -47,18 +47,6 @@ class B2BQuoteIT extends AbstractIntegrationIT {
     @Autowired private B2BAccountRepository accountRepository;
     @Autowired private backend.repositories.OrderRepository orderRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM b2b_invoices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM b2b_quote_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM b2b_quotes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM b2b_accounts"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     private Company createCompany(User owner, String name) {
         Company c = new Company();

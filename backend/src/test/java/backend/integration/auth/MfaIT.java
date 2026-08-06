@@ -28,11 +28,6 @@ class MfaIT extends AbstractIntegrationIT {
     private static final String PASSWORD = "Password123!";
     private static final String PHONE    = "+15551234567";
 
-    @AfterEach
-    void cleanMfa() {
-        try { jdbcTemplate.execute("DELETE FROM mfa_credential_backup_codes"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM mfa_credentials"); }             catch (Exception ignored) {}
-    }
 
     // ─── Authentication guard ─────────────────────────────────────────────────
 

@@ -25,11 +25,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ReportIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM report_screenshots"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM reports"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

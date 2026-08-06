@@ -66,11 +66,6 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
     @AfterEach
     void clean() {
         try { productSearchRepository.deleteAll(); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

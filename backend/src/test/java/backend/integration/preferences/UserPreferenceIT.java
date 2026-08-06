@@ -15,10 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class UserPreferenceIT extends AbstractIntegrationIT {
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM user_preference"); } catch (Exception ignored) {}
-    }
 
     // ── GET /users/me/preferences ──────────────────────────────────────────────
 

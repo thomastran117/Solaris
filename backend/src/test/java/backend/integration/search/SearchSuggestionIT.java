@@ -45,9 +45,6 @@ class SearchSuggestionIT extends AbstractSearchKafkaIT {
     @AfterEach
     void cleanSuggestions() {
         try { productSearchRepository.deleteAll(); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
     }
 
     private Company createCompany(User owner) {

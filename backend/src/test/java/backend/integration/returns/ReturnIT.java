@@ -33,19 +33,6 @@ class ReturnIT extends AbstractIntegrationIT {
     @Autowired private ProductRepository productRepository;
     @Autowired private CompanyRepository companyRepository;
 
-    @AfterEach
-    void cleanReturns() {
-        try { jdbcTemplate.execute("DELETE FROM return_evidence_urls"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM return_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM returns"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM risk_assessments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM product_change_log"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -47,14 +47,6 @@ class MarketplaceCollectionIT extends AbstractIntegrationIT {
     @Autowired private CollectionRepository collectionRepository;
     @Autowired private CollectionProductRepository collectionProductRepository;
 
-    @AfterEach
-    void clean() {
-        try { jdbcTemplate.execute("DELETE FROM collection_products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM collections"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_profiles"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM products"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

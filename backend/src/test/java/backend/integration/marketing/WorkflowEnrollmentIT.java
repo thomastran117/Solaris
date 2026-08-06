@@ -34,16 +34,6 @@ class WorkflowEnrollmentIT extends AbstractIntegrationIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CustomerSegmentRepository segmentRepository;
 
-    @AfterEach
-    void cleanMarketing() {
-        try { jdbcTemplate.execute("DELETE FROM workflow_delivery_logs"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM workflow_enrollments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketing_workflows"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM customer_segment_users"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM customer_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 

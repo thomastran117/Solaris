@@ -26,17 +26,6 @@ class SubOrderIT extends AbstractIntegrationIT {
     @Autowired private SubOrderRepository subOrderRepository;
     @Autowired private CommissionRecordRepository commissionRecordRepository;
 
-    @AfterEach
-    void cleanSubOrders() {
-        try { jdbcTemplate.execute("DELETE FROM commission_records"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM sub_orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_status_history"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM marketplace_vendors"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM company_memberships"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM companies"); } catch (Exception ignored) {}
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

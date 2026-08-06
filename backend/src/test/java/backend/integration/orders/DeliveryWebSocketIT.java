@@ -99,14 +99,10 @@ class DeliveryWebSocketIT {
     }
 
     @AfterEach
-    void cleanUp() {
-        try { jdbcTemplate.execute("DELETE FROM order_status_history"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM order_items"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM orders"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM user_devices"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM user_segments"); } catch (Exception ignored) {}
-        try { jdbcTemplate.execute("DELETE FROM users"); } catch (Exception ignored) {}
+    void cleanDatabase() {
+        IntegrationContainers.truncateAll(jdbcTemplate);
     }
+
 
     private User createDriver() {
         User user = new User();
