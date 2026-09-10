@@ -1062,6 +1062,7 @@ public class EnvironmentSetting {
 
     public static class Email {
         private String from = "noreply@shopwave.com";
+        private String supportTeamEmail = "support@shopwave.com";
         private String verificationBaseUrl = "http://localhost:3000";
         private long verificationTokenTtlSeconds = 86_400;
         private final Executor executor = new Executor();
@@ -1073,6 +1074,17 @@ public class EnvironmentSetting {
 
         public void setFrom(String from) {
             this.from = from != null ? from : "noreply@shopwave.com";
+        }
+
+        /** Distribution list alerted on new chargebacks (Feature 15). */
+        public String getSupportTeamEmail() {
+            return supportTeamEmail != null && !supportTeamEmail.isBlank()
+                    ? supportTeamEmail : "support@shopwave.com";
+        }
+
+        public void setSupportTeamEmail(String supportTeamEmail) {
+            this.supportTeamEmail = supportTeamEmail != null && !supportTeamEmail.isBlank()
+                    ? supportTeamEmail : "support@shopwave.com";
         }
 
         public String getVerificationBaseUrl() {

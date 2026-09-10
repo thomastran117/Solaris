@@ -77,6 +77,8 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
         Window w = window(days);
         String key = cacheKey(companyId, "summary", days);
 
+        // Summaries cached before openDisputeCount existed deserialize with 0 and are corrected
+        // when the 15-minute entry expires.
         OperationsSummaryResponse cached = readCache(key, OperationsSummaryResponse.class);
         if (cached != null) return cached;
 
@@ -87,7 +89,8 @@ public class OperationsDashboardServiceImpl implements OperationsDashboardServic
                 buildPickDelay(companyId, w),
                 buildStockout(companyId, w),
                 buildSupplierLateness(companyId, w),
-                buildCancellation(companyId, w));
+                buildCancellation(companyId, w),
+                metricsRepository.openDisputeCount(companyId));
         writeCache(key, out);
         return out;
     }

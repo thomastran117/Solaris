@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import backend.models.core.SupportTicket;
 import backend.models.enums.TicketStatus;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,4 +34,7 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, UU
             Pageable pageable);
 
     long countByCustomerIdAndStatusNot(UUID customerId, TicketStatus status);
+
+    /** Every ticket raised against an order — the customer-communication evidence for a chargeback. */
+    List<SupportTicket> findAllByOrderIdOrderByCreatedAtAsc(UUID orderId);
 }

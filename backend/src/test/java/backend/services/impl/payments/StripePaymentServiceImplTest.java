@@ -114,6 +114,73 @@ class StripePaymentServiceImplTest {
     }
 
     @Test
+    void constructWebhookEvent_extractsDisputeMetadata() throws Exception {
+        Event event = mock(Event.class);
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        com.stripe.model.Dispute dispute = mock(com.stripe.model.Dispute.class);
+        com.stripe.model.Dispute.EvidenceDetails evidenceDetails =
+                mock(com.stripe.model.Dispute.EvidenceDetails.class);
+
+        when(event.getId()).thenReturn("evt_dp_1");
+        when(event.getType()).thenReturn("charge.dispute.created");
+        when(event.getDataObjectDeserializer()).thenReturn(deserializer);
+        when(deserializer.getObject()).thenReturn(Optional.of(dispute));
+        when(dispute.getId()).thenReturn("dp_1");
+        when(dispute.getCharge()).thenReturn("ch_1");
+        when(dispute.getPaymentIntent()).thenReturn("pi_1");
+        when(dispute.getAmount()).thenReturn(2500L);
+        when(dispute.getCurrency()).thenReturn("usd");
+        when(dispute.getReason()).thenReturn("fraudulent");
+        when(dispute.getStatus()).thenReturn("needs_response");
+        when(dispute.getEvidenceDetails()).thenReturn(evidenceDetails);
+        when(evidenceDetails.getDueBy()).thenReturn(1760000000L);
+        when(evidenceDetails.getHasEvidence()).thenReturn(false);
+
+        try (MockedStatic<Webhook> webhook = org.mockito.Mockito.mockStatic(Webhook.class)) {
+            webhook.when(() -> Webhook.constructEvent("{}", "sig", "whsec_123")).thenReturn(event);
+
+            PaymentService.WebhookEvent result = service.constructWebhookEvent("{}", "sig");
+
+            assertEquals("charge.dispute.created", result.type());
+            assertEquals("dp_1", result.objectId());
+            assertEquals("ch_1", result.metadata().get("chargeId"));
+            assertEquals("pi_1", result.metadata().get("paymentIntentId"));
+            assertEquals("2500", result.metadata().get("amountCents"));
+            assertEquals("usd", result.metadata().get("currency"));
+            assertEquals("fraudulent", result.metadata().get("disputeReason"));
+            assertEquals("needs_response", result.metadata().get("disputeStatus"));
+            assertEquals("1760000000", result.metadata().get("evidenceDueBy"));
+            assertEquals("false", result.metadata().get("hasEvidence"));
+        }
+    }
+
+    /** Inquiries and already-closed disputes arrive without evidence details. */
+    @Test
+    void constructWebhookEvent_disputeWithoutEvidenceDetailsOmitsDeadline() throws Exception {
+        Event event = mock(Event.class);
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        com.stripe.model.Dispute dispute = mock(com.stripe.model.Dispute.class);
+
+        when(event.getId()).thenReturn("evt_dp_2");
+        when(event.getType()).thenReturn("charge.dispute.closed");
+        when(event.getDataObjectDeserializer()).thenReturn(deserializer);
+        when(deserializer.getObject()).thenReturn(Optional.of(dispute));
+        when(dispute.getId()).thenReturn("dp_2");
+        when(dispute.getStatus()).thenReturn("won");
+        when(dispute.getEvidenceDetails()).thenReturn(null);
+
+        try (MockedStatic<Webhook> webhook = org.mockito.Mockito.mockStatic(Webhook.class)) {
+            webhook.when(() -> Webhook.constructEvent("{}", "sig", "whsec_123")).thenReturn(event);
+
+            PaymentService.WebhookEvent result = service.constructWebhookEvent("{}", "sig");
+
+            assertEquals("won", result.metadata().get("disputeStatus"));
+            assertNull(result.metadata().get("evidenceDueBy"));
+            assertNull(result.metadata().get("hasEvidence"));
+        }
+    }
+
+    @Test
     void constructWebhookEvent_invalidSignatureThrowsBadRequest() {
         try (MockedStatic<Webhook> webhook = org.mockito.Mockito.mockStatic(Webhook.class)) {
             webhook.when(() -> Webhook.constructEvent("{}", "sig", "whsec_123"))

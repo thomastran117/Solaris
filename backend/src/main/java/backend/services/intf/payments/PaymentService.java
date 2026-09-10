@@ -70,6 +70,10 @@ public interface PaymentService {
      * @param metadata   optional extra fields extracted from the event payload.
      *                   For {@code charge.refunded}: {@code refundId}, {@code refundStatus}, {@code refundAmountCents}.
      *                   For {@code refund.updated}: same fields (objectId is the refund ID).
+     *                   For {@code charge.dispute.*}: {@code chargeId}, {@code paymentIntentId},
+     *                   {@code amountCents}, {@code currency}, {@code disputeReason}, {@code disputeStatus},
+     *                   {@code evidenceDueBy} (epoch seconds) and {@code hasEvidence}
+     *                   (objectId is the dispute ID).
      *                   Empty map for all other event types.
      */
     /**

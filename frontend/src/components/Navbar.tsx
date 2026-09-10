@@ -159,6 +159,14 @@ export default function Navbar() {
                   Feedback Admin
                 </NavLink>
               )}
+              {/* Chargebacks are raised against the platform account, not a company, so this is
+                  gated on the platform role rather than a company capability — matching the
+                  roles GET /admin/disputes actually accepts. */}
+              {accessToken && (role === "SUPPORT" || role === "MODERATOR" || role === "ADMIN") && (
+                <NavLink to="/admin/disputes" className={navLinkClass}>
+                  Chargebacks
+                </NavLink>
+              )}
               {accessToken && companyId && canFulfillOrders && (
                 <NavLink to="/admin/orders" className={navLinkClass}>
                   Fulfillment

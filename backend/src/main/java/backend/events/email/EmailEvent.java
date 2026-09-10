@@ -33,6 +33,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.QuoteRespondedEmail.class,          name = "QUOTE_RESPONDED"),
     @JsonSubTypes.Type(value = EmailEvent.InvoiceIssuedEmail.class,           name = "INVOICE_ISSUED"),
     @JsonSubTypes.Type(value = EmailEvent.MfaOtpEmail.class,                  name = "MFA_OTP"),
+    @JsonSubTypes.Type(value = EmailEvent.DisputeAlertEmail.class,            name = "DISPUTE_ALERT"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -56,7 +57,8 @@ public sealed interface EmailEvent
                 EmailEvent.QuoteReceivedEmail,
                 EmailEvent.QuoteRespondedEmail,
                 EmailEvent.InvoiceIssuedEmail,
-                EmailEvent.MfaOtpEmail {
+                EmailEvent.MfaOtpEmail,
+                EmailEvent.DisputeAlertEmail {
 
     record VerificationEmail(
         String toEmail,
@@ -261,5 +263,24 @@ public sealed interface EmailEvent
     record MfaOtpEmail(
         String toEmail,
         String code
+    ) implements EmailEvent {}
+
+    // ─── Chargeback & Dispute Automation (Feature 15) ───────────────────────────
+
+    /**
+     * Sent to the support team the moment Stripe reports a new chargeback. The deadline is the
+     * point of the alert — evidence not submitted by then loses the dispute automatically.
+     *
+     * @param orderId          null when the disputed charge could not be mapped to an order
+     * @param evidenceDeadline null when Stripe supplied no deadline (e.g. inquiries)
+     */
+    record DisputeAlertEmail(
+        String recipientEmail,
+        String stripeDisputeId,
+        java.util.UUID orderId,
+        long amountCents,
+        String currency,
+        String reason,
+        java.time.Instant evidenceDeadline
     ) implements EmailEvent {}
 }

@@ -223,4 +223,24 @@ class EmailSenderTest {
 
         verify(mailSender).send(any(MimeMessage.class));
     }
+
+    // ─── Chargeback alerts (Feature 15) ──────────────────────────────────────
+
+    @Test
+    void send_disputeAlertEmail_callsMailSend() {
+        emailSender.send(new EmailEvent.DisputeAlertEmail(
+                "support@shopwave.com", "dp_1", ORDER_ID, 2500L, "usd", "fraudulent",
+                Instant.parse("2026-09-01T00:00:00Z")));
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    /** An unmatched charge and a missing deadline are both normal — neither may break the alert. */
+    @Test
+    void send_disputeAlertEmail_withoutOrderOrDeadline_callsMailSend() {
+        assertDoesNotThrow(() -> emailSender.send(new EmailEvent.DisputeAlertEmail(
+                "support@shopwave.com", "dp_2", null, 2500L, "usd", null, null)));
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
 }

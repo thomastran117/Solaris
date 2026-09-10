@@ -191,4 +191,34 @@ public interface OperationsMetricsRepository extends JpaRepository<Order, UUID> 
             nativeQuery = true)
     List<DailyCountProjection> cancellationsDaily(@Param("companyId") UUID companyId,
                                                   @Param("from") Instant from, @Param("to") Instant to);
+
+    // -------------------------------------------------------------------------
+    // 7) Open chargebacks (Feature 15)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Count of non-CLOSED disputes against orders containing at least one of this company's
+     * products, bundles or kits. Deliberately not time-windowed: an open dispute matters until it
+     * is resolved, however long ago the chargeback landed.
+     *
+     * <p>Unlike the metrics above, this does <b>not</b> inner-join {@code products}. Bundle and
+     * kit lines are persisted with a null {@code product_id} (see {@code OrderServiceImpl}, which
+     * calls {@code setProduct(null)} on both), so an inner join drops them entirely and a
+     * bundles-only order would report zero disputes for the company that owns it. Ownership is
+     * therefore resolved across all three line shapes.
+     *
+     * <p>{@code COUNT(DISTINCT dc.id)} because a multi-item order joins once per item, and a
+     * multi-vendor order legitimately surfaces the same dispute to more than one company.
+     */
+    @Query(value =
+            "SELECT COUNT(DISTINCT dc.id) " +
+            "FROM dispute_cases dc " +
+            "JOIN order_items i ON i.order_id = dc.order_id " +
+            "LEFT JOIN products p ON p.id = i.product_id " +
+            "LEFT JOIN product_bundles b ON b.id = i.bundle_id " +
+            "LEFT JOIN product_kits k ON k.id = i.kit_id " +
+            "WHERE COALESCE(p.company_id, b.company_id, k.company_id) = :companyId " +
+            "AND dc.status <> 'CLOSED'",
+            nativeQuery = true)
+    long openDisputeCount(@Param("companyId") UUID companyId);
 }

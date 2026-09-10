@@ -13,6 +13,7 @@ import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.model.Transfer;
 import com.stripe.param.TransferCreateParams;
 import com.stripe.model.Customer;
+import com.stripe.model.Dispute;
 import com.stripe.model.Event;
 import com.stripe.model.Invoice;
 import com.stripe.model.PaymentIntent;
@@ -290,6 +291,22 @@ public class StripePaymentServiceImpl implements PaymentService {
                         "refundStatus",     r.getStatus() != null ? r.getStatus() : "",
                         "refundAmountCents", r.getAmount() != null ? String.valueOf(r.getAmount()) : "0"
                 );
+            } else if (eventType.startsWith("charge.dispute.") && stripeObject instanceof Dispute d) {
+                Map<String, String> meta = new HashMap<>();
+                if (d.getCharge() != null)        meta.put("chargeId", d.getCharge());
+                if (d.getPaymentIntent() != null) meta.put("paymentIntentId", d.getPaymentIntent());
+                if (d.getAmount() != null)        meta.put("amountCents", String.valueOf(d.getAmount()));
+                if (d.getCurrency() != null)      meta.put("currency", d.getCurrency());
+                if (d.getReason() != null)        meta.put("disputeReason", d.getReason());
+                if (d.getStatus() != null)        meta.put("disputeStatus", d.getStatus());
+                Dispute.EvidenceDetails ed = d.getEvidenceDetails();
+                if (ed != null) {
+                    // Epoch seconds. Absent on inquiries and on already-closed disputes.
+                    if (ed.getDueBy() != null) meta.put("evidenceDueBy", String.valueOf(ed.getDueBy()));
+                    // Tells a genuine loss apart from a merchant concession — see DisputeOutcome.
+                    meta.put("hasEvidence", String.valueOf(Boolean.TRUE.equals(ed.getHasEvidence())));
+                }
+                return meta;
             } else if (eventType.startsWith("invoice.") && stripeObject instanceof Invoice inv) {
                 Map<String, String> meta = new HashMap<>();
                 if (inv.getSubscription() != null) meta.put("subscriptionId", inv.getSubscription());

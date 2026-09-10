@@ -170,6 +170,14 @@ public class EmailServiceImpl implements EmailService {
         publish(new EmailEvent.MfaOtpEmail(toEmail, code));
     }
 
+    @Override
+    public void sendDisputeAlertEmail(String recipientEmail, String stripeDisputeId,
+                                      java.util.UUID orderId, long amountCents, String currency,
+                                      String reason, java.time.Instant evidenceDeadline) {
+        publish(new EmailEvent.DisputeAlertEmail(recipientEmail, stripeDisputeId, orderId,
+                amountCents, currency, reason, evidenceDeadline));
+    }
+
     private void publish(EmailEvent event) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
