@@ -1,74 +1,134 @@
 # ShopWave
 
-ShopWave is a full-stack ecommerce app with:
+ShopWave is a full-stack, multi-vendor commerce platform. It combines a React storefront and merchant workspace with a Spring Boot API for catalog, checkout, fulfillment, subscriptions, loyalty, marketing, support, and marketplace operations.
 
-- `frontend/`: React + TypeScript + Vite
-- `backend/`: Spring Boot 3 + Java 21
-- PostgreSQL, Redis, and Elasticsearch for local infrastructure
+The repository is under active development. The documentation describes behavior present in the current codebase; see the [candidate roadmap](documentation/roadmap.md) for ideas that are not commitments.
 
-## Docker Quick Start
+## Highlights
 
-1. Copy the Docker env template:
+- Marketplace browsing, product comparison, collections, kits, saved lists, reviews, Q&A, and price watches
+- Customer orders, delivery slots, shipping rates, pickup, tracking, returns, subscriptions, gift cards, and loyalty
+- Merchant catalog, inventory, purchasing, fulfillment, B2B quotes, promotions, marketing, webhooks, reports, and team management
+- JWT authentication with refresh-token cookies, OAuth integrations, rate limits, device verification, and risk checks
+- PostgreSQL persistence managed by Flyway, Redis caching and coordination, Elasticsearch search, and Kafka events
+- Backend unit and Testcontainers integration tests, frontend Vitest tests, and Playwright browser smoke tests
+
+## Technology
+
+| Area               | Stack                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| Frontend           | React 19, TypeScript 5.8, Vite 6, React Router, Redux Toolkit, TanStack Query, Tailwind CSS 4 |
+| Backend            | Java 21, Spring Boot 3.4, Spring Security, Spring Data JPA, Maven                             |
+| Data and messaging | PostgreSQL 16, Redis 7, Elasticsearch 8, Kafka 4, Flyway                                      |
+| Integrations       | Stripe, S3-compatible storage, EasyPost, AfterShip, SMTP, OAuth, Firebase, Twilio             |
+| Tests              | JUnit, Mockito, Testcontainers, JaCoCo, Vitest, Testing Library, Playwright                   |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser[React application] -->|HTTP /api| API[Spring Boot API]
+    Browser -->|SSE / WebSocket| API
+    API --> PG[(PostgreSQL)]
+    API --> Redis[(Redis)]
+    API --> ES[(Elasticsearch)]
+    API <--> Kafka[(Kafka)]
+    API --> External[Payments, shipping, mail, storage, OAuth]
+```
+
+See the [architecture guide](documentation/architecture.md) for component responsibilities and consistency boundaries.
+
+## Quick Start with Docker
+
+Prerequisites: Docker Desktop or Docker Engine with Compose, Git, and enough memory for PostgreSQL, Redis, Elasticsearch, Kafka, the backend, and the frontend.
 
 ```powershell
 Copy-Item .env.example .env
-```
-
-2. Update any optional values in `.env` if you need OAuth, Stripe, mail, or S3 locally.
-
-3. Build and start the stack:
-
-```powershell
 docker compose up --build
 ```
 
-4. Open the app:
+On macOS or Linux, use `cp .env.example .env` for the first command.
 
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:8090/api`
-- Backend health: `http://localhost:8090/api/health`
-- PostgreSQL: `localhost:5433`
-- Redis: `localhost:6379`
-- Elasticsearch: `http://localhost:9200`
+Once the health checks settle, open:
 
-## Notes
+| Service       | URL                                |
+| ------------- | ---------------------------------- |
+| Frontend      | <http://localhost:3000>            |
+| Backend API   | <http://localhost:8090/api>        |
+| Health check  | <http://localhost:8090/api/health> |
+| PostgreSQL    | `localhost:5433`                   |
+| Redis         | `localhost:6379`                   |
+| Elasticsearch | <http://localhost:9200>            |
+| Kafka         | `localhost:9093`                   |
 
-- The frontend is served by Nginx in Docker and proxies `/api` to the Spring Boot container.
-- Vite dev mode also proxies `/api` to `http://localhost:8090`, so frontend code can use the same `/api` base path in both local dev and Docker.
-- `docker-compose.yml` uses named volumes for PostgreSQL, Redis, and Elasticsearch data.
-- The schema is owned by **Flyway**, not Hibernate. `SPRING_JPA_HIBERNATE_DDL_AUTO` is
-  `validate`, so the app fails to start if the entity mappings and the migrated schema
-  disagree — that means a migration is missing, not that you should change `ddl-auto`.
-- Because the schema is no longer recreated on every boot, data now survives a restart.
-  To start clean, run `docker compose down -v`.
+The ports above assume the checked-in `.env.example` was copied to `.env`. Compose has its own fallback ports when no `.env` file is present; the [configuration guide](documentation/configuration.md) explains both.
 
-### Database migrations
+The default `dev` profile seeds local-only accounts. All use the password `Password123!`:
 
-Migrations live in `backend/src/main/resources/db/migration` and run automatically at
-startup. To change the schema, add a new `V<n>__<description>.sql` — never edit an
-applied migration, including `V1__baseline.sql`, since Flyway verifies its checksum.
+| Role          | Email                        |
+| ------------- | ---------------------------- |
+| Administrator | `admin@shopwave.dev`         |
+| Merchant      | `merchant.tech@shopwave.dev` |
+| Customer      | `alice@example.com`          |
 
-### Upgrading from the MySQL version
+Additional merchant and customer accounts are listed in the [getting-started guide](documentation/getting-started.md). Never use these credentials outside local development.
 
-The MySQL container and its `mysql-data` volume are gone. Remove the stale volume with
-`docker compose down -v` (or `docker volume rm shopwave_mysql-data`) before starting.
+Stop the stack with `docker compose down`. To also delete local data and start from a clean database, use `docker compose down -v`.
 
-## Useful Commands
-
-Start in the background:
+## Development Commands
 
 ```powershell
-docker compose up --build -d
+# Frontend development server (http://localhost:3090)
+Set-Location frontend
+npm ci
+npm run dev
+
+# Backend (run in a second terminal from backend/)
+.\mvnw.cmd spring-boot:run
 ```
 
-Stop everything:
+For local application processes, start infrastructure first with:
 
 ```powershell
-docker compose down
+docker compose up -d postgres redis elasticsearch kafka
 ```
 
-Stop and remove volumes too:
+Common checks:
 
 ```powershell
-docker compose down -v
+# Frontend
+Set-Location frontend
+npm run lint
+npm run build
+npm run test -- --run
+
+# Backend unit suite
+Set-Location ../backend
+.\mvnw.cmd verify "-Dtest=**/*Test" "-Dspring-boot.repackage.skip=true"
 ```
+
+On macOS or Linux, use `./mvnw` in place of `.\mvnw.cmd`.
+
+See [testing](documentation/testing.md) for integration and browser-test commands.
+
+## Documentation
+
+- [Contributor handbook](documentation/README.md)
+- [Getting started](documentation/getting-started.md)
+- [Architecture](documentation/architecture.md)
+- [Domain guide](documentation/domain-guide.md)
+- [API guide](documentation/api-guide.md)
+- [Configuration](documentation/configuration.md)
+- [Testing](documentation/testing.md)
+- [Operations](documentation/operations.md)
+- [Candidate roadmap](documentation/roadmap.md)
+
+The older `docs/` directory is an ignored local planning archive and is not the source of truth for the running application.
+
+## Community and Policies
+
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Support](SUPPORT.md)
+- [Security policy](SECURITY.md)
+- [MIT License](LICENSE)
