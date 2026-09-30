@@ -1,54 +1,60 @@
-# React + TypeScript + Vite
+# ShopWave Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend is a React 19 and TypeScript application built with Vite. It provides the public marketplace, customer account and order experiences, and merchant/admin workspaces.
 
-Currently, two official plugins are available:
+For complete project setup, architecture, and operational guidance, start with the [contributor handbook](../documentation/README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Requirements
 
-## Expanding the ESLint configuration
+- Node.js 20, matching CI
+- The ShopWave backend and infrastructure for live API flows
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Local Development
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-});
+From this directory:
+
+```powershell
+npm ci
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Vite serves <http://localhost:3090> and proxies `/api` to `http://localhost:8090`.
 
-```js
-// eslint.config.js
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
+Environment variables are documented in [configuration](../documentation/configuration.md#frontend-build-variables). Copy or create `frontend/.env.local` only when overriding Vite values for a local process; do not put secrets in `VITE_*` variables.
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    "react-x": reactX,
-    "react-dom": reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs["recommended-typescript"].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-});
-```
+## Commands
+
+| Command                 | Purpose                                     |
+| ----------------------- | ------------------------------------------- |
+| `npm run dev`           | Start the Vite development server           |
+| `npm run build`         | Type-check and create the production bundle |
+| `npm run preview`       | Preview a production build                  |
+| `npm run lint`          | Run ESLint                                  |
+| `npm run format:check`  | Check Prettier formatting                   |
+| `npm run format`        | Rewrite files with Prettier                 |
+| `npm run test -- --run` | Run Vitest once                             |
+
+## Structure
+
+| Path                | Responsibility                                              |
+| ------------------- | ----------------------------------------------------------- |
+| `src/pages`         | Route-level screens, including the merchant/admin workspace |
+| `src/components`    | Shared and domain components                                |
+| `src/api`           | Backend client modules                                      |
+| `src/types`         | API and domain TypeScript types                             |
+| `src/schemas`       | Zod validation schemas                                      |
+| `src/stores`        | Redux Toolkit slices                                        |
+| `src/hooks`         | Shared React hooks                                          |
+| `src/configuration` | Browser environment handling                                |
+
+`src/App.tsx` is the route map. Server state belongs in TanStack Query; cross-cutting client state belongs in the appropriate Redux slice.
+
+## UI Conventions
+
+- Preserve the established navy glassmorphism visual language used by `HomePage.tsx` and shared layout/section components.
+- Reuse `NavyGridGlowBackground`, `SectionTitle`, `SectionGlow`, `SectionFade`, and existing domain components before creating a new pattern.
+- Use React Hook Form with Zod for forms.
+- Use the shared animation hook and respect reduced-motion preferences.
+- Keep API response types in `src/types` and avoid `any`.
+
+See [testing](../documentation/testing.md#frontend-tests) and [contributing](../CONTRIBUTING.md) before submitting a change.
