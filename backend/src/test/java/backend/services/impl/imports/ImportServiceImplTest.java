@@ -945,10 +945,13 @@ class ImportServiceImplTest {
         when(productService.updateProduct(any(), any(), any(), any()))
                 .thenReturn(productResponse(UPDATE_PRODUCT_ID, "retry-sku"));
 
-        // First three saves succeed (setTotalRows, markStatus PROCESSING), then on bumpProgress: fail once then succeed
+        // This chain is positional, so it has to mirror processJob's exact save sequence.
+        // totalRows and the PROCESSING transition are now persisted in a single save rather
+        // than two consecutive saves of the same detached instance (which presented a stale
+        // @Version and threw ObjectOptimisticLockingFailureException), so there is one save
+        // before bumpProgress, not two.
         when(jobRepository.save(any(ImportJob.class)))
-                .thenAnswer(inv -> inv.getArgument(0))  // setTotalRows save
-                .thenAnswer(inv -> inv.getArgument(0))  // markStatus PROCESSING save
+                .thenAnswer(inv -> inv.getArgument(0))  // setTotalRows + PROCESSING, one save
                 .thenThrow(new ConcurrencyFailureException("conflict"))  // bumpProgress first attempt
                 .thenAnswer(inv -> inv.getArgument(0))  // bumpProgress retry
                 .thenAnswer(inv -> inv.getArgument(0)); // finalizeJob save

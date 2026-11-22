@@ -108,6 +108,27 @@ public class ImportServiceImpl implements ImportService {
         this.eventPublisher = eventPublisher;
     }
 
+    private ImportServiceImpl self;
+
+    /**
+     * Injects this bean's own proxy so the non-transactional {@link #processJob} can call its
+     * {@code @Transactional} helpers and actually get a transaction. A direct call would bypass
+     * the proxy and leave the annotation inert. {@code @Lazy} breaks the self-referential cycle
+     * at startup.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSelf(@org.springframework.context.annotation.Lazy ImportServiceImpl self) {
+        this.self = self;
+    }
+
+    /**
+     * This bean's transactional proxy, falling back to {@code this} when no proxy was injected
+     * (plain unit tests with no Spring context), where the helpers simply run inline.
+     */
+    private ImportServiceImpl self() {
+        return self != null ? self : this;
+    }
+
     // -------------------------------------------------------------------------
     // Public API — invoked by the controller
     // -------------------------------------------------------------------------
@@ -265,7 +286,7 @@ public class ImportServiceImpl implements ImportService {
         // non-PENDING status and bail out, preventing duplicate processing of the same
         // CSV. The status-isTerminal fallback below still guards against a re-delivery
         // after the job has already completed.
-        int claimed = jobRepository.claimForProcessing(jobId, ImportJobStatus.PENDING, ImportJobStatus.PARSING);
+        int claimed = self().claimForProcessing(jobId);
         if (claimed == 0) {
             log.info("[IMPORT] jobId={} not claimable (already in flight or terminal), skipping", jobId);
             return;
@@ -291,10 +312,20 @@ public class ImportServiceImpl implements ImportService {
             markStatus(job, ImportJobStatus.FAILED, "Parse failed: " + ex.getMessage());
             return;
         }
+        // One save, and adopt the managed instance it returns.
+        //
+        // processJob is deliberately non-transactional, so `job` is detached between
+        // repository calls and save() merges rather than mutating it in place: the returned
+        // copy carries the incremented @Version while the local reference keeps the old one.
+        // This used to be two consecutive saves of the same detached reference -
+        // setTotalRows + save, then markStatus(PROCESSING) + save - so the second one
+        // presented a stale version against an already-bumped row and threw
+        // ObjectOptimisticLockingFailureException, failing the job before any row was
+        // imported. Collapsing them into a single save removes both the staleness and a
+        // redundant transaction.
         job.setTotalRows(rows.size());
-        jobRepository.save(job);
-
-        markStatus(job, ImportJobStatus.PROCESSING, null);
+        job.setStatus(ImportJobStatus.PROCESSING);
+        job = jobRepository.save(job);
         switch (job.getJobType()) {
             case PRODUCT_UPSERT -> runProductUpsert(job, rows);
             case INVENTORY_SYNC -> runInventorySync(job, rows);
@@ -315,7 +346,26 @@ public class ImportServiceImpl implements ImportService {
         ImportJobStatus terminal = job.getErrorRows() > 0
                 ? ImportJobStatus.COMPLETED_WITH_ERRORS
                 : ImportJobStatus.COMPLETED;
-        finalizeJob(job, terminal, errorReportKey);
+        self().finalizeJob(job, terminal, errorReportKey);
+    }
+
+    /**
+     * Runs the atomic PENDING -&gt; PARSING claim in its own transaction.
+     *
+     * <p>{@code claimForProcessing} is a {@code @Modifying} bulk update declared on the
+     * repository interface. Spring Data only makes the CRUD methods it inherits from
+     * {@code SimpleJpaRepository} transactional, never interface-declared {@code @Query}
+     * methods, so this one has no transaction of its own; and {@link #processJob} is
+     * deliberately not transactional because it performs long-running work and must commit
+     * each chunk independently. Called directly, the query's {@code flushAutomatically} pre-flush
+     * therefore ran with no transaction bound to the thread and threw
+     * {@code InvalidDataAccessApiUsageException}, failing every job at the claim step. Going
+     * through {@code self()} gives the claim a short transaction of its own without widening
+     * {@code processJob}'s.
+     */
+    @Transactional
+    int claimForProcessing(UUID jobId) {
+        return jobRepository.claimForProcessing(jobId, ImportJobStatus.PENDING, ImportJobStatus.PARSING);
     }
 
     /** Atomically persist the terminal status and any error-report S3 key. */
@@ -693,6 +743,11 @@ public class ImportServiceImpl implements ImportService {
                 job.setProcessedRows(saved.getProcessedRows());
                 job.setSuccessRows(saved.getSuccessRows());
                 job.setErrorRows(saved.getErrorRows());
+                // The version has to travel with them: this method saved a *different*
+                // instance (`current`), so the caller's detached `job` is now a version
+                // behind, and recordInvalidRowsAsErrors would fail its optimistic-lock
+                // check when it saves that reference below.
+                job.setVersion(saved.getVersion());
                 return;
             } catch (org.springframework.dao.ConcurrencyFailureException ex) {
                 if (attempt >= 5) {
@@ -728,7 +783,9 @@ public class ImportServiceImpl implements ImportService {
         rowRepository.saveAll(errorRows);
         job.setProcessedRows(job.getProcessedRows() + errorRows.size());
         job.setErrorRows(job.getErrorRows() + errorRows.size());
-        jobRepository.save(job);
+        // Same reason as in bumpProgress: adopt the merged copy's version so the
+        // caller's reference stays saveable.
+        job.setVersion(jobRepository.save(job).getVersion());
     }
 
     private ImportJobRow buildErrorRow(UUID jobId, ParsedRow row) {

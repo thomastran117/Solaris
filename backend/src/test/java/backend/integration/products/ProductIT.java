@@ -5,6 +5,7 @@ import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.CompanyMembership;
 import backend.models.core.Product;
+import backend.models.core.ProductSimilarity;
 import backend.models.core.User;
 import backend.models.enums.CompanyMembershipStatus;
 import backend.models.enums.CompanyRole;
@@ -12,6 +13,7 @@ import backend.models.enums.ProductStatus;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
 import backend.repositories.ProductRepository;
+import backend.repositories.ProductSimilarityRepository;
 import backend.repositories.search.ProductSearchRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -22,8 +24,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
@@ -53,6 +57,7 @@ class ProductIT extends AbstractSearchKafkaIT {
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductRepository productRepository;
     @Autowired private ProductSearchRepository productSearchRepository;
+    @Autowired private ProductSimilarityRepository productSimilarityRepository;
 
     @AfterEach
     void cleanProducts() {
@@ -116,6 +121,43 @@ class ProductIT extends AbstractSearchKafkaIT {
         p.setMarketplaceId(UUID.randomUUID());
         p.setMarketplaceListed(true);
         return productRepository.save(p);
+    }
+
+    /**
+     * Seeds a marketplace product carrying the signals {@code ProductSimilarityService} scores on.
+     * Category, brand and tags are identical across every product built here, so a candidate scores
+     * the full available weight against the source.
+     *
+     * <p>Note the issue that motivated this test framed it around <em>attribute-sharing</em>
+     * products. That is deliberately avoided: the ATTRIBUTES signal is read from the
+     * <em>Elasticsearch</em> document's {@code attributeText} and matched case-sensitively, which
+     * makes it the most fragile of the six signals to set up. Category/brand/tags live directly on
+     * the product row, are indexed unconditionally, and are enough to produce rows.
+     */
+    private Product createSimilarProduct(Company company, String name, BigDecimal price) {
+        Product p = new Product();
+        p.setCompany(company);
+        p.setName(name);
+        p.setPrice(price);
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        p.setPurchasable(true);
+        p.setCategory("Similarity Audio");
+        p.setBrand("Similarity Acme");
+        p.setTags("wireless,overear");
+        p.setMarketplaceId(UUID.randomUUID());
+        p.setMarketplaceListed(true);
+        return productRepository.save(p);
+    }
+
+    /** PATCHes a product's name, which is what drives a ProductChangedEvent onto product-events. */
+    private void touchProduct(Company company, User actor, Product product, String newName) throws Exception {
+        mockMvc.perform(patch("/companies/{companyId}/products/{id}", company.getId(), product.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", newName)))
+                        .header("Authorization", bearer(accessTokenFor(actor)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk());
     }
 
     // ── GET /companies/{companyId}/products ────────────────────────────────────
@@ -854,5 +896,56 @@ class ProductIT extends AbstractSearchKafkaIT {
         assertTrue(productSearchRepository.findById(a.getId()).isPresent()
                         && productSearchRepository.findById(b.getId()).isPresent(),
                 "Both products should be bulk-indexed into Elasticsearch by the reindex endpoint");
+    }
+
+    @Test
+    void updateMarketplaceProduct_writesProductSimilarityRowsViaKafka() throws Exception {
+        User owner = createActiveUser("prod-similarity@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+
+        // Prices stay inside the 0.5x-2.0x window the similarity ES query uses around the source.
+        Product source = createSimilarProduct(company, "Similarity Source", new BigDecimal("20.00"));
+        Product candidateA = createSimilarProduct(company, "Similarity Candidate A", new BigDecimal("24.99"));
+        Product candidateB = createSimilarProduct(company, "Similarity Candidate B", new BigDecimal("18.00"));
+
+        // The candidates have to be searchable BEFORE the source's event is consumed:
+        // ProductSimilarityService finds them with an ES *search*, so they are invisible until
+        // both the Kafka indexing hop has run and the index has been refreshed.
+        touchProduct(company, owner, candidateA, "Similarity Candidate A v2");
+        touchProduct(company, owner, candidateB, "Similarity Candidate B v2");
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(candidateA.getId()), Optional::isPresent);
+        await(Duration.ofSeconds(30),
+                () -> productSearchRepository.findById(candidateB.getId()), Optional::isPresent);
+        assertTrue(productSearchRepository.findById(candidateA.getId()).isPresent()
+                        && productSearchRepository.findById(candidateB.getId()).isPresent(),
+                "Both candidates must be indexed before the similarity recompute is triggered");
+        refreshSearchIndices();
+
+        // Now trigger the source's own change event -> product-events -> ProductSimilarityConsumer.
+        touchProduct(company, owner, source, "Similarity Source v2");
+
+        List<ProductSimilarity> rows = await(Duration.ofSeconds(60),
+                () -> productSimilarityRepository
+                        .findTop10ByIdSourceProductIdOrderByScoreDesc(source.getId()),
+                list -> list != null && !list.isEmpty());
+
+        assertNotNull(rows, "Similarity lookup should not return null");
+        assertFalse(rows.isEmpty(),
+                "ProductSimilarityConsumer should have written product_similarity rows for the source");
+
+        Set<UUID> expectedTargets = Set.of(candidateA.getId(), candidateB.getId());
+        for (ProductSimilarity row : rows) {
+            assertEquals(source.getId(), row.getId().getSourceProductId(),
+                    "Every row should be keyed to the source product");
+            assertTrue(expectedTargets.contains(row.getId().getTargetProductId()),
+                    "Unexpected similarity target: " + row.getId().getTargetProductId());
+            assertTrue(row.getScore() > 0f,
+                    "A stored similarity row should carry a positive score, got " + row.getScore());
+            assertNotNull(row.getMatchSignals(), "matchSignals should be persisted");
+            assertTrue(row.getMatchSignals().contains("CATEGORY"),
+                    "The shared category should be among the matched signals, got " + row.getMatchSignals());
+        }
     }
 }
