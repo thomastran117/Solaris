@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -613,8 +614,13 @@ class ImportIT extends AbstractSearchKafkaIT {
         Company company = createCompany(owner);
         addMember(owner, company, CompanyRole.OWNER);
 
-        String skuA = "CONSUMED-A-" + UUID.randomUUID();
-        String skuB = "CONSUMED-B-" + UUID.randomUUID();
+        // Built already-uppercase on purpose. SanitizationService.normalizeCode uppercases every
+        // SKU on the way in, while UUID.randomUUID() renders lowercase hex - so a mixed-case SKU
+        // is stored in a different form than the CSV carried, and findAllBySkuInAndCompanyId is an
+        // exact match (SKUs deliberately keep the casing the merchant entered). Normalizing here
+        // keeps the fixture and the assertion talking about the same string.
+        String skuA = ("CONSUMED-A-" + UUID.randomUUID()).toUpperCase(Locale.ROOT);
+        String skuB = ("CONSUMED-B-" + UUID.randomUUID()).toUpperCase(Locale.ROOT);
         // Header casing is intentionally mixed -- the parser matches headers case-insensitively.
         String csvKey = registerCsv("imports/csv/consumed-upsert.csv", String.join("\n",
                 "SKU,Name,price,Stock",
