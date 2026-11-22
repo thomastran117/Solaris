@@ -1,4 +1,4 @@
-name: Issue labeler
+name: Issue naming and labeler
 
 on:
   issues:
@@ -11,13 +11,26 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - name: Apply labels from issue form
+      - name: Normalize title and apply form labels
         uses: actions/github-script@v7
         with:
           script: |
             const issue = context.payload.issue;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+
+            // GitHub assigns issue numbers only after creation; normalize titles here.
+            // Format: [<issue number>] <type>: <imperative summary>.
+            const typedTitle = issue.title.trim().match(/^(?:\[(\d+)\]\s*)?(epic|feat|bug|fix|docs|test|ci|chore|refactor|perf):\s*(.+)$/i);
+            const legacyTitle = issue.title.trim().match(/^\[(Feature|Bug)\]:\s*(.+)$/i);
+            const kind = typedTitle?.[2]?.toLowerCase()
+              ?? (legacyTitle?.[1]?.toLowerCase() === "bug" || issue.labels.some(l => l.name.toLowerCase() === "bug") ? "bug" : "feat");
+            const summary = (typedTitle?.[3] ?? legacyTitle?.[2] ?? issue.title.trim().replace(/^\[\d+\]\s*/, "")).trim();
+            const normalizedTitle = `[${issue.number}] ${kind}: ${summary}`;
+            if (summary && issue.title !== normalizedTitle) {
+              await github.rest.issues.update({ owner, repo, issue_number: issue.number, title: normalizedTitle });
+            }
+
 
             const managedLabels = [
               "priority:high",
