@@ -11,6 +11,23 @@ Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). Use [SUP
 3. Use the [domain guide](documentation/domain-guide.md) to identify all affected backend and frontend surfaces.
 4. Check the working tree before editing and preserve unrelated changes.
 
+## Issue Naming and Triage
+
+Issue titles follow **`[<GitHub issue number>] <type>: <imperative summary>`**. The bracketed ID is the GitHub issue number, not a sprint number or epic ID. For example:
+
+- `[82] docs: map existing routes to Next.js`
+- `[104] feat: make checkout payment retries idempotent`
+- `[61] bug: fix catalogue sorting against Elasticsearch`
+- `[66] epic: migrate the storefront to Next.js`
+
+Supported types: `epic` (parent roadmap), `feat` (new user-facing capability), `bug` (defect), `refactor` (behaviour-preserving restructuring), `docs`, `test`, `ci`, `chore`, and `perf`. `fix` is also accepted for compatibility, but new defect reports should prefer `bug`.
+
+For a new issue, start the title with the **type and a summary only** (for example, `feat: add saved basket state`). The [issue naming workflow](.github/workflows/issue-labeler.yml) inserts the correct numeric prefix after GitHub assigns the issue number; it also normalizes titles edited later.
+
+Use the existing [feature request](.github/ISSUE_TEMPLATE/feature_request.yml) and [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) forms. Feature tickets should include a problem/opportunity, proposed behaviour, product area, domain, priority, complexity, explicit acceptance criteria, test expectations, dependencies and parent epic where relevant. Bugs should contain reproduction, expected vs actual behaviour, environment, diagnostics and a test confirming the fix. Keep descriptions actionable and moderately detailed rather than broad feature wish lists.
+
+Priority and complexity values are read from the issue form by the GitHub Actions label workflow. Avoid duplicating existing issues, and link implementation tasks to their epic by referencing `#<number>` in the issue body.
+
 ## Development Workflow
 
 - Prefer a small change that solves one problem completely.
