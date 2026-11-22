@@ -28,6 +28,13 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Overrides the 1.20.6 pinned by spring-boot-starter-parent 3.4.4. Testcontainers up to
+		     1.21.3 negotiates Docker API 1.32; Docker Engine 29, now on the GitHub Actions runner
+		     images, refuses anything below 1.40 and answers 400 "client version 1.32 is too old".
+		     No container then starts, and every integration shard fails at context load with
+		     "Could not find a valid Docker environment" - which reads as a missing Docker install
+		     rather than the API floor mismatch it is. Drop once the parent ships 1.21.4 or newer. -->
+		<testcontainers.version>1.21.4</testcontainers.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
