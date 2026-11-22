@@ -47,7 +47,34 @@ CI splits integration tests into eight domain shards and supplies a PostgreSQL s
 
 The authoritative shard membership and timeout flags are in `.github/workflows/ci.yml`. Use that workflow when reproducing a shard exactly.
 
-Some full-infrastructure search/Kafka tests use a separate base and require additional containers. Read the selected test's base class before assuming all dependencies are mocked.
+### Full-Infrastructure Tests
+
+Classes extending `AbstractSearchKafkaIT` instead of `AbstractIntegrationIT` run against real
+Elasticsearch and Kafka via Testcontainers, on the `integration-test` plus `fullinfra` profiles.
+The default base mocks the Elasticsearch client and search repositories and points Kafka at a dead
+broker with `spring.kafka.listener.auto-startup=false`; the full-infrastructure base starts both
+containers and lets the indexing workers and `@KafkaListener` consumers run. Read the selected
+test's base class before assuming all dependencies are mocked.
+
+Between them these classes cover three kinds of path: write-to-index, search read, and consumer-to-database.
+
+| Class | Shard | Live-infrastructure coverage |
+| ----- | ----- | ---------------------------- |
+| `ProductIT` | 1 | Product update/delete to Elasticsearch through Kafka; bulk reindex; `product_similarity` rows written by `ProductSimilarityConsumer` |
+| `BundleIT` | 2 | Bundle create/delete to Elasticsearch through Kafka |
+| `ImportIT` | 3 | `ImportJobConsumer` reads the queued job and upserts `products`; an unreadable CSV lands the job in `FAILED` |
+| `MarketplaceCatalogControllerIT` | 3 | Catalog search read path |
+| `SearchSuggestionIT` | 4 | Marketplace and company autocomplete read path |
+| `CompanyWebhookIT` | 5 | `OutboundWebhookConsumer` records a `webhook_delivery_logs` row |
+
+Two rules apply when adding to these classes:
+
+- Poll for asynchronous effects with the base class `await(Duration, Callable, Predicate)` helper
+  rather than sleeping. Indexing, consumption, and the resulting database write all complete on
+  other threads.
+- A document is retrievable by id as soon as it is indexed, but is invisible to *search* queries
+  until the index refreshes. Call `refreshSearchIndices()` before asserting through an endpoint or
+  service that searches, which includes anything reading candidates back out of Elasticsearch.
 
 ## Frontend Tests
 

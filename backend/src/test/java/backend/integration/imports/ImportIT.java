@@ -1,6 +1,6 @@
 package backend.integration.imports;
 
-import backend.integration.AbstractIntegrationIT;
+import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.CompanyMembership;
 import backend.models.core.ImportJob;
@@ -17,13 +17,22 @@ import backend.repositories.CompanyRepository;
 import backend.repositories.ImportJobRepository;
 import backend.repositories.ImportJobRowRepository;
 import backend.repositories.ProductRepository;
-import org.junit.jupiter.api.AfterEach;
+import backend.services.intf.StorageService;
+import backend.dtos.responses.upload.PresignUploadResponse;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.ByteArrayInputStream;
+import java.io.UncheckedIOException;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +40,30 @@ import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class ImportIT extends AbstractIntegrationIT {
+/**
+ * Runs against live Elasticsearch + Kafka (via {@link AbstractSearchKafkaIT}) so the import
+ * worker is exercised end-to-end: {@code POST /imports} persists a PENDING job, publishes to
+ * the {@code import-jobs} topic after commit, and {@code ImportJobConsumer} consumes it on a
+ * real listener thread and mutates PostgreSQL.
+ *
+ * <p>Previously this class sat on {@code AbstractIntegrationIT}, where
+ * {@code spring.kafka.listener.auto-startup=false} meant no consumer ever ran — the suite could
+ * only assert that a job row was created, never that anything processed it. A consumer that
+ * silently stopped upserting products would not have failed a single test.
+ *
+ * <p>{@link StorageService} is the one dependency that stays mocked. The worker reads the CSV
+ * through {@code storageService.openObject(csvS3Key)}, and the real S3-backed implementation
+ * would reach the (also mocked) {@code S3Client}. Mocking at the service level additionally
+ * gives <b>per-key</b> control: only keys registered in {@link #csvByKey} yield bytes, so the
+ * jobs created incidentally by the authorization/validation tests below fail fast at the parse
+ * stage and cannot write product rows into a neighbouring test's fixture.
+ */
+class ImportIT extends AbstractSearchKafkaIT {
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
@@ -42,6 +71,41 @@ class ImportIT extends AbstractIntegrationIT {
     @Autowired private ImportJobRepository importJobRepository;
     @Autowired private ImportJobRowRepository importJobRowRepository;
 
+    @MockitoBean private StorageService storageService;
+
+    /** CSV payloads the worker is allowed to read, keyed by S3 key. */
+    private final Map<String, byte[]> csvByKey = new HashMap<>();
+
+    @BeforeEach
+    void stubStorage() {
+        csvByKey.clear();
+
+        // A fresh stream per call: the worker consumes it, and a Kafka re-delivery would
+        // otherwise be handed an already-exhausted ByteArrayInputStream.
+        when(storageService.openObject(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            byte[] csv = csvByKey.get(key);
+            if (csv == null) {
+                throw new UncheckedIOException(new IOException("No such object: " + key));
+            }
+            return new ByteArrayInputStream(csv);
+        });
+
+        // Export and error-report writes go through the same service; the endpoints only
+        // surface the returned key/URL, so a canned response is enough.
+        when(storageService.putBytes(any(), any(), anyString(), any()))
+                .thenAnswer(invocation -> new PresignUploadResponse(
+                        "https://s3.test/upload", "https://s3.test/file",
+                        "imports/generated/" + UUID.randomUUID() + ".csv", 600));
+        when(storageService.presignDownload(anyString(), anyInt()))
+                .thenReturn("https://s3.test/download.csv");
+    }
+
+    /** Registers CSV content the worker may read for {@code key}, and returns the key. */
+    private String registerCsv(String key, String csv) {
+        csvByKey.put(key, csv.getBytes(StandardCharsets.UTF_8));
+        return key;
+    }
 
     // ── Setup helpers ─────────────────────────────────────────────────────────
 
@@ -135,9 +199,13 @@ class ImportIT extends AbstractIntegrationIT {
         UUID jobId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
                 .path("data").path("id").asText());
         ImportJob persisted = importJobRepository.findById(jobId).orElseThrow();
-        assertEquals(ImportJobStatus.PENDING, persisted.getStatus());
         assertEquals(ImportJobType.PRODUCT_UPSERT, persisted.getJobType());
         assertEquals(company.getId(), persisted.getCompanyId());
+        // The row's *status* is deliberately not asserted here. The response body above is
+        // serialized inside the creating transaction, before ImportJobPublisher's AFTER_COMMIT
+        // hook puts the job on the topic, so "PENDING" is deterministic there -- but by the time
+        // this assertion runs the live consumer may already have claimed PENDING -> PARSING.
+        // The status lifecycle is covered deterministically by the two consumer tests below.
     }
 
     @Test
@@ -532,5 +600,107 @@ class ImportIT extends AbstractIntegrationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(attachImagesBody("import-sku-401", "https://cdn.example.com/img.png", 0)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // -- Kafka consumer -> database --------------------------------------------
+    // The tests above stop at the HTTP boundary. These two drive the whole path:
+    // POST /imports -> ImportJobRequestedEvent (AFTER_COMMIT) -> import-jobs Kafka topic ->
+    // ImportJobConsumer -> ImportServiceImpl.processJob -> product rows in PostgreSQL.
+
+    @Test
+    void createJob_productUpsert_consumedByWorker_persistsProducts() throws Exception {
+        User owner = createActiveUser("import-consume-owner@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+
+        String skuA = "CONSUMED-A-" + UUID.randomUUID();
+        String skuB = "CONSUMED-B-" + UUID.randomUUID();
+        // Header casing is intentionally mixed -- the parser matches headers case-insensitively.
+        String csvKey = registerCsv("imports/csv/consumed-upsert.csv", String.join("\n",
+                "SKU,Name,price,Stock",
+                skuA + ",Consumed Widget A,12.50,7",
+                skuB + ",Consumed Widget B,34.00,3"));
+
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/imports", company.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJobBody(ImportJobType.PRODUCT_UPSERT, csvKey)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andReturn();
+
+        UUID jobId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+
+        // Poll until the worker reaches a terminal status rather than sleeping a fixed duration.
+        // Awaiting here (not in @AfterEach) also matters because @MockitoBean stubs are reset
+        // between test methods -- an in-flight consumer would lose its CSV stub.
+        ImportJob finished = await(Duration.ofSeconds(60),
+                () -> importJobRepository.findById(jobId).orElse(null),
+                job -> job != null && job.getStatus().isTerminal());
+
+        assertNotNull(finished, "Import job row should still exist after processing");
+        assertEquals(ImportJobStatus.COMPLETED, finished.getStatus(),
+                "Worker should have completed the job without row errors; failureReason="
+                        + finished.getFailureReason());
+        assertEquals(2, finished.getTotalRows(), "Both CSV rows should have been parsed");
+        assertEquals(2, finished.getSuccessRows(), "Both rows should have been upserted");
+        assertEquals(0, finished.getErrorRows(), "No row should have failed validation");
+
+        // The actual point of the test: the consumer mutated PostgreSQL.
+        List<Product> imported =
+                productRepository.findAllBySkuInAndCompanyId(List.of(skuA, skuB), company.getId());
+        assertEquals(2, imported.size(),
+                "Both CSV rows should have been persisted as products by the Kafka consumer");
+
+        Map<String, Product> bySku = new LinkedHashMap<>();
+        for (Product p : imported) {
+            bySku.put(p.getSku(), p);
+        }
+
+        Product a = bySku.get(skuA);
+        assertNotNull(a, "Product for " + skuA + " should exist");
+        assertEquals("Consumed Widget A", a.getName());
+        assertEquals(0, new BigDecimal("12.50").compareTo(a.getPrice()), "Price should match the CSV");
+        assertEquals(7, a.getStock().intValue(), "Stock should match the CSV");
+
+        Product b = bySku.get(skuB);
+        assertNotNull(b, "Product for " + skuB + " should exist");
+        assertEquals("Consumed Widget B", b.getName());
+        assertEquals(0, new BigDecimal("34.00").compareTo(b.getPrice()), "Price should match the CSV");
+        assertEquals(3, b.getStock().intValue(), "Stock should match the CSV");
+    }
+
+    @Test
+    void createJob_consumerMarksJobFailed_whenCsvCannotBeRead() throws Exception {
+        User owner = createActiveUser("import-consume-fail@example.com", "Password1!");
+        Company company = createCompany(owner);
+        addMember(owner, company, CompanyRole.OWNER);
+
+        // Deliberately NOT registered in csvByKey, so openObject throws for this key.
+        MvcResult result = mockMvc.perform(post("/companies/{companyId}/imports", company.getId())
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJobBody(ImportJobType.PRODUCT_UPSERT, "imports/csv/missing-object.csv")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID jobId = UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText());
+
+        ImportJob finished = await(Duration.ofSeconds(60),
+                () -> importJobRepository.findById(jobId).orElse(null),
+                job -> job != null && job.getStatus().isTerminal());
+
+        assertNotNull(finished, "Import job row should still exist after the failed run");
+        assertEquals(ImportJobStatus.FAILED, finished.getStatus(),
+                "An unreadable CSV should leave the job FAILED, not stuck mid-flight");
+        assertNotNull(finished.getFailureReason(),
+                "The failure should be recorded on the job row so operators can query it");
+        assertTrue(productRepository.findAllBySkuInAndCompanyId(
+                        List.of("missing-object"), company.getId()).isEmpty(),
+                "A failed parse should not have created any products");
     }
 }

@@ -1,24 +1,35 @@
 package backend.integration.company;
 
-import backend.integration.AbstractIntegrationIT;
+import backend.events.webhook.OutboundWebhookEvent;
+import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.CompanyMembership;
 import backend.models.core.User;
 import backend.models.enums.CompanyMembershipStatus;
 import backend.models.enums.CompanyRole;
 import backend.models.enums.CompanyStatus;
+import backend.models.enums.WebhookDeliveryStatus;
+import backend.models.enums.WebhookEventType;
+import backend.models.core.WebhookDeliveryLog;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
+import backend.repositories.WebhookDeliveryLogRepository;
+import backend.services.intf.OutboundWebhookEventPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +42,24 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class CompanyWebhookIT extends AbstractIntegrationIT {
+/**
+ * Runs against live Elasticsearch + Kafka (via {@link AbstractSearchKafkaIT}). The registration,
+ * listing, verification and deletion tests are plain HTTP coverage; the last test drives the
+ * outbound-webhook path for real — an event published to the {@code outbound-webhook-events}
+ * topic is consumed by {@code OutboundWebhookConsumer} on a live listener thread, which records
+ * the delivery in PostgreSQL.
+ *
+ * <p>The HTTP call itself stays mocked through {@code webhookRestTemplate} (there is no
+ * subscriber endpoint to call in CI); what becomes real is the Kafka hop and the database write.
+ * On the fast base, {@code spring.kafka.listener.auto-startup=false} meant the consumer never
+ * ran and no delivery row was ever asserted.
+ */
+class CompanyWebhookIT extends AbstractSearchKafkaIT {
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
+    @Autowired private WebhookDeliveryLogRepository deliveryLogRepository;
+    @Autowired private OutboundWebhookEventPublisher outboundWebhookEventPublisher;
 
     @MockitoBean
     @Qualifier("webhookRestTemplate")
@@ -334,5 +359,72 @@ class CompanyWebhookIT extends AbstractIntegrationIT {
                         .header("Authorization", bearer(accessTokenFor(owner)))
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isNotFound());
+    }
+
+    // -- outbound-webhook-events Kafka consumer -> webhook_delivery_logs ---------
+    // Everything above stops at the REST boundary. This drives the delivery path:
+    // publish -> outbound-webhook-events topic -> OutboundWebhookConsumer -> HTTP POST to the
+    // subscriber (mocked) -> a webhook_delivery_logs row recording the outcome.
+
+    @Test
+    void publishedWebhookEvent_consumedAndRecordedAsDelivered() throws Exception {
+        User owner = createActiveUser("wh-delivery@example.com", "Password1!");
+        Company company = createCompany(owner, "Delivery Webhook Co");
+        addMember(owner, company, CompanyRole.OWNER);
+
+        // The consumer fans out via findActiveByCompanyIdAndEventType, so the subscription must be
+        // ACTIVE -- echo the challenge token back on the verification GET rather than using the
+        // registerWebhookAndGetId helper, which deliberately leaves it PENDING_VERIFICATION.
+        when(webhookRestTemplate.getForEntity(contains("challenge="), eq(String.class)))
+                .thenAnswer(inv -> {
+                    String url = (String) inv.getArgument(0);
+                    return ResponseEntity.ok(url.substring(url.indexOf("challenge=") + 10));
+                });
+        // The subscriber "accepts" the delivery.
+        when(webhookRestTemplate.exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("ok"));
+
+        String response = mockMvc.perform(post("/companies/{id}/webhooks", company.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                registerBody("https://delivery-endpoint.com/wh", List.of("ORDER_PAID"))))
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.subscription.status").value("ACTIVE"))
+                .andReturn().getResponse().getContentAsString();
+        UUID subscriptionId = UUID.fromString(objectMapper.readTree(response)
+                .path("data").path("subscription").path("id").asText());
+
+        Instant since = Instant.now().minusSeconds(60);
+        UUID eventId = UUID.randomUUID();
+        // No transaction is open here, so the publisher sends immediately rather than deferring
+        // to an after-commit hook.
+        outboundWebhookEventPublisher.publish(new OutboundWebhookEvent(
+                eventId,
+                WebhookEventType.ORDER_PAID,
+                company.getId(),
+                UUID.randomUUID(),
+                null,
+                "{\"orderId\":\"test\"}",
+                Instant.now()));
+
+        Page<WebhookDeliveryLog> logs = await(Duration.ofSeconds(60),
+                () -> deliveryLogRepository.findBySubscriptionIdSince(
+                        subscriptionId, since, PageRequest.of(0, 10)),
+                page -> page != null && page.hasContent());
+
+        assertNotNull(logs, "Delivery-log lookup should not return null");
+        assertTrue(logs.hasContent(),
+                "OutboundWebhookConsumer should have recorded a webhook_delivery_logs row");
+
+        WebhookDeliveryLog log = logs.getContent().get(0);
+        assertEquals(eventId, log.getEventId(), "The row should be keyed to the published event");
+        assertEquals(WebhookEventType.ORDER_PAID, log.getEventType());
+        assertEquals(WebhookDeliveryStatus.DELIVERED, log.getStatus(),
+                "A 2xx from the subscriber should be recorded as DELIVERED");
+        assertEquals(Integer.valueOf(200), log.getResponseStatus());
+        assertEquals(1, log.getAttemptCount(), "A first-attempt success should not have retried");
+        assertNotNull(log.getDeliveredAt(), "deliveredAt should be stamped on a successful delivery");
     }
 }
