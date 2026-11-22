@@ -1,12 +1,13 @@
 name: Feature request
 description: Suggest a new capability or improvement for ShopWave.
-title: "[Feature]: "
+title: "feat: "
 labels: ["Feature"]
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for sharing an idea for ShopWave. Strong feature requests explain the user problem, not just the desired implementation.
+        The workflow adds the GitHub issue number automatically after submission, for example [142] feat: add account recovery. Use a concise imperative summary.
 
   - type: textarea
     id: problem
