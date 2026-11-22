@@ -312,10 +312,20 @@ public class ImportServiceImpl implements ImportService {
             markStatus(job, ImportJobStatus.FAILED, "Parse failed: " + ex.getMessage());
             return;
         }
+        // One save, and adopt the managed instance it returns.
+        //
+        // processJob is deliberately non-transactional, so `job` is detached between
+        // repository calls and save() merges rather than mutating it in place: the returned
+        // copy carries the incremented @Version while the local reference keeps the old one.
+        // This used to be two consecutive saves of the same detached reference -
+        // setTotalRows + save, then markStatus(PROCESSING) + save - so the second one
+        // presented a stale version against an already-bumped row and threw
+        // ObjectOptimisticLockingFailureException, failing the job before any row was
+        // imported. Collapsing them into a single save removes both the staleness and a
+        // redundant transaction.
         job.setTotalRows(rows.size());
-        jobRepository.save(job);
-
-        markStatus(job, ImportJobStatus.PROCESSING, null);
+        job.setStatus(ImportJobStatus.PROCESSING);
+        job = jobRepository.save(job);
         switch (job.getJobType()) {
             case PRODUCT_UPSERT -> runProductUpsert(job, rows);
             case INVENTORY_SYNC -> runInventorySync(job, rows);
@@ -733,6 +743,11 @@ public class ImportServiceImpl implements ImportService {
                 job.setProcessedRows(saved.getProcessedRows());
                 job.setSuccessRows(saved.getSuccessRows());
                 job.setErrorRows(saved.getErrorRows());
+                // The version has to travel with them: this method saved a *different*
+                // instance (`current`), so the caller's detached `job` is now a version
+                // behind, and recordInvalidRowsAsErrors would fail its optimistic-lock
+                // check when it saves that reference below.
+                job.setVersion(saved.getVersion());
                 return;
             } catch (org.springframework.dao.ConcurrencyFailureException ex) {
                 if (attempt >= 5) {
@@ -768,7 +783,9 @@ public class ImportServiceImpl implements ImportService {
         rowRepository.saveAll(errorRows);
         job.setProcessedRows(job.getProcessedRows() + errorRows.size());
         job.setErrorRows(job.getErrorRows() + errorRows.size());
-        jobRepository.save(job);
+        // Same reason as in bumpProgress: adopt the merged copy's version so the
+        // caller's reference stays saveable.
+        job.setVersion(jobRepository.save(job).getVersion());
     }
 
     private ImportJobRow buildErrorRow(UUID jobId, ParsedRow row) {
