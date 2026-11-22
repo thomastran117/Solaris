@@ -1,12 +1,13 @@
 name: Bug report
 description: Report something in ShopWave that is not working as expected.
-title: "[Bug]: "
+title: "bug: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for helping improve ShopWave. Please include enough detail for someone else to reproduce the issue.
+        The workflow adds the GitHub issue number automatically after submission, for example [143] bug: checkout fails when stock changes. Use a concise description of the failure.
 
   - type: textarea
     id: summary
