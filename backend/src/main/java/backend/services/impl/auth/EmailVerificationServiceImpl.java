@@ -28,10 +28,19 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
 
     @Override
     public void initiateVerification(UUID userId, String email) {
+        emailService.sendVerificationEmail(email, issueToken(userId));
+    }
+
+    @Override
+    public void initiateCheckoutStepUp(UUID userId, String email) {
+        emailService.sendCheckoutVerificationEmail(email, issueToken(userId));
+    }
+
+    private String issueToken(UUID userId) {
         String token = UUID.randomUUID().toString();
         long ttl = env.getEmail().getVerificationTokenTtlSeconds();
         cache.set(EMAIL_VERIFY_PREFIX + token, userId.toString(), ttl);
-        emailService.sendVerificationEmail(email, token);
+        return token;
     }
 
     @Override

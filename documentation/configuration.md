@@ -68,6 +68,7 @@ These values are read by the Next.js server and are never sent to the browser. I
 | ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `API_INTERNAL_URL`       | `http://localhost:8090` | Backend origin the `/api/*` rewrite forwards to. Compose uses `http://backend:8090`. Rewrites are resolved when `next build` runs, so this is a Docker build argument as well as a runtime variable. |
 | `DEFAULT_MARKETPLACE_ID` | unset                   | UUID of the marketplace whose catalog the storefront shows. Without it, catalog pages show a "no marketplace" state. Pages prerendered at build time read it during the build, so set it at build time too. |
+| `STRIPE_PUBLISHABLE_KEY` | unset                   | Stripe **publishable** key for Payment Element at `/checkout` and on unpaid orders. Read per request and passed to the page, so it is a runtime variable only (no rebuild). Without it, checkout still reserves the order and shows "Payments aren't configured". `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is accepted as a fallback. |
 
 `NEXT_PUBLIC_DEFAULT_MARKETPLACE_ID` is accepted as a fallback for `DEFAULT_MARKETPLACE_ID`. The value is generated randomly when the development seed data is loaded, so look it up after the backend has seeded the database:
 
@@ -85,7 +86,7 @@ Blank values disable or limit the corresponding local feature; they do not provi
 | Microsoft OAuth       | `MICROSOFT_CLIENT_ID`, `MICROSOFT_JWKS_URI`                                                              |
 | Apple OAuth           | `APPLE_CLIENT_ID`, `APPLE_JWKS_URI`                                                                      |
 | reCAPTCHA             | `RECAPTCHA_SECRET_KEY` and `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`; both are required for login and signup against a real backend, because verification fails closed                                                     |
-| Stripe orders         | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`                                   |
+| Stripe orders         | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` (also passed to the frontend container), `STRIPE_WEBHOOK_SECRET` |
 | Stripe premium        | `STRIPE_PREMIUM_PRICE_ID`, `STRIPE_PREMIUM_WEBHOOK_SECRET`, premium success/cancel/portal URLs           |
 | S3-compatible uploads | `AWS_S3_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_PUBLIC_URL_BASE` |
 | SMTP                  | `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `SUPPORT_TEAM_EMAIL`                                      |

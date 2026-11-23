@@ -12,6 +12,7 @@ import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.retry.support.RetryTemplate;
 
@@ -22,6 +23,9 @@ import java.util.Properties;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -60,6 +64,28 @@ class EmailSenderTest {
         emailSender.send(new EmailEvent.VerificationEmail("user@example.com", "tok123"));
 
         verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void send_checkoutVerificationEmail_linksBackToCheckout() throws Exception {
+        emailSender.send(new EmailEvent.CheckoutVerificationEmail("buyer@example.com", "tok789"));
+
+        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
+        verify(mailSender).send(captor.capture());
+        MimeMessage message = captor.getValue();
+        assertEquals("Confirm your ShopWave order", message.getSubject());
+        String html = bodyOf(message);
+        assertTrue(html.contains("https://shopwave.com/checkout?stepUpToken=tok789"), html);
+        assertFalse(html.contains("/verify-email"));
+    }
+
+    private static String bodyOf(MimeMessage message) throws Exception {
+        message.saveChanges();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        message.writeTo(out);
+        return out.toString(java.nio.charset.StandardCharsets.UTF_8)
+                .replace("=\r\n", "")
+                .replace("=3D", "=");
     }
 
     @Test

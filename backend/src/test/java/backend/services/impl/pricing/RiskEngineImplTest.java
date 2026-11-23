@@ -128,7 +128,10 @@ class RiskEngineImplTest {
         RiskAssessmentResult result = service.assess(ctx);
 
         assertEquals(RiskAction.VERIFY, result.action());
-        verify(emailVerificationService).initiateVerification(USER_ID, "buyer@example.com");
+        // A checkout step-up, not the account verification email: its link must
+        // return to /checkout rather than consume the token on /verify-email.
+        verify(emailVerificationService).initiateCheckoutStepUp(USER_ID, "buyer@example.com");
+        verify(emailVerificationService, never()).initiateVerification(any(), any());
     }
 
     @Test
@@ -137,7 +140,7 @@ class RiskEngineImplTest {
         stubNoBlocklistHits(ctx);
         doThrow(new RuntimeException("smtp down"))
                 .when(emailVerificationService)
-                .initiateVerification(USER_ID, "buyer@example.com");
+                .initiateCheckoutStepUp(USER_ID, "buyer@example.com");
 
         RiskEngineImpl service = new RiskEngineImpl(
                 riskBlocklistRepository,

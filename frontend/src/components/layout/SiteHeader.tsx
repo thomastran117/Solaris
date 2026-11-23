@@ -22,6 +22,7 @@ import { useLogout } from "../../hooks/useLogout";
 import { cn } from "../../lib/cn";
 import { hasAdminAccess } from "../admin/adminNav";
 import { AccountMenu } from "./AccountMenu";
+import { CartButton } from "../cart/CartButton";
 import { ACCOUNT_LINKS } from "./accountLinks";
 import { Wordmark } from "./Wordmark";
 
@@ -87,6 +88,7 @@ export function SiteHeader() {
 
           <div className="ml-auto flex items-center gap-1 md:ml-0">
             <ThemeToggle />
+            <CartButton />
             <AccountMenu />
           </div>
         </div>

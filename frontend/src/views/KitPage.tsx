@@ -8,6 +8,10 @@ import { kitsApi } from "../api/kits";
 import KitSlotCard from "../components/kit/KitSlotCard";
 import KitPriceSummary from "../components/kit/KitPriceSummary";
 import type { SlotSelectionState } from "../types/kit";
+import { useAppDispatch, useAppSelector } from "../stores/hooks";
+import { addLine, type KitSelection } from "../stores/cartSlice";
+import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
+import { useCartDrawer } from "../components/cart/CartDrawer";
 import { useAnims } from "../hooks/useAnims";
 import { kitKeys } from "../api/keys";
 
@@ -61,6 +65,51 @@ export default function KitPage() {
     });
   }, [kit, selections]);
 
+  const dispatch = useAppDispatch();
+  const marketplaceId = useAppSelector(selectActiveMarketplaceId);
+  const { openCart } = useCartDrawer();
+
+  function addKitToCart() {
+    if (!kit || !marketplaceId) return;
+    const kitSelections: KitSelection[] = [];
+    const summary: string[] = [];
+    let unitPrice = 0;
+    for (const slot of kit.slots) {
+      const sel = selections[slot.id];
+      if (sel?.status !== "selected") continue;
+      const choice = slot.choices.find((c) => c.id === sel.choiceId);
+      if (!choice) continue;
+      kitSelections.push({
+        slotId: slot.id,
+        productId: choice.productId,
+        variantId: choice.variantId,
+        quantity: sel.quantity,
+      });
+      unitPrice += choice.effectivePrice * sel.quantity;
+      summary.push(
+        `${slot.name}: ${choice.productName}${choice.variantTitle ? ` (${choice.variantTitle})` : ""}${sel.quantity > 1 ? ` ×${sel.quantity}` : ""}`
+      );
+    }
+    if (kitSelections.length === 0) return;
+    dispatch(
+      addLine({
+        kind: "kit",
+        kitId: kit.id,
+        selections: kitSelections,
+        summary: summary.join(" · "),
+        name: kit.name,
+        thumbnailUrl: kit.thumbnailUrl,
+        // Estimate from the configured choices; the order is priced server-side.
+        price: unitPrice,
+        currency: kit.currency.toUpperCase(),
+        quantity: 1,
+        marketplaceId,
+        companyId: kit.companyId,
+      })
+    );
+    openCart();
+  }
+
   function handleSelect(slotId: string, choiceId: string, quantity: number) {
     setSelections((prev) => ({
       ...prev,
@@ -73,7 +122,7 @@ export default function KitPage() {
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary/40 animate-spin" />
+        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary animate-spin" />
       </div>
     );
   }
@@ -155,9 +204,7 @@ export default function KitPage() {
               compareAtPrice={kit.compareAtPrice}
               allRequiredFilled={allRequiredFilled}
               purchasable={kit.purchasable}
-              onAddToCart={() => {
-                // Wire to checkout flow: build kitId + kitSelections and call createOrder
-              }}
+              onAddToCart={addKitToCart}
             />
           </div>
         </div>

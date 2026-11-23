@@ -109,7 +109,7 @@ public class RiskEngineImpl implements RiskEngine {
 
         if (action == RiskAction.VERIFY && ctx.userEmail() != null && !ctx.userEmail().isBlank()) {
             try {
-                emailVerificationService.initiateVerification(ctx.userId(), ctx.userEmail());
+                emailVerificationService.initiateCheckoutStepUp(ctx.userId(), ctx.userEmail());
             } catch (RuntimeException ex) {
                 log.warn("Failed to dispatch risk step-up email to userId={}", ctx.userId(), ex);
                 warnings.add("Step-up email dispatch failed: " + ex.getClass().getSimpleName());

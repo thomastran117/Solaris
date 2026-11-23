@@ -17,6 +17,8 @@ const PRIVATE_PREFIXES = [
   "/feedback",
   "/orders",
   "/b2b/",
+  "/cart",
+  "/checkout",
   "/login",
   "/auth/",
   "/invite/",

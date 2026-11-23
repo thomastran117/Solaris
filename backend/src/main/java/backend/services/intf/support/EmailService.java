@@ -18,6 +18,16 @@ public interface EmailService {
     void sendVerificationEmail(String toEmail, String token);
 
     /**
+     * Sends the checkout step-up email for an order the risk engine flagged as
+     * VERIFY. The link returns the buyer to {@code /checkout?stepUpToken=...} so the
+     * order can be resubmitted with the token.
+     *
+     * @param toEmail the buyer's email address
+     * @param token   the raw single-use verification token
+     */
+    void sendCheckoutVerificationEmail(String toEmail, String token);
+
+    /**
      * Sends a device verification email showing the browser, OS, and IP of the unrecognised
      * login attempt. The send is executed asynchronously with exponential backoff retries.
      *

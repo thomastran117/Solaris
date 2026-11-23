@@ -371,7 +371,7 @@ export default function CompanyPage() {
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2 flex-wrap">
                 {searchResult.isFetching && !searchResult.isLoading && (
-                  <div className="w-3.5 h-3.5 rounded-full border border-primary/40 border-t-primary/40 animate-spin" />
+                  <div className="w-3.5 h-3.5 rounded-full border border-primary/40 border-t-primary animate-spin" />
                 )}
                 <span className="text-sm text-muted-foreground">
                   {searchResult.isLoading

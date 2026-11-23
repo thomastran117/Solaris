@@ -168,6 +168,8 @@ services:
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:8090}
       DEFAULT_MARKETPLACE_ID: ${DEFAULT_MARKETPLACE_ID:-}
+      # Public key for Stripe Payment Element at checkout (read at request time).
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     depends_on:
       - backend
     ports:

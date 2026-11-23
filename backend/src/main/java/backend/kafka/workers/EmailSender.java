@@ -40,6 +40,8 @@ public class EmailSender {
         switch (event) {
             case EmailEvent.VerificationEmail e ->
                 sendVerificationEmail(e.toEmail(), e.token());
+            case EmailEvent.CheckoutVerificationEmail e ->
+                sendCheckoutVerificationEmail(e.toEmail(), e.token());
             case EmailEvent.DeviceVerificationEmail e ->
                 sendDeviceVerificationEmail(e.toEmail(), e.token(), e.browser(), e.os(), e.ip());
             case EmailEvent.OrderReceiptEmail e ->
@@ -204,6 +206,13 @@ public class EmailSender {
         String verifyUrl = env.getEmail().getVerificationBaseUrl() + "/verify-email?token=" + token;
         String htmlBody = buildVerificationHtml(toEmail, verifyUrl);
         sendMimeMessage(toEmail, "Verify your ShopWave account", htmlBody);
+    }
+
+    private void sendCheckoutVerificationEmail(String toEmail, String token) {
+        String verifyUrl = env.getEmail().getVerificationBaseUrl()
+                + "/checkout?stepUpToken=" + token; // UUID: URL-safe
+        String htmlBody = buildCheckoutVerificationHtml(verifyUrl);
+        sendMimeMessage(toEmail, "Confirm your ShopWave order", htmlBody);
     }
 
     private void sendDeviceVerificationEmail(String toEmail, String token,
@@ -503,6 +512,28 @@ public class EmailSender {
                 expiryNote("If you did not create an account, you can safely ignore this email.")
             );
         return wrapInShell("Account Activation", body);
+    }
+
+    private String buildCheckoutVerificationHtml(String verifyUrl) {
+        String body = """
+            <h1 style="margin:0 0 8px 0;font-size:26px;font-weight:800;
+                        color:#0F172A;letter-spacing:-0.5px;">
+              Confirm your order
+            </h1>
+            <p style="margin:0 0 4px 0;font-size:15px;color:#475569;line-height:1.7;">
+              We need a quick confirmation before we place your order.
+            </p>
+            <p style="margin:0;font-size:15px;color:#475569;line-height:1.7;">
+              Use the button below on the device where you are checking out. Your cart and
+              delivery details are saved there.
+            </p>
+            %s
+            %s
+            """.formatted(
+                primaryButton(verifyUrl, "Confirm and continue checkout"),
+                expiryNote("If you didn't try to place an order, you can ignore this email and consider changing your password.")
+            );
+        return wrapInShell("Order Confirmation", body);
     }
 
     private String buildDeviceVerificationHtml(String email, String verifyUrl,

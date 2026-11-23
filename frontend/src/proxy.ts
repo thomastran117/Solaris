@@ -32,6 +32,7 @@ export const config = {
     "/account/:path*",
     "/admin/:path*",
     "/b2b/:path*",
+    "/checkout/:path*",
     "/dashboard/:path*",
     "/feed/:path*",
     "/feedback/:path*",
