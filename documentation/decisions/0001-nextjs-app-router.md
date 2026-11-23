@@ -81,7 +81,7 @@ A configured default marketplace ID resolves the storefront marketplace while ke
 - The frontend becomes a Node.js server process to build, run, monitor, and scale instead of static files.
 - Server-rendered pages must stay deterministic between server and client: no module-scope `window` access, explicit locale and time zone formatting on storefront pages, and portals only after mount.
 - Every request that Next.js proxies reaches the backend from the frontend container's IP. The backend honors `X-Forwarded-For` only for configured trusted proxies (`ClientRequestFilter`), and none are configured. Per-IP auth rate-limit buckets are therefore shared by all users, exactly as with Nginx today. This is not a regression; a backend follow-up will add safe forwarded-address handling.
-- SSE and WebSocket traffic through Next.js rewrites must be verified in #86. The fallback for WebSockets is a public `NEXT_PUBLIC_BACKEND_WS_URL` with a matching CORS origin.
+- SSE and WebSocket traffic through the Next.js rewrite was verified in #86. WebSocket upgrades, including the STOMP subprotocol, pass through and are not cut while idle. SSE required `compress: false`, because Next.js compression buffered the event stream until it closed. The rewrite's idle timeout is set to 60 seconds, matching the previous Nginx container. `NEXT_PUBLIC_BACKEND_WS_URL` remains available for deployments that route WebSockets elsewhere.
 - Image optimization (`next/image`), a sitemap, and multi-marketplace routing are deferred.
 
 ## Rollout and Rollback
@@ -104,6 +104,6 @@ To roll back, revert the pull requests in reverse order; each one is self-contai
 |---|---|---|
 | #82 ADR and route map | #166 | Merged |
 | #83 Bootstrap | #167, re-landed on `main` as #168 | Merged |
-| #84 Storefront SSR | #169, re-landed on `main` from `refactor/84-storefront-ssr-main` | In review |
-| #85 Auth boundary | Stacked on #84 | In review |
-| #86 Container and CI | — | Not started |
+| #84 Storefront SSR | #169, re-landed on `main` as #170 | Merged |
+| #85 Auth boundary | #171, re-landed on `main` as #172 | In review |
+| #86 Container and CI | Stacked on #172 | In review |

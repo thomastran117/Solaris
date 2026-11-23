@@ -82,7 +82,7 @@ Notes:
 
 - **`/lists/:id` vs `/lists/public/:slug`.** The two live in different route groups. Their URLs cannot collide because the static `public` segment outranks `[id]`. The protected-path matcher must exclude the `/lists/public/` prefix.
 - **`/account` returns from Stripe.** It reads Stripe Checkout and Billing Portal return parameters from the query string. That arrival is a cross-site navigation, so the `SameSite=Strict` refresh cookie is not sent. The proxy sends the user through `/login?next=/account?…`, the same-site session restore succeeds there, and the user returns automatically ([ADR 0001](decisions/0001-nextjs-app-router.md#auth-boundary)).
-- **`/orders/:id` keeps its live updates.** It subscribes to the SSE stream `/api/orders/{id}/stream`. #86 verifies SSE through the Next.js rewrite.
+- **`/orders/:id` keeps its live updates.** It subscribes to the SSE stream `/api/orders/{id}/stream`, which streams through the Next.js rewrite unbuffered: `compress: false` was required, verified in #86.
 
 ## Merchant and Staff — Guarded (#83 port, #85 boundary)
 
@@ -114,7 +114,7 @@ Target: `(merchant)/layout.tsx` uses the same `RequireAuth` guard and sets `noin
 | 49 | `/admin/inventory-transfers` | `AdminInventoryTransfersPage.tsx` | `inventory-transfers/page.tsx` | Company member with `MANAGE_PRODUCTS` |
 | 50 | `/admin/orders` | `CompanyOrdersPage.tsx` | `orders/page.tsx` | Company member with `FULFILL_ORDERS` ("Fulfillment") |
 | 51 | `/admin/orders/:orderId` | `CompanyOrderDetailPage.tsx` | `orders/[orderId]/page.tsx` | Not in Navbar; linked from `/admin/orders` |
-| 52 | `/admin/drivers` | `DriverDispatchPage.tsx` | `drivers/page.tsx` | Company member with `FULFILL_ORDERS`; uses STOMP WebSocket `/api/ws/delivery` (verified in #86) |
+| 52 | `/admin/drivers` | `DriverDispatchPage.tsx` | `drivers/page.tsx` | Company member with `FULFILL_ORDERS`; uses STOMP WebSocket `/api/ws/delivery` (upgrade passes through the rewrite; verified in #86) |
 | 53 | `/admin/disputes` | `AdminDisputesPage.tsx` | `disputes/page.tsx` | Platform role `SUPPORT`, `MODERATOR`, or `ADMIN` |
 
 The Navbar column records which signed-in users see each link today; capability checks come from `useCompanyCapabilities` in `hooks/useCompanyRole.ts`. It is informational only. Direct navigation to any of these URLs with a valid session reaches the page, and the backend rejects calls the user is not authorized to make.
@@ -146,6 +146,6 @@ These links and files exist today but have no working route. The migration remov
 
 ## Refresh and Deep-Link Behavior
 
-- **Hard refresh.** Every route above resolves on a hard refresh or a direct visit. Today Nginx `try_files … /index.html` and the Vite dev server provide this. After the migration, App Router segments do, and no SPA fallback is needed.
+- **Hard refresh.** Every route above resolves on a hard refresh or a direct visit. App Router segments provide this; the former Nginx `try_files … /index.html` SPA fallback is gone.
 - **Protected deep links.** An anonymous visitor lands on `/login?next=<original path and query>` and returns there after signing in. A visitor whose session is restored from the cookie on the login page returns immediately. Before #85, the destination was lost and everyone went to `/dashboard`.
 - **Query-string state.** `/browse`, `/c/:id`, `/c/:id/compare`, and `/admin/purchase-orders` keep their filters in the URL. The migration preserves the parameter names and keeps filter changes from scrolling the page.
