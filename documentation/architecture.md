@@ -52,6 +52,8 @@ flowchart TB
 
 Vite serves local development on port `3090` and proxies `/api` to the backend. The production container builds static assets and serves them through Nginx, which proxies API traffic to the backend container.
 
+A migration to Next.js App Router is accepted but not yet implemented. See [ADR 0001](decisions/0001-nextjs-app-router.md) for the design and the [frontend route map](frontend-route-map.md) for route-by-route parity. This section will change as each migration pull request lands.
+
 ## Backend
 
 The backend follows controller → service → repository boundaries:
