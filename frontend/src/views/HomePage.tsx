@@ -8,6 +8,12 @@ import { marketplaceCollectionsApi } from "../api/merchandising";
 import CollectionCard from "../components/collection/CollectionCard";
 import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
 import { useAnims } from "../hooks/useAnims";
+import { useHydrated } from "../hooks/useHydrated";
+import { homeKeys } from "../api/keys";
+import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
+import SectionFade from "../components/section/SectionFade";
+import SectionGlow from "../components/section/SectionGlow";
+import SectionTitle from "../components/section/SectionTitle";
 import {
   Truck,
   Headset,
@@ -121,153 +127,7 @@ const stats = [
   { label: "Countries", value: 40, display: "40+" },
 ];
 
-function NavyGridGlowBackground() {
-  return (
-    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      {/* Dark base first (prevents white fog) */}
-      <div className="absolute inset-0 bg-slate-950" />
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900" />
-
-      {/* Glows (smaller + lower opacity + heavier blur) */}
-      <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-blue-600/14 blur-[110px]" />
-      <div className="absolute -bottom-56 left-[-18%] h-[640px] w-[640px] rounded-full bg-sky-400/10 blur-[130px]" />
-      <div className="absolute top-[35%] right-[-18%] h-[520px] w-[520px] rounded-full bg-indigo-500/10 blur-[130px]" />
-
-      {/* Grid ABOVE glows (so it’s readable) */}
-      <div
-        className="
-          absolute inset-0 opacity-[0.22]
-          [background-image:linear-gradient(to_right,rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.07)_1px,transparent_1px)]
-          [background-size:44px_44px]
-          [mask-image:radial-gradient(circle_at_top,black,transparent_72%)]
-        "
-      />
-
-      {/* Micro texture (very subtle) */}
-      <div
-        className="
-          absolute inset-0 opacity-[0.08]
-          [background-image:linear-gradient(to_right,rgba(59,130,246,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.18)_1px,transparent_1px)]
-          [background-size:14px_14px]
-          [mask-image:radial-gradient(circle_at_center,black,transparent_75%)]
-        "
-      />
-
-      {/* Softer highlight (less “white veil”) */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.035),transparent_55%)]" />
-
-      {/* Vignette LAST (adds contrast, reduces glare) */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(2,6,23,0.92))]" />
-    </div>
-  );
-}
-
-function SectionFade({
-  top = true,
-  bottom = true,
-}: {
-  top?: boolean;
-  bottom?: boolean;
-}) {
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-      {top ? (
-        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-slate-950/70 to-transparent" />
-      ) : null}
-
-      {/* subtle film so sections feel connected */}
-      <div className="absolute inset-0 bg-white/[0.02]" />
-
-      {bottom ? (
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-slate-950/70 to-transparent" />
-      ) : null}
-    </div>
-  );
-}
-
-function SectionGlow({
-  variant = "a",
-}: {
-  variant?: "a" | "b" | "c";
-}) {
-  const map = {
-    a: (
-      <>
-        <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-blue-500/12 blur-[80px]" />
-        <div className="absolute -bottom-28 right-[-120px] h-80 w-80 rounded-full bg-sky-400/10 blur-[90px]" />
-      </>
-    ),
-    b: (
-      <>
-        <div className="absolute -top-24 right-[-120px] h-80 w-80 rounded-full bg-indigo-500/10 blur-[90px]" />
-        <div className="absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-blue-600/10 blur-[85px]" />
-      </>
-    ),
-    c: (
-      <>
-        <div className="absolute top-10 left-[-140px] h-96 w-96 rounded-full bg-sky-400/10 blur-[95px]" />
-        <div className="absolute bottom-[-160px] right-[-160px] h-[28rem] w-[28rem] rounded-full bg-blue-600/10 blur-[110px]" />
-      </>
-    ),
-  };
-
-  return (
-    <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
-      {/* soft local vignette */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.06),transparent_60%)]" />
-      {map[variant]}
-    </div>
-  );
-}
-
 // ---- Small UI components ----
-function SectionTitle({
-  kicker,
-  title,
-  subtitle,
-  align = "center",
-  theme = "light",
-}: {
-  kicker?: string;
-  title: string;
-  subtitle?: string;
-  align?: "center" | "left";
-  theme?: "light" | "dark";
-}) {
-  const isDark = theme === "dark";
-  return (
-    <div
-      className={`max-w-3xl mx-auto ${
-        align === "left" ? "text-left" : "text-center"
-      }`}
-    >
-      {kicker ? (
-        <p
-          className={`text-xs uppercase tracking-[0.25em] font-semibold mb-2 ${
-            isDark ? "text-sky-200/90" : "text-blue-700"
-          }`}
-        >
-          {kicker}
-        </p>
-      ) : null}
-
-      <h2
-        className={`text-3xl md:text-4xl font-extrabold mb-3 ${
-          isDark ? "text-white" : "text-slate-950"
-        }`}
-      >
-        {title}
-      </h2>
-
-      {subtitle ? (
-        <p className={`text-lg ${isDark ? "text-white/70" : "text-slate-700"}`}>
-          {subtitle}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/90">
@@ -351,10 +211,14 @@ function CountUp({
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const inView = useInView(ref, { once: true, margin: "-10% 0px -10% 0px" });
-  const [val, setVal] = useState(0);
+  // Server HTML and hydration show the final number; only counters mounted after
+  // hydration (client navigation) count up from zero.
+  const hydrated = useHydrated();
+  const [countUp] = useState(hydrated);
+  const [val, setVal] = useState(countUp ? 0 : to);
 
   useEffect(() => {
-    if (!inView) return;
+    if (!inView || !countUp) return;
     const duration = 900;
     const start = performance.now();
     const from = 0;
@@ -368,12 +232,12 @@ function CountUp({
 
     const r = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(r);
-  }, [inView, to]);
+  }, [inView, to, countUp]);
 
   return (
     <span ref={ref}>
       {prefix}
-      {val.toLocaleString()}
+      {val.toLocaleString("en-US")}
       {suffix}
     </span>
   );
@@ -532,6 +396,8 @@ function CategoryTile({ Icon, name }: { Icon: any; name: string }) {
 
 // ---- Page ----
 export default function Home() {
+  // Entrance animations only for content mounted after hydration (see useHydrated).
+  const hydrated = useHydrated();
   const { fadeInUp, fadeIn, stagger } = useAnims();
 
   const heroRef = useRef<HTMLElement | null>(null);
@@ -549,7 +415,7 @@ export default function Home() {
   // returns an empty list. No CTA fallback because the Home shell already has plenty.
   const marketplaceId = useSelector(selectActiveMarketplaceId);
   const { data: featuredCollections } = useQuery({
-    queryKey: ["home", "featured-collections", marketplaceId],
+    queryKey: homeKeys.featuredCollections(marketplaceId),
     queryFn: () => marketplaceCollectionsApi.listFeatured(marketplaceId!).then(r => r.data),
     enabled: !!marketplaceId,
   });
@@ -837,7 +703,7 @@ export default function Home() {
           ].map((item, idx) => (
             <motion.div
               key={idx}
-              initial={{ opacity: 0, y: 16 }}
+              initial={hydrated ? { opacity: 0, y: 16 } : false}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.4 }}
               transition={{ duration: 0.5, delay: idx * 0.05 }}
@@ -866,7 +732,7 @@ export default function Home() {
         <SectionGlow variant="b" />
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-10 items-center">
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
+            initial={hydrated ? { opacity: 0, scale: 0.98 } : false}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true, amount: 0.4 }}
             transition={{ duration: 0.6 }}
@@ -916,7 +782,7 @@ export default function Home() {
               {reviews.map((r, i) => (
                 <motion.div
                   key={i}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={hydrated ? { opacity: 0, y: 12 } : false}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.4 }}
@@ -961,7 +827,7 @@ export default function Home() {
             <motion.details
               key={i}
               className="group rounded-2xl p-5 border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm"
-              initial={{ opacity: 0, scale: 0.985 }}
+              initial={hydrated ? { opacity: 0, scale: 0.985 } : false}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.35 }}

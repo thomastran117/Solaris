@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import axios from "axios";
 import Environment from "../../configuration/Environment";
 import { envelopeData } from "../../api/envelope";
 import { refreshSession } from "../../api/session";
-import { setCredentials } from "../../stores/authSlice";
+import { sessionRestoreSettled, setCredentials } from "../../stores/authSlice";
 import { useAppDispatch } from "../../stores/hooks";
 
 /**
  * Restores the session from the `refreshToken` cookie once per page load, then loads
- * the user's company membership. Children render after the attempt settles.
+ * the user's company membership, and finally marks the restore as settled.
+ *
+ * Children render immediately, so server-rendered pages show their public content
+ * without waiting for the browser-only refresh. Guards such as `RequireAuth` wait for
+ * `auth.sessionRestored` before treating a visitor as anonymous.
  *
  * The refresh runs only in the browser and goes through the shared `refreshSession()`
  * so that StrictMode's double effect and the 401 interceptor cannot burn the
@@ -22,7 +26,6 @@ export default function AuthInitializer({
   children: React.ReactNode;
 }) {
   const dispatch = useAppDispatch();
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,21 +56,13 @@ export default function AuthInitializer({
         // Anonymous visitor or expired session; refreshSession cleared credentials.
       })
       .finally(() => {
-        if (!cancelled) setHydrated(true);
+        if (!cancelled) dispatch(sessionRestoreSettled());
       });
 
     return () => {
       cancelled = true;
     };
   }, [dispatch]);
-
-  if (!hydrated) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return <>{children}</>;
 }

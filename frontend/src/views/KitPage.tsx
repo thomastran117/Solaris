@@ -9,6 +9,7 @@ import KitSlotCard from "../components/kit/KitSlotCard";
 import KitPriceSummary from "../components/kit/KitPriceSummary";
 import type { SlotSelectionState } from "../types/kit";
 import { useAnims } from "../hooks/useAnims";
+import { kitKeys } from "../api/keys";
 
 
 export default function KitPage() {
@@ -16,7 +17,7 @@ export default function KitPage() {
   const { fadeInUp, stagger } = useAnims();
 
   const { data: kit, isLoading, isError } = useQuery({
-    queryKey: ["kit", companyId, kitId],
+    queryKey: kitKeys.detail(companyId, kitId),
     queryFn: () => kitsApi.get(companyId!, kitId!).then(r => r.data),
     enabled: !!companyId && !!kitId,
   });
