@@ -22,6 +22,7 @@ import type { PriceWatcher } from "../types/priceWatchers";
 import { addItem } from "../stores/cartSlice";
 import { formatCalendarDate } from "../lib/format";
 import { productKeys } from "../api/keys";
+import { loginUrlFor } from "../lib/routes";
 import { useIsClient } from "../hooks/useIsClient";
 import { useAnims } from "../hooks/useAnims";
 
@@ -439,7 +440,7 @@ export default function ProductPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => (accessToken ? setSaveOpen(true) : router.push("/login"))}
+                    onClick={() => (accessToken ? setSaveOpen(true) : router.push(loginUrlFor(window.location.pathname)))}
                     aria-label="Save to list"
                     className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
                   >
@@ -460,7 +461,7 @@ export default function ProductPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => (accessToken ? setSaveOpen(true) : router.push("/login"))}
+                    onClick={() => (accessToken ? setSaveOpen(true) : router.push(loginUrlFor(window.location.pathname)))}
                     aria-label="Save to list"
                     className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
                   >

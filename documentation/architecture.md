@@ -55,7 +55,7 @@ The root layout (`src/app/layout.tsx`) renders the Navbar, Footer, and feedback 
 - `StoreProvider` creates one Redux store per browser session with `makeStore()` and seeds the configured default marketplace. It also binds the store to `src/api/authBridge.ts`, which is how the axios client and session refresh read the access token without a module-level store.
 - `QueryClientProvider` uses `getQueryClient()`: a fresh client per server render and one long-lived client in the browser. Logout clears it.
 - `AuthInitializer` restores the session once per page load through `refreshSession()` (`src/api/session.ts`). Refresh tokens are single-use, so every caller, including the 401 retry interceptor, shares one in-flight refresh request. It does not block rendering: pages render immediately (on the server and in the browser), and `auth.sessionRestored` becomes `true` once the refresh and company lookup have settled.
-- The `(account)` and `(merchant)` layouts wrap their pages in `RequireAuth` and set `noindex`. The guard renders a spinner until `auth.sessionRestored` is `true` (always the case in server HTML, so protected shells never contain private data), then redirects visitors without an access token to `/login`. The backend authorizes every API call; the frontend role and capability checks only hide navigation.
+- The `(account)` and `(merchant)` layouts wrap their pages in `RequireAuth` and set `noindex`. The guard renders a spinner until `auth.sessionRestored` is `true` (always the case in server HTML, so protected shells never contain private data), then redirects visitors without an access token to `/login?next=<path and query>`. The backend authorizes every API call; the frontend role and capability checks only hide navigation. See [frontend session boundary](#frontend-session-boundary).
 
 Unknown URLs render `src/app/not-found.tsx` with HTTP `404`.
 
@@ -133,6 +133,19 @@ Kafka carries activity, product, bundle, email, import, loyalty, fulfillment, an
 Successful authentication returns a short-lived access token for the `Authorization: Bearer` header and uses an HttpOnly refresh-token cookie. The Spring Security filter parses JWTs, while domain annotations and method security enforce access rules. The global HTTP rule permits requests through so controller/service-level policies and public endpoints can coexist.
 
 OAuth verification supports Google, Microsoft, and Apple configuration. Authentication also includes configurable rate limits, login lockout, device verification, password hashing, captcha verification, and optional risk step-up flows.
+
+### Frontend Session Boundary
+
+The browser holds the access token in memory only. The refresh token lives in the `refreshToken` cookie, which is HttpOnly, host-only and `SameSite` (`Strict` by default), and it is **single-use**: every refresh consumes it and sets a replacement. The frontend therefore never refreshes on the server. The boundary has four layers ([ADR 0001](decisions/0001-nextjs-app-router.md#auth-boundary)):
+
+1. **`frontend/src/proxy.ts` (optimistic).** For protected paths it returns `307` to `/login?next=<path and query>` when the `refreshToken` cookie is absent. It never calls the backend or reads the cookie's value.
+   - The protected prefixes live in `src/lib/routes.ts`: `/account`, `/admin`, `/b2b`, `/dashboard`, `/feed`, `/feedback`, `/following`, `/lists` except `/lists/public/`, `/loyalty`, `/orders`, and `/price-watches`.
+   - The proxy matcher repeats these prefixes as literals, and a unit test keeps the two in sync.
+2. **`RequireAuth` (authoritative in the frontend).** It waits for the browser's session restore, then sends visitors without a valid session (missing, expired, or revoked cookie) to `/login?next=…`. Protected HTML is only a spinner, so it never contains private data.
+3. **Login page.** After a password or Google sign-in it navigates to `next`. It also navigates there immediately when a session is already restored. `next` must pass `safeNextPath()` (`src/lib/safeRedirect.ts`): only same-origin relative paths are honoured, and absolute, protocol-relative, backslash, control-character, and `/login`/`/auth/*` values fall back to `/dashboard`.
+4. **Backend.** It authorizes every API call. Roles, company membership, and tenant scope are never decided by the frontend.
+
+Because the cookie is `SameSite=Strict`, a top-level navigation from another site does not carry it. Examples are the Stripe Checkout or Billing Portal return to `/account` and links in emails. The proxy sends such a visit to `/login?next=…`. The login page's same-site refresh then succeeds and returns the user to `next` without asking for credentials. CSRF protection relies on `SameSite=Strict`, so do not relax it to avoid this extra hop.
 
 ## Runtime Profiles and Seed Data
 
