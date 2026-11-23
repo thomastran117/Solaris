@@ -1,3 +1,8 @@
 node_modules
 build
 dist
+.next
+out
+coverage
+next-env.d.ts
+package-lock.json

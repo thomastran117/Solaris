@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { Layers, Sparkles } from "lucide-react";
 import type { Collection } from "../../types/collection";
@@ -14,7 +14,7 @@ interface Props {
  */
 export default function CollectionCard({ collection, variants }: Props) {
   return (
-    <Link to={`/collections/${collection.slug}`} className="group block">
+    <Link href={`/collections/${collection.slug}`} className="group block">
       <motion.div
         variants={variants}
         whileHover={{ y: -4 }}

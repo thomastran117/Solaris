@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { Check, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import type { SavedListItem } from "../../types/savedList";
 
@@ -44,7 +44,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
     >
       {/* Thumbnail */}
       <Link
-        to={`/products/${item.productId}`}
+        href={`/products/${item.productId}`}
         className="w-full sm:w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-white/[0.04] flex items-center justify-center"
       >
         {item.productThumbnailUrl ? (
@@ -62,7 +62,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
       <div className="flex-1 min-w-0 flex flex-col gap-2">
         <div>
           <Link
-            to={`/products/${item.productId}`}
+            href={`/products/${item.productId}`}
             className={`block text-sm font-semibold text-white leading-snug hover:text-sky-200 transition-colors ${
               item.purchased ? "line-through" : ""
             }`}

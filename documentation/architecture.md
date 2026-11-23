@@ -48,11 +48,18 @@ flowchart TB
 
 ## Frontend
 
-`frontend/src/App.tsx` defines public and protected routes. Pages compose domain components, call the modules under `frontend/src/api`, validate forms with Zod and React Hook Form, and use TanStack Query for server state. Redux slices hold cross-cutting client state such as authentication, cart, marketplace, vendor, and loyalty context.
+The frontend is a Next.js App Router application ([ADR 0001](decisions/0001-nextjs-app-router.md)). Routes live under `frontend/src/app` in four route groups that do not appear in URLs: `(storefront)`, `(auth)`, `(account)`, and `(merchant)`. The [frontend route map](frontend-route-map.md) lists every URL and its segment. Each `page.tsx` is a thin server component that sets metadata and renders a client view from `frontend/src/views`. Views compose domain components, call the modules under `frontend/src/api`, validate forms with Zod and React Hook Form, and use TanStack Query for server state. Redux slices hold cross-cutting client state such as authentication, cart, marketplace, vendor, and loyalty context.
 
-Vite serves local development on port `3090` and proxies `/api` to the backend. The production container builds static assets and serves them through Nginx, which proxies API traffic to the backend container.
+The root layout (`src/app/layout.tsx`) renders the Navbar, Footer, and feedback button inside the client providers (`src/app/providers.tsx`):
 
-A migration to Next.js App Router is accepted but not yet implemented. See [ADR 0001](decisions/0001-nextjs-app-router.md) for the design and the [frontend route map](frontend-route-map.md) for route-by-route parity. This section will change as each migration pull request lands.
+- `StoreProvider` creates one Redux store per browser session with `makeStore()` and seeds the configured default marketplace. It also binds the store to `src/api/authBridge.ts`, which is how the axios client and session refresh read the access token without a module-level store.
+- `QueryClientProvider` uses `getQueryClient()`: a fresh client per server render and one long-lived client in the browser. Logout clears it.
+- `AuthInitializer` restores the session once per page load through `refreshSession()` (`src/api/session.ts`). Refresh tokens are single-use, so every caller, including the 401 retry interceptor, shares one in-flight refresh request. Until the attempt settles it renders a loading spinner, so pages currently render in the browser only; server-rendered storefront pages are tracked in #84.
+- The `(account)` and `(merchant)` layouts wrap their pages in `RequireAuth`, which redirects visitors without an access token to `/login` and sets `noindex`. The backend authorizes every API call; the frontend role and capability checks only hide navigation.
+
+Unknown URLs render `src/app/not-found.tsx` with HTTP `404`.
+
+The browser always calls same-origin `/api/*`. A rewrite in `frontend/next.config.ts` forwards those requests to `API_INTERNAL_URL` (default `http://localhost:8090`). This keeps the host-only refresh cookie working and avoids CORS. `npm run dev` serves the frontend on port `3090`. The Compose image runs `next start` on port `3000`.
 
 ## Backend
 

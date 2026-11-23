@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
+import { useIsClient } from "../../hooks/useIsClient";
 
 interface ModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ export default function Modal({
   maxWidth = "max-w-lg",
   hideClose = false,
 }: ModalProps) {
+  const isClient = useIsClient();
   const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -36,6 +38,8 @@ export default function Modal({
       document.body.style.overflow = "";
     };
   }, [open, onClose]);
+
+  if (!isClient) return null;
 
   return createPortal(
     <AnimatePresence>

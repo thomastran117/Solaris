@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 import { motion, type Variants } from "framer-motion";
 import { Bookmark, ShoppingBag } from "lucide-react";
@@ -13,7 +14,7 @@ interface Props {
 }
 
 export default function ProductCard({ product, variants }: Props) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -36,7 +37,7 @@ export default function ProductCard({ product, variants }: Props) {
     e.preventDefault();
     e.stopPropagation();
     if (!accessToken) {
-      navigate("/login");
+      router.push("/login");
       return;
     }
     setSaveOpen(true);
@@ -44,7 +45,7 @@ export default function ProductCard({ product, variants }: Props) {
 
   return (
     <>
-      <Link to={`/products/${product.id}`} className="group block">
+      <Link href={`/products/${product.id}`} className="group block">
         <motion.div
           variants={variants}
           whileHover={{ y: -4 }}

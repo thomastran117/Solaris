@@ -14,7 +14,7 @@ export const FEEDBACK_CATEGORIES = [
 export const feedbackFormSchema = z.object({
   category: z.enum(
     ["BUG_REPORT", "FEATURE_REQUEST", "UI_UX", "PERFORMANCE", "CHECKOUT", "SEARCH", "ACCOUNT", "OTHER"],
-    { required_error: "Please select a category" }
+    { error: "Please select a category" }
   ),
   message: z
     .string()
