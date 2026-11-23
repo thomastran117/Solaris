@@ -103,7 +103,7 @@ To roll back, revert the pull requests in reverse order; each one is self-contai
 | Part | Pull request | Status |
 |---|---|---|
 | #82 ADR and route map | #166 | Merged |
-| #83 Bootstrap | #167 (merged into the #166 branch; re-landed on `main` from `refactor/83-nextjs-bootstrap-main`) | In review |
-| #84 Storefront SSR | Stacked on #83 | In review |
-| #85 Auth boundary | — | Not started |
+| #83 Bootstrap | #167, re-landed on `main` as #168 | Merged |
+| #84 Storefront SSR | #169, re-landed on `main` from `refactor/84-storefront-ssr-main` | In review |
+| #85 Auth boundary | Stacked on #84 | In review |
 | #86 Container and CI | — | Not started |
