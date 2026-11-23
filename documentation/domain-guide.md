@@ -99,6 +99,6 @@ The presence of a backend controller does not guarantee a complete end-user jour
 
 1. HTTP and service behavior in the backend
 2. API client, schema, and type support in the frontend
-3. A reachable route and usable page flow in `frontend/src/App.tsx`
+3. A reachable route under `frontend/src/app` (listed in the [frontend route map](frontend-route-map.md)) and a usable page flow
 
 Future possibilities belong in the [candidate roadmap](roadmap.md), not in this current-state map.

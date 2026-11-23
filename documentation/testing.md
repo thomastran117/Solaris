@@ -86,7 +86,19 @@ npm ci
 npm run test -- --run
 ```
 
-Vitest uses jsdom and the setup file at `src/test/setup.ts`. Tests normally live beside components or under a page's `__tests__` directory.
+Vitest uses jsdom and the setup file at `src/test/setup.ts`. Tests normally live beside components or under a view's `__tests__` directory. Vite is installed only as Vitest's transform pipeline; the application itself is built by Next.js.
+
+`src/test/setup.ts` replaces `next/navigation` and `next/link` with controllable test doubles (`src/test/nextNavigation.ts`, `src/test/nextLink.tsx`), so components render without a mounted Next.js app:
+
+```tsx
+import { mockRouter, setMockUrl } from "../test/nextNavigation";
+
+setMockUrl("/c/abc/compare?type=product", { params: { id: "abc" } }); // before render
+// ...render and interact...
+expect(mockRouter.push).toHaveBeenCalledWith("/products/1");
+```
+
+The mock URL and router spies reset after every test.
 
 Useful focused commands:
 
@@ -101,11 +113,14 @@ The second command starts interactive watch mode. CI uses Node 20 and `npm run t
 
 ```powershell
 npm run lint
+npm run typecheck
 npm run format:check
 npm run build
 ```
 
-`npm run build` runs the TypeScript project build before Vite, so it catches type and production-bundle failures. `npm run format` rewrites files and should only be used when you intend to format the working tree.
+`npm run typecheck` runs `tsc --noEmit` over application and test files. `npm run build` runs `next build`, which also type-checks and prerenders static routes, so it catches type and production-bundle failures. Run `npx next typegen` once before `npm run typecheck` in a fresh clone so that `next-env.d.ts` and the route types exist.
+
+`npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
 
 ## Browser Smoke Test
 
@@ -125,7 +140,7 @@ $env:BASE_URL = "http://localhost:3000"
 python -m pytest playwright
 ```
 
-For Vite development, use `http://localhost:3090` instead. The checked-in fixture defaults to `http://localhost:3040`, so setting `BASE_URL` is required for the documented Docker and Vite workflows.
+For `npm run dev`, use `http://localhost:3090` instead. The checked-in fixture defaults to `http://localhost:3040`, so setting `BASE_URL` is required for the documented Docker and development-server workflows.
 
 ## Choosing Tests for a Change
 
