@@ -107,7 +107,7 @@ npm run test -- SearchBar.test.tsx --run
 npm run test -- --watch
 ```
 
-The second command starts interactive watch mode. CI uses Node 20 and `npm run test -- --run`.
+The second command starts interactive watch mode. CI runs on Node 24. The `Frontend Checks` job runs `npx next typegen`, `npm run typecheck`, `npm run lint`, `npm run test -- --run`, and `npm run build`.
 
 ## Static Frontend Checks
 
@@ -142,11 +142,37 @@ curl.exe -s http://localhost:3000/products/<product id>   # product name, canoni
 curl.exe -s -o NUL -w "%{http_code}" http://localhost:3000/products/00000000-0000-0000-0000-000000000000   # 404
 ```
 
-Also load a storefront page in a browser with JavaScript disabled. The content must be visible, and with JavaScript enabled the console must show no hydration errors.
+Also load a storefront page in a browser with JavaScript disabled. The content must be visible, and with JavaScript enabled the console must show no hydration errors. The browser smoke tests below automate these checks.
 
-## Browser Smoke Test
+## Browser Smoke Tests
 
-The Python Playwright suite currently contains a homepage smoke test. Install its dependencies from the repository root:
+The Python Playwright suite in `playwright/tests/` runs against a built frontend:
+
+- **`test_homepage.py`.** Home page, `/healthz`, and a real 404 for unknown routes.
+- **`test_storefront_ssr.py`.** Every server-rendered storefront page shows its content with JavaScript disabled and with no `opacity:0` left behind. With JavaScript enabled, pages hydrate without console errors. The file also checks product metadata and JSON-LD escaping, `404` for missing entities, `noindex` for filtered listings, and that server rendering never forwards cookies or `Authorization`.
+- **`test_auth_boundary.py`.** It covers:
+  - the proxy `307` to `/login?next=…`
+  - protected HTML that contains no private data
+  - returning to a deep link after logging in
+  - the restored-session bounce, which is the Stripe-return case
+  - open-redirect rejection
+  - the revoked-cookie path
+
+The storefront and auth tests expect the frontend to talk to `playwright/stub_api.py`, a standard-library fixture server for the public storefront and session endpoints, rather than the real backend. The `Frontend Smoke Tests` CI job runs exactly this setup. To reproduce it locally from the repository root:
+
+```powershell
+python playwright/stub_api.py 8090          # in its own terminal
+cd frontend
+$env:API_INTERNAL_URL = "http://127.0.0.1:8090"
+$env:DEFAULT_MARKETPLACE_ID = "11111111-1111-1111-1111-111111111111"
+$env:NEXT_PUBLIC_FRONTEND_URL = "http://localhost:3000"
+npm run build
+Copy-Item -Recurse .next/static .next/standalone/.next/static
+Copy-Item -Recurse public .next/standalone/public
+node .next/standalone/server.js           # in its own terminal; serves port 3000
+```
+
+Then install the dependencies and run the suite:
 
 ```powershell
 python -m venv .venv
@@ -155,14 +181,11 @@ python -m pip install -r playwright/requirements.txt
 python -m playwright install chromium
 ```
 
-Start the application, then override the historical test default with the URL you are actually serving:
-
 ```powershell
-$env:BASE_URL = "http://localhost:3000"
 python -m pytest playwright
 ```
 
-For `npm run dev`, use `http://localhost:3090` instead. The checked-in fixture defaults to `http://localhost:3040`, so setting `BASE_URL` is required for the documented Docker and development-server workflows.
+`BASE_URL` defaults to `http://localhost:3000`. Set it to `http://localhost:3090` for `npm run dev`. Against the full Docker stack, only `test_homepage.py` applies; the storefront and auth tests rely on the stub's fixtures.
 
 ## Choosing Tests for a Change
 

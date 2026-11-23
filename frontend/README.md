@@ -6,7 +6,7 @@ For complete project setup, architecture, and operational guidance, start with t
 
 ## Requirements
 
-- Node.js 20.9 or newer (CI uses Node 20; the Docker image uses Node 24)
+- Node.js 20.9 or newer (CI and the Docker image use Node 24)
 - The ShopWave backend and infrastructure for live API flows
 
 ## Local Development
@@ -28,7 +28,7 @@ Environment variables are documented in [configuration](../documentation/configu
 | ----------------------- | ---------------------------------------------------------- |
 | `npm run dev`           | Start the Next.js development server on port 3090          |
 | `npm run build`         | Type-check and create the production build (`next build`)  |
-| `npm run start`         | Serve a production build on port 3000                      |
+| `npm run start`         | Serve a production build on port 3000 (local use; it prints a standalone warning, and the Docker image runs `node server.js` instead) |
 | `npm run lint`          | Run ESLint (`eslint-config-next`)                          |
 | `npm run typecheck`     | Run `tsc --noEmit`; run `npx next typegen` first if needed |
 | `npm run format:check`  | Check Prettier formatting                                  |

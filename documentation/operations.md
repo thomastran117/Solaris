@@ -23,6 +23,24 @@ docker compose logs --tail 200 kafka
 
 Follow a service during reproduction with `docker compose logs -f <service>`.
 
+### Frontend
+
+The frontend container runs the Next.js standalone server on port `3000` and defines a Docker `HEALTHCHECK` against `/healthz`:
+
+```powershell
+Invoke-WebRequest http://localhost:3000/healthz   # {"status":"ok"}
+docker inspect -f "{{.State.Health.Status}}" shopwave-frontend
+docker compose logs --tail 200 frontend
+```
+
+`/healthz` does not call the backend. When the API is unavailable, storefront pages still render without prefetched data, and the browser retries. Server-side fetch failures are logged with the `[ssr]` prefix.
+
+Several values are compiled in when the image is built. Rebuild it (`docker compose up --build frontend`) after changing `NEXT_PUBLIC_*`, `API_INTERNAL_URL`, or `DEFAULT_MARKETPLACE_ID`. The last two are also read at runtime by server rendering.
+
+#### Client IP addresses behind the frontend
+
+Every API call proxied by the frontend reaches the backend from the frontend container's address. The previous Nginx container behaved the same way. The backend honors `X-Forwarded-For` only from configured trusted proxies (`ClientRequestFilter`), and none are configured by default. Per-IP rate limits on authentication endpoints are therefore shared by all users who go through one frontend instance. If this matters in a deployment, configure trusted proxies once the backend parses forwarded addresses safely. Until then, raise the per-IP limits rather than trusting a client-supplied header.
+
 ## Database Migrations
 
 Flyway is the only schema owner. Migrations live in:

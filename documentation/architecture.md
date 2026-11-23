@@ -84,7 +84,14 @@ How it fits together:
 - **Deterministic text.** Text rendered on the server must not depend on the server's locale, time zone, or clock. Use `src/lib/format.ts` (fixed `en-US` locale, UTC calendar dates), and render clock-dependent labels only after hydration (`useIsClient`).
 - **Marketplace.** Catalog pages read `DEFAULT_MARKETPLACE_ID` on the server. Pages prerendered at build time also read it during the build.
 
-The browser always calls same-origin `/api/*`. A rewrite in `frontend/next.config.ts` forwards those requests to `API_INTERNAL_URL` (default `http://localhost:8090`). This keeps the host-only refresh cookie working and avoids CORS. `npm run dev` serves the frontend on port `3090`. The Compose image runs `next start` on port `3000`.
+The browser always calls same-origin `/api/*`. A rewrite in `frontend/next.config.ts` forwards those requests to `API_INTERNAL_URL` (default `http://localhost:8090`). This keeps the host-only refresh cookie working and avoids CORS. `npm run dev` serves the frontend on port `3090`. The production image runs the Next.js standalone server (`node server.js`) on port `3000` as a non-root user, with a `/healthz` liveness route that sits outside the `/api` rewrite.
+
+Two settings in `next.config.ts` keep real-time traffic working through the rewrite:
+
+- **`compress: false`.** Next.js compression also applies to proxied responses, and it buffered the order-tracking Server-Sent Events until the stream closed. Compress at the edge proxy or CDN instead, and exempt `text/event-stream`.
+- **`experimental.proxyTimeout: 60000`.** This is the idle timeout for proxied API requests, the same as the previous Nginx `proxy_read_timeout`. SSE heartbeats arrive every 25 seconds, so streams stay open.
+
+WebSocket upgrades for STOMP at `/api/ws/delivery` pass through the rewrite and are not subject to the timeout.
 
 ## Backend
 

@@ -62,7 +62,7 @@ Changing these values requires rebuilding the frontend container. For a local `n
 
 ## Frontend Server Variables
 
-These values are read by the Next.js server and are never sent to the browser.
+These values are read by the Next.js server and are never sent to the browser. In Docker Compose, both are passed to the frontend image as build arguments and set on the container.
 
 | Variable                 | Default                 | Purpose                                                                                                                                                                                      |
 | ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -24,3 +24,9 @@ pom.xml.tag
 pom.xml.releaseBackup
 
 docs/
+# Python / Playwright smoke tests
+__pycache__/
+*.pyc
+.pytest_cache/
+playwright/venv/
+playwright/stub_api_requests.log
