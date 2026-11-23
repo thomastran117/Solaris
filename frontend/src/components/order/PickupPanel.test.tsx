@@ -44,6 +44,10 @@ function makeOrder(overrides: Partial<CompanyOrder> = {}): CompanyOrder {
     shipState: null,
     shipPostalCode: null,
     shipCountry: null,
+    preferredDeliveryDate: null,
+    preferredDeliveryWindow: null,
+    deliverySlotStatus: null,
+    assignedDriverId: null,
     createdAt: "2026-05-20T10:00:00Z",
     ...overrides,
   };

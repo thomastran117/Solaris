@@ -1,13 +1,13 @@
 # Configuration
 
-ShopWave reads backend settings from environment variables referenced by `backend/src/main/resources/application.properties`. Docker Compose passes the local subset from the repository-root `.env` file. Vite variables are compiled into the frontend and must start with `VITE_`.
+ShopWave reads backend settings from environment variables referenced by `backend/src/main/resources/application.properties`. Docker Compose passes the local subset from the repository-root `.env` file. Browser-visible frontend variables are compiled into the Next.js build and must start with `NEXT_PUBLIC_`.
 
 Copy `.env.example` to `.env` for local Docker use. The real `.env` is ignored by Git.
 
 ## Configuration Principles
 
 - Never commit real credentials, tokens, private keys, webhook secrets, or production URLs.
-- Frontend `VITE_*` values are public after build; never place a secret in them.
+- Frontend `NEXT_PUBLIC_*` values are public after build; never place a secret in them.
 - Keep production secrets in the deployment platform's secret manager.
 - Explicitly set `SPRING_PROFILES_ACTIVE` and all security-sensitive values outside local development.
 - The values in `.env.example` are development defaults, not a production baseline.
@@ -48,17 +48,32 @@ Container-to-container traffic always uses the container ports and service names
 
 ## Frontend Build Variables
 
-| Variable                  | Purpose                                                           |
-| ------------------------- | ----------------------------------------------------------------- |
-| `VITE_BACKEND_URL`        | REST base path; `/api` works through Vite and Nginx proxies       |
-| `VITE_BACKEND_WS_URL`     | Optional WebSocket URL; otherwise derived from the browser origin |
-| `VITE_FRONTEND_URL`       | Canonical frontend URL used in browser flows                      |
-| `VITE_GOOGLE_CLIENT_ID`   | Public Google OAuth client ID                                     |
-| `VITE_MSAL_CLIENT_ID`     | Public Microsoft application ID                                   |
-| `VITE_MSAL_AUTHORITY`     | Microsoft authority URL                                           |
-| `VITE_RECAPTCHA_SITE_KEY` | Public reCAPTCHA site key                                         |
+| Variable                         | Purpose                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_BACKEND_URL`        | REST base path; the default `/api` goes through the Next.js rewrite                                       |
+| `NEXT_PUBLIC_BACKEND_WS_URL`     | Optional WebSocket base URL including `/api`; otherwise derived from the browser origin plus `/api`       |
+| `NEXT_PUBLIC_FRONTEND_URL`       | Canonical frontend URL used for OAuth redirect URIs and metadata; otherwise the browser origin            |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`   | Public Google OAuth client ID                                                                             |
+| `NEXT_PUBLIC_MSAL_CLIENT_ID`     | Public Microsoft application ID                                                                           |
+| `NEXT_PUBLIC_MSAL_AUTHORITY`     | Microsoft authority URL                                                                                   |
+| `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` | Public reCAPTCHA site key                                                                                 |
 
-Changing these values requires rebuilding the frontend container.
+Changing these values requires rebuilding the frontend container. For a local `npm run dev` process, put overrides in `frontend/.env.local`, which Git ignores.
+
+## Frontend Server Variables
+
+These values are read by the Next.js server and are never sent to the browser.
+
+| Variable                 | Default                 | Purpose                                                                                                                                                                                      |
+| ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_INTERNAL_URL`       | `http://localhost:8090` | Backend origin the `/api/*` rewrite forwards to. Compose uses `http://backend:8090`. Rewrites are resolved when `next build` runs, so this is a Docker build argument as well as a runtime variable. |
+| `DEFAULT_MARKETPLACE_ID` | unset                   | UUID of the marketplace whose catalog the storefront shows. Without it, catalog pages show a "no marketplace" state. Pages prerendered at build time read it during the build, so set it at build time too. |
+
+`NEXT_PUBLIC_DEFAULT_MARKETPLACE_ID` is accepted as a fallback for `DEFAULT_MARKETPLACE_ID`. The value is generated randomly when the development seed data is loaded, so look it up after the backend has seeded the database:
+
+```sql
+SELECT id FROM marketplace_profiles WHERE slug = 'techgadgets';
+```
 
 ## Optional Integrations
 
@@ -69,7 +84,7 @@ Blank values disable or limit the corresponding local feature; they do not provi
 | Google OAuth          | `GOOGLE_CLIENT_ID`                                                                                       |
 | Microsoft OAuth       | `MICROSOFT_CLIENT_ID`, `MICROSOFT_JWKS_URI`                                                              |
 | Apple OAuth           | `APPLE_CLIENT_ID`, `APPLE_JWKS_URI`                                                                      |
-| reCAPTCHA             | `RECAPTCHA_SECRET_KEY` and `VITE_RECAPTCHA_SITE_KEY`                                                     |
+| reCAPTCHA             | `RECAPTCHA_SECRET_KEY` and `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`                                                     |
 | Stripe orders         | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`                                   |
 | Stripe premium        | `STRIPE_PREMIUM_PRICE_ID`, `STRIPE_PREMIUM_WEBHOOK_SECRET`, premium success/cancel/portal URLs           |
 | S3-compatible uploads | `AWS_S3_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_PUBLIC_URL_BASE` |

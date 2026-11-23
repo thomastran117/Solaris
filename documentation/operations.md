@@ -125,7 +125,7 @@ Container service names such as `postgres` and `kafka` resolve only inside Compo
 
 ### Frontend receives 404 for every API call
 
-Keep `VITE_BACKEND_URL=/api` when using the Vite or Nginx proxy. If calling the backend directly, include the `/api` servlet context.
+Keep `NEXT_PUBLIC_BACKEND_URL=/api` so requests go through the Next.js `/api` rewrite, and check that `API_INTERNAL_URL` pointed at a reachable backend when the frontend was built. If calling the backend directly, include the `/api` servlet context.
 
 ### Browser rejects a request
 

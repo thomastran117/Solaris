@@ -65,7 +65,7 @@ Running dependencies in Docker while starting the applications locally gives fas
    npm run dev
    ```
 
-4. Open <http://localhost:3090>. Vite proxies `/api` to `http://localhost:8090`.
+4. Open <http://localhost:3090>. The Next.js development server forwards `/api` to `http://localhost:8090`. To show catalog pages, set `DEFAULT_MARKETPLACE_ID` in `frontend/.env.local` as described in [configuration](configuration.md#frontend-server-variables).
 
 On macOS or Linux, use `./mvnw` instead of `.\mvnw.cmd`.
 

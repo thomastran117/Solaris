@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { Globe, Lock } from "lucide-react";
 import type { SavedListSummary } from "../../types/savedList";
@@ -18,7 +18,7 @@ export default function SavedListCard({ list, variants }: Props) {
     : 0;
 
   return (
-    <Link to={`/lists/${list.id}`} className="group block">
+    <Link href={`/lists/${list.id}`} className="group block">
       <motion.div
         variants={variants}
         whileHover={{ y: -4 }}

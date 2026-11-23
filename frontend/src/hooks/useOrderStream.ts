@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { store } from "../stores";
+import { useAppStore } from "../stores/hooks";
 import Environment from "../configuration/Environment";
 import type { DriverLocation, Order, SseStatusUpdateEvent } from "../types/order";
 
@@ -12,6 +12,7 @@ export function useOrderStream(orderId: string | undefined): {
   driverLocation: DriverLocation | null;
 } {
   const qc = useQueryClient();
+  const store = useAppStore();
   const [connected, setConnected] = useState(false);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -116,7 +117,7 @@ export function useOrderStream(orderId: string | undefined): {
         setConnected(false);
       },
     });
-  }, [orderId, qc]);
+  }, [orderId, qc, store]);
 
   useEffect(() => {
     if (!orderId) return;

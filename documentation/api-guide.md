@@ -4,11 +4,11 @@ ShopWave exposes a JSON REST API from the Spring Boot application. This guide do
 
 ## Base URLs
 
-| Environment                         | Base URL                    |
-| ----------------------------------- | --------------------------- |
-| Complete Docker stack through Nginx | `http://localhost:3000/api` |
-| Backend directly                    | `http://localhost:8090/api` |
-| Vite development proxy              | `http://localhost:3090/api` |
+| Environment                                   | Base URL                    |
+| --------------------------------------------- | --------------------------- |
+| Complete Docker stack through the frontend    | `http://localhost:3000/api` |
+| Backend directly                              | `http://localhost:8090/api` |
+| `npm run dev` frontend (Next.js rewrite)      | `http://localhost:3090/api` |
 
 All backend controller paths are relative to the `/api` servlet context. There is no generated OpenAPI or Swagger endpoint configured in the current build.
 

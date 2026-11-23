@@ -1,63 +1,56 @@
-import { useState, useEffect } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
 import axios from "axios";
-import { useDispatch } from "react-redux";
-import { setCredentials, clearCredentials } from "../../stores/authSlice";
-import type { AppDispatch } from "../../stores";
 import Environment from "../../configuration/Environment";
+import { envelopeData } from "../../api/envelope";
+import { refreshSession } from "../../api/session";
+import { setCredentials } from "../../stores/authSlice";
+import { useAppDispatch } from "../../stores/hooks";
 
-function unwrapEnvelope(data: unknown): Record<string, unknown> {
-  if (
-    data &&
-    typeof data === "object" &&
-    "success" in data &&
-    "data" in data
-  ) {
-    return (data as { data: Record<string, unknown> }).data ?? {};
-  }
-  return (data as Record<string, unknown>) ?? {};
-}
-
-export default function AuthInitializer({ children }: { children: React.ReactNode }) {
-  const dispatch = useDispatch<AppDispatch>();
+/**
+ * Restores the session from the `refreshToken` cookie once per page load, then loads
+ * the user's company membership. Children render after the attempt settles.
+ *
+ * The refresh runs only in the browser and goes through the shared `refreshSession()`
+ * so that StrictMode's double effect and the 401 interceptor cannot burn the
+ * single-use refresh token twice.
+ */
+export default function AuthInitializer({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const dispatch = useAppDispatch();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    axios
-      .post(`${Environment.backend_url}/auth/refresh`, {}, { withCredentials: true })
-      .then(async (resp) => {
-        if (cancelled) return;
-        const payload = unwrapEnvelope(resp.data);
-        const accessToken = payload.accessToken as string | undefined;
-        dispatch(
-          setCredentials({
-            accessToken: accessToken ?? null,
-            email: (payload.email as string) ?? null,
-            role: (payload.role as string) ?? null,
-            tier: (payload.tier as string) ?? null,
-          })
-        );
-        if (accessToken) {
-          try {
-            const companyResp = await axios.get(
-              `${Environment.backend_url}/companies/mine`,
-              {
-                headers: { Authorization: `Bearer ${accessToken}` },
-                withCredentials: true,
-              }
-            );
-            if (!cancelled) {
-              const company = unwrapEnvelope(companyResp.data);
-              dispatch(setCredentials({ companyId: (company.id as string) ?? null }));
+    refreshSession()
+      .then(async (accessToken) => {
+        try {
+          // Raw axios: a 401/403 here means "no company", not an expired token, so it
+          // must not trigger the shared client's refresh-and-retry interceptor.
+          const companyResp = await axios.get(
+            `${Environment.backend_url}/companies/mine`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              withCredentials: true,
             }
-          } catch {
-            // No company associated with this account — companyId stays null.
+          );
+          if (!cancelled) {
+            const company = envelopeData<{ id?: string } | null>(
+              companyResp.data
+            );
+            dispatch(setCredentials({ companyId: company?.id ?? null }));
           }
+        } catch {
+          // No company associated with this account; companyId stays null.
         }
       })
       .catch(() => {
-        if (!cancelled) dispatch(clearCredentials());
+        // Anonymous visitor or expired session; refreshSession cleared credentials.
       })
       .finally(() => {
         if (!cancelled) setHydrated(true);

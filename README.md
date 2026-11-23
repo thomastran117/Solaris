@@ -17,7 +17,7 @@ The repository is under active development. The documentation describes behavior
 
 | Area               | Stack                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------- |
-| Frontend           | React 19, TypeScript 5.8, Vite 6, React Router, Redux Toolkit, TanStack Query, Tailwind CSS 4 |
+| Frontend           | Next.js 16 (App Router), React 19, TypeScript 5.8, Redux Toolkit, TanStack Query, Tailwind CSS 4 |
 | Backend            | Java 21, Spring Boot 3.4, Spring Security, Spring Data JPA, Maven                             |
 | Data and messaging | PostgreSQL 16, Redis 7, Elasticsearch 8, Kafka 4, Flyway                                      |
 | Integrations       | Stripe, S3-compatible storage, EasyPost, AfterShip, SMTP, OAuth, Firebase, Twilio             |

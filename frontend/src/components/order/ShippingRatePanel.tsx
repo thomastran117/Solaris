@@ -37,16 +37,17 @@ export default function ShippingRatePanel({ order }: Props) {
     enabled: rateable,
   });
 
-  if (!rateable) {
-    return null;
-  }
-
   const confirm = useMutation({
     mutationFn: (rateId: string) => ordersApi.confirmShippingRate(order.id, rateId).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["order", order.id] });
     },
   });
+
+  // After every hook, so the hook order is identical whether or not the order is rateable.
+  if (!rateable) {
+    return null;
+  }
 
   const rates = ratesQuery.data ?? [];
 
