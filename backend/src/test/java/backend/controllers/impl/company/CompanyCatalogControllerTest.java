@@ -100,7 +100,7 @@ class CompanyCatalogControllerTest {
         verify(productService).searchCompanyCatalog(
                 eq(COMPANY_ID), isNull(), isNull(), isNull(),
                 isNull(), isNull(),
-                eq(0), eq(20), eq("createdAt"), eq("desc"));
+                eq(0), eq(20), eq("relevance"), eq("desc"));
     }
 
     @Test

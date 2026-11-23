@@ -78,7 +78,7 @@ Redis is used for caches, rate limits, short-lived reservations, distributed loc
 
 ### Elasticsearch
 
-Elasticsearch serves catalog search and suggestions. Indexing is asynchronous and can lag behind PostgreSQL briefly. Index configuration supports bounded workers, retry processing, and versioned aliases.
+Elasticsearch serves catalog search and suggestions. Every product change, whether or not the product is listed on a marketplace, is published to the `product-events` topic and applied to the index by the indexing consumer. Indexing is asynchronous and can lag behind PostgreSQL briefly, so the company product listing reads PostgreSQL unless a free-text query is supplied. Index configuration supports bounded workers, retry processing, and versioned aliases.
 
 ### Kafka
 

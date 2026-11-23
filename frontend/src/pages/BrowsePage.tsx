@@ -11,14 +11,12 @@ import ProductCard from "../components/product/ProductCard";
 import type { RootState } from "../stores";
 import type { SearchFacets } from "../types/search";
 import { useAnims } from "../hooks/useAnims";
+import {
+  CATALOG_SORT_OPTIONS,
+  parseCatalogSort,
+  selectedCatalogSortIndex,
+} from "../components/search/catalogSort";
 
-
-const SORT_OPTIONS = [
-  { label: "Relevance", sort: "createdAt", direction: "desc" },
-  { label: "Price: Low to High", sort: "price", direction: "asc" },
-  { label: "Price: High to Low", sort: "price", direction: "desc" },
-  { label: "Newest", sort: "createdAt", direction: "desc" },
-] as const;
 
 const EMPTY_FACETS: SearchFacets = { categories: [], brands: [], priceRanges: [] };
 
@@ -33,7 +31,7 @@ export default function BrowsePage() {
   const brandParam = searchParams.get("brand");
   const minPriceParam = searchParams.get("minPrice");
   const maxPriceParam = searchParams.get("maxPrice");
-  const sortParam = searchParams.get("sort") ?? "createdAt";
+  const sortParam = parseCatalogSort(searchParams.get("sort"));
   const directionParam = (searchParams.get("direction") ?? "desc") as "asc" | "desc";
   const pageParam = Number(searchParams.get("page") ?? "0");
 
@@ -71,7 +69,7 @@ export default function BrowsePage() {
   }
 
   function handleSortChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const opt = SORT_OPTIONS[Number(e.target.value)];
+    const opt = CATALOG_SORT_OPTIONS[Number(e.target.value)];
     updateParams({ sort: opt.sort, direction: opt.direction });
   }
 
@@ -107,9 +105,7 @@ export default function BrowsePage() {
   const totalPages = data?.totalPages ?? 0;
   const totalElements = data?.totalElements ?? 0;
 
-  const selectedSortIndex = SORT_OPTIONS.findIndex(
-    (o) => o.sort === sortParam && o.direction === directionParam
-  );
+  const selectedSortIndex = selectedCatalogSortIndex(sortParam, directionParam);
 
   const hasActiveFilters = !!(categoryParam || brandParam || minPriceParam || maxPriceParam);
 
@@ -208,11 +204,11 @@ export default function BrowsePage() {
                   )}
                 </button>
                 <select
-                  value={selectedSortIndex >= 0 ? selectedSortIndex : 0}
+                  value={selectedSortIndex}
                   onChange={handleSortChange}
                   className="text-sm bg-white/[0.06] border border-white/10 rounded-full px-3 py-1.5 text-white/70 focus:outline-none focus:border-white/20 appearance-none cursor-pointer"
                 >
-                  {SORT_OPTIONS.map((o, i) => (
+                  {CATALOG_SORT_OPTIONS.map((o, i) => (
                     <option key={i} value={i} className="bg-slate-900 text-white">
                       {o.label}
                     </option>

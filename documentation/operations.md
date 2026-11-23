@@ -75,6 +75,7 @@ PostgreSQL is authoritative; Elasticsearch is a derived read model.
 - Check `ES_HOST`, `ES_PORT`, `ES_SCHEME`, and credentials.
 - Use the product reindex administration path only with an authorized account and after understanding the workload.
 - A search miss immediately after a write can be eventual-consistency delay rather than lost database data.
+- After a release adds fields to the product search document, run `POST /admin/search/reindex` once with an admin account to backfill existing documents. Until then, catalog sorts on the new fields still succeed and place documents that lack the field last.
 
 ## Kafka Troubleshooting
 

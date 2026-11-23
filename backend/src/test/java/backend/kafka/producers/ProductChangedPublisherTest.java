@@ -69,9 +69,13 @@ class ProductChangedPublisherTest {
     }
 
     @Test
-    void onProductIndex_nullMarketplaceId_doesNotSend() {
+    void onProductIndex_nullMarketplaceId_stillSendsSoPlainProductsAreIndexed() {
         publisher(true).onProductIndex(new ProductIndexEvent(product(null), COMPANY_ID));
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+
+        ArgumentCaptor<ProductChangedEvent> captor = ArgumentCaptor.forClass(ProductChangedEvent.class);
+        verify(kafkaTemplate).send(eq(TOPIC), eq(PRODUCT_ID.toString()), captor.capture());
+        assertEquals(ChangeType.UPDATED, captor.getValue().changeType());
+        assertNull(captor.getValue().marketplaceId());
     }
 
     @Test
@@ -100,8 +104,12 @@ class ProductChangedPublisherTest {
     }
 
     @Test
-    void onProductRemove_nullMarketplaceId_doesNotSend() {
+    void onProductRemove_nullMarketplaceId_stillSendsSoPlainProductsAreRemoved() {
         publisher(true).onProductRemove(new ProductRemoveEvent(PRODUCT_ID, null));
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+
+        ArgumentCaptor<ProductChangedEvent> captor = ArgumentCaptor.forClass(ProductChangedEvent.class);
+        verify(kafkaTemplate).send(eq(TOPIC), eq(PRODUCT_ID.toString()), captor.capture());
+        assertEquals(ChangeType.DELETED, captor.getValue().changeType());
+        assertNull(captor.getValue().marketplaceId());
     }
 }

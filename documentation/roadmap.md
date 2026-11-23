@@ -42,6 +42,7 @@ For implemented capabilities, use the [domain guide](domain-guide.md).
 
 - Evaluate a dedicated recommendation compute service only when scale and model requirements justify a new deployable system.
 - Introduce generated OpenAPI documentation if external API consumers become a primary audience.
+- Create versioned search indices with the explicit `ProductDocument` mapping. `IndexVersionManager` currently creates and rolls over indices with settings only, so a rollover relies on dynamic mapping, which drops keyword sub-fields such as `name.sort`.
 - Add production deployment, backup, restore, observability, and release runbooks once the target platform is selected.
 
 ## Promoting an Idea

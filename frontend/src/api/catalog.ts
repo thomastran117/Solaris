@@ -1,6 +1,6 @@
 import api from "../api";
 import type { AvailabilityEstimate } from "../types/availability";
-import type { CatalogSearchResponse, SearchSuggestionsResponse } from "../types/search";
+import type { CatalogSearchResponse, CatalogSortField, SearchSuggestionsResponse } from "../types/search";
 
 /**
  * Type matches backend ProductRuleType. UI may key off the value to swap iconography
@@ -89,7 +89,7 @@ export interface CatalogSearchParams {
   vendorId?: string;
   page?: number;
   size?: number;
-  sort?: string;
+  sort?: CatalogSortField;
   direction?: "asc" | "desc";
 }
 

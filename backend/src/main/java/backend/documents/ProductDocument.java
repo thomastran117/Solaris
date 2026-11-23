@@ -8,6 +8,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.InnerField;
+import org.springframework.data.elasticsearch.annotations.MultiField;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -48,7 +50,13 @@ public class ProductDocument {
     /** True when the vendor has enabled this product for marketplace display. */
     private boolean marketplaceListed;
 
-    @Field(type = FieldType.Text, searchAnalyzer = "product_search")
+    /**
+     * Full-text name. The {@code name.sort} keyword sub-field backs {@code sort=name}, since ES
+     * cannot sort on an analysed text field.
+     */
+    @MultiField(
+            mainField = @Field(type = FieldType.Text, searchAnalyzer = "product_search"),
+            otherFields = @InnerField(suffix = "sort", type = FieldType.Keyword, ignoreAbove = 256))
     private String name;
 
     @Field(type = FieldType.Text, searchAnalyzer = "product_search")
@@ -141,4 +149,16 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Text, searchAnalyzer = "product_search")
     private String attributeText;
+
+    // -------------------------------------------------------------------------
+    // Sort keys — mirror the JPA columns the catalog `sort` parameter accepts.
+    // -------------------------------------------------------------------------
+
+    /** Product creation time; backs the "Newest" sort and the relevance tie-breaker. */
+    @Field(type = FieldType.Date)
+    private Instant createdAt;
+
+    /** On-hand stock. Null for products that don't track stock (sorted last). */
+    @Field(type = FieldType.Integer)
+    private Integer stock;
 }

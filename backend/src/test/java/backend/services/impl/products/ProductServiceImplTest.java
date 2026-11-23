@@ -59,6 +59,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.data.jpa.domain.Specification;
@@ -1148,7 +1150,7 @@ class ProductServiceImplTest {
         when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        var result = service.searchProducts(COMPANY_ID, null, null, null, null, null, null, null, null, null, null,
+        var result = service.searchProducts(COMPANY_ID, "widget", null, null, null, null, null, null, null, null, null,
                 0, 20, "createdAt", "desc");
 
         assertNotNull(result);
@@ -1577,20 +1579,22 @@ class ProductServiceImplTest {
     }
 
     @Test
-    void searchProducts_esFails_fallsBackToJpa_alreadyCovered() {
-        // This scenario was already tested in searchProducts_elasticsearchFails_fallsBackToJpa
-        // Adding a complementary test verifying ServiceUnavailableException when filters present
-        doThrow(new RuntimeException("ES down"))
-                .when(elasticsearchOperations).search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void searchProducts_noQuery_readsDatabaseWithoutQueryingElasticsearch() {
+        // Unqueried listings back the admin product table, which re-reads right after a write;
+        // the async ES projection could lag, so they go straight to PostgreSQL.
         when(productRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        // No filters — should fall back to JPA without throwing
-        var result = service.searchProducts(COMPANY_ID, null, null, null,
-                null, null, null, null, null, null, null, 0, 10, null, null);
+        var result = service.searchProducts(COMPANY_ID, "  ", null, null,
+                null, null, null, null, null, null, null, 0, 10, "price", "asc");
 
         assertNotNull(result);
         assertEquals(0, result.getItems().size());
+        verify(elasticsearchOperations, never()).search(any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any());
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), pageable.capture());
+        assertEquals(Sort.Direction.ASC, pageable.getValue().getSort().getOrderFor("price").getDirection());
     }
 
     // =========================================================================
@@ -1738,6 +1742,35 @@ class ProductServiceImplTest {
 
         assertNotNull(result);
         assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void searchMarketplaceCatalog_defaultSort_ordersByScoreWithTolerantCreatedAtTieBreak() {
+        when(marketplaceProfileRepository.existsByCompanyId(MARKETPLACE_ID)).thenReturn(true);
+        var hits = (org.springframework.data.elasticsearch.core.SearchHits<backend.documents.ProductDocument>)
+                mock(org.springframework.data.elasticsearch.core.SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.empty());
+        when(elasticsearchOperations.search(
+                any(org.springframework.data.elasticsearch.core.query.Query.class), (Class) any()))
+                .thenReturn(hits);
+        when(productRepository.findAllByIdInAndMarketplaceId(any(), eq(MARKETPLACE_ID))).thenReturn(List.of());
+
+        service.searchMarketplaceCatalog(MARKETPLACE_ID, null, null, null,
+                null, null, null, null, 0, 10, "relevance", "desc");
+
+        ArgumentCaptor<org.springframework.data.elasticsearch.core.query.Query> captor =
+                ArgumentCaptor.forClass(org.springframework.data.elasticsearch.core.query.Query.class);
+        verify(elasticsearchOperations).search(captor.capture(), (Class) any());
+        var esQuery = (org.springframework.data.elasticsearch.client.elc.NativeQuery) captor.getValue();
+        // Paging only — the sort is carried as ES SortOptions, never as a Spring Data field sort
+        // that would fail on an unmapped field.
+        assertTrue(esQuery.getPageable().getSort().isUnsorted());
+        assertEquals(2, esQuery.getSortOptions().size());
+        assertTrue(esQuery.getSortOptions().get(0).isScore());
+        var tieBreak = esQuery.getSortOptions().get(1).field();
+        assertEquals("createdAt", tieBreak.field());
+        assertEquals(co.elastic.clients.elasticsearch._types.mapping.FieldType.Date, tieBreak.unmappedType());
     }
 
     @Test
