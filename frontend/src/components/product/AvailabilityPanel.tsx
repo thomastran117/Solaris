@@ -3,6 +3,7 @@ import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { Clock, MapPin, Store, Truck } from "lucide-react";
 import { catalogApi } from "../../api/catalog";
 import { useUserLocation } from "../../hooks/useUserLocation";
+import { useHydrated } from "../../hooks/useHydrated";
 
 interface Props {
   marketplaceId: string;
@@ -49,6 +50,8 @@ function formatDistance(km: number | null): string | null {
 export default function AvailabilityPanel({ marketplaceId, productId, variantId, unavailable }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const variants = prefersReducedMotion ? FADE_IN_NO_MOTION : FADE_IN_UP;
+  // Server-rendered markup must be visible without JavaScript (see hooks/useHydrated).
+  const initial = useHydrated() ? "hidden" : false;
   const { coords, permission, isRequesting, request } = useUserLocation();
 
   const roundedLat = coords ? Math.round(coords.lat * 100) / 100 : null;
@@ -82,7 +85,7 @@ export default function AvailabilityPanel({ marketplaceId, productId, variantId,
 
   if (isLoading) {
     return (
-      <motion.div variants={variants} initial="hidden" animate="visible" className={wrapperClass}>
+      <motion.div variants={variants} initial={initial} animate="visible" className={wrapperClass}>
         <div className="flex flex-col gap-3">
           <SkeletonRow />
           <SkeletonRow />
@@ -104,7 +107,7 @@ export default function AvailabilityPanel({ marketplaceId, productId, variantId,
   const distanceLabel = formatDistance(data.nearestSource?.distanceKm ?? null);
 
   return (
-    <motion.div variants={variants} initial="hidden" animate="visible" className={wrapperClass}>
+    <motion.div variants={variants} initial={initial} animate="visible" className={wrapperClass}>
       <div className="flex flex-col gap-3">
         {/* ETA */}
         <Row icon={<Truck className="w-4 h-4" />}>

@@ -20,6 +20,9 @@ import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
 import type { StockNotification } from "../types/notifications";
 import type { PriceWatcher } from "../types/priceWatchers";
 import { addItem } from "../stores/cartSlice";
+import { formatCalendarDate } from "../lib/format";
+import { productKeys } from "../api/keys";
+import { useIsClient } from "../hooks/useIsClient";
 import { useAnims } from "../hooks/useAnims";
 
 function buildVariantLabel(
@@ -31,6 +34,8 @@ function buildVariantLabel(
 export default function ProductPage() {
   const { id } = useParams<{ id: string }>();
   const productId = id;
+  // Time-zone and clock dependent labels render only after hydration.
+  const isClient = useIsClient();
   const { fadeInUp, fadeIn } = useAnims();
   const queryClient = useQueryClient();
 
@@ -45,7 +50,7 @@ export default function ProductPage() {
   const router = useRouter();
 
   const { data: product, isLoading, isError } = useQuery({
-    queryKey: ["product", marketplaceId, productId],
+    queryKey: productKeys.detail(marketplaceId, productId),
     queryFn: () => catalogApi.getProduct(marketplaceId!, productId).then(r => r.data),
     enabled: !!marketplaceId && !!productId,
   });
@@ -224,7 +229,7 @@ export default function ProductPage() {
   // Show "Sale ends …" only when the window closes within the next 14 days — beyond that
   // the deadline is too far off to feel urgent and the line just adds noise.
   const saleEndsLabel = (() => {
-    if (!promo?.endDate) return null;
+    if (!isClient || !promo?.endDate) return null;
     const end = new Date(promo.endDate);
     const ms = end.getTime() - Date.now();
     const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
@@ -399,7 +404,7 @@ export default function ProductPage() {
               )}
               {isPreorderEligible && preorderExpectedDate && (
                 <span className="text-xs text-white/60">
-                  Expected {new Date(preorderExpectedDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  Expected {formatCalendarDate(preorderExpectedDate)}
                 </span>
               )}
             </div>

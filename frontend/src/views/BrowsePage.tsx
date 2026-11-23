@@ -15,9 +15,11 @@ import ProductCard from "../components/product/ProductCard";
 import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
 import type { SearchFacets } from "../types/search";
 import { useAnims } from "../hooks/useAnims";
+import { formatCount } from "../lib/format";
+import { catalogSearchRequest, parseCatalogUrlParams } from "../lib/catalogParams";
+import { catalogKeys } from "../api/keys";
 import {
   CATALOG_SORT_OPTIONS,
-  parseCatalogSort,
   selectedCatalogSortIndex,
 } from "../components/search/catalogSort";
 
@@ -30,14 +32,18 @@ export default function BrowsePage() {
   const marketplaceId = useSelector(selectActiveMarketplaceId);
   const { fadeInUp, stagger } = useAnims();
 
-  const q = searchParams.get("q") ?? "";
-  const categoryParam = searchParams.get("category");
-  const brandParam = searchParams.get("brand");
-  const minPriceParam = searchParams.get("minPrice");
-  const maxPriceParam = searchParams.get("maxPrice");
-  const sortParam = parseCatalogSort(searchParams.get("sort"));
-  const directionParam = (searchParams.get("direction") ?? "desc") as "asc" | "desc";
-  const pageParam = Number(searchParams.get("page") ?? "0");
+  // Shared with the server page so prefetched data lands on the same query key.
+  const urlParams = parseCatalogUrlParams(searchParams);
+  const {
+    q,
+    category: categoryParam,
+    brand: brandParam,
+    minPrice: minPriceParam,
+    maxPrice: maxPriceParam,
+    sort: sortParam,
+    direction: directionParam,
+    page: pageParam,
+  } = urlParams;
 
   const [mobileFacetsOpen, setMobileFacetsOpen] = useState(false);
 
@@ -86,19 +92,11 @@ export default function BrowsePage() {
 
   const queryEnabled = !!marketplaceId;
   const searchResult = useQuery({
-    queryKey: ["catalog", "browse", marketplaceId, q, categoryParam, brandParam, minPriceParam, maxPriceParam, sortParam, directionParam, pageParam],
+    queryKey: catalogKeys.browse(marketplaceId, urlParams),
     queryFn: () =>
-      catalogApi.search(marketplaceId!, {
-        q: q || undefined,
-        category: categoryParam ?? undefined,
-        brand: brandParam ?? undefined,
-        minPrice: minPriceParam ? Number(minPriceParam) : undefined,
-        maxPrice: maxPriceParam ? Number(maxPriceParam) : undefined,
-        sort: sortParam,
-        direction: directionParam,
-        page: pageParam,
-        size: 24,
-      }).then((r) => r.data),
+      catalogApi
+        .search(marketplaceId!, catalogSearchRequest(urlParams))
+        .then((r) => r.data),
     enabled: queryEnabled,
     placeholderData: (prev) => prev,
   });
@@ -181,7 +179,7 @@ export default function BrowsePage() {
                   <div className="w-3.5 h-3.5 rounded-full border border-sky-400/40 border-t-sky-400 animate-spin" />
                 )}
                 <span className="text-sm text-white/50">
-                  {searchResult.isLoading ? "Searching…" : `${totalElements.toLocaleString()} product${totalElements !== 1 ? "s" : ""}`}
+                  {searchResult.isLoading ? "Searching…" : `${formatCount(totalElements)} product${totalElements !== 1 ? "s" : ""}`}
                 </span>
                 {hasActiveFilters && (
                   <button

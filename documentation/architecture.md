@@ -54,10 +54,35 @@ The root layout (`src/app/layout.tsx`) renders the Navbar, Footer, and feedback 
 
 - `StoreProvider` creates one Redux store per browser session with `makeStore()` and seeds the configured default marketplace. It also binds the store to `src/api/authBridge.ts`, which is how the axios client and session refresh read the access token without a module-level store.
 - `QueryClientProvider` uses `getQueryClient()`: a fresh client per server render and one long-lived client in the browser. Logout clears it.
-- `AuthInitializer` restores the session once per page load through `refreshSession()` (`src/api/session.ts`). Refresh tokens are single-use, so every caller, including the 401 retry interceptor, shares one in-flight refresh request. Until the attempt settles it renders a loading spinner, so pages currently render in the browser only; server-rendered storefront pages are tracked in #84.
-- The `(account)` and `(merchant)` layouts wrap their pages in `RequireAuth`, which redirects visitors without an access token to `/login` and sets `noindex`. The backend authorizes every API call; the frontend role and capability checks only hide navigation.
+- `AuthInitializer` restores the session once per page load through `refreshSession()` (`src/api/session.ts`). Refresh tokens are single-use, so every caller, including the 401 retry interceptor, shares one in-flight refresh request. It does not block rendering: pages render immediately (on the server and in the browser), and `auth.sessionRestored` becomes `true` once the refresh and company lookup have settled.
+- The `(account)` and `(merchant)` layouts wrap their pages in `RequireAuth` and set `noindex`. The guard renders a spinner until `auth.sessionRestored` is `true` (always the case in server HTML, so protected shells never contain private data), then redirects visitors without an access token to `/login`. The backend authorizes every API call; the frontend role and capability checks only hide navigation.
 
 Unknown URLs render `src/app/not-found.tsx` with HTTP `404`.
+
+### Server Rendering and Caching
+
+Public storefront pages render their content on the server, so the HTML is useful before (and without) JavaScript:
+
+| Route | Rendering | Server-prefetched data |
+| --- | --- | --- |
+| `/` | ISR, 60 s | Featured collections |
+| `/browse` | Per request (query-driven) | Catalog search results for the URL filters |
+| `/products/[id]` | ISR on demand, 60 s | Product; also emits `Product` JSON-LD |
+| `/c/[id]` | Per request (query-driven) | Public company profile, first catalog page, first announcements page |
+| `/collections/[slug]` | ISR on demand, 60 s | Collection, members, and member products |
+| `/kits/[companyId]/[kitId]` | ISR on demand, 60 s | Kit |
+| `/lists/public/[slug]` | ISR on demand, 60 s (`noindex`) | Shared list |
+
+How it fits together:
+
+- **Server reads** go through `src/api/server/`. `serverGet()` calls `API_INTERNAL_URL` directly with `fetch` and the Next.js data cache (`revalidate: 60`). It never forwards cookies or `Authorization`, so server HTML and cached responses can only contain public data. Per-user data, such as follow status, price watches, back-in-stock subscriptions, and loyalty balances, loads in the browser after hydration.
+- **Hydration.** Each page seeds its data into TanStack Query with `Hydrate` (`src/api/server/hydrate.tsx`) under the same keys the client view queries. The keys live in `src/api/keys.ts`; URL filters are parsed by `src/lib/catalogParams.ts` on both sides. The view renders that data immediately and refetches it in the background once it is stale.
+- **Failures.** A missing or malformed entity (backend `404` or `400`) renders `src/app/(storefront)/not-found.tsx` with HTTP `404`. Any other backend failure renders the page without prefetched data, and the view retries in the browser.
+- **No streaming fallbacks.** These routes deliberately have no `loading.tsx`, so the response waits for the data. That keeps the content in the initial HTML and keeps the `404` status code.
+- **Metadata.** `generateMetadata` sets the title, description, canonical URL, and Open Graph tags from the same cached reads. Helpers live in `src/lib/seo.ts`. `/browse` and `/c/[id]` are `noindex` when free-text or price filters are present. `robots.txt` (`src/app/robots.ts`) disallows account, merchant, and auth prefixes.
+- **Motion.** Server-rendered content must stay visible without JavaScript. `useAnims` returns visible "hidden" variants until the first hydration completes (`src/hooks/useHydrated.ts`), so only content mounted afterwards plays entrance animations.
+- **Deterministic text.** Text rendered on the server must not depend on the server's locale, time zone, or clock. Use `src/lib/format.ts` (fixed `en-US` locale, UTC calendar dates), and render clock-dependent labels only after hydration (`useIsClient`).
+- **Marketplace.** Catalog pages read `DEFAULT_MARKETPLACE_ID` on the server. Pages prerendered at build time also read it during the build.
 
 The browser always calls same-origin `/api/*`. A rewrite in `frontend/next.config.ts` forwards those requests to `API_INTERNAL_URL` (default `http://localhost:8090`). This keeps the host-only refresh cookie working and avoids CORS. `npm run dev` serves the frontend on port `3090`. The Compose image runs `next start` on port `3000`.
 

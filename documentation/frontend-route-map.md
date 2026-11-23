@@ -7,7 +7,8 @@ The **View** column is the screen each URL renders; the former React Router tabl
 Implementation status:
 
 - **Implemented (#83).** Every row's App Router **Segment** exists and resolves at the same URL. The deliberate retirements below are done, and unknown URLs return the new 404 page.
-- **Not yet implemented.** Server rendering, prefetch keys, and per-entity metadata (#84), and `next` deep links with `proxy.ts` (#85). Until #84, every route renders in the browser after session restore, as before.
+- **Implemented (#84).** The public storefront rows render on the server with the listed prefetch keys, metadata, and robots rules. Missing entities return `404`. See [server rendering and caching](architecture.md#server-rendering-and-caching).
+- **Not yet implemented.** `next` deep links and `proxy.ts` (#85).
 
 ## Conventions
 
@@ -28,10 +29,10 @@ Implementation status:
 
 | # | URL | View | Segment | Mode | Prefetch keys | Metadata and robots | Not found |
 |---|---|---|---|---|---|---|---|
-| 1 | `/` | `HomePage.tsx` | `(storefront)/page.tsx` | ISR 60 | `["home","featured-collections",mp]` | Static title and description; canonical `/` | — |
+| 1 | `/` | `HomePage.tsx` | `(storefront)/page.tsx` | ISR 60 | `["home","featured-collections",mp]` | Site title and description; canonical `/` | — |
 | 2 | `/browse` | `BrowsePage.tsx` | `(storefront)/browse/page.tsx` | SSR (query-driven) | `["catalog","browse",mp,q,category,brand,minPrice,maxPrice,sort,direction,page]` from the shared parameter parser | Canonical keeps `category`, `brand`, `page`; `noindex` when `q`, `minPrice`, or `maxPrice` is set | — |
 | 3 | `/products/:id` | `ProductPage.tsx` | `(storefront)/products/[id]/page.tsx` | ISR 60 | `["product",mp,id]` | Product name and description, Open Graph image, canonical, `Product` JSON-LD | Unknown, unlisted, or malformed ID → `404` |
-| 4 | `/c/:id` | `CompanyPage.tsx` | `(storefront)/c/[id]/page.tsx` | ISR 60 | `["company","public",id]`, `["company","catalog",id,…]` (page 0), `["announcements",id,0]` | Company name and description; canonical | Unknown company → `404` |
+| 4 | `/c/:id` | `CompanyPage.tsx` | `(storefront)/c/[id]/page.tsx` | SSR (query-driven) | `["company","public",id]`, `["company","catalog",id,…]` (page 0), `["announcements",id,0]` | Company name and description; canonical keeps `category`, `brand`, `page`; `noindex` with `q` or price filters | Unknown company → `404` |
 | 5 | `/collections/:slug` | `CollectionPage.tsx` | `(storefront)/collections/[slug]/page.tsx` | ISR 60 | `["collection","detail",mp,slug]`, `["collection","members",mp,slug]`, `["collection","members-catalog",mp,slug,productIds]` | Collection title and description; canonical | Unknown slug → `404` |
 | 6 | `/kits/:companyId/:kitId` | `KitPage.tsx` | `(storefront)/kits/[companyId]/[kitId]/page.tsx` | ISR 60 | `["kit",companyId,kitId]` | Kit name; canonical | Unknown or unlisted kit → `404` |
 | 7 | `/lists/public/:slug` | `PublicSavedListPage.tsx` | `(storefront)/lists/public/[slug]/page.tsx` | ISR 60 | `["savedLists","public",slug]` (`KEYS.public` in `hooks/useSavedLists.ts`) | List title; `noindex` (user-generated) | Unknown or private slug → `404` |
