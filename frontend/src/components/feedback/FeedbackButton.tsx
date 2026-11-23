@@ -1,4 +1,7 @@
+"use client";
+
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { useSelector } from "react-redux";
 import { motion, useReducedMotion } from "framer-motion";
 import { MessageSquare } from "lucide-react";
@@ -9,15 +12,19 @@ export default function FeedbackButton() {
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
+  const pathname = usePathname();
+  const [pageContext, setPageContext] = useState("");
 
   if (!accessToken) return null;
-
-  const pageContext = window.location.pathname + window.location.search;
 
   return (
     <>
       <motion.button
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Capture the full URL at click time; reading window during render breaks SSR.
+          setPageContext(pathname + window.location.search);
+          setOpen(true);
+        }}
         initial={reduced ? { opacity: 1 } : { opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         whileHover={reduced ? undefined : { scale: 1.05 }}

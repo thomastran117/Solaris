@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 import { Search, Tag, Layers, ImageOff } from "lucide-react";
 import { catalogApi } from "../../api/catalog";
 import type { ProductSuggestion, SearchSuggestionsResponse } from "../../types/search";
-import type { RootState } from "../../stores";
+import { selectActiveMarketplaceId } from "../../stores/marketplaceSlice";
 
 interface Props {
   onSearch: (q: string) => void;
@@ -40,8 +40,8 @@ export default function SearchBar({
   onSelectCategory,
   onSelectBrand,
 }: Props) {
-  const navigate = useNavigate();
-  const marketplaceId = useSelector((s: RootState) => s.marketplace.currentMarketplace?.id);
+  const router = useRouter();
+  const marketplaceId = useSelector(selectActiveMarketplaceId);
 
   const [value, setValue] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<SearchSuggestionsResponse | null>(null);
@@ -130,19 +130,19 @@ export default function SearchBar({
 
   function selectProduct(product: ProductSuggestion) {
     setOpen(false);
-    navigate(`/products/${product.id}`);
+    router.push(`/products/${product.id}`);
   }
 
   function selectCategory(cat: string) {
     setOpen(false);
     if (onSelectCategory) onSelectCategory(cat);
-    else navigate(`/browse?category=${encodeURIComponent(cat)}`);
+    else router.push(`/browse?category=${encodeURIComponent(cat)}`);
   }
 
   function selectBrand(brand: string) {
     setOpen(false);
     if (onSelectBrand) onSelectBrand(brand);
-    else navigate(`/browse?brand=${encodeURIComponent(brand)}`);
+    else router.push(`/browse?brand=${encodeURIComponent(brand)}`);
   }
 
   const hasSuggestions =

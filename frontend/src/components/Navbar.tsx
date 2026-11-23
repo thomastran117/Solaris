@@ -1,6 +1,10 @@
-import React, { useState } from "react";
+"use client";
+
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { FaUserCircle } from "react-icons/fa";
-import { useNavigate, NavLink } from "react-router-dom";
+import NavLink from "./navigation/NavLink";
+import { useRouter } from "next/navigation";
 import SearchBar from "./search/SearchBar";
 import { useSelector, useDispatch } from "react-redux";
 import type { RootState, AppDispatch } from "../stores";
@@ -10,8 +14,9 @@ import api from "../api";
 import "../styles/navbar.css";
 
 export default function Navbar() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
+  const queryClient = useQueryClient();
 
   const { accessToken, email, companyId, tier, role } = useSelector((state: RootState) => state.auth);
   const { can } = useCompanyCapabilities(accessToken ? companyId : null);
@@ -72,7 +77,9 @@ export default function Navbar() {
       // Ignore errors — token may already be expired. Always clear local state.
     }
     dispatch(clearCredentials());
-    navigate("/login");
+    // Drop every cached server response so the next user never sees this one's data.
+    queryClient.clear();
+    router.push("/login");
   };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -128,20 +135,12 @@ export default function Navbar() {
               <NavLink to="/" end className={navLinkClass}>
                 Home
               </NavLink>
-              <NavLink to="/about" className={navLinkClass}>
-                About
-              </NavLink>
               <NavLink to="/browse" className={navLinkClass}>
                 Browse
               </NavLink>
               {accessToken && (
                 <NavLink to="/dashboard" className={navLinkClass}>
                   Dashboard
-                </NavLink>
-              )}
-              {accessToken && (
-                <NavLink to="/compare" className={navLinkClass}>
-                  Compare
                 </NavLink>
               )}
               {accessToken && (
@@ -243,23 +242,14 @@ export default function Navbar() {
                 </button>
                 {moreDropdownOpen && (
                   <div className="absolute mt-2 w-44 bg-white text-black rounded-lg shadow-xl z-20 border border-gray-200">
-                    {[
-                      { label: "Profiles", to: "/profiles" },
-                      { label: "Hello", to: "/hello" },
-                      { label: "About", to: "/about" },
-                      { label: "Contact", to: "/contact", divider: true },
-                    ].map((item) => (
-                      <React.Fragment key={item.label}>
-                        {item.divider && (
-                          <hr className="my-1 border-gray-200" />
-                        )}
-                        <NavLink
-                          to={item.to}
-                          className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
-                        >
-                          {item.label}
-                        </NavLink>
-                      </React.Fragment>
+                    {[{ label: "Hello", to: "/hello" }].map((item) => (
+                      <NavLink
+                        key={item.label}
+                        to={item.to}
+                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
+                      >
+                        {item.label}
+                      </NavLink>
                     ))}
                   </div>
                 )}
@@ -269,7 +259,7 @@ export default function Navbar() {
             {/* Search bar */}
             <div className="mt-4 lg:mt-0 lg:ml-6 w-48 sm:w-64">
               <SearchBar
-                onSearch={(q) => navigate(`/browse?q=${encodeURIComponent(q)}`)}
+                onSearch={(q) => router.push(`/browse?q=${encodeURIComponent(q)}`)}
                 placeholder="Search…"
               />
             </div>
@@ -313,12 +303,6 @@ export default function Navbar() {
                         className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
                       >
                         My Rewards
-                      </NavLink>
-                      <NavLink
-                        to="/profile"
-                        className="block px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition rounded-md mx-1"
-                      >
-                        My Profile
                       </NavLink>
                       <NavLink
                         to="/orders"

@@ -16,7 +16,7 @@ export interface UpdateMarketplaceRequest {
 }
 
 export const marketplaceApi = {
-  create: (companyId: number, data: CreateMarketplaceRequest) =>
+  create: (companyId: string, data: CreateMarketplaceRequest) =>
     api.post<MarketplaceProfile>(`/marketplaces/companies/${companyId}`, data),
 
   get: (marketplaceId: number) =>

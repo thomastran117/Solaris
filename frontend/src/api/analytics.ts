@@ -210,7 +210,7 @@ export interface CancellationMetric {
 }
 
 export interface OperationsSummary {
-  companyId: number;
+  companyId: string;
   lookbackDays: number;
   from: string;
   to: string;
@@ -235,7 +235,7 @@ export interface ProductForecast {
 }
 
 export interface ForecastSummary {
-  companyId: number;
+  companyId: string;
   productCount: number;
   productsNeedingReorder: number;
   productsWithImminentStockout: number;
@@ -260,7 +260,7 @@ export interface DailyRevPoint {
 }
 
 export interface CompanyRevenueSummary {
-  companyId: number;
+  companyId: string;
   lookbackDays: number;
   from: string;
   to: string;
@@ -279,7 +279,7 @@ export interface CategoryEntry {
 }
 
 export interface CategorySalesResponse {
-  companyId: number;
+  companyId: string;
   lookbackDays: number;
   categories: CategoryEntry[];
 }
@@ -298,7 +298,7 @@ export interface SlowMoverEntry {
 }
 
 export interface SlowMoversResponse {
-  companyId: number;
+  companyId: string;
   days: number;
   items: SlowMoverEntry[];
 }
@@ -318,56 +318,56 @@ export interface ProductPerfEntry {
 }
 
 export interface ProductPerformanceResponse {
-  companyId: number;
+  companyId: string;
   lookbackDays: number;
   computedAt: string;
   products: ProductPerfEntry[];
 }
 
 export const companyAnalyticsApi = {
-  getHotProducts: (companyId: number, window: "1h" | "24h" = "1h", limit = 20) =>
+  getHotProducts: (companyId: string, window: "1h" | "24h" = "1h", limit = 20) =>
     api.get<HotProductsResponse>(
       `/companies/${companyId}/analytics/hot-products`,
       { params: { window, limit } }
     ),
 
-  getOperationsSummary: (companyId: number, lookbackDays = 30) =>
+  getOperationsSummary: (companyId: string, lookbackDays = 30) =>
     api.get<OperationsSummary>(
       `/companies/${companyId}/operations/summary`,
       { params: { lookbackDays } }
     ),
 
-  getForecastSummary: (companyId: number, lookbackDays = 56, limit = 50) =>
+  getForecastSummary: (companyId: string, lookbackDays = 56, limit = 50) =>
     api.get<ForecastSummary>(
       `/companies/${companyId}/forecasting`,
       { params: { lookbackDays, limit } }
     ),
 
-  getReorderSuggestions: (companyId: number, lookbackDays = 56, limit = 20) =>
+  getReorderSuggestions: (companyId: string, lookbackDays = 56, limit = 20) =>
     api.get<ReorderSuggestion[]>(
       `/companies/${companyId}/forecasting/reorder-suggestions`,
       { params: { lookbackDays, limit } }
     ),
 
-  getRevenueSummary: (companyId: number, lookbackDays = 30) =>
+  getRevenueSummary: (companyId: string, lookbackDays = 30) =>
     api.get<CompanyRevenueSummary>(
       `/companies/${companyId}/analytics/revenue-summary`,
       { params: { lookbackDays } }
     ),
 
-  getCategorySales: (companyId: number, lookbackDays = 30) =>
+  getCategorySales: (companyId: string, lookbackDays = 30) =>
     api.get<CategorySalesResponse>(
       `/companies/${companyId}/analytics/category-sales`,
       { params: { lookbackDays } }
     ),
 
-  getSlowMovers: (companyId: number, days = 90) =>
+  getSlowMovers: (companyId: string, days = 90) =>
     api.get<SlowMoversResponse>(
       `/companies/${companyId}/analytics/slow-movers`,
       { params: { days } }
     ),
 
-  getProductPerformance: (companyId: number, lookbackDays = 30) =>
+  getProductPerformance: (companyId: string, lookbackDays = 30) =>
     api.get<ProductPerformanceResponse>(
       `/companies/${companyId}/analytics/product-performance`,
       { params: { lookbackDays } }

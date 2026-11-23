@@ -2,18 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
-import { MemoryRouter } from "react-router-dom";
+import { mockRouter } from "../../test/nextNavigation";
 import { configureStore } from "@reduxjs/toolkit";
 import SearchBar from "./SearchBar";
 import type { SearchSuggestionsResponse } from "../../types/search";
 
 // ─── mocks ───────────────────────────────────────────────────────────────────
-
-const mockNavigate = vi.fn();
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
-  return { ...actual, useNavigate: () => mockNavigate };
-});
 
 vi.mock("../../api/catalog", () => ({
   catalogApi: { getSuggestions: vi.fn() },
@@ -43,9 +37,7 @@ function renderSearchBar(props: Partial<Parameters<typeof SearchBar>[0]> = {}) {
   const onSearch = vi.fn();
   render(
     <Provider store={makeStore()}>
-      <MemoryRouter>
-        <SearchBar onSearch={onSearch} placeholder="Search products" {...props} />
-      </MemoryRouter>
+      <SearchBar onSearch={onSearch} placeholder="Search products" {...props} />
     </Provider>
   );
   return { onSearch };
@@ -115,7 +107,7 @@ describe("SearchBar", () => {
 
     fireEvent.mouseDown(screen.getByText("Gadget"));
 
-    expect(mockNavigate).toHaveBeenCalledWith("/products/prod-abc");
+    expect(mockRouter.push).toHaveBeenCalledWith("/products/prod-abc");
   });
 
   it("submitting the form calls onSearch, not navigate", async () => {
@@ -125,7 +117,7 @@ describe("SearchBar", () => {
     fireEvent.submit(screen.getByRole("textbox").closest("form")!);
 
     expect(onSearch).toHaveBeenCalledWith("headphones");
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockRouter.push).not.toHaveBeenCalled();
   });
 
   it("clicking a category suggestion navigates to /browse?category=", async () => {
@@ -137,7 +129,7 @@ describe("SearchBar", () => {
 
     fireEvent.mouseDown(screen.getByText("Electronics"));
 
-    expect(mockNavigate).toHaveBeenCalledWith("/browse?category=Electronics");
+    expect(mockRouter.push).toHaveBeenCalledWith("/browse?category=Electronics");
   });
 
   it("closes the dropdown on outside click", async () => {

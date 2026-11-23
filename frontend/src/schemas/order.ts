@@ -22,7 +22,7 @@ export const deliverySlotSchema = z.object({
     .refine((d) => d >= MIN_DELIVERY_DATE, "Delivery date must be tomorrow or later")
     .refine((d) => d <= MAX_DELIVERY_DATE, "Delivery date must be within 14 days"),
   preferredDeliveryWindow: z.enum(["MORNING", "AFTERNOON", "EVENING"], {
-    required_error: "Please choose a time window",
+    error: "Please choose a time window",
   }),
 });
 

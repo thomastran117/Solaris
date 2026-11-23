@@ -21,7 +21,6 @@ import { companyOrdersApi } from "../../api/companyOrders";
 const mockPack = vi.mocked(companyOrdersApi.pack);
 const mockShip = vi.mocked(companyOrdersApi.ship);
 const mockPickupReady = vi.mocked(companyOrdersApi.markPickupReady);
-const mockDeliver = vi.mocked(companyOrdersApi.deliver);
 const mockCancel = vi.mocked(companyOrdersApi.cancel);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -45,6 +44,8 @@ function makeOrder(overrides: Partial<CompanyOrder> = {}): CompanyOrder {
     pickupLocationName: null, pickupReadyAt: null,
     shipRecipientName: null, shipStreet: null, shipStreet2: null,
     shipCity: null, shipState: null, shipPostalCode: null, shipCountry: null,
+    preferredDeliveryDate: null, preferredDeliveryWindow: null, deliverySlotStatus: null,
+    assignedDriverId: null,
     createdAt: "2026-05-20T10:00:00Z",
     ...overrides,
   };

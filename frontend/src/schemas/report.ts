@@ -26,7 +26,7 @@ export const reportFormSchema = z.object({
   reason: z.enum([
     "SPAM", "OFFENSIVE_CONTENT", "MISLEADING_INFO", "COUNTERFEIT",
     "HARASSMENT", "FRAUD", "COPYRIGHT_VIOLATION", "OFF_TOPIC", "FAKE", "OTHER",
-  ] as const, { required_error: "Please select a reason" }),
+  ] as const, { error: "Please select a reason" }),
   title: z
     .string()
     .min(5, "Title must be at least 5 characters")
@@ -35,7 +35,7 @@ export const reportFormSchema = z.object({
     .string()
     .min(10, "Please describe the issue in more detail")
     .max(2000, "Description must be 2000 characters or fewer"),
-  screenshotUrls: z.array(z.string()).max(5).default([]),
+  screenshotUrls: z.array(z.string()).max(5),
 });
 
 export type ReportFormValues = z.infer<typeof reportFormSchema>;

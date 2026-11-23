@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Client } from "@stomp/stompjs";
-import { store } from "../stores";
-import Environment from "../configuration/Environment";
+import { useAppStore } from "../stores/hooks";
+import { getBackendWsUrl } from "../configuration/Environment";
 
 export function useDriverWebSocket(orderId: string | undefined): {
   connected: boolean;
@@ -10,6 +10,7 @@ export function useDriverWebSocket(orderId: string | undefined): {
 } {
   const [connected, setConnected] = useState(false);
   const clientRef = useRef<Client | null>(null);
+  const store = useAppStore();
 
   useEffect(() => {
     if (!orderId) return;
@@ -17,7 +18,7 @@ export function useDriverWebSocket(orderId: string | undefined): {
     const token = store.getState().auth.accessToken;
 
     const client = new Client({
-      brokerURL: `${Environment.backend_url_ws}/ws/delivery`,
+      brokerURL: `${getBackendWsUrl()}/ws/delivery`,
       connectHeaders: { Authorization: `Bearer ${token}` },
       onConnect: () => setConnected(true),
       onDisconnect: () => setConnected(false),
@@ -44,7 +45,7 @@ export function useDriverWebSocket(orderId: string | undefined): {
       clientRef.current = null;
       setConnected(false);
     };
-  }, [orderId]);
+  }, [orderId, store]);
 
   const sendLocation = useCallback((lat: number, lng: number) => {
     const client = clientRef.current;
