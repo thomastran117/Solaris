@@ -63,7 +63,7 @@ Flyway owns the database schema.
 - Use Redux only for appropriate cross-cutting client state.
 - Build forms with React Hook Form and Zod.
 - Reuse existing layout, section, and domain components.
-- Match the established dark visual language and provide meaningful loading, empty, and error states.
+- Follow the [frontend design system](frontend/DESIGN.md): semantic tokens and shared primitives, working in light and dark mode, with meaningful loading, empty, and error states.
 - Respect reduced-motion preferences.
 - Avoid `any`; use `unknown` and narrow it when input is not yet typed.
 

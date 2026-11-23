@@ -165,4 +165,4 @@ Because the cookie is `SameSite=Strict`, a top-level navigation from another sit
 - Keep server state in TanStack Query rather than duplicating it into component state.
 - Preserve idempotency for retried commands and event consumers.
 - Treat Redis, Elasticsearch, and Kafka as supporting systems rather than replacements for PostgreSQL business state.
-- Respect reduced-motion preferences and the established dark visual language in frontend work.
+- Build frontend UI from the semantic tokens and primitives in the [frontend design system](../frontend/DESIGN.md) so it works in light and dark mode, and respect reduced-motion preferences.

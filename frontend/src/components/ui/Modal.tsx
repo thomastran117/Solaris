@@ -1,13 +1,20 @@
-import { useEffect, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X } from "lucide-react";
-import { useIsClient } from "../../hooks/useIsClient";
+"use client";
+
+import { useRef, type ReactNode } from "react";
+import { cn } from "../../lib/cn";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "./Dialog";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Optional supporting text under the title. */
+  description?: string;
   children: ReactNode;
   /** Tailwind max-width class, e.g. "max-w-md", "max-w-lg". Default: max-w-lg. */
   maxWidth?: string;
@@ -15,81 +22,64 @@ interface ModalProps {
   hideClose?: boolean;
 }
 
+/**
+ * Convenience wrapper over Dialog for the common "controlled modal with a
+ * title" case. Prefer composing Dialog parts directly for anything custom.
+ */
 export default function Modal({
   open,
   onClose,
   title,
+  description,
   children,
   maxWidth = "max-w-lg",
   hideClose = false,
 }: ModalProps) {
-  const isClient = useIsClient();
-  const prefersReducedMotion = useReducedMotion();
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
-
-  if (!isClient) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
-        >
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
-            onClick={onClose}
-          />
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={title ? "modal-title" : undefined}
-            className={`relative w-full ${maxWidth} rounded-2xl border border-white/10 bg-slate-900/90 backdrop-blur shadow-xl`}
-            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 12, scale: prefersReducedMotion ? 1 : 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: prefersReducedMotion ? 0 : 8, scale: prefersReducedMotion ? 1 : 0.98 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
-          >
-            {(title || !hideClose) && (
-              <div className="flex items-center justify-between gap-4 px-5 pt-4 pb-3 border-b border-white/10">
-                {title && (
-                  <h2 id="modal-title" className="text-lg font-semibold text-white">
-                    {title}
-                  </h2>
-                )}
-                {!hideClose && (
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    aria-label="Close"
-                    className="ml-auto rounded-full p-1.5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+  // Radix only returns focus to a <DialogTrigger>. Modal is opened by the
+  // caller's own controls, so remember what had focus and restore it.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent
+        hideClose={hideClose}
+        className={cn("gap-0 p-0", maxWidth)}
+        onOpenAutoFocus={() => {
+          returnFocusRef.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          const target = returnFocusRef.current;
+          if (target?.isConnected) {
+            event.preventDefault();
+            target.focus();
+          }
+          returnFocusRef.current = null;
+        }}
+        // Without a description Radix warns unless this is explicitly unset.
+        {...(description ? {} : { "aria-describedby": undefined })}
+      >
+        {title ? (
+          <div className="border-b px-5 pb-3 pt-4 pr-12">
+            <DialogTitle className="text-lg">{title}</DialogTitle>
+            {description && (
+              <DialogDescription className="mt-1">
+                {description}
+              </DialogDescription>
             )}
-            <div className="px-5 py-4 max-h-[80vh] overflow-y-auto">{children}</div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
-    document.body
+          </div>
+        ) : (
+          // Radix requires a title for screen readers.
+          <DialogTitle className="sr-only">Dialog</DialogTitle>
+        )}
+        <div className="max-h-[80vh] overflow-y-auto px-5 py-4">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -98,7 +98,13 @@ setMockUrl("/c/abc/compare?type=product", { params: { id: "abc" } }); // before 
 expect(mockRouter.push).toHaveBeenCalledWith("/products/1");
 ```
 
-The mock URL and router spies reset after every test.
+The mock URL and router spies reset after every test. The setup file also stubs `matchMedia`, `ResizeObserver`, pointer capture, and `scrollIntoView` for the Radix-based primitives in `src/components/ui`; Radix menus open in tests through `userEvent` clicks or the keyboard.
+
+Design-system tests:
+
+- `src/lib/theme/tokens.test.ts` parses `src/app/globals.css` and checks WCAG AA contrast for every semantic token pair in both themes. Fix a failing token value rather than relaxing the threshold.
+- `src/lib/theme/themeScript.test.ts` runs the inline theme script in jsdom (stored choice, OS preference, forced-dark routes, blocked storage).
+- `eslint-rules/no-raw-palette.test.mjs` covers the colour lint rule with ESLint's `RuleTester`.
 
 Useful focused commands:
 
@@ -120,7 +126,7 @@ npm run build
 
 `npm run typecheck` runs `tsc --noEmit` over application and test files. `npm run build` runs `next build`, which also type-checks and prerenders static routes, so it catches type and production-bundle failures. Run `npx next typegen` once before `npm run typecheck` in a fresh clone so that `next-env.d.ts` and the route types exist.
 
-`npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
+`npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. The project rule `shopwave/no-raw-palette` (`eslint-rules/no-raw-palette.mjs`) and a `no-restricted-imports` ban on `react-icons` and the legacy navy-glass components are errors in folders that have moved to the [design system](../frontend/DESIGN.md) and warnings elsewhere; don't add warnings in files you touch. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
 
 ## Server-Rendered Pages
 
