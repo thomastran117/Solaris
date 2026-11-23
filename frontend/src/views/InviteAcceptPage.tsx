@@ -7,12 +7,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { CheckCircle, AlertCircle } from "lucide-react";
 import { teamApi, type TeamInvitePreview } from "../api/team";
 import type { RootState } from "../stores";
+import { loginUrlFor } from "../lib/routes";
 
 export default function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const pathname = usePathname();
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
+  const sessionRestored = useSelector((s: RootState) => s.auth.sessionRestored);
   const [accepted, setAccepted] = useState(false);
 
   const previewQuery = useQuery<TeamInvitePreview>({
@@ -28,11 +30,10 @@ export default function InviteAcceptPage() {
   });
 
   useEffect(() => {
-    if (!accessToken && token) {
-      const next = encodeURIComponent(pathname);
-      router.replace(`/login?next=${next}`);
+    if (sessionRestored && !accessToken && token) {
+      router.replace(loginUrlFor(pathname));
     }
-  }, [accessToken, token, router, pathname]);
+  }, [sessionRestored, accessToken, token, router, pathname]);
 
   if (!token) {
     return (
