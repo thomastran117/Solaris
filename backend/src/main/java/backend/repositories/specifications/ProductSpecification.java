@@ -97,12 +97,12 @@ public class ProductSpecification {
                 // Either the product appears in a rule's targetProducts whose description
                 // matches the category, or a company-wide rule (empty targetProducts) with
                 // matching description exists — in which case every company product passes.
-                Subquery<Long> byTarget = query.subquery(Long.class);
+                Subquery<UUID> byTarget = query.subquery(UUID.class);
                 Root<PromotionRule> rt = byTarget.from(PromotionRule.class);
                 byTarget.select(rt.join("targetProducts").get("id"))
                         .where(cb.equal(cb.lower(rt.get("description")), cat));
 
-                Subquery<Long> companyWide = query.subquery(Long.class);
+                Subquery<UUID> companyWide = query.subquery(UUID.class);
                 Root<PromotionRule> rw = companyWide.from(PromotionRule.class);
                 companyWide.select(rw.get("id")).where(
                         cb.equal(rw.get("company").get("id"), companyId),
@@ -127,7 +127,7 @@ public class ProductSpecification {
      */
     private static Predicate hasActiveDiscount(
             Root<Product> root, CommonAbstractCriteria query, CriteriaBuilder cb, UUID companyId) {
-        Subquery<Long> byTarget = query.subquery(Long.class);
+        Subquery<UUID> byTarget = query.subquery(UUID.class);
         Root<PromotionRule> rt = byTarget.from(PromotionRule.class);
         byTarget.select(rt.join("targetProducts").get("id"))
                 .where(
@@ -139,7 +139,7 @@ public class ProductSpecification {
                               cb.greaterThan(rt.get("endDate"), cb.currentTimestamp()))
                 );
 
-        Subquery<Long> companyWide = query.subquery(Long.class);
+        Subquery<UUID> companyWide = query.subquery(UUID.class);
         Root<PromotionRule> rw = companyWide.from(PromotionRule.class);
         companyWide.select(rw.get("id")).where(
                 cb.equal(rw.get("company").get("id"), companyId),

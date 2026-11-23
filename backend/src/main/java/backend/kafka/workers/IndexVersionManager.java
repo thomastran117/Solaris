@@ -11,11 +11,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
+import org.springframework.data.elasticsearch.core.document.Document;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -60,26 +63,72 @@ public class IndexVersionManager {
     }
 
     /**
-     * Called on startup: additively applies the current document mapping to the live index (alias
-     * or concrete index). This is how new fields and multi-fields added to a document class reach an
-     * index that already exists. Existing documents gain values for them when they are next written,
-     * e.g. by {@code POST /admin/search/reindex}.
+     * Called on startup: adds what the current document mapping has and the live index (alias or
+     * concrete index) lacks — new top-level fields, and new multi-fields on existing fields such as
+     * {@code name.sort}. Existing documents gain values for them when they are next written, e.g. by
+     * {@code POST /admin/search/reindex}.
      *
-     * <p>Elasticsearch rejects changes to an existing field's type. When the live mapping conflicts
-     * (typically an index that was dynamically mapped), this logs a warning instead of failing
-     * startup; the reindex endpoint's rollover then migrates to a freshly mapped index.
+     * <p>Only the delta is sent, one field per request. Re-sending the whole document mapping would
+     * also restate every existing field, and Elasticsearch rejects the entire request if any one of
+     * them differs from the live definition (a date {@code format}, a dynamically inferred type), so
+     * a single legacy field would block every addition. A field that still conflicts is skipped with
+     * a warning; the reindex endpoint's rollover migrates to a freshly mapped index.
      */
     public void applyCurrentMapping(String alias) {
         Class<?> documentType = DOCUMENT_TYPES.get(alias);
         if (documentType == null) return;
+        Map<String, Object> missing;
+        IndexOperations live;
         try {
-            if (!elasticsearchOperations.indexOps(IndexCoordinates.of(alias)).exists()) return;
-            putMapping(alias, documentType);
-            log.info("[INDEX VERSION] Applied current {} mapping to '{}'", documentType.getSimpleName(), alias);
+            live = elasticsearchOperations.indexOps(IndexCoordinates.of(alias));
+            if (!live.exists()) return;
+            missing = missingProperties(
+                    properties(live.getMapping()),
+                    properties(elasticsearchOperations.indexOps(documentType).createMapping()));
         } catch (Exception e) {
-            log.warn("[INDEX VERSION] Could not apply current mapping to '{}' — run POST /admin/search/reindex "
-                    + "to roll over to a correctly mapped index: {}", alias, e.getMessage());
+            log.warn("[INDEX VERSION] Could not read the mapping of '{}': {}", alias, e.getMessage());
+            return;
         }
+        for (Map.Entry<String, Object> field : missing.entrySet()) {
+            try {
+                Document delta = Document.create();
+                delta.put("properties", Map.of(field.getKey(), field.getValue()));
+                live.putMapping(delta);
+                log.info("[INDEX VERSION] Added mapping for '{}' to '{}'", field.getKey(), alias);
+            } catch (Exception e) {
+                log.warn("[INDEX VERSION] Could not add mapping for '{}' to '{}' — run POST /admin/search/reindex "
+                        + "to roll over to a correctly mapped index: {}", field.getKey(), alias, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Fields of {@code wanted} absent from {@code current}, plus fields present in both whose wanted
+     * definition declares multi-fields ({@code fields}) the current one lacks. For the latter the
+     * wanted definition is returned; Elasticsearch merges the new sub-fields into the existing field.
+     */
+    static Map<String, Object> missingProperties(Map<String, Object> current, Map<String, Object> wanted) {
+        Map<String, Object> missing = new LinkedHashMap<>();
+        wanted.forEach((name, definition) -> {
+            Object existing = current.get(name);
+            if (existing == null) {
+                missing.put(name, definition);
+            } else if (!asMap(existing).isEmpty()
+                    && !asMap(asMap(existing).get("fields")).keySet()
+                            .containsAll(asMap(asMap(definition).get("fields")).keySet())) {
+                missing.put(name, definition);
+            }
+        });
+        return missing;
+    }
+
+    private static Map<String, Object> properties(Map<String, Object> mapping) {
+        return mapping == null ? Map.of() : asMap(mapping.get("properties"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
     private void putMapping(String indexName, Class<?> documentType) {
