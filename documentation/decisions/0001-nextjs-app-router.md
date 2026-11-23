@@ -27,7 +27,7 @@ Replace the Vite/React Router shell with **Next.js App Router** (Next.js 16, Rea
 
 | Route class | Mode | Data |
 |---|---|---|
-| Public storefront: `/`, `/browse`, `/products/[id]`, `/c/[id]`, `/collections/[slug]`, `/kits/[companyId]/[kitId]`, `/lists/public/[slug]` | Server-rendered; ISR (`revalidate = 60`) except `/browse`, which renders per request because it is driven by query parameters | Public, anonymous backend reads prefetched on the server and handed to TanStack Query through `HydrationBoundary` using the same query keys as the client |
+| Public storefront: `/`, `/browse`, `/products/[id]`, `/c/[id]`, `/collections/[slug]`, `/kits/[companyId]/[kitId]`, `/lists/public/[slug]` | Server-rendered; ISR (`revalidate = 60`) except `/browse` and `/c/[id]`, which render per request because their catalog is driven by query parameters (backend reads still use the 60-second data cache) | Public, anonymous backend reads prefetched on the server and handed to TanStack Query through `HydrationBoundary` using the same query keys as the client |
 | Static public: `/terms-and-conditions`, `/privacy` | Static | None |
 | Public but interactive: `/c/[id]/compare`, `/gift-cards`, `/login`, `/invite/accept/[token]`, `/auth/google` | Server-rendered shell with client data | Client-only |
 | Customer account and merchant/staff (`/admin/*`) | Client-rendered behind an auth boundary | Client-only, `Authorization: Bearer` from memory |
@@ -102,8 +102,8 @@ To roll back, revert the pull requests in reverse order; each one is self-contai
 
 | Part | Pull request | Status |
 |---|---|---|
-| #82 ADR and route map | #166 | In review |
-| #83 Bootstrap | Stacked on #166 | In review |
-| #84 Storefront SSR | — | Not started |
+| #82 ADR and route map | #166 | Merged |
+| #83 Bootstrap | #167 (merged into the #166 branch; re-landed on `main` from `refactor/83-nextjs-bootstrap-main`) | In review |
+| #84 Storefront SSR | Stacked on #83 | In review |
 | #85 Auth boundary | — | Not started |
 | #86 Container and CI | — | Not started |

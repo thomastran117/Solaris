@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { savedListsApi } from "../api/savedLists";
+import { savedListKeys } from "../api/keys";
 import type {
   AddSavedListItemRequest,
   CreateSavedListRequest,
@@ -8,11 +9,8 @@ import type {
   UpdateSavedListRequest,
 } from "../types/savedList";
 
-const KEYS = {
-  list: (type?: SavedListType) => ["savedLists", "list", { type: type ?? null }] as const,
-  detail: (id: string) => ["savedLists", "detail", id] as const,
-  public: (slug: string) => ["savedLists", "public", slug] as const,
-};
+// Shared with server-rendered pages (public lists are prefetched by slug).
+const KEYS = savedListKeys;
 
 export function useSavedLists(type?: SavedListType, enabled: boolean = true) {
   return useQuery({

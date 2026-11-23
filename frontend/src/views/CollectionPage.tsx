@@ -10,6 +10,7 @@ import { catalogApi } from "../api/catalog";
 import ProductCard from "../components/product/ProductCard";
 import type { CatalogProduct } from "../api/catalog";
 import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
+import { COLLECTION_MEMBERS_PAGE_SIZE, collectionKeys } from "../api/keys";
 import { useAnims } from "../hooks/useAnims";
 
 
@@ -27,15 +28,15 @@ export default function CollectionPage() {
   const enabled = !!marketplaceId && !!slug;
 
   const { data: collection } = useQuery({
-    queryKey: ["collection", "detail", marketplaceId, slug],
+    queryKey: collectionKeys.detail(marketplaceId, slug),
     queryFn: () => marketplaceCollectionsApi.getBySlug(marketplaceId!, slug!).then(r => r.data),
     enabled,
   });
 
   const { data: members, isLoading: membersLoading } = useQuery({
-    queryKey: ["collection", "members", marketplaceId, slug],
+    queryKey: collectionKeys.members(marketplaceId, slug),
     queryFn: () =>
-      marketplaceCollectionsApi.listProductsBySlug(marketplaceId!, slug!, 0, 50).then(r => r.data),
+      marketplaceCollectionsApi.listProductsBySlug(marketplaceId!, slug!, 0, COLLECTION_MEMBERS_PAGE_SIZE).then(r => r.data),
     enabled,
   });
 
@@ -43,7 +44,7 @@ export default function CollectionPage() {
   // endpoint. The list is small (max 50 per page) so the parallel calls stay cheap.
   const productIds = members?.items.map(m => m.productId) ?? [];
   const { data: catalogProducts } = useQuery<CatalogProduct[]>({
-    queryKey: ["collection", "members-catalog", marketplaceId, slug, productIds],
+    queryKey: collectionKeys.membersCatalog(marketplaceId, slug, productIds),
     queryFn: async () => {
       if (!marketplaceId || productIds.length === 0) return [];
       const results = await Promise.all(

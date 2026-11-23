@@ -122,6 +122,28 @@ npm run build
 
 `npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
 
+## Server-Rendered Pages
+
+Vitest cannot render async server components. Cover their logic through the pure helpers instead:
+
+- `src/lib/catalogParams.ts` for URL parsing;
+- `src/api/keys.ts` for key shapes, which are a contract between server and client;
+- `src/api/server/http.ts` for anonymous requests and error mapping;
+- `src/lib/seo.ts` for metadata and JSON-LD escaping;
+- `src/hooks/useAnims.ts` for SSR-safe motion.
+
+Then verify the rendered output against a built server:
+
+```powershell
+$env:DEFAULT_MARKETPLACE_ID = "<marketplace UUID>"
+npm run build
+npm run start
+curl.exe -s http://localhost:3000/products/<product id>   # product name, canonical link, JSON-LD
+curl.exe -s -o NUL -w "%{http_code}" http://localhost:3000/products/00000000-0000-0000-0000-000000000000   # 404
+```
+
+Also load a storefront page in a browser with JavaScript disabled. The content must be visible, and with JavaScript enabled the console must show no hydration errors.
+
 ## Browser Smoke Test
 
 The Python Playwright suite currently contains a homepage smoke test. Install its dependencies from the repository root:
