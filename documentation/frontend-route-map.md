@@ -22,7 +22,7 @@ Implementation status:
 - **Access.**
   - `Public` needs no session.
   - `Session` needs a signed-in user. Today that means an access token is present in Redux.
-  - Merchant and staff routes also need a session. The table lists the company capability or platform role that makes each Navbar link visible. The backend enforces the real authorization in every case.
+  - Merchant and staff routes also need a session. The table lists the company capability or platform role that shows each link in the seller sidebar (`components/admin/adminNav.ts`). The backend enforces the real authorization in every case.
 - **Prefetch keys.** These are the TanStack Query keys a server-rendered route seeds through `HydrationBoundary`. They must match the client query keys exactly. `mp` is the configured default marketplace ID.
 
 ## Public Storefront — Server Rendered (#84)
@@ -67,7 +67,7 @@ Target: `(account)/layout.tsx` wraps them in the client `RequireAuth` guard and 
 |---|---|---|---|---|
 | 16 | `/feed` | `FeedPage.tsx` | `(account)/feed/page.tsx` | Session |
 | 17 | `/following` | `FollowingPage.tsx` | `(account)/following/page.tsx` | Session |
-| 18 | `/dashboard` | `DashboardPage.tsx` | `(account)/dashboard/page.tsx` | Session |
+| 18 | `/dashboard` | `DashboardPage.tsx` | `(merchant)/dashboard/page.tsx` | Session; company analytics, so it lives in the merchant group and uses the seller sidebar ("Analytics", `READ_ANALYTICS`) |
 | 19 | `/lists` | `SavedListsPage.tsx` | `(account)/lists/page.tsx` | Session |
 | 20 | `/lists/:id` | `SavedListDetailPage.tsx` | `(account)/lists/[id]/page.tsx` | Session |
 | 21 | `/account` | `AccountPage.tsx` | `(account)/account/page.tsx` | Session |
@@ -86,44 +86,46 @@ Notes:
 
 ## Merchant and Staff — Guarded (#83 port, #85 boundary)
 
-Target: `(merchant)/layout.tsx` uses the same `RequireAuth` guard and sets `noindex`. All 26 URLs keep their exact paths under `(merchant)/admin/…`. Capability and role checks stay in the UI. The backend enforces membership, role, and tenant scope.
+Target: `(merchant)/layout.tsx` uses the same `RequireAuth` guard, sets `noindex`, and renders `AdminShell`: a capability-gated sidebar (a drawer on small screens) with a top bar for the theme toggle and account menu. All 26 URLs keep their exact paths under `(merchant)/admin/…`; `/admin` itself is an overview page linking to every area the user can open. Capability and role checks stay in the UI. The backend enforces membership, role, and tenant scope.
 
-| # | URL | View (`admin/…`) | Segment (`(merchant)/admin/…`) | Navbar exposure today |
+| # | URL | View (`admin/…`) | Segment (`(merchant)/admin/…`) | Seller sidebar |
 |---|---|---|---|---|
-| 28 | `/admin/b2b-quotes` | `AdminB2BQuotesPage.tsx` | `b2b-quotes/page.tsx` | Company member with `MANAGE_QUOTES` |
-| 29 | `/admin/products` | `AdminProductsPage.tsx` | `products/page.tsx` | Company member with `MANAGE_PRODUCTS` or `FULFILL_ORDERS` ("Admin") |
-| 30 | `/admin/bundles` | `AdminBundlesPage.tsx` | `bundles/page.tsx` | Company member with `MANAGE_PRODUCTS` |
-| 31 | `/admin/kits` | `AdminKitsPage.tsx` | `kits/page.tsx` | Not in Navbar; linked from merchant pages |
-| 32 | `/admin/kits/new` | `AdminKitEditor.tsx` | `kits/new/page.tsx` | Not in Navbar |
-| 33 | `/admin/kits/:id/edit` | `AdminKitEditor.tsx` | `kits/[id]/edit/page.tsx` | Not in Navbar |
-| 34 | `/admin/products/new` | `AdminProductEditor.tsx` | `products/new/page.tsx` | Not in Navbar; the page checks capabilities |
-| 35 | `/admin/products/:id` | `AdminProductEditor.tsx` | `products/[id]/page.tsx` | Not in Navbar; the page checks capabilities |
-| 36 | `/admin/collections` | `AdminCollectionsPage.tsx` | `collections/page.tsx` | Not in Navbar |
-| 37 | `/admin/collections/new` | `AdminCollectionEditor.tsx` | `collections/new/page.tsx` | Not in Navbar |
-| 38 | `/admin/collections/:id/edit` | `AdminCollectionEditor.tsx` | `collections/[id]/edit/page.tsx` | Not in Navbar |
-| 39 | `/admin/collections/:id/products` | `AdminCollectionProductsPage.tsx` | `collections/[id]/products/page.tsx` | Not in Navbar |
-| 40 | `/admin/team` | `AdminTeamPage.tsx` | `team/page.tsx` | Company member with `MANAGE_COMPANY`; the page checks capabilities |
-| 41 | `/admin/bulk-import` | `AdminBulkImportPage.tsx` | `bulk-import/page.tsx` | Not in Navbar |
-| 42 | `/admin/reports` | `AdminReportsPage.tsx` | `reports/page.tsx` | Not in Navbar |
-| 43 | `/admin/loyalty` | `AdminLoyaltyPage.tsx` | `loyalty/page.tsx` | Company member with `MANAGE_PROMOTIONS`; the page checks role |
-| 44 | `/admin/feedback` | `AdminFeedbackPage.tsx` | `feedback/page.tsx` | Platform role `ADMIN` |
-| 45 | `/admin/announcements` | `AdminAnnouncementsPage.tsx` | `announcements/page.tsx` | Not in Navbar |
-| 46 | `/admin/webhooks` | `AdminWebhooksPage.tsx` | `webhooks/page.tsx` | Not in Navbar |
-| 47 | `/admin/marketing` | `AdminMarketingPage.tsx` | `marketing/page.tsx` | Company member with `MANAGE_PROMOTIONS` |
-| 48 | `/admin/purchase-orders` | `AdminPurchaseOrdersPage.tsx` | `purchase-orders/page.tsx` | Company member with `MANAGE_PRODUCTS`; query-param driven, so it needs `Suspense` |
-| 49 | `/admin/inventory-transfers` | `AdminInventoryTransfersPage.tsx` | `inventory-transfers/page.tsx` | Company member with `MANAGE_PRODUCTS` |
-| 50 | `/admin/orders` | `CompanyOrdersPage.tsx` | `orders/page.tsx` | Company member with `FULFILL_ORDERS` ("Fulfillment") |
-| 51 | `/admin/orders/:orderId` | `CompanyOrderDetailPage.tsx` | `orders/[orderId]/page.tsx` | Not in Navbar; linked from `/admin/orders` |
-| 52 | `/admin/drivers` | `DriverDispatchPage.tsx` | `drivers/page.tsx` | Company member with `FULFILL_ORDERS`; uses STOMP WebSocket `/api/ws/delivery` (upgrade passes through the rewrite; verified in #86) |
-| 53 | `/admin/disputes` | `AdminDisputesPage.tsx` | `disputes/page.tsx` | Platform role `SUPPORT`, `MODERATOR`, or `ADMIN` |
+| 28 | `/admin/b2b-quotes` | `AdminB2BQuotesPage.tsx` | `b2b-quotes/page.tsx` | `MANAGE_QUOTES` (Orders → B2B quotes) |
+| 29 | `/admin/products` | `AdminProductsPage.tsx` | `products/page.tsx` | `MANAGE_PRODUCTS`, `READ_PRODUCTS`, or `FULFILL_ORDERS` (Catalog → Products) |
+| 30 | `/admin/bundles` | `AdminBundlesPage.tsx` | `bundles/page.tsx` | `MANAGE_PRODUCTS` (Catalog → Bundles) |
+| 31 | `/admin/kits` | `AdminKitsPage.tsx` | `kits/page.tsx` | `MANAGE_PRODUCTS` or `READ_PRODUCTS` (Catalog → Kits) |
+| 32 | `/admin/kits/new` | `AdminKitEditor.tsx` | `kits/new/page.tsx` | Not in the sidebar; reached from Kits |
+| 33 | `/admin/kits/:id/edit` | `AdminKitEditor.tsx` | `kits/[id]/edit/page.tsx` | Not in the sidebar; reached from Kits |
+| 34 | `/admin/products/new` | `AdminProductEditor.tsx` | `products/new/page.tsx` | Not in the sidebar; the page checks capabilities |
+| 35 | `/admin/products/:id` | `AdminProductEditor.tsx` | `products/[id]/page.tsx` | Not in the sidebar; the page checks capabilities |
+| 36 | `/admin/collections` | `AdminCollectionsPage.tsx` | `collections/page.tsx` | `MANAGE_PRODUCTS` or `READ_PRODUCTS` (Catalog → Collections) |
+| 37 | `/admin/collections/new` | `AdminCollectionEditor.tsx` | `collections/new/page.tsx` | Not in the sidebar; reached from Collections |
+| 38 | `/admin/collections/:id/edit` | `AdminCollectionEditor.tsx` | `collections/[id]/edit/page.tsx` | Not in the sidebar; reached from Collections |
+| 39 | `/admin/collections/:id/products` | `AdminCollectionProductsPage.tsx` | `collections/[id]/products/page.tsx` | Not in the sidebar; reached from Collections |
+| 40 | `/admin/team` | `AdminTeamPage.tsx` | `team/page.tsx` | `MANAGE_COMPANY` (Settings → Team); the page checks capabilities |
+| 41 | `/admin/bulk-import` | `AdminBulkImportPage.tsx` | `bulk-import/page.tsx` | `MANAGE_PRODUCTS` or `MANAGE_INVENTORY` (Catalog → Bulk import) |
+| 42 | `/admin/reports` | `AdminReportsPage.tsx` | `reports/page.tsx` | `READ_ANALYTICS` (Insights → Reports) |
+| 43 | `/admin/loyalty` | `AdminLoyaltyPage.tsx` | `loyalty/page.tsx` | `MANAGE_PROMOTIONS` (Growth → Loyalty); the page checks role |
+| 44 | `/admin/feedback` | `AdminFeedbackPage.tsx` | `feedback/page.tsx` | Platform role `ADMIN` (Platform → Feedback) |
+| 45 | `/admin/announcements` | `AdminAnnouncementsPage.tsx` | `announcements/page.tsx` | `MANAGE_PRODUCTS` or `READ_PRODUCTS` (Growth → Announcements) |
+| 46 | `/admin/webhooks` | `AdminWebhooksPage.tsx` | `webhooks/page.tsx` | `MANAGE_COMPANY` (Settings → Webhooks) |
+| 47 | `/admin/marketing` | `AdminMarketingPage.tsx` | `marketing/page.tsx` | `MANAGE_PROMOTIONS` (Growth → Marketing) |
+| 48 | `/admin/purchase-orders` | `AdminPurchaseOrdersPage.tsx` | `purchase-orders/page.tsx` | `MANAGE_INVENTORY` (Inventory → Purchase orders); query-param driven, so it needs `Suspense` |
+| 49 | `/admin/inventory-transfers` | `AdminInventoryTransfersPage.tsx` | `inventory-transfers/page.tsx` | `MANAGE_INVENTORY` (Inventory → Transfers) |
+| 50 | `/admin/orders` | `CompanyOrdersPage.tsx` | `orders/page.tsx` | `FULFILL_ORDERS` (Orders → Orders) |
+| 51 | `/admin/orders/:orderId` | `CompanyOrderDetailPage.tsx` | `orders/[orderId]/page.tsx` | Not in the sidebar; linked from `/admin/orders` |
+| 52 | `/admin/drivers` | `DriverDispatchPage.tsx` | `drivers/page.tsx` | `FULFILL_ORDERS` (Orders → Delivery dispatch); uses STOMP WebSocket `/api/ws/delivery` (upgrade passes through the rewrite; verified in #86) |
+| 53 | `/admin/disputes` | `AdminDisputesPage.tsx` | `disputes/page.tsx` | Platform role `SUPPORT`, `MODERATOR`, or `ADMIN` (Platform → Chargebacks) |
 
-The Navbar column records which signed-in users see each link today; capability checks come from `useCompanyCapabilities` in `hooks/useCompanyRole.ts`. It is informational only. Direct navigation to any of these URLs with a valid session reaches the page, and the backend rejects calls the user is not authorized to make.
+The sidebar column records which signed-in users see each link. Company items need membership plus any listed capability (from `useCompanyCapabilities` in `hooks/useCompanyRole.ts`) and mirror the backend's checks; purchase orders and transfers moved from `MANAGE_PRODUCTS` to `MANAGE_INVENTORY`, which is what their services require. It is informational only. Direct navigation to any of these URLs with a valid session reaches the page, and the backend rejects calls the user is not authorized to make.
 
 ## New Routes and Files
 
 | URL or file | Segment | PR | Purpose |
 |---|---|---|---|
-| Any unmatched URL | `app/not-found.tsx` | #83 | Navy-styled 404 page with a real `404` status. Today unknown URLs render an empty body with status `200`. |
+| Any unmatched URL | `app/not-found.tsx` | #83 | 404 page with a real `404` status. It renders outside every route group, so it brings its own `SiteShell`. |
+| `/admin` | `(merchant)/admin/page.tsx` | Redesign | Seller dashboard overview: cards for every area the sidebar shows this user, or an empty state without seller access. |
+| Route-group chrome | `(storefront)`, `(auth)`, `(account)` layouts → `SiteShell`; `(merchant)` → `AdminShell` | Redesign | The root layout renders only `<html>`, the theme script, a skip link and providers. Each group adds its own header, `<main id="main">` and footer. |
 | Storefront entity misses | `(storefront)/not-found.tsx` | #84 | Product, company, collection, kit, or list not found. |
 | `/robots.txt` | `app/robots.ts` | #84 | Disallows the account and merchant prefixes. |
 | `/healthz` | `app/healthz/route.ts` | #86 | Container health check. It sits outside `/api/*`, which is rewritten to the backend. |
@@ -140,6 +142,7 @@ These links and files exist today but have no working route. The migration remov
 | `/compare` link | `components/Navbar.tsx` | Remove. Comparison is reached through `/c/:id/compare` from a merchant page. | #83 |
 | `/profiles` link | `components/Navbar.tsx` ("More" menu) | Remove; no such page exists. | #83 |
 | `/profile` link | `components/Navbar.tsx` (account menu) | Point at `/account`, which owns the profile screen. | #83 |
+| `/hello` link | `components/Navbar.tsx` ("More" menu) | Removed with the Navbar; the development page itself is still routed. | Redesign |
 | `/auth` fallback | `pages/AuthCallback.tsx` | Point at `/login`. | #83 |
 | `Sidebar` | `components/Sidebar.tsx` | Delete. It is imported by `App.tsx` but never rendered. | #83 |
 | Empty pages | `pages/AboutPage.tsx`, `pages/ContactPage.tsx` | Delete. | #83 |

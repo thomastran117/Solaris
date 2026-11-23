@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import RequireAuth from "../../components/auth/RequireAuth";
+import { SiteShell } from "../../components/layout/SiteShell";
 
 // Signed-in customer screens. Their HTML is a shell with no private data; content
 // loads in the browser after the client guard confirms a session.
@@ -10,5 +11,9 @@ export default function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <RequireAuth>{children}</RequireAuth>;
+  return (
+    <SiteShell>
+      <RequireAuth>{children}</RequireAuth>
+    </SiteShell>
+  );
 }

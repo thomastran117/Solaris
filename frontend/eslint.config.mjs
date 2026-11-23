@@ -77,11 +77,31 @@ export default defineConfig([
     files: [
       "src/components/ui/**/*.{ts,tsx}",
       "src/components/theme/**/*.{ts,tsx}",
+      "src/components/layout/**/*.{ts,tsx}",
+      "src/components/admin/**/*.{ts,tsx}",
+      "src/components/auth/RequireAuth.tsx",
+      "src/components/feedback/FeedbackButton.tsx",
+      "src/components/search/SearchBar.tsx",
+      "src/app/layout.tsx",
+      "src/app/not-found.tsx",
+      "src/app/*/layout.tsx",
+      "src/app/(storefront)/not-found.tsx",
+      "src/app/(storefront)/error.tsx",
+      "src/views/admin/AdminOverviewPage.tsx",
+      "src/hooks/useLogout.ts",
       "src/lib/**/*.{ts,tsx}",
+      "src/test/**/*.{ts,tsx}",
     ],
+    // Legacy, deleted once the last view migrates.
+    ignores: ["src/components/layout/NavyGridGlowBackground.tsx"],
     rules: {
       "shopwave/no-raw-palette": "error",
       "no-restricted-imports": ["error", legacyImports],
     },
+  },
+  {
+    // The sticky site header is the one surface allowed a backdrop blur.
+    files: ["src/components/layout/SiteHeader.tsx"],
+    rules: { "shopwave/no-raw-palette": ["error", { allowBlur: true }] },
   },
 ]);

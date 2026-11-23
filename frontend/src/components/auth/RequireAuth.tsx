@@ -4,15 +4,16 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "../../stores/hooks";
 import { loginUrlFor } from "../../lib/routes";
+import { Spinner } from "../ui/Spinner";
 
 function SessionSpinner() {
   return (
     <div
-      className="min-h-screen bg-slate-950 flex items-center justify-center"
+      className="flex min-h-[60vh] items-center justify-center"
       role="status"
       aria-label="Loading your session"
     >
-      <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <Spinner className="size-6 text-muted-foreground" />
     </div>
   );
 }

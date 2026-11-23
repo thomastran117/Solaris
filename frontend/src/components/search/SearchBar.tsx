@@ -3,8 +3,14 @@ import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 import { Search, Tag, Layers, ImageOff } from "lucide-react";
 import { catalogApi } from "../../api/catalog";
-import type { ProductSuggestion, SearchSuggestionsResponse } from "../../types/search";
+import type {
+  ProductSuggestion,
+  SearchSuggestionsResponse,
+} from "../../types/search";
 import { selectActiveMarketplaceId } from "../../stores/marketplaceSlice";
+import { formatMoney } from "../../lib/format";
+import { cn } from "../../lib/cn";
+import { Spinner } from "../ui/Spinner";
 
 interface Props {
   onSearch: (q: string) => void;
@@ -27,8 +33,7 @@ interface Props {
 }
 
 function formatPrice(price: number | null): string {
-  if (price == null) return "";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(price);
+  return price == null ? "" : formatMoney(price, "USD");
 }
 
 export default function SearchBar({
@@ -44,7 +49,8 @@ export default function SearchBar({
   const marketplaceId = useSelector(selectActiveMarketplaceId);
 
   const [value, setValue] = useState(initialValue);
-  const [suggestions, setSuggestions] = useState<SearchSuggestionsResponse | null>(null);
+  const [suggestions, setSuggestions] =
+    useState<SearchSuggestionsResponse | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -58,7 +64,10 @@ export default function SearchBar({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -103,7 +112,11 @@ export default function SearchBar({
           setOpen(hasAny);
         })
         .catch((err) => {
-          if (err?.name === "AbortError" || (err instanceof DOMException && err.name === "AbortError")) return;
+          if (
+            err?.name === "AbortError" ||
+            (err instanceof DOMException && err.name === "AbortError")
+          )
+            return;
           setSuggestions(null);
           setOpen(false);
         })
@@ -152,29 +165,39 @@ export default function SearchBar({
       suggestions.brands.length > 0);
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
-      <form onSubmit={handleSubmit} className="flex items-center">
-        <div className="relative flex items-center w-full">
-          <Search className="absolute left-3 w-4 h-4 text-white/40 pointer-events-none" />
+    <div ref={containerRef} className={cn("relative", className)}>
+      <form onSubmit={handleSubmit} role="search" className="flex items-center">
+        <div className="relative flex w-full items-center">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-3 size-4 text-muted-foreground"
+          />
           <input
-            type="text"
+            type="search"
             value={value}
             onChange={handleChange}
             onFocus={() => hasSuggestions && setOpen(true)}
             placeholder={placeholder}
-            className="w-full bg-white/[0.06] border border-white/10 rounded-full pl-9 pr-4 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors"
+            aria-label="Search products"
+            autoComplete="off"
+            className={cn(
+              "h-10 w-full rounded-lg border border-input bg-surface pl-9 pr-9 text-sm text-foreground shadow-xs",
+              "placeholder:text-muted-foreground transition-colors",
+              "focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+              "[&::-webkit-search-cancel-button]:hidden"
+            )}
           />
           {loading && (
-            <div className="absolute right-3 w-3.5 h-3.5 rounded-full border border-sky-400/40 border-t-sky-400 animate-spin" />
+            <Spinner className="absolute right-3 size-3.5 text-muted-foreground" />
           )}
         </div>
       </form>
 
       {open && hasSuggestions && (
-        <div className="absolute top-full mt-2 left-0 right-0 z-50 rounded-2xl border border-white/10 bg-slate-900/95 backdrop-blur shadow-xl overflow-hidden">
+        <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border bg-surface-raised shadow-lg">
           {suggestions!.products.length > 0 && (
             <div>
-              <p className="px-4 pt-3 pb-1 text-xs uppercase tracking-[0.2em] font-semibold text-sky-200/60">
+              <p className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">
                 Products
               </p>
               {suggestions!.products.map((product) => (
@@ -182,34 +205,40 @@ export default function SearchBar({
                   key={product.id}
                   type="button"
                   onMouseDown={() => selectProduct(product)}
-                  className="flex items-center gap-3 w-full px-4 py-2 hover:bg-white/[0.06] transition-colors text-left"
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted"
                 >
                   {product.thumbnailUrl ? (
                     <img
                       src={product.thumbnailUrl}
                       alt={product.name}
-                      className="w-10 h-10 rounded-lg object-cover bg-white/10 flex-shrink-0"
+                      className="size-10 shrink-0 rounded-lg bg-muted object-cover"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center flex-shrink-0">
-                      <ImageOff className="w-4 h-4 text-white/25" />
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted">
+                      <ImageOff
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white/80 truncate leading-tight">{product.name}</p>
-                    {(product.price != null || product.discountedPrice != null) && (
-                      <p className="text-xs text-white/55 mt-0.5">
+                    <p className="truncate text-sm leading-tight text-foreground">
+                      {product.name}
+                    </p>
+                    {(product.price != null ||
+                      product.discountedPrice != null) && (
+                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
                         {product.discountedPrice != null ? (
                           <>
-                            <span className="text-white/80 font-semibold">
+                            <span className="font-semibold text-foreground">
                               {formatPrice(product.discountedPrice)}
                             </span>
-                            <span className="line-through ml-1.5">
+                            <span className="ml-1.5 line-through">
                               {formatPrice(product.price)}
                             </span>
                           </>
                         ) : (
-                          <span className="text-white/80 font-semibold">
+                          <span className="font-semibold text-foreground">
                             {formatPrice(product.price)}
                           </span>
                         )}
@@ -223,7 +252,7 @@ export default function SearchBar({
 
           {suggestions!.categories.length > 0 && (
             <div>
-              <p className="px-4 pt-3 pb-1 text-xs uppercase tracking-[0.2em] font-semibold text-sky-200/60">
+              <p className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">
                 Categories
               </p>
               {suggestions!.categories.slice(0, 3).map((cat) => (
@@ -231,9 +260,12 @@ export default function SearchBar({
                   key={cat}
                   type="button"
                   onMouseDown={() => selectCategory(cat)}
-                  className="flex items-center gap-3 w-full px-4 py-2 text-sm text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors text-left"
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                 >
-                  <Layers className="w-3.5 h-3.5 text-sky-200/50 flex-shrink-0" />
+                  <Layers
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
                   <span className="truncate">{cat}</span>
                 </button>
               ))}
@@ -242,7 +274,7 @@ export default function SearchBar({
 
           {suggestions!.brands.length > 0 && (
             <div>
-              <p className="px-4 pt-3 pb-1 text-xs uppercase tracking-[0.2em] font-semibold text-sky-200/60">
+              <p className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">
                 Brands
               </p>
               {suggestions!.brands.slice(0, 3).map((brand) => (
@@ -250,9 +282,12 @@ export default function SearchBar({
                   key={brand}
                   type="button"
                   onMouseDown={() => selectBrand(brand)}
-                  className="flex items-center gap-3 w-full px-4 py-2 pb-2 text-sm text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors text-left"
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                 >
-                  <Tag className="w-3.5 h-3.5 text-sky-200/50 flex-shrink-0" />
+                  <Tag
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
                   <span className="truncate">{brand}</span>
                 </button>
               ))}

@@ -29,12 +29,10 @@ export default function FeedbackButton() {
         animate={{ opacity: 1, scale: 1 }}
         whileHover={reduced ? undefined : { scale: 1.05 }}
         whileTap={reduced ? undefined : { scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full
-                   bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold
-                   text-white shadow-lg shadow-blue-600/25 transition-colors"
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full border bg-surface-raised px-4 py-2.5 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Share feedback"
       >
-        <MessageSquare className="h-4 w-4" />
+        <MessageSquare className="size-4" aria-hidden />
         Feedback
       </motion.button>
 
