@@ -16,6 +16,11 @@ interface AuthState {
   role: string | null;
   companyId: string | null;
   tier: UserTier | null;
+  /**
+   * False until the page-load session restore (refresh + company lookup) has settled.
+   * Pages render before then; guards wait for it before deciding a visitor is anonymous.
+   */
+  sessionRestored: boolean;
 }
 
 const initialState: AuthState = {
@@ -24,6 +29,7 @@ const initialState: AuthState = {
   role: null,
   companyId: null,
   tier: null,
+  sessionRestored: false,
 };
 
 const authSlice = createSlice({
@@ -66,8 +72,12 @@ const authSlice = createSlice({
       state.companyId = null;
       state.tier = null;
     },
+    sessionRestoreSettled: (state) => {
+      state.sessionRestored = true;
+    },
   },
 });
 
-export const { setCredentials, clearCredentials } = authSlice.actions;
+export const { setCredentials, clearCredentials, sessionRestoreSettled } =
+  authSlice.actions;
 export default authSlice.reducer;

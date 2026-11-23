@@ -20,9 +20,11 @@ import type { SearchFacets } from "../types/search";
 import type { AnnouncementType } from "../types/company";
 import type { RootState } from "../stores";
 import { useAnims } from "../hooks/useAnims";
+import { formatCalendarDate, formatCount } from "../lib/format";
+import { catalogSearchRequest, parseCatalogUrlParams } from "../lib/catalogParams";
+import { companyKeys } from "../api/keys";
 import {
   CATALOG_SORT_OPTIONS,
-  parseCatalogSort,
   selectedCatalogSortIndex,
 } from "../components/search/catalogSort";
 
@@ -36,14 +38,18 @@ export default function CompanyPage() {
   const setSearchParams = useSetSearchParams();
   const { fadeInUp, stagger } = useAnims();
 
-  const q = searchParams.get("q") ?? "";
-  const categoryParam = searchParams.get("category");
-  const brandParam = searchParams.get("brand");
-  const minPriceParam = searchParams.get("minPrice");
-  const maxPriceParam = searchParams.get("maxPrice");
-  const sortParam = parseCatalogSort(searchParams.get("sort"));
-  const directionParam = (searchParams.get("direction") ?? "desc") as "asc" | "desc";
-  const pageParam = Number(searchParams.get("page") ?? "0");
+  // Shared with the server page so prefetched data lands on the same query key.
+  const urlParams = parseCatalogUrlParams(searchParams);
+  const {
+    q,
+    category: categoryParam,
+    brand: brandParam,
+    minPrice: minPriceParam,
+    maxPrice: maxPriceParam,
+    sort: sortParam,
+    direction: directionParam,
+    page: pageParam,
+  } = urlParams;
 
   const [mobileFacetsOpen, setMobileFacetsOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -99,39 +105,17 @@ export default function CompanyPage() {
   const enabled = companyId != null && companyId.length > 0;
 
   const companyResult = useQuery({
-    queryKey: ["company", "public", companyId],
+    queryKey: companyKeys.public(companyId),
     queryFn: () => companiesApi.getPublic(companyId).then((r) => r.data),
     enabled,
     retry: false,
   });
 
   const searchResult = useQuery({
-    queryKey: [
-      "company",
-      "catalog",
-      companyId,
-      q,
-      categoryParam,
-      brandParam,
-      minPriceParam,
-      maxPriceParam,
-      sortParam,
-      directionParam,
-      pageParam,
-    ],
+    queryKey: companyKeys.catalog(companyId, urlParams),
     queryFn: () =>
       catalogApi
-        .companyCatalogSearch(companyId, {
-          q: q || undefined,
-          category: categoryParam ?? undefined,
-          brand: brandParam ?? undefined,
-          minPrice: minPriceParam ? Number(minPriceParam) : undefined,
-          maxPrice: maxPriceParam ? Number(maxPriceParam) : undefined,
-          sort: sortParam,
-          direction: directionParam,
-          page: pageParam,
-          size: 24,
-        })
+        .companyCatalogSearch(companyId, catalogSearchRequest(urlParams))
         .then((r) => r.data),
     enabled: enabled && !!companyResult.data,
     placeholderData: (prev) => prev,
@@ -144,7 +128,7 @@ export default function CompanyPage() {
   });
 
   const announcementsResult = useQuery({
-    queryKey: ["announcements", companyId, announcementsPage],
+    queryKey: companyKeys.announcements(companyId, announcementsPage),
     queryFn: () =>
       announcementsApi.listPublished(companyId!, announcementsPage).then((r) => r.data),
     enabled: enabled && !!companyResult.data,
@@ -232,7 +216,7 @@ export default function CompanyPage() {
                 <Users className="w-4 h-4" />
                 <span>
                   {followStatus.data?.followerCount != null
-                    ? `${followStatus.data.followerCount.toLocaleString()} follower${followStatus.data.followerCount !== 1 ? "s" : ""}`
+                    ? `${formatCount(followStatus.data.followerCount)} follower${followStatus.data.followerCount !== 1 ? "s" : ""}`
                     : ""}
                 </span>
               </div>
@@ -330,7 +314,7 @@ export default function CompanyPage() {
                 <span className="text-sm text-white/50">
                   {searchResult.isLoading
                     ? "Loading…"
-                    : `${totalElements.toLocaleString()} product${totalElements !== 1 ? "s" : ""}`}
+                    : `${formatCount(totalElements)} product${totalElements !== 1 ? "s" : ""}`}
                 </span>
                 {hasActiveFilters && (
                   <button
@@ -552,7 +536,7 @@ export default function CompanyPage() {
                     </span>
                     <span className="text-xs text-white/40">
                       {ann.publishedAt
-                        ? new Date(ann.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                        ? formatCalendarDate(ann.publishedAt)
                         : ""}
                     </span>
                   </div>
