@@ -397,6 +397,35 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
     }
 
     @Test
+    void searchCatalog_sortName_ordersAlphabeticallyOnMigratedIndex() throws Exception {
+        // The fixture pre-creates `products` with a hand-written mapping that has no name.sort
+        // sub-field — standing in for an index deployed before #61. The app's startup
+        // IndexVersionManager.applyCurrentMapping must add it, or sort=name silently falls back to
+        // score order (unmapped_type keeps the request at 200 either way, so assert the order).
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-name@example.com");
+        Product charlie = createProduct(seeded[1], "Charlie Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product alpha = createProduct(seeded[1], "Alpha Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product bravo = createProduct(seeded[1], "Bravo Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        reindexAndAwait(seeded[1], charlie, alpha, bravo);
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "name").param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(alpha.getId().toString()))
+                .andExpect(jsonPath("$.data.items[1].id").value(bravo.getId().toString()))
+                .andExpect(jsonPath("$.data.items[2].id").value(charlie.getId().toString()));
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "name").param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(charlie.getId().toString()))
+                .andExpect(jsonPath("$.data.items[2].id").value(alpha.getId().toString()));
+    }
+
+    @Test
     void searchCatalog_defaultSort_pinnedProductOutranksNewerUnpinnedProduct() throws Exception {
         Company[] seeded = seedMarketplaceWithVendor("mkt-sort-pinned@example.com");
         Product pinned = createProduct(seeded[1], "Pinned Chair", new BigDecimal("120.00"),

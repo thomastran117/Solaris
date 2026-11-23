@@ -4,12 +4,18 @@ import backend.documents.ProductDocument;
 import backend.integration.fullinfra.AbstractSearchKafkaIT;
 import backend.models.core.Company;
 import backend.models.core.CompanyMembership;
+import backend.models.core.Product;
+import backend.models.core.PromotionRule;
 import backend.models.core.User;
 import backend.models.enums.CompanyMembershipStatus;
 import backend.models.enums.CompanyRole;
 import backend.models.enums.CompanyStatus;
+import backend.models.enums.ProductStatus;
+import backend.models.enums.PromotionRuleType;
 import backend.repositories.CompanyMembershipRepository;
 import backend.repositories.CompanyRepository;
+import backend.repositories.ProductRepository;
+import backend.repositories.PromotionRuleRepository;
 import backend.repositories.search.ProductSearchRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,6 +31,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,7 +48,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       Elasticsearch under the default (relevance) sort, which used to fail on the unmapped
  *       {@code createdAt} sort and 503 whenever a filter was present;</li>
  *   <li>the unqueried {@code GET /companies/{id}/products} listing reads PostgreSQL, so a product
- *       is visible immediately after creation, before the asynchronous index catches up.</li>
+ *       is visible immediately after creation, before the asynchronous index catches up — and that
+ *       database path applies every listing filter the ES path does, including
+ *       {@code hasDiscount=false}.</li>
  * </ul>
  */
 class CompanyCatalogSearchIT extends AbstractSearchKafkaIT {
@@ -48,6 +58,8 @@ class CompanyCatalogSearchIT extends AbstractSearchKafkaIT {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private CompanyMembershipRepository membershipRepository;
     @Autowired private ProductSearchRepository productSearchRepository;
+    @Autowired private ProductRepository productRepository;
+    @Autowired private PromotionRuleRepository promotionRuleRepository;
 
     @AfterEach
     void clean() {
@@ -129,5 +141,50 @@ class CompanyCatalogSearchIT extends AbstractSearchKafkaIT {
                         .header("User-Agent", TEST_USER_AGENT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].id", hasItem(productId.toString())));
+    }
+
+    @Test
+    void unqueriedProductListing_hasDiscountFilter_appliesBothPolarities() throws Exception {
+        User owner = createActiveUser("company-listing-discount@example.com", "Password1!");
+        Company company = createCompanyOwnedBy(owner);
+        Product discounted = saveActiveProduct(company, "Discounted Vase");
+        Product fullPrice = saveActiveProduct(company, "Full Price Vase");
+
+        PromotionRule rule = new PromotionRule();
+        rule.setCompany(company);
+        rule.setName("Spring sale");
+        rule.setRuleType(PromotionRuleType.PERCENTAGE_OFF);
+        rule.setConfigJson("{\"percent\":10}");
+        rule.getTargetProducts().add(discounted);
+        promotionRuleRepository.save(rule);
+
+        // No q, so both requests take the PostgreSQL listing path.
+        mockMvc.perform(get("/companies/" + company.getId() + "/products")
+                        .param("hasDiscount", "false")
+                        .param("sort", "price")
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem(fullPrice.getId().toString())))
+                .andExpect(jsonPath("$.data[*].id", not(hasItem(discounted.getId().toString()))));
+
+        mockMvc.perform(get("/companies/" + company.getId() + "/products")
+                        .param("hasDiscount", "true")
+                        .param("sort", "price")
+                        .header("Authorization", bearer(accessTokenFor(owner)))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem(discounted.getId().toString())))
+                .andExpect(jsonPath("$.data[*].id", not(hasItem(fullPrice.getId().toString()))));
+    }
+
+    private Product saveActiveProduct(Company company, String name) {
+        Product p = new Product();
+        p.setCompany(company);
+        p.setName(name);
+        p.setPrice(new BigDecimal("40.00"));
+        p.setStatus(ProductStatus.ACTIVE);
+        p.setListed(true);
+        return productRepository.save(p);
     }
 }
