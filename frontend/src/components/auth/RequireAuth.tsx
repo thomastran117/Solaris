@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "../../stores/hooks";
+import { loginUrlFor } from "../../lib/routes";
 
 function SessionSpinner() {
   return (
@@ -32,7 +33,12 @@ export default function RequireAuth({
   const router = useRouter();
 
   useEffect(() => {
-    if (sessionRestored && !accessToken) router.replace("/login");
+    if (sessionRestored && !accessToken) {
+      // Read the URL here rather than via useSearchParams() so protected layouts
+      // need no Suspense boundary; the query string is preserved for the return.
+      const { pathname, search, hash } = window.location;
+      router.replace(loginUrlFor(`${pathname}${search}${hash}`));
+    }
   }, [sessionRestored, accessToken, router]);
 
   // Wait for the full restore, not just the token: merchant pages also need the

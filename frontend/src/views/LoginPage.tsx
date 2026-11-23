@@ -7,6 +7,8 @@ import { setCredentials } from "../stores/authSlice";
 import type { AppDispatch, RootState } from "../stores";
 import api from "../api";
 import Environment, { getFrontendUrl } from "../configuration/Environment";
+import { safeNextPath } from "../lib/safeRedirect";
+import { DEFAULT_AFTER_LOGIN } from "../lib/routes";
 import "../styles/login.css";
 
 const images = ["/carousel1.jpg", "/carousel2.jpg", "/carousel3.jpg"];
@@ -20,6 +22,17 @@ function extractErrorMessage(err: unknown): string {
     if (res?.status === 403) return "Invalid email or password.";
   }
   return "Something went wrong. Please try again.";
+}
+
+/**
+ * Where to go after signing in: the `?next=` path when it is a safe same-origin
+ * relative URL (open-redirect protection), otherwise the dashboard. Read at
+ * navigation time from `window.location` so the login form stays statically
+ * prerendered (useSearchParams() would need a Suspense boundary and skip it).
+ */
+function postLoginDestination(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return safeNextPath(next) ?? DEFAULT_AFTER_LOGIN;
 }
 
 export default function LoginPage() {
@@ -69,7 +82,7 @@ export default function LoginPage() {
       const { token, email, usertype, tier } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
-      router.push("/dashboard");
+      router.replace(postLoginDestination());
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -144,7 +157,7 @@ export default function LoginPage() {
       const { token, email, usertype, tier } = res.data;
       dispatch(setCredentials({ accessToken: token, email, role: usertype, tier }));
       await fetchAndStoreCompanyId();
-      router.push("/dashboard");
+      router.replace(postLoginDestination());
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -159,12 +172,15 @@ export default function LoginPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Already signed in (for example the session was restored from the refresh cookie
+  // after a cross-site link sent the visitor here): go straight to the destination.
+  // Waits for an in-flight form or Google login, whose handler navigates itself once
+  // the company membership is loaded.
   useEffect(() => {
-    if (authState.accessToken) {
-      console.log("✅ Redux updated:", authState);
-      router.push("/dashboard");
+    if (authState.sessionRestored && authState.accessToken && !loading) {
+      router.replace(postLoginDestination());
     }
-  }, [authState, router]);
+  }, [authState.sessionRestored, authState.accessToken, loading, router]);
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0f1c] via-[#111827] to-[#0d1a2f] flex items-center justify-center px-4 py-10">
       <div

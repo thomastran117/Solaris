@@ -8,7 +8,7 @@ Implementation status:
 
 - **Implemented (#83).** Every row's App Router **Segment** exists and resolves at the same URL. The deliberate retirements below are done, and unknown URLs return the new 404 page.
 - **Implemented (#84).** The public storefront rows render on the server with the listed prefetch keys, metadata, and robots rules. Missing entities return `404`. See [server rendering and caching](architecture.md#server-rendering-and-caching).
-- **Not yet implemented.** `next` deep links and `proxy.ts` (#85).
+- **Implemented (#85).** `proxy.ts` and `RequireAuth` send anonymous visitors to `/login?next=…`, and the login page returns them there. See [frontend session boundary](architecture.md#frontend-session-boundary).
 
 ## Conventions
 
@@ -147,5 +147,5 @@ These links and files exist today but have no working route. The migration remov
 ## Refresh and Deep-Link Behavior
 
 - **Hard refresh.** Every route above resolves on a hard refresh or a direct visit. Today Nginx `try_files … /index.html` and the Vite dev server provide this. After the migration, App Router segments do, and no SPA fallback is needed.
-- **Protected deep links.** Today an anonymous visitor lands on `/login` and loses the destination. After #85 they land on `/login?next=<original path and query>` and return there after signing in. They also return when a session already exists in the cookie.
+- **Protected deep links.** An anonymous visitor lands on `/login?next=<original path and query>` and returns there after signing in. A visitor whose session is restored from the cookie on the login page returns immediately. Before #85, the destination was lost and everyone went to `/dashboard`.
 - **Query-string state.** `/browse`, `/c/:id`, `/c/:id/compare`, and `/admin/purchase-orders` keep their filters in the URL. The migration preserves the parameter names and keeps filter changes from scrolling the page.

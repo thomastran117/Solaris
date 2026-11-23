@@ -6,6 +6,7 @@ import { motion, type Variants } from "framer-motion";
 import { Bookmark, ShoppingBag } from "lucide-react";
 import type { CatalogProduct } from "../../api/catalog";
 import type { RootState } from "../../stores";
+import { loginUrlFor } from "../../lib/routes";
 import SaveToListModal from "../savedlist/SaveToListModal";
 
 interface Props {
@@ -37,7 +38,7 @@ export default function ProductCard({ product, variants }: Props) {
     e.preventDefault();
     e.stopPropagation();
     if (!accessToken) {
-      router.push("/login");
+      router.push(loginUrlFor(window.location.pathname + window.location.search));
       return;
     }
     setSaveOpen(true);

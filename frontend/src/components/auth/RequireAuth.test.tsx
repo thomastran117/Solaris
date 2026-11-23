@@ -30,12 +30,16 @@ describe("RequireAuth", () => {
     expect(mockRouter.replace).not.toHaveBeenCalled();
   });
 
-  it("redirects anonymous visitors to /login once the restore settled", () => {
+  it("redirects anonymous visitors to /login with the deep link as next", () => {
+    window.history.replaceState({}, "", "/orders/abc?x=1");
     const store = makeStore();
     store.dispatch(sessionRestoreSettled());
     renderGuard(store);
     expect(screen.queryByText("secret order")).not.toBeInTheDocument();
-    expect(mockRouter.replace).toHaveBeenCalledWith("/login");
+    expect(mockRouter.replace).toHaveBeenCalledWith(
+      "/login?next=%2Forders%2Fabc%3Fx%3D1"
+    );
+    window.history.replaceState({}, "", "/");
   });
 
   it("keeps waiting while a token exists but the restore (company lookup) is unfinished", () => {
