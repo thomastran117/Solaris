@@ -36,15 +36,14 @@ public class ProductChangedPublisher {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onProductIndex(ProductIndexEvent event) {
         if (!trackingEnabled) return;
-        UUID marketplaceId = event.product().getMarketplaceId();
-        if (marketplaceId == null) return;
-        send(event.product().getId(), marketplaceId, ChangeType.UPDATED);
+        // Every product is published — not only marketplace listings — so the search projection
+        // stays current for company-scoped catalog search too. marketplaceId is null for plain products.
+        send(event.product().getId(), event.product().getMarketplaceId(), ChangeType.UPDATED);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onProductRemove(ProductRemoveEvent event) {
         if (!trackingEnabled) return;
-        if (event.marketplaceId() == null) return;
         send(event.productId(), event.marketplaceId(), ChangeType.DELETED);
     }
 

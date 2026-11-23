@@ -152,7 +152,7 @@ class MarketplaceCatalogControllerTest {
     void searchCatalog_passesDefaultPagingAndSortParameters() throws Exception {
         when(productService.searchMarketplaceCatalog(
                 MARKETPLACE_ID, null, null, null, null, null,
-                null, null, 0, 20, "createdAt", "desc"))
+                null, null, 0, 20, "relevance", "desc"))
                 .thenReturn(new CatalogSearchResponse(new PageImpl<>(List.of()), null));
 
         mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/products"))
@@ -160,14 +160,14 @@ class MarketplaceCatalogControllerTest {
 
         verify(productService).searchMarketplaceCatalog(
                 MARKETPLACE_ID, null, null, null, null, null,
-                null, null, 0, 20, "createdAt", "desc");
+                null, null, 0, 20, "relevance", "desc");
     }
 
     @Test
     void searchCatalog_passesDirectionWithoutStandaloneMethodValidation() throws Exception {
         when(productService.searchMarketplaceCatalog(
                 MARKETPLACE_ID, null, null, null, null, null,
-                null, null, 0, 20, "createdAt", "sideways"))
+                null, null, 0, 20, "relevance", "sideways"))
                 .thenReturn(new CatalogSearchResponse(new PageImpl<>(List.of()), null));
 
         mockMvc.perform(get("/marketplaces/" + MARKETPLACE_ID + "/catalog/products")
@@ -176,7 +176,7 @@ class MarketplaceCatalogControllerTest {
 
         verify(productService).searchMarketplaceCatalog(
                 MARKETPLACE_ID, null, null, null, null, null,
-                null, null, 0, 20, "createdAt", "sideways");
+                null, null, 0, 20, "relevance", "sideways");
     }
 
     @Test

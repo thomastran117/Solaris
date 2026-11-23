@@ -9,6 +9,7 @@ import co.elastic.clients.elasticsearch._types.query_dsl.FunctionBoostMode;
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScore;
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreMode;
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.MatchAllQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
@@ -130,7 +131,6 @@ import java.util.stream.Stream;
 public class ProductServiceImpl implements ProductService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
-    private static final Set<String> SORTABLE_FIELDS = Set.of("name", "price", "createdAt", "stock");
 
     private final ProductRepository productRepository;
     private final CompanyRepository companyRepository;
@@ -253,12 +253,16 @@ public class ProductServiceImpl implements ProductService {
                 sort      != null ? sort      : "",
                 direction != null ? direction : "");
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-            String sortField = (sort != null && SORTABLE_FIELDS.contains(sort)) ? sort : "createdAt";
-            Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
+            CatalogSort catalogSort = CatalogSort.resolve(sort, direction);
+            Pageable pageable = PageRequest.of(page, clampedSize, catalogSort.jpaSort());
+
+            // This listing backs the vendor admin product table, which re-reads right after a
+            // mutation evicts the cache. The ES projection is updated asynchronously, so an
+            // unqueried listing reads PostgreSQL directly; only free-text search uses ES.
+            boolean textSearch = q != null && !q.isBlank();
 
             // --- Elasticsearch path ---
-            try {
+            if (textSearch) try {
                 final String companyIdStr = companyId.toString();
                 BoolQuery.Builder bq = new BoolQuery.Builder()
                         .filter(TermQuery.of(t -> t.field("companyId").value(companyIdStr))._toQuery());
@@ -288,8 +292,9 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 NativeQuery esQuery = NativeQuery.builder()
-                        .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
-                        .withPageable(pageable)
+                        .withQuery(applyMerchandisingScore(bq.build()))
+                        .withPageable(PageRequest.of(page, clampedSize))
+                        .withSort(catalogSort.esSorts())
                         .build();
 
                 SearchHits<ProductDocument> hits = elasticsearchOperations.search(esQuery, ProductDocument.class);
@@ -1195,16 +1200,10 @@ public class ProductServiceImpl implements ProductService {
                 marketplaceId, q, category, brand, minPrice, maxPrice, featured,
                 vendorId, page, clampedSize, sort, direction);
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-        // When the shopper hasn't picked a specific sort, let function_score (pin + boost) drive
-        // the order via _score. Only override with an explicit field sort when the caller asks
-        // for one. The JPA fallback still needs a deterministic order, so use createdAt there.
-        boolean explicitSort = sort != null && SORTABLE_FIELDS.contains(sort);
-        String sortField = explicitSort ? sort : "createdAt";
-        Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable esPageable = explicitSort
-                ? PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField))
-                : PageRequest.of(page, clampedSize);
-        Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
+        // "relevance" (the default) lets function_score (pin + boost) drive the order via _score;
+        // field sorts tolerate documents indexed before that sort key existed. See CatalogSort.
+        CatalogSort catalogSort = CatalogSort.resolve(sort, direction);
+        Pageable pageable = PageRequest.of(page, clampedSize, catalogSort.jpaSort());
 
         // --- Elasticsearch path ---
         try {
@@ -1237,8 +1236,9 @@ public class ProductServiceImpl implements ProductService {
             }
 
             NativeQuery esQuery = NativeQuery.builder()
-                    .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
-                    .withPageable(esPageable)
+                    .withQuery(applyMerchandisingScore(bq.build()))
+                    .withPageable(PageRequest.of(page, clampedSize))
+                    .withSort(catalogSort.esSorts())
                     .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20).minDocCount(1))))
                     .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20).minDocCount(1))))
                     .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
@@ -1292,13 +1292,8 @@ public class ProductServiceImpl implements ProductService {
                 companyId, q, category, brand, minPrice, maxPrice,
                 page, clampedSize, sort, direction);
         return singleFlightCache.getOrLoad(cacheKey, cacheTtl, () -> {
-            boolean explicitSort = sort != null && SORTABLE_FIELDS.contains(sort);
-            String sortField = explicitSort ? sort : "createdAt";
-            Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            Pageable esPageable = explicitSort
-                    ? PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField))
-                    : PageRequest.of(page, clampedSize);
-            Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(sortDir, sortField));
+            CatalogSort catalogSort = CatalogSort.resolve(sort, direction);
+            Pageable pageable = PageRequest.of(page, clampedSize, catalogSort.jpaSort());
 
             // --- Elasticsearch path ---
             try {
@@ -1327,8 +1322,9 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 NativeQuery esQuery = NativeQuery.builder()
-                        .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
-                        .withPageable(esPageable)
+                        .withQuery(applyMerchandisingScore(bq.build()))
+                        .withPageable(PageRequest.of(page, clampedSize))
+                        .withSort(catalogSort.esSorts())
                         .withAggregation("categories", Aggregation.of(a -> a.terms(t -> t.field("category").size(20))))
                         .withAggregation("brands", Aggregation.of(a -> a.terms(t -> t.field("brand").size(20))))
                         .withAggregation("price_ranges", Aggregation.of(a -> a.range(r -> r
@@ -1534,8 +1530,15 @@ public class ProductServiceImpl implements ProductService {
      * </ul>
      * Sort by a non-score field (price/name/stock) overrides this; that's intentional — when a
      * user explicitly sorts, they don't want pins moving things around.
+     *
+     * <p>A bool query with only filter clauses (no free-text {@code q}, e.g. the storefront landing
+     * page) scores every hit 0, and {@code boost_mode=multiply} would zero the pin/boost weights
+     * with it. Such queries get a constant base score of 1 so merchandising still orders them.
      */
-    private static Query applyMerchandisingScore(Query base) {
+    private static Query applyMerchandisingScore(BoolQuery bool) {
+        Query base = bool.must().isEmpty() && bool.should().isEmpty()
+                ? BoolQuery.of(b -> b.must(MatchAllQuery.of(m -> m)._toQuery()).filter(bool._toQuery()))._toQuery()
+                : bool._toQuery();
         Query pinnedFilter = RangeQuery.of(r -> r.date(d -> d.field("pinnedUntil").gt("now")))._toQuery();
         FunctionScore pinFn = FunctionScore.of(f -> f
                 .filter(pinnedFilter)
@@ -1782,7 +1785,7 @@ public class ProductServiceImpl implements ProductService {
 
         int fetchSize = Math.min(remaining + excludeIds.size(), 50);
         NativeQuery esQuery = NativeQuery.builder()
-                .withQuery(applyMerchandisingScore(bq.build()._toQuery()))
+                .withQuery(applyMerchandisingScore(bq.build()))
                 .withPageable(PageRequest.of(0, fetchSize))
                 .build();
 

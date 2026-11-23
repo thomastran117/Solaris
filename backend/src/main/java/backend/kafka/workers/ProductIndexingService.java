@@ -175,6 +175,10 @@ public class ProductIndexingService implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         indexVersionManager.ensureIndexExists("products");
         indexVersionManager.ensureIndexExists("bundles");
+        // Bring an index that predates new document fields (e.g. createdAt, stock, name.sort) up to
+        // the current mapping before any document is written to it.
+        indexVersionManager.applyCurrentMapping("products");
+        indexVersionManager.applyCurrentMapping("bundles");
 
         try {
             if (productSearchRepository.count() == 0) {
@@ -425,7 +429,9 @@ public class ProductIndexingService implements ApplicationRunner {
                 pinnedUntil,
                 pinnedRank,
                 collectionIds,
-                attributeText
+                attributeText,
+                p.getCreatedAt(),
+                p.getStock()
         );
     }
 

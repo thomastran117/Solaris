@@ -134,6 +134,28 @@ export PRODUCT_ID="<product-uuid>"
 curl "http://localhost:8090/api/marketplaces/$MARKETPLACE_ID/catalog/products/$PRODUCT_ID"
 ```
 
+Marketplace catalog search (newest first):
+
+```bash
+curl "http://localhost:8090/api/marketplaces/$MARKETPLACE_ID/catalog/products?q=lamp&sort=createdAt&direction=desc"
+```
+
+### Catalog Sorting
+
+`GET /marketplaces/{marketplaceId}/catalog/products` and `GET /companies/{companyId}/catalog/search` accept `sort` and `direction` (`asc` or `desc`, default `desc`).
+
+| `sort`                | Order                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| `relevance` (default) | Search score, including merchandising pins and boosts; ties are newest first. `direction` is ignored |
+| `createdAt`           | Product creation time                                                                                |
+| `price`               | Base price                                                                                           |
+| `stock`               | On-hand stock; products without tracked stock sort last                                              |
+| `name`                | Product name                                                                                         |
+
+Any other value that passes the `^[a-zA-Z.]+$` format check is treated as `relevance`; values that fail it return `400`. Field sorts use the search score as a tie-breaker. When Elasticsearch is unavailable, a company catalog request without filters falls back to a PostgreSQL listing ordered by the chosen field, or by `createdAt` for `relevance`. Filtered company requests and all marketplace requests return `503`.
+
+The company product listing, `GET /companies/{companyId}/products`, defaults to `sort=createdAt`. It reads PostgreSQL directly unless a free-text `q` is supplied, so products are visible immediately after they are written.
+
 Authenticated order list:
 
 ```bash

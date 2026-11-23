@@ -106,9 +106,9 @@ class ProductIT extends AbstractSearchKafkaIT {
     }
 
     /**
-     * Seeds a marketplace-listed product. Only marketplace products flow through the incremental
-     * Kafka indexing path — {@code ProductChangedPublisher} guards on {@code marketplaceId != null} —
-     * so a mutation on one of these reaches the live Elasticsearch index.
+     * Seeds a marketplace-listed product. Every product change flows through the incremental Kafka
+     * indexing path, so a mutation on one of these reaches the live Elasticsearch index; the
+     * marketplace fields additionally make it visible to the marketplace catalog query.
      */
     private Product createMarketplaceProduct(Company company, String name) {
         Product p = new Product();

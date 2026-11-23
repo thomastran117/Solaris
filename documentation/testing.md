@@ -63,8 +63,9 @@ Between them these classes cover three kinds of path: write-to-index, search rea
 | `ProductIT` | 1 | Product update/delete to Elasticsearch through Kafka; bulk reindex; `product_similarity` rows written by `ProductSimilarityConsumer` |
 | `BundleIT` | 2 | Bundle create/delete to Elasticsearch through Kafka |
 | `ImportIT` | 3 | `ImportJobConsumer` reads the queued job and upserts `products`; an unreadable CSV lands the job in `FAILED` |
-| `MarketplaceCatalogControllerIT` | 3 | Catalog search read path |
+| `MarketplaceCatalogControllerIT` | 3 | Catalog search read path; default relevance ordering with merchandising pins; every `sort` option and `createdAt`/`stock` ordering |
 | `SearchSuggestionIT` | 4 | Marketplace and company autocomplete read path |
+| `CompanyCatalogSearchIT` | 5 | Plain (non-marketplace) product indexed incrementally through Kafka and found by company catalog search; unqueried product listing reads PostgreSQL |
 | `CompanyWebhookIT` | 5 | `OutboundWebhookConsumer` records a `webhook_delivery_logs` row |
 
 Two rules apply when adding to these classes:

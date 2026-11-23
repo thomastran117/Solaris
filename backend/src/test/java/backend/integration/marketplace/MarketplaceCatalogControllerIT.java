@@ -22,11 +22,14 @@ import backend.repositories.ProductRepository;
 import backend.repositories.search.ProductSearchRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -273,22 +276,182 @@ class MarketplaceCatalogControllerIT extends AbstractSearchKafkaIT {
         assertTrue(indexed.isPresent(), "Product should have been indexed into Elasticsearch");
         refreshSearchIndices();
 
-        // The public catalog search must now return the indexed product — proving the real ES
-        // query path (marketplace filter + product_search analyzer + fuzzy match) works end to end,
-        // where the mocked-ES suite could only ever assert a 503.
-        //
-        // We pin an explicit sort on a mapped field (price). The endpoint's *default* sort is
-        // "createdAt", which ProductDocument does not index, so the ES sort can't resolve it
-        // ("No mapping found for [createdAt] in order to sort on") and the whole search fails —
-        // a pre-existing catalog limitation, out of scope for this test's read-path assertion.
+        // The public catalog search must now return the indexed product under the endpoint's
+        // *default* sort (relevance) — proving the real ES query path (marketplace filter +
+        // product_search analyzer + fuzzy match + default ordering) works end to end. Before #61 the
+        // default was a createdAt field sort that ProductDocument didn't index, which failed with
+        // "No mapping found for [createdAt] in order to sort on".
         // CatalogSearchResponse extends PagedResponse but adds facets, so ApiResponseAdvice (which
         // unwraps only the exact PagedResponse class) leaves it serialized as-is: the page content
         // is under $.data.items, not $.data.
         mockMvc.perform(get("/marketplaces/" + marketplace.getId() + "/catalog/products")
-                        .param("q", "laptop")
-                        .param("sort", "price"))
+                        .param("q", "laptop"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[*].id", hasItem(product.getId().toString())));
+    }
+
+    /** Seeds a vendor on a fresh marketplace; returns {marketplace, vendor}. */
+    private Company[] seedMarketplaceWithVendor(String ownerEmail) {
+        User owner = createActiveUser(ownerEmail, "Password1!");
+        Company marketplace = createCompany(owner, "Sort Marketplace");
+        createMarketplaceProfile(marketplace);
+        Company vendor = createCompany(owner, "Sort Vendor");
+        addMember(owner, vendor, CompanyRole.OWNER);
+        createVendor(marketplace, vendor, VendorTier.STANDARD, VendorStatus.APPROVED);
+        return new Company[] {marketplace, vendor};
+    }
+
+    /** Bulk-reindexes the vendor and waits until every given product is searchable. */
+    private void reindexAndAwait(Company vendor, Product... products) throws Exception {
+        mockMvc.perform(post("/companies/" + vendor.getId() + "/products/reindex")
+                        .header("Authorization", bearer(accessTokenFor(vendor.getOwner())))
+                        .header("User-Agent", TEST_USER_AGENT))
+                .andExpect(status().isAccepted());
+        for (Product p : products) {
+            Optional<ProductDocument> indexed = await(Duration.ofSeconds(30),
+                    () -> productSearchRepository.findById(p.getId()), Optional::isPresent);
+            assertTrue(indexed.isPresent(), "Product " + p.getName() + " should have been indexed");
+        }
+        refreshSearchIndices();
+    }
+
+    private void setCreatedAt(Product product, Instant createdAt) {
+        jdbcTemplate.update("UPDATE products SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.from(createdAt), product.getId());
+    }
+
+    @Test
+    void searchCatalog_noQueryDefaultSort_returnsIndexedProducts() throws Exception {
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-default@example.com");
+        Product product = createProduct(seeded[1], "Default Sort Lamp", new BigDecimal("19.99"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        reindexAndAwait(seeded[1], product);
+
+        // The storefront's landing request: no q, no sort — the exact request that used to 503.
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].id", hasItem(product.getId().toString())))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "relevance, desc", "createdAt, asc", "createdAt, desc", "price, asc", "price, desc",
+            "stock, asc", "stock, desc", "name, asc", "name, desc", "unknownField, desc"
+    })
+    void searchCatalog_everySortOption_returns200FromElasticsearch(String sort, String direction) throws Exception {
+        Company[] seeded = seedMarketplaceWithVendor(
+                "mkt-sort-" + sort.toLowerCase() + "-" + direction + "@example.com");
+        Product product = createProduct(seeded[1], "Sortable Widget", new BigDecimal("9.99"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        reindexAndAwait(seeded[1], product);
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", sort)
+                        .param("direction", direction))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].id", hasItem(product.getId().toString())));
+    }
+
+    @Test
+    void searchCatalog_sortCreatedAt_ordersByIndexedCreationTime() throws Exception {
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-newest@example.com");
+        Product older = createProduct(seeded[1], "Older Kettle", new BigDecimal("30.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product newer = createProduct(seeded[1], "Newer Kettle", new BigDecimal("30.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        setCreatedAt(older, Instant.now().minus(Duration.ofDays(10)));
+        setCreatedAt(newer, Instant.now().minus(Duration.ofDays(1)));
+        reindexAndAwait(seeded[1], older, newer);
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "createdAt").param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(newer.getId().toString()))
+                .andExpect(jsonPath("$.data.items[1].id").value(older.getId().toString()));
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "createdAt").param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(older.getId().toString()));
+    }
+
+    @Test
+    void searchCatalog_sortStockAsc_ordersByIndexedStock() throws Exception {
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-stock@example.com");
+        Product plenty = createProduct(seeded[1], "Plenty Mug", new BigDecimal("8.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product few = createProduct(seeded[1], "Few Mug", new BigDecimal("8.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        plenty.setStock(50);
+        few.setStock(2);
+        productRepository.save(plenty);
+        productRepository.save(few);
+        reindexAndAwait(seeded[1], plenty, few);
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "stock").param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(few.getId().toString()))
+                .andExpect(jsonPath("$.data.items[1].id").value(plenty.getId().toString()));
+    }
+
+    @Test
+    void searchCatalog_sortName_ordersAlphabeticallyOnMigratedIndex() throws Exception {
+        // The fixture pre-creates `products` with a hand-written mapping that has no name.sort
+        // sub-field — standing in for an index deployed before #61. The app's startup
+        // IndexVersionManager.applyCurrentMapping must add it, or sort=name silently falls back to
+        // score order (unmapped_type keeps the request at 200 either way, so assert the order).
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-name@example.com");
+        Product charlie = createProduct(seeded[1], "Charlie Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product alpha = createProduct(seeded[1], "Alpha Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product bravo = createProduct(seeded[1], "Bravo Lamp", new BigDecimal("15.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        reindexAndAwait(seeded[1], charlie, alpha, bravo);
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "name").param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(alpha.getId().toString()))
+                .andExpect(jsonPath("$.data.items[1].id").value(bravo.getId().toString()))
+                .andExpect(jsonPath("$.data.items[2].id").value(charlie.getId().toString()));
+
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "name").param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(charlie.getId().toString()))
+                .andExpect(jsonPath("$.data.items[2].id").value(alpha.getId().toString()));
+    }
+
+    @Test
+    void searchCatalog_defaultSort_pinnedProductOutranksNewerUnpinnedProduct() throws Exception {
+        Company[] seeded = seedMarketplaceWithVendor("mkt-sort-pinned@example.com");
+        Product pinned = createProduct(seeded[1], "Pinned Chair", new BigDecimal("120.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        Product newer = createProduct(seeded[1], "Newer Chair", new BigDecimal("120.00"),
+                ProductStatus.ACTIVE, seeded[0].getId(), true, false);
+        pinned.setPinnedUntil(Instant.now().plus(Duration.ofDays(7)));
+        pinned.setPinnedRank(1);
+        productRepository.save(pinned);
+        setCreatedAt(pinned, Instant.now().minus(Duration.ofDays(30)));
+        setCreatedAt(newer, Instant.now().minus(Duration.ofDays(1)));
+        reindexAndAwait(seeded[1], pinned, newer);
+
+        // Relevance (the default) is _score-first, so the function_score pin beats the newer
+        // product that the createdAt tie-break alone would put first. No q — the storefront
+        // landing page — is the case that must still honour merchandising.
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(pinned.getId().toString()))
+                .andExpect(jsonPath("$.data.items[1].id").value(newer.getId().toString()));
+
+        // An explicit field sort overrides merchandising.
+        mockMvc.perform(get("/marketplaces/" + seeded[0].getId() + "/catalog/products")
+                        .param("sort", "createdAt").param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(newer.getId().toString()));
     }
 
     @Test

@@ -1,6 +1,8 @@
 package backend.kafka.workers;
 
 import backend.configurations.search.SearchIndexSettings;
+import backend.documents.BundleDocument;
+import backend.documents.ProductDocument;
 import backend.models.core.IndexVersion;
 import backend.repositories.IndexVersionRepository;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -8,10 +10,16 @@ import co.elastic.clients.elasticsearch.indices.UpdateAliasesRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
+import org.springframework.data.elasticsearch.core.document.Document;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Manages versioned Elasticsearch index aliases.
@@ -22,6 +30,10 @@ import java.time.Instant;
  *
  * The current version is tracked in the {@code index_versions} DB table so the application
  * can validate that ES and DB state are consistent on startup.
+ *
+ * Every physical index this class creates gets the field mapping generated from its document class
+ * before any document is written, so a rollover produces correctly typed fields (keyword, date,
+ * multi-fields such as {@code name.sort}) rather than whatever dynamic mapping infers.
  */
 @Component
 public class IndexVersionManager {
@@ -31,15 +43,103 @@ public class IndexVersionManager {
     @Value("${app.elasticsearch.versioning.enabled:true}")
     private boolean enabled;
 
+    /** Logical index (alias) → the document class whose annotations define its field mapping. */
+    private static final Map<String, Class<?>> DOCUMENT_TYPES = Map.of(
+            "products", ProductDocument.class,
+            "bundles",  BundleDocument.class);
+
     private final ElasticsearchClient esClient;
     private final IndexVersionRepository versionRepository;
     private final SearchIndexSettings searchIndexSettings;
+    private final ElasticsearchOperations elasticsearchOperations;
 
     public IndexVersionManager(ElasticsearchClient esClient, IndexVersionRepository versionRepository,
-                                SearchIndexSettings searchIndexSettings) {
+                                SearchIndexSettings searchIndexSettings,
+                                ElasticsearchOperations elasticsearchOperations) {
         this.esClient = esClient;
         this.versionRepository = versionRepository;
         this.searchIndexSettings = searchIndexSettings;
+        this.elasticsearchOperations = elasticsearchOperations;
+    }
+
+    /**
+     * Called on startup: adds what the current document mapping has and the live index (alias or
+     * concrete index) lacks — new top-level fields, and new multi-fields on existing fields such as
+     * {@code name.sort}. Existing documents gain values for them when they are next written, e.g. by
+     * {@code POST /admin/search/reindex}.
+     *
+     * <p>Only the delta is sent, one field per request. Re-sending the whole document mapping would
+     * also restate every existing field, and Elasticsearch rejects the entire request if any one of
+     * them differs from the live definition (a date {@code format}, a dynamically inferred type), so
+     * a single legacy field would block every addition. A field that still conflicts is skipped with
+     * a warning; the reindex endpoint's rollover migrates to a freshly mapped index.
+     */
+    public void applyCurrentMapping(String alias) {
+        Class<?> documentType = DOCUMENT_TYPES.get(alias);
+        if (documentType == null) return;
+        Map<String, Object> missing;
+        IndexOperations live;
+        try {
+            live = elasticsearchOperations.indexOps(IndexCoordinates.of(alias));
+            if (!live.exists()) return;
+            missing = missingProperties(
+                    properties(live.getMapping()),
+                    properties(elasticsearchOperations.indexOps(documentType).createMapping()));
+        } catch (Exception e) {
+            log.warn("[INDEX VERSION] Could not read the mapping of '{}': {}", alias, e.getMessage());
+            return;
+        }
+        for (Map.Entry<String, Object> field : missing.entrySet()) {
+            try {
+                Document delta = Document.create();
+                delta.put("properties", Map.of(field.getKey(), field.getValue()));
+                live.putMapping(delta);
+                log.info("[INDEX VERSION] Added mapping for '{}' to '{}'", field.getKey(), alias);
+            } catch (Exception e) {
+                log.warn("[INDEX VERSION] Could not add mapping for '{}' to '{}' — run POST /admin/search/reindex "
+                        + "to roll over to a correctly mapped index: {}", field.getKey(), alias, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Fields of {@code wanted} absent from {@code current}, plus fields present in both whose wanted
+     * definition declares multi-fields ({@code fields}) the current one lacks. For the latter the
+     * wanted definition is returned; Elasticsearch merges the new sub-fields into the existing field.
+     */
+    static Map<String, Object> missingProperties(Map<String, Object> current, Map<String, Object> wanted) {
+        Map<String, Object> missing = new LinkedHashMap<>();
+        wanted.forEach((name, definition) -> {
+            Object existing = current.get(name);
+            if (existing == null) {
+                missing.put(name, definition);
+            } else if (!asMap(existing).isEmpty()
+                    && !asMap(asMap(existing).get("fields")).keySet()
+                            .containsAll(asMap(asMap(definition).get("fields")).keySet())) {
+                missing.put(name, definition);
+            }
+        });
+        return missing;
+    }
+
+    private static Map<String, Object> properties(Map<String, Object> mapping) {
+        return mapping == null ? Map.of() : asMap(mapping.get("properties"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    private void putMapping(String indexName, Class<?> documentType) {
+        var mapping = elasticsearchOperations.indexOps(documentType).createMapping();
+        elasticsearchOperations.indexOps(IndexCoordinates.of(indexName)).putMapping(mapping);
+    }
+
+    /** Applies the alias's document mapping to a newly created, still empty, physical index. */
+    private void mapNewIndex(String alias, String indexName) {
+        Class<?> documentType = DOCUMENT_TYPES.get(alias);
+        if (documentType != null) putMapping(indexName, documentType);
     }
 
     /**
@@ -57,6 +157,7 @@ public class IndexVersionManager {
                 esClient.indices().create(c -> c
                         .index(indexName)
                         .settings(searchIndexSettings.buildSettings()));
+                mapNewIndex(alias, indexName);
                 esClient.indices().putAlias(a -> a.index(indexName).name(alias));
                 saveVersion(alias, 1, indexName);
                 log.info("[INDEX VERSION] Created index '{}' with alias '{}'", indexName, alias);
@@ -94,6 +195,8 @@ public class IndexVersionManager {
             esClient.indices().create(c -> c
                     .index(newIndexName)
                     .settings(searchIndexSettings.buildSettings()));
+            // Map before copying documents in, so reindexed fields get the declared types.
+            mapNewIndex(alias, newIndexName);
 
             esClient.reindex(r -> r
                     .source(s -> s.index(oldIndexName))

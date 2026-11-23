@@ -42,7 +42,7 @@ public class CompanyCatalogController {
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
-            @RequestParam(defaultValue = "createdAt") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
+            @RequestParam(defaultValue = "relevance") @Pattern(regexp = "^[a-zA-Z.]+$", message = "Invalid sort field") String sort,
             @RequestParam(defaultValue = "desc") @Pattern(regexp = "^(?i)(asc|desc)$", message = "Direction must be asc or desc") String direction) {
         try {
             return ResponseEntity.ok(productService.searchCompanyCatalog(

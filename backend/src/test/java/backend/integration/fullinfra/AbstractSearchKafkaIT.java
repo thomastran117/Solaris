@@ -121,6 +121,11 @@ public abstract class AbstractSearchKafkaIT {
      * numeric/keyword fields (e.g. a {@code BigDecimal} price serialized as a string becomes {@code text}) and
      * makes the {@code price_ranges} range aggregation fail. Write-path tests only do get-by-id and never hit
      * this; the search path does.
+     *
+     * <p><b>Deliberately frozen at the pre-#61 shape</b> — no {@code createdAt}, {@code stock}, or
+     * {@code name.sort}. It stands in for an index that was deployed before those fields existed, so the
+     * catalog sort tests also prove {@code IndexVersionManager.applyCurrentMapping} migrates a live index
+     * at startup. Do not add newer fields here; add them to {@code ProductDocument}.
      */
     private static final String PRODUCTS_MAPPINGS = """
             "mappings":{"properties":{

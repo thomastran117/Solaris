@@ -35,3 +35,14 @@ export interface SearchFacets {
 export interface CatalogSearchResponse extends CatalogPagedResponse {
   facets: SearchFacets;
 }
+
+/**
+ * Catalog `sort` values accepted by the marketplace and company catalog search endpoints.
+ * `relevance` orders by search score (including merchandising pins/boosts), newest first on ties.
+ */
+export type CatalogSortField =
+  | "relevance"
+  | "createdAt"
+  | "price"
+  | "stock"
+  | "name";
