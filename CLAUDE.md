@@ -6,7 +6,7 @@ Before changing code, read the relevant handbook page and inspect the current im
 
 ## Project Snapshot
 
-- Frontend: React 19, TypeScript, Vite, TanStack Query, Redux Toolkit, React Hook Form, Zod, Tailwind CSS, and Framer Motion
+- Frontend: Next.js App Router, React 19, TypeScript, TanStack Query, Redux Toolkit, React Hook Form, Zod, Tailwind CSS, and Framer Motion
 - Backend: Java 21 and Spring Boot 3.4
 - Infrastructure: PostgreSQL, Redis, Elasticsearch, and Kafka
 - Schema ownership: Flyway; Hibernate validates mappings
@@ -78,7 +78,7 @@ These paths prioritize correctness:
 
 ### Visual Language
 
-`frontend/src/pages/HomePage.tsx` and the shared layout/section components are the current design references.
+`frontend/src/views/HomePage.tsx` and the shared layout/section components are the current design references.
 
 - Keep page shells in the established navy/dark glassmorphism style.
 - Reuse `NavyGridGlowBackground`, `SectionTitle`, `SectionGlow`, `SectionFade`, and existing domain components.

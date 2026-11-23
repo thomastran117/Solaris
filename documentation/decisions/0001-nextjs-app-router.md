@@ -102,8 +102,8 @@ To roll back, revert the pull requests in reverse order; each one is self-contai
 
 | Part | Pull request | Status |
 |---|---|---|
-| #82 ADR and route map | — | In review |
-| #83 Bootstrap | — | Not started |
+| #82 ADR and route map | #166 | In review |
+| #83 Bootstrap | Stacked on #166 | In review |
 | #84 Storefront SSR | — | Not started |
 | #85 Auth boundary | — | Not started |
 | #86 Container and CI | — | Not started |

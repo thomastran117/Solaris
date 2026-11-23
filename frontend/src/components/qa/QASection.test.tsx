@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { Provider } from "react-redux";
-import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
 import QASection from "./QASection";
@@ -43,9 +42,7 @@ function renderQASection(productId = "product-1", authenticated = true) {
   render(
     <Provider store={makeStore(authenticated)}>
       <QueryClientProvider client={makeClient()}>
-        <MemoryRouter>
-          <QASection productId={productId} />
-        </MemoryRouter>
+        <QASection productId={productId} />
       </QueryClientProvider>
     </Provider>,
   );
@@ -115,7 +112,7 @@ describe("QASection", () => {
   });
 
   it("renders_questionList_onSuccess", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestion("q-1")]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestion("q-1")]) as never);
     renderQASection();
 
     await waitFor(() => {
@@ -124,7 +121,7 @@ describe("QASection", () => {
   });
 
   it("renders_emptyState_whenNoQuestions", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([]) as never);
     renderQASection();
 
     await waitFor(() => {
@@ -133,7 +130,7 @@ describe("QASection", () => {
   });
 
   it("askQuestionForm_submitsAndInvalidatesCache", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([]) as never);
     mockAskQuestion.mockResolvedValue({ data: makeQuestion("q-new", "Will it blend?") } as never);
     renderQASection();
 
@@ -149,7 +146,7 @@ describe("QASection", () => {
   });
 
   it("vendorAnswer_displaysBadge", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestionWithVendorAnswer("q-1")]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestionWithVendorAnswer("q-1")]) as never);
     renderQASection();
 
     await waitFor(() => {
@@ -158,7 +155,7 @@ describe("QASection", () => {
   });
 
   it("upvoteButton_callsUpvoteApi", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestionWithVendorAnswer("q-1")]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([makeQuestionWithVendorAnswer("q-1")]) as never);
     mockUpvoteAnswer.mockResolvedValue({ data: undefined } as never);
     renderQASection();
 
@@ -173,7 +170,7 @@ describe("QASection", () => {
   });
 
   it("showsSignInPrompt_whenUnauthenticated", async () => {
-    mockListQuestions.mockResolvedValue(makePagedResponse([]));
+    mockListQuestions.mockResolvedValue(makePagedResponse([]) as never);
     renderQASection("product-1", false);
 
     await waitFor(() => {

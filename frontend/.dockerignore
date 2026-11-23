@@ -1,6 +1,10 @@
 node_modules/
 dist/
+.next/
+out/
+coverage/
 .git/
 .idea/
 .vscode/
 .env
+.env.*

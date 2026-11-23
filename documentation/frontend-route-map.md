@@ -2,7 +2,12 @@
 
 This page maps every route the frontend serves today to its App Router location after the Next.js migration ([ADR 0001](decisions/0001-nextjs-app-router.md), epic #66). It is the parity checklist for #83–#86: a migration pull request is complete only when every row it touches resolves at the same URL, survives a hard refresh, and behaves as described in the **Target** columns.
 
-**Current** columns describe `frontend/src/App.tsx` as of `main` on 2026-11-22. **Target** columns are the accepted design and are not implemented until the pull request named in the **PR** column merges.
+The **View** column is the screen each URL renders; the former React Router table lived in `frontend/src/App.tsx` until #83.
+
+Implementation status:
+
+- **Implemented (#83).** Every row's App Router **Segment** exists and resolves at the same URL. The deliberate retirements below are done, and unknown URLs return the new 404 page.
+- **Not yet implemented.** Server rendering, prefetch keys, and per-entity metadata (#84), and `next` deep links with `proxy.ts` (#85). Until #84, every route renders in the browser after session restore, as before.
 
 ## Conventions
 

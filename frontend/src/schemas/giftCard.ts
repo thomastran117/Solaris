@@ -8,7 +8,7 @@ export const redeemGiftCardSchema = z.object({
     .regex(/^[A-Z0-9]+$/i, "Code must contain only letters and numbers"),
 
   amountCents: z
-    .number({ invalid_type_error: "Amount is required" })
+    .number({ error: "Amount is required" })
     .int("Amount must be a whole number of cents")
     .positive("Amount must be greater than zero"),
 });
