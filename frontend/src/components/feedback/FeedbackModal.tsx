@@ -19,12 +19,14 @@ interface FeedbackModalProps {
 }
 
 const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors";
-const labelCls = "block text-xs font-medium text-white/60 mb-1";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
+const labelCls = "block text-xs font-medium text-muted-foreground mb-1";
 
 function extractMessage(err: unknown): string {
   if (typeof err === "object" && err !== null) {
-    const maybe = err as { response?: { data?: { message?: string; detail?: string } } };
+    const maybe = err as {
+      response?: { data?: { message?: string; detail?: string } };
+    };
     return (
       maybe.response?.data?.detail ??
       maybe.response?.data?.message ??
@@ -34,7 +36,11 @@ function extractMessage(err: unknown): string {
   return "Could not submit feedback.";
 }
 
-export default function FeedbackModal({ open, onClose, pageContext }: FeedbackModalProps) {
+export default function FeedbackModal({
+  open,
+  onClose,
+  pageContext,
+}: FeedbackModalProps) {
   const queryClient = useQueryClient();
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -88,12 +94,21 @@ export default function FeedbackModal({ open, onClose, pageContext }: FeedbackMo
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Share Feedback" maxWidth="max-w-md">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Share Feedback"
+      maxWidth="max-w-md"
+    >
       {success ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <CheckCircle className="h-10 w-10 text-green-400" />
-          <p className="text-sm font-semibold text-white">Thanks for your feedback!</p>
-          <p className="text-xs text-white/60">We appreciate you helping us improve ShopWave.</p>
+          <CheckCircle className="h-10 w-10 text-success" />
+          <p className="text-sm font-semibold text-foreground">
+            Thanks for your feedback!
+          </p>
+          <p className="text-xs text-muted-foreground">
+            We appreciate you helping us improve ShopWave.
+          </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -108,7 +123,9 @@ export default function FeedbackModal({ open, onClose, pageContext }: FeedbackMo
               ))}
             </select>
             {errors.category && (
-              <p className="mt-1 text-xs text-red-400">{errors.category.message}</p>
+              <p className="mt-1 text-xs text-danger">
+                {errors.category.message}
+              </p>
             )}
           </div>
 
@@ -127,8 +144,8 @@ export default function FeedbackModal({ open, onClose, pageContext }: FeedbackMo
                   <Star
                     className={`h-5 w-5 ${
                       rating != null && n <= rating
-                        ? "text-blue-400 fill-blue-400"
-                        : "text-white/25"
+                        ? "text-link fill-link"
+                        : "text-muted-foreground"
                     }`}
                   />
                 </button>
@@ -147,20 +164,22 @@ export default function FeedbackModal({ open, onClose, pageContext }: FeedbackMo
             />
             <div className="flex justify-between mt-1">
               {errors.message ? (
-                <p className="text-xs text-red-400">{errors.message.message}</p>
+                <p className="text-xs text-danger">{errors.message.message}</p>
               ) : (
                 <span />
               )}
-              <span className="text-xs text-white/40">{message.length}/5000</span>
+              <span className="text-xs text-muted-foreground">
+                {message.length}/5000
+              </span>
             </div>
           </div>
 
-          {errorMsg && <p className="text-xs text-red-400">{errorMsg}</p>}
+          {errorMsg && <p className="text-xs text-danger">{errorMsg}</p>}
 
           <button
             type="submit"
             disabled={isSubmitting || mutation.isPending}
-            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+            className="w-full rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
           >
             {mutation.isPending ? "Submitting…" : "Submit Feedback"}
           </button>

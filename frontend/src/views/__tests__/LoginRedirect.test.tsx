@@ -61,12 +61,10 @@ describe("LoginPage return-to-next", () => {
     );
   });
 
-  it("falls back to the dashboard for an unsafe next", async () => {
+  it("falls back to the storefront home for an unsafe next", async () => {
     window.history.replaceState({}, "", "/login?next=%2F%2Fevil.test");
     renderWith(<LoginPage />, signedIn());
-    await waitFor(() =>
-      expect(mockRouter.replace).toHaveBeenCalledWith("/dashboard")
-    );
+    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/"));
     expect(mockRouter.replace).not.toHaveBeenCalledWith("//evil.test");
   });
 

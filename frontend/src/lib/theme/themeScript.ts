@@ -1,5 +1,6 @@
 import {
   FORCE_ALL_DARK,
+  LEGACY_DARK_EXCEPTIONS,
   LEGACY_DARK_PREFIXES,
   THEME_STORAGE_KEY,
 } from "./themeConfig";
@@ -7,6 +8,8 @@ import {
 interface ThemeScriptOptions {
   forceAll: boolean;
   forcedPrefixes: readonly string[];
+  /** Paths under a forced prefix that have already migrated. */
+  exceptions?: readonly string[];
   storageKey: string;
 }
 
@@ -19,13 +22,15 @@ interface ThemeScriptOptions {
 export function buildThemeScript({
   forceAll,
   forcedPrefixes,
+  exceptions = [],
   storageKey,
 }: ThemeScriptOptions): string {
   return [
     "(function(){try{",
     "var d=document.documentElement,p=location.pathname;",
-    `var F=${JSON.stringify(forcedPrefixes)};`,
-    `var f=${forceAll ? "true" : "false"}||F.some(function(x){return p===x||p.indexOf(x+'/')===0});`,
+    "function u(x){return p===x||p.indexOf(x+'/')===0}",
+    `var F=${JSON.stringify(forcedPrefixes)},E=${JSON.stringify(exceptions)};`,
+    `var f=${forceAll ? "true" : "false"}||(!E.some(u)&&F.some(u));`,
     "var s=null;",
     `try{s=localStorage.getItem(${JSON.stringify(storageKey)})}catch(e){}`,
     "var t=f?'dark':(s==='light'||s==='dark')?s:",
@@ -38,5 +43,6 @@ export function buildThemeScript({
 export const themeScript = buildThemeScript({
   forceAll: FORCE_ALL_DARK,
   forcedPrefixes: LEGACY_DARK_PREFIXES,
+  exceptions: LEGACY_DARK_EXCEPTIONS,
   storageKey: THEME_STORAGE_KEY,
 });

@@ -30,7 +30,11 @@ function renderHighlighted(fragment: string) {
   return parts;
 }
 
-export default function ReviewSearchBar({ companyId, productId, onResults }: Props) {
+export default function ReviewSearchBar({
+  companyId,
+  productId,
+  onResults,
+}: Props) {
   const [input, setInput] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const lastNotifiedRef = useRef<string | null>(null);
@@ -45,14 +49,16 @@ export default function ReviewSearchBar({ companyId, productId, onResults }: Pro
   const searchQuery = useQuery({
     queryKey: ["reviews", "search", productId, debouncedQ],
     queryFn: () =>
-      reviewsApi.search(companyId, productId, { q: debouncedQ, size: 10 }).then((r) => r.data),
+      reviewsApi
+        .search(companyId, productId, { q: debouncedQ, size: 10 })
+        .then((r) => r.data),
     enabled,
     staleTime: 30_000,
   });
 
   const hits: ReviewSearchHit[] = useMemo(
     () => searchQuery.data?.content ?? [],
-    [searchQuery.data],
+    [searchQuery.data]
   );
 
   useEffect(() => {
@@ -73,20 +79,20 @@ export default function ReviewSearchBar({ companyId, productId, onResults }: Pro
   return (
     <div className="space-y-3">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="search"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Search reviews..."
-          className="w-full rounded-full border border-white/10 bg-white/[0.06] py-2.5 pl-10 pr-10 text-sm text-white placeholder:text-white/45 backdrop-blur focus:border-blue-400/40 focus:outline-none"
+          className="w-full rounded-full border border-border bg-surface py-2.5 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
         />
         {input && (
           <button
             type="button"
             onClick={() => setInput("")}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/55 hover:text-white"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -94,11 +100,11 @@ export default function ReviewSearchBar({ companyId, productId, onResults }: Pro
       </div>
 
       {enabled && searchQuery.isLoading && (
-        <p className="text-xs text-white/55">Searching...</p>
+        <p className="text-xs text-muted-foreground">Searching...</p>
       )}
 
       {enabled && searchQuery.isSuccess && hits.length === 0 && (
-        <p className="text-xs text-white/55">
+        <p className="text-xs text-muted-foreground">
           No reviews matched &ldquo;{debouncedQ}&rdquo;.
         </p>
       )}
@@ -108,47 +114,53 @@ export default function ReviewSearchBar({ companyId, productId, onResults }: Pro
           {hits.map((hit) => (
             <li
               key={hit.id}
-              className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur"
+              className="rounded-xl border border-border bg-surface p-4"
             >
-              <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
-                <span className="font-semibold text-white">{hit.reviewerName || "Reviewer"}</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  {hit.reviewerName || "Reviewer"}
+                </span>
                 <span>·</span>
                 <span>{hit.rating}/5</span>
                 {hit.verifiedPurchase && (
                   <>
                     <span>·</span>
-                    <span className="rounded-full border border-green-400/30 bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-300">
+                    <span className="rounded-full border border-success/40 bg-success-subtle px-2 py-0.5 text-[10px] font-semibold text-success">
                       Verified
                     </span>
                   </>
                 )}
-                <span className="ml-auto text-white/45">
+                <span className="ml-auto text-muted-foreground">
                   {new Date(hit.createdAt).toLocaleDateString()}
                 </span>
               </div>
               {(hit.titleHighlights[0] || hit.title) && (
-                <p className="mt-2 text-sm font-semibold text-white">
-                  {renderHighlighted(hit.titleHighlights[0] ?? hit.title ?? "").map((p, i) =>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {renderHighlighted(
+                    hit.titleHighlights[0] ?? hit.title ?? ""
+                  ).map((p, i) =>
                     p.mark ? (
-                      <mark key={i} className="bg-blue-500/30 text-white">
+                      <mark key={i} className="bg-primary/10 text-foreground">
                         {p.text}
                       </mark>
                     ) : (
                       <span key={i}>{p.text}</span>
-                    ),
+                    )
                   )}
                 </p>
               )}
               {(hit.bodyHighlights.length > 0 || hit.body) && (
-                <p className="mt-1 text-sm text-white/75 line-clamp-3">
-                  {renderHighlighted(hit.bodyHighlights[0] ?? hit.body ?? "").map((p, i) =>
+                <p className="mt-1 text-sm text-muted-foreground line-clamp-3">
+                  {renderHighlighted(
+                    hit.bodyHighlights[0] ?? hit.body ?? ""
+                  ).map((p, i) =>
                     p.mark ? (
-                      <mark key={i} className="bg-blue-500/30 text-white">
+                      <mark key={i} className="bg-primary/10 text-foreground">
                         {p.text}
                       </mark>
                     ) : (
                       <span key={i}>{p.text}</span>
-                    ),
+                    )
                   )}
                 </p>
               )}

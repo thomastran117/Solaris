@@ -79,21 +79,33 @@ export default defineConfig([
       "src/components/theme/**/*.{ts,tsx}",
       "src/components/layout/**/*.{ts,tsx}",
       "src/components/admin/**/*.{ts,tsx}",
-      "src/components/auth/RequireAuth.tsx",
-      "src/components/feedback/FeedbackButton.tsx",
-      "src/components/search/SearchBar.tsx",
       "src/app/layout.tsx",
       "src/app/not-found.tsx",
       "src/app/*/layout.tsx",
       "src/app/(storefront)/not-found.tsx",
       "src/app/(storefront)/error.tsx",
       "src/views/admin/AdminOverviewPage.tsx",
+      // Storefront and auth (redesign PR 3)
+      "src/views/{HomePage,BrowsePage,ProductPage,CompanyPage,ComparisonPage,CollectionPage,KitPage,PublicSavedListPage,GiftCardsPage,PrivacyPage,TermsAndConditionPage,HelloTestPage}.tsx",
+      "src/views/{LoginPage,SignupPage,VerifyTokenPage,AuthCallback,InviteAcceptPage}.tsx",
+      "src/app/(storefront)/**/*.{ts,tsx}",
+      "src/app/(auth)/**/*.{ts,tsx}",
+      "src/components/{auth,collection,company,kit,product,qa,report,reviews,savedlist,search,feedback}/**/*.{ts,tsx}",
+      "src/hooks/{useCaptcha,useCompleteSignIn,useGoogleSignIn}.{ts,tsx}",
+      "src/api/auth.ts",
+      "src/schemas/auth.ts",
       "src/hooks/useLogout.ts",
       "src/lib/**/*.{ts,tsx}",
       "src/test/**/*.{ts,tsx}",
     ],
-    // Legacy, deleted once the last view migrates.
-    ignores: ["src/components/layout/NavyGridGlowBackground.tsx"],
+    ignores: [
+      // Legacy, deleted once the last view migrates.
+      "src/components/layout/NavyGridGlowBackground.tsx",
+      // Only used by account/admin views; migrate with them.
+      "src/components/product/ProductHistoryTimeline.tsx",
+      "src/components/savedlist/SavedListCard.tsx",
+      "src/components/savedlist/SavedListItemRow.tsx",
+    ],
     rules: {
       "shopwave/no-raw-palette": "error",
       "no-restricted-imports": ["error", legacyImports],

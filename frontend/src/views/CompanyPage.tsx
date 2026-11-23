@@ -7,12 +7,27 @@ import { useSetSearchParams } from "../components/navigation/useSetSearchParams"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag, Store, Flag, Users, Bell, BellOff, Megaphone, GitCompareArrows } from "lucide-react";
+import {
+  SlidersHorizontal,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingBag,
+  Store,
+  Flag,
+  Users,
+  Bell,
+  BellOff,
+  Megaphone,
+  GitCompareArrows,
+} from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { companiesApi } from "../api/companies";
 import { followApi, announcementsApi } from "../api/follow";
 import SearchBar from "../components/search/SearchBar";
-import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel";
+import FacetPanel, {
+  type FacetSelection,
+} from "../components/search/FacetPanel";
 import ProductCard from "../components/product/ProductCard";
 import CompanyHeader from "../components/company/CompanyHeader";
 import ReportModal from "../components/report/ReportModal";
@@ -21,15 +36,21 @@ import type { AnnouncementType } from "../types/company";
 import type { RootState } from "../stores";
 import { useAnims } from "../hooks/useAnims";
 import { formatCalendarDate, formatCount } from "../lib/format";
-import { catalogSearchRequest, parseCatalogUrlParams } from "../lib/catalogParams";
+import {
+  catalogSearchRequest,
+  parseCatalogUrlParams,
+} from "../lib/catalogParams";
 import { companyKeys } from "../api/keys";
 import {
   CATALOG_SORT_OPTIONS,
   selectedCatalogSortIndex,
 } from "../components/search/catalogSort";
 
-
-const EMPTY_FACETS: SearchFacets = { categories: [], brands: [], priceRanges: [] };
+const EMPTY_FACETS: SearchFacets = {
+  categories: [],
+  brands: [],
+  priceRanges: [],
+};
 
 export default function CompanyPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,7 +75,9 @@ export default function CompanyPage() {
   const [mobileFacetsOpen, setMobileFacetsOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [announcementsPage, setAnnouncementsPage] = useState(0);
-  const [expandedAnnouncement, setExpandedAnnouncement] = useState<string | null>(null);
+  const [expandedAnnouncement, setExpandedAnnouncement] = useState<
+    string | null
+  >(null);
 
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const queryClient = useQueryClient();
@@ -130,23 +153,35 @@ export default function CompanyPage() {
   const announcementsResult = useQuery({
     queryKey: companyKeys.announcements(companyId, announcementsPage),
     queryFn: () =>
-      announcementsApi.listPublished(companyId!, announcementsPage).then((r) => r.data),
+      announcementsApi
+        .listPublished(companyId!, announcementsPage)
+        .then((r) => r.data),
     enabled: enabled && !!companyResult.data,
   });
 
   const followMutation = useMutation({
     mutationFn: () => followApi.follow(companyId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["follow", "status", companyId],
+      }),
   });
 
   const unfollowMutation = useMutation({
     mutationFn: () => followApi.unfollow(companyId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["follow", "status", companyId],
+      }),
   });
 
   const bellMutation = useMutation({
-    mutationFn: (enabled: boolean) => followApi.setNotifications(companyId!, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["follow", "status", companyId] }),
+    mutationFn: (enabled: boolean) =>
+      followApi.setNotifications(companyId!, enabled),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["follow", "status", companyId],
+      }),
   });
 
   const data = searchResult.data;
@@ -157,18 +192,28 @@ export default function CompanyPage() {
 
   const selectedSortIndex = selectedCatalogSortIndex(sortParam, directionParam);
 
-  const hasActiveFilters = !!(categoryParam || brandParam || minPriceParam || maxPriceParam);
+  const hasActiveFilters = !!(
+    categoryParam ||
+    brandParam ||
+    minPriceParam ||
+    maxPriceParam
+  );
 
   if (!enabled || companyResult.isError) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
         <div className="text-center">
-          <Store className="w-12 h-12 text-white/20 mx-auto mb-4" />
-          <h1 className="text-lg font-semibold text-white mb-2">This store isn't available</h1>
-          <p className="text-sm text-white/50 max-w-xs mx-auto mb-4">
+          <Store className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h1 className="text-lg font-semibold text-foreground mb-2">
+            This store isn't available
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-4">
             It may have been moved or is no longer active.
           </p>
-          <Link href="/browse" className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+          <Link
+            href="/browse"
+            className="text-sm text-link hover:text-link transition-colors"
+          >
             Browse all products
           </Link>
         </div>
@@ -177,17 +222,11 @@ export default function CompanyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-      </div>
-
+    <div className="bg-background relative overflow-hidden">
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <Link
           href="/browse"
-          className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-5"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5"
         >
           <ChevronLeft className="w-4 h-4" />
           Browse
@@ -195,24 +234,29 @@ export default function CompanyPage() {
 
         {/* Company header */}
         {companyResult.isLoading && (
-          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 md:p-8 mb-6 animate-pulse">
+          <div className="rounded-xl border border-border bg-surface p-6 md:p-8 mb-6 animate-pulse">
             <div className="flex gap-6">
-              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-white/[0.06]" />
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-xl bg-surface" />
               <div className="flex-1 space-y-3">
-                <div className="h-3 bg-white/[0.06] rounded w-1/4" />
-                <div className="h-8 bg-white/[0.06] rounded w-2/3" />
-                <div className="h-3 bg-white/[0.06] rounded w-1/2" />
+                <div className="h-3 bg-surface rounded w-1/4" />
+                <div className="h-8 bg-surface rounded w-2/3" />
+                <div className="h-3 bg-surface rounded w-1/2" />
               </div>
             </div>
           </div>
         )}
         {companyResult.data && (
-          <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+          <motion.div
+            variants={fadeInUp}
+            initial="hidden"
+            animate="visible"
+            className="mb-6"
+          >
             <CompanyHeader company={companyResult.data} />
 
             {/* Follow bar */}
             <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2 text-sm text-white/50">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="w-4 h-4" />
                 <span>
                   {followStatus.data?.followerCount != null
@@ -223,7 +267,7 @@ export default function CompanyPage() {
               <div className="flex items-center gap-2">
                 <Link
                   href={`/c/${companyId}/compare`}
-                  className="inline-flex items-center gap-1.5 text-sm border border-white/20 rounded-full px-4 py-1.5 text-white/70 hover:bg-white/[0.06] transition-colors"
+                  className="inline-flex items-center gap-1.5 text-sm border border-input rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted transition-colors"
                 >
                   <GitCompareArrows className="w-4 h-4" />
                   Compare
@@ -231,23 +275,33 @@ export default function CompanyPage() {
                 {accessToken && followStatus.data?.following && (
                   <button
                     type="button"
-                    title={followStatus.data.notificationsEnabled ? "Mute notifications" : "Unmute notifications"}
-                    onClick={() => bellMutation.mutate(!followStatus.data.notificationsEnabled)}
+                    title={
+                      followStatus.data.notificationsEnabled
+                        ? "Mute notifications"
+                        : "Unmute notifications"
+                    }
+                    onClick={() =>
+                      bellMutation.mutate(
+                        !followStatus.data.notificationsEnabled
+                      )
+                    }
                     disabled={bellMutation.isPending}
-                    className="p-1.5 rounded-full border border-white/10 text-white/40 hover:text-sky-300 hover:border-sky-400/30 transition-colors"
+                    className="p-1.5 rounded-full border border-border text-muted-foreground hover:text-link hover:border-primary/40 transition-colors"
                   >
-                    {followStatus.data.notificationsEnabled
-                      ? <Bell className="w-4 h-4" />
-                      : <BellOff className="w-4 h-4" />}
+                    {followStatus.data.notificationsEnabled ? (
+                      <Bell className="w-4 h-4" />
+                    ) : (
+                      <BellOff className="w-4 h-4" />
+                    )}
                   </button>
                 )}
-                {accessToken && (
-                  followStatus.data?.following ? (
+                {accessToken &&
+                  (followStatus.data?.following ? (
                     <button
                       type="button"
                       onClick={() => unfollowMutation.mutate()}
                       disabled={unfollowMutation.isPending}
-                      className="text-sm border border-white/20 rounded-full px-4 py-1.5 text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                      className="text-sm border border-input rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
                     >
                       Following
                     </button>
@@ -256,17 +310,16 @@ export default function CompanyPage() {
                       type="button"
                       onClick={() => followMutation.mutate()}
                       disabled={followMutation.isPending}
-                      className="text-sm bg-blue-600 hover:bg-blue-500 rounded-full px-4 py-1.5 text-white font-medium transition-colors disabled:opacity-50"
+                      className="text-sm bg-primary hover:bg-primary-hover rounded-full px-4 py-1.5 text-primary-foreground font-medium transition-colors disabled:opacity-50"
                     >
                       Follow
                     </button>
-                  )
-                )}
+                  ))}
                 {accessToken && (
                   <button
                     type="button"
                     onClick={() => setReportOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-danger transition-colors"
                   >
                     <Flag className="w-3.5 h-3.5" />
                     Report
@@ -278,15 +331,24 @@ export default function CompanyPage() {
         )}
 
         {/* Search bar */}
-        <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-6 max-w-xl">
+        <motion.div
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          className="mb-6 max-w-xl"
+        >
           <SearchBar
             onSearch={handleSearch}
             initialValue={q}
             placeholder={`Search ${companyResult.data?.name ?? "this store"}…`}
             suggestionsFetcher={(query) =>
-              catalogApi.getCompanySuggestions(companyId, query).then((r) => r.data)
+              catalogApi
+                .getCompanySuggestions(companyId, query)
+                .then((r) => r.data)
             }
-            onSelectCategory={(cat) => updateParams({ category: cat, brand: null })}
+            onSelectCategory={(cat) =>
+              updateParams({ category: cat, brand: null })
+            }
             onSelectBrand={(brand) => updateParams({ brand, category: null })}
           />
         </motion.div>
@@ -309,9 +371,9 @@ export default function CompanyPage() {
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2 flex-wrap">
                 {searchResult.isFetching && !searchResult.isLoading && (
-                  <div className="w-3.5 h-3.5 rounded-full border border-sky-400/40 border-t-sky-400 animate-spin" />
+                  <div className="w-3.5 h-3.5 rounded-full border border-primary/40 border-t-primary/40 animate-spin" />
                 )}
-                <span className="text-sm text-white/50">
+                <span className="text-sm text-muted-foreground">
                   {searchResult.isLoading
                     ? "Loading…"
                     : `${formatCount(totalElements)} product${totalElements !== 1 ? "s" : ""}`}
@@ -319,8 +381,15 @@ export default function CompanyPage() {
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => handleFacetChange({ category: null, brand: null, minPrice: null, maxPrice: null })}
-                    className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                    onClick={() =>
+                      handleFacetChange({
+                        category: null,
+                        brand: null,
+                        minPrice: null,
+                        maxPrice: null,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 text-xs text-link hover:text-link transition-colors"
                   >
                     <X className="w-3 h-3" />
                     Clear filters
@@ -331,19 +400,25 @@ export default function CompanyPage() {
                 <button
                   type="button"
                   onClick={() => setMobileFacetsOpen((v) => !v)}
-                  className="lg:hidden flex items-center gap-1.5 text-sm text-white/70 border border-white/10 rounded-full px-3 py-1.5 hover:bg-white/[0.06] transition-colors"
+                  className="lg:hidden flex items-center gap-1.5 text-sm text-muted-foreground border border-border rounded-full px-3 py-1.5 hover:bg-muted transition-colors"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   Filters
-                  {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  {hasActiveFilters && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  )}
                 </button>
                 <select
                   value={selectedSortIndex}
                   onChange={handleSortChange}
-                  className="text-sm bg-white/[0.06] border border-white/10 rounded-full px-3 py-1.5 text-white/70 focus:outline-none focus:border-white/20 appearance-none cursor-pointer"
+                  className="text-sm bg-surface border border-border rounded-full px-3 py-1.5 text-muted-foreground focus:outline-none focus:border-ring appearance-none cursor-pointer"
                 >
                   {CATALOG_SORT_OPTIONS.map((o, i) => (
-                    <option key={i} value={i} className="bg-slate-900 text-white">
+                    <option
+                      key={i}
+                      value={i}
+                      className="bg-surface text-foreground"
+                    >
                       {o.label}
                     </option>
                   ))}
@@ -366,27 +441,38 @@ export default function CompanyPage() {
             {hasActiveFilters && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {categoryParam && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {categoryParam}
-                    <button type="button" onClick={() => updateParams({ category: null })}>
+                    <button
+                      type="button"
+                      onClick={() => updateParams({ category: null })}
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
                 )}
                 {brandParam && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {brandParam}
-                    <button type="button" onClick={() => updateParams({ brand: null })}>
+                    <button
+                      type="button"
+                      onClick={() => updateParams({ brand: null })}
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
                 )}
                 {(minPriceParam || maxPriceParam) && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {minPriceParam ? `$${minPriceParam}` : ""}
                     {minPriceParam && maxPriceParam ? " – " : ""}
                     {maxPriceParam ? `$${maxPriceParam}` : "+"}
-                    <button type="button" onClick={() => updateParams({ minPrice: null, maxPrice: null })}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateParams({ minPrice: null, maxPrice: null })
+                      }
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -400,13 +486,13 @@ export default function CompanyPage() {
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div
                     key={i}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden animate-pulse"
+                    className="rounded-xl border border-border bg-surface overflow-hidden animate-pulse"
                   >
-                    <div className="aspect-square bg-white/[0.04]" />
+                    <div className="aspect-square bg-surface" />
                     <div className="p-4 space-y-2">
-                      <div className="h-2.5 bg-white/[0.06] rounded w-2/3" />
-                      <div className="h-3.5 bg-white/[0.06] rounded" />
-                      <div className="h-3.5 bg-white/[0.06] rounded w-4/5" />
+                      <div className="h-2.5 bg-surface rounded w-2/3" />
+                      <div className="h-3.5 bg-surface rounded" />
+                      <div className="h-3.5 bg-surface rounded w-4/5" />
                     </div>
                   </div>
                 ))}
@@ -421,16 +507,25 @@ export default function CompanyPage() {
                 animate="visible"
                 className="flex flex-col items-center justify-center py-24 text-center"
               >
-                <ShoppingBag className="w-12 h-12 text-white/20 mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">No products found</h3>
-                <p className="text-sm text-white/50 max-w-xs">
+                <ShoppingBag className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  No products found
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
                   Try adjusting your search term or removing filters.
                 </p>
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => handleFacetChange({ category: null, brand: null, minPrice: null, maxPrice: null })}
-                    className="mt-4 text-sm text-sky-400 hover:text-sky-300 transition-colors"
+                    onClick={() =>
+                      handleFacetChange({
+                        category: null,
+                        brand: null,
+                        minPrice: null,
+                        maxPrice: null,
+                      })
+                    }
+                    className="mt-4 text-sm text-link hover:text-link transition-colors"
                   >
                     Clear all filters
                   </button>
@@ -447,7 +542,11 @@ export default function CompanyPage() {
                 className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"
               >
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} variants={fadeInUp} />
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    variants={fadeInUp}
+                  />
                 ))}
               </motion.div>
             )}
@@ -459,13 +558,16 @@ export default function CompanyPage() {
                   type="button"
                   disabled={pageParam === 0}
                   onClick={() => handlePage(pageParam - 1)}
-                  className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
 
                 {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-                  const start = Math.max(0, Math.min(pageParam - 3, totalPages - 7));
+                  const start = Math.max(
+                    0,
+                    Math.min(pageParam - 3, totalPages - 7)
+                  );
                   const p = start + i;
                   return (
                     <button
@@ -474,8 +576,8 @@ export default function CompanyPage() {
                       onClick={() => handlePage(p)}
                       className={`w-8 h-8 rounded-full text-sm transition-colors ${
                         p === pageParam
-                          ? "bg-blue-600 text-white"
-                          : "text-white/60 hover:text-white hover:bg-white/[0.06]"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
                       }`}
                     >
                       {p + 1}
@@ -487,7 +589,7 @@ export default function CompanyPage() {
                   type="button"
                   disabled={pageParam >= totalPages - 1}
                   onClick={() => handlePage(pageParam + 1)}
-                  className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -497,91 +599,104 @@ export default function CompanyPage() {
         </div>
       </div>
       {/* Announcements section */}
-      {announcementsResult.data && announcementsResult.data.items.length > 0 && (
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-white/10">
-          <div className="flex items-center gap-2 mb-6">
-            <Megaphone className="w-5 h-5 text-sky-400" />
-            <h2 className="text-lg font-semibold text-white">Announcements</h2>
-          </div>
-          <motion.div
-            variants={stagger}
-            initial="hidden"
-            animate="visible"
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {announcementsResult.data.items.map((ann) => {
-              const isExpanded = expandedAnnouncement === ann.id;
-              const typeColors: Record<AnnouncementType, string> = {
-                GENERAL: "bg-white/10 text-white/60",
-                NEW_PRODUCT: "bg-blue-500/15 text-sky-300",
-                SALE: "bg-green-500/15 text-green-300",
-                NEW_COLLECTION: "bg-indigo-500/15 text-indigo-300",
-              };
-              const typeLabels: Record<AnnouncementType, string> = {
-                GENERAL: "Announcement",
-                NEW_PRODUCT: "New Product",
-                SALE: "Sale",
-                NEW_COLLECTION: "New Collection",
-              };
-              return (
-                <motion.div
-                  key={ann.id}
-                  variants={fadeInUp}
-                  whileHover={{ y: -4 }}
-                  className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${typeColors[ann.type]}`}>
-                      {typeLabels[ann.type]}
-                    </span>
-                    <span className="text-xs text-white/40">
-                      {ann.publishedAt
-                        ? formatCalendarDate(ann.publishedAt)
-                        : ""}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-semibold text-white leading-snug">{ann.title}</h3>
-                  <p className={`text-sm text-white/65 leading-relaxed ${isExpanded ? "" : "line-clamp-3"}`}>
-                    {ann.body}
-                  </p>
-                  {ann.body.length > 160 && (
-                    <button
-                      type="button"
-                      onClick={() => setExpandedAnnouncement(isExpanded ? null : ann.id)}
-                      className="text-xs text-sky-400 hover:text-sky-300 transition-colors self-start"
-                    >
-                      {isExpanded ? "Show less" : "Read more"}
-                    </button>
-                  )}
-                </motion.div>
-              );
-            })}
-          </motion.div>
-
-          {/* Pagination */}
-          {(announcementsResult.data.hasNext || announcementsPage > 0) && (
-            <div className="flex items-center gap-2 mt-6 justify-center">
-              <button
-                type="button"
-                disabled={announcementsPage === 0}
-                onClick={() => setAnnouncementsPage((p) => p - 1)}
-                className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-sm text-white/50">Page {announcementsPage + 1}</span>
-              <button
-                type="button"
-                disabled={!announcementsResult.data.hasNext}
-                onClick={() => setAnnouncementsPage((p) => p + 1)}
-                className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+      {announcementsResult.data &&
+        announcementsResult.data.items.length > 0 && (
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-border">
+            <div className="flex items-center gap-2 mb-6">
+              <Megaphone className="w-5 h-5 text-link" />
+              <h2 className="text-lg font-semibold text-foreground">
+                Announcements
+              </h2>
             </div>
-          )}
-        </div>
-      )}
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              animate="visible"
+              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {announcementsResult.data.items.map((ann) => {
+                const isExpanded = expandedAnnouncement === ann.id;
+                const typeColors: Record<AnnouncementType, string> = {
+                  GENERAL: "bg-muted text-muted-foreground",
+                  NEW_PRODUCT: "bg-primary/10 text-link",
+                  SALE: "bg-success-subtle text-success",
+                  NEW_COLLECTION: "bg-primary/10 text-link",
+                };
+                const typeLabels: Record<AnnouncementType, string> = {
+                  GENERAL: "Announcement",
+                  NEW_PRODUCT: "New Product",
+                  SALE: "Sale",
+                  NEW_COLLECTION: "New Collection",
+                };
+                return (
+                  <motion.div
+                    key={ann.id}
+                    variants={fadeInUp}
+                    whileHover={{ y: -4 }}
+                    className="rounded-xl border border-border bg-surface p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-full ${typeColors[ann.type]}`}
+                      >
+                        {typeLabels[ann.type]}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {ann.publishedAt
+                          ? formatCalendarDate(ann.publishedAt)
+                          : ""}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-foreground leading-snug">
+                      {ann.title}
+                    </h3>
+                    <p
+                      className={`text-sm text-muted-foreground leading-relaxed ${isExpanded ? "" : "line-clamp-3"}`}
+                    >
+                      {ann.body}
+                    </p>
+                    {ann.body.length > 160 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedAnnouncement(isExpanded ? null : ann.id)
+                        }
+                        className="text-xs text-link hover:text-link transition-colors self-start"
+                      >
+                        {isExpanded ? "Show less" : "Read more"}
+                      </button>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+
+            {/* Pagination */}
+            {(announcementsResult.data.hasNext || announcementsPage > 0) && (
+              <div className="flex items-center gap-2 mt-6 justify-center">
+                <button
+                  type="button"
+                  disabled={announcementsPage === 0}
+                  onClick={() => setAnnouncementsPage((p) => p - 1)}
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-sm text-muted-foreground">
+                  Page {announcementsPage + 1}
+                </span>
+                <button
+                  type="button"
+                  disabled={!announcementsResult.data.hasNext}
+                  onClick={() => setAnnouncementsPage((p) => p + 1)}
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
       {companyResult.data && (
         <ReportModal

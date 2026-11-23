@@ -32,7 +32,7 @@ export function isProtectedPath(pathname: string): boolean {
 export const REFRESH_COOKIE = "refreshToken";
 
 /** Where to go after signing in when no valid `next` was requested. */
-export const DEFAULT_AFTER_LOGIN = "/dashboard";
+export const DEFAULT_AFTER_LOGIN = "/";
 
 /** Builds the login URL that returns the visitor to `pathAndQuery` afterwards. */
 export function loginUrlFor(pathAndQuery: string): string {

@@ -76,14 +76,14 @@ export default function ReportScreenshotUploader({ urls, onChange }: Props) {
         {urls.map((url) => (
           <div
             key={url}
-            className="relative h-20 w-20 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]"
+            className="relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface"
           >
             <img src={url} alt="" className="h-full w-full object-cover" />
             <button
               type="button"
               onClick={() => handleRemove(url)}
               aria-label="Remove screenshot"
-              className="absolute right-1 top-1 rounded-full bg-slate-950/80 p-1 text-white/80 hover:bg-slate-950 hover:text-white"
+              className="absolute right-1 top-1 rounded-full bg-background p-1 text-foreground hover:bg-background hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -94,12 +94,12 @@ export default function ReportScreenshotUploader({ urls, onChange }: Props) {
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/20 bg-white/[0.04] text-xs text-white/60 hover:border-sky-400/40 hover:text-white disabled:opacity-60"
+            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-input bg-surface text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground disabled:opacity-60"
           >
             {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-sky-200" />
+              <Loader2 className="h-4 w-4 animate-spin text-link" />
             ) : (
-              <ImageIcon className="h-4 w-4 text-sky-200" />
+              <ImageIcon className="h-4 w-4 text-link" />
             )}
             <span>Add photo</span>
           </button>
@@ -110,13 +110,16 @@ export default function ReportScreenshotUploader({ urls, onChange }: Props) {
         type="file"
         accept="image/jpeg,image/png,image/webp"
         multiple
-        onChange={(e: ChangeEvent<HTMLInputElement>) => handleFiles(e.target.files)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+          handleFiles(e.target.files)
+        }
         className="hidden"
       />
-      <p className="text-xs text-white/55">
-        {urls.length}/{MAX_SCREENSHOTS} screenshots · max 5 MB each (JPG, PNG, WEBP)
+      <p className="text-xs text-muted-foreground">
+        {urls.length}/{MAX_SCREENSHOTS} screenshots · max 5 MB each (JPG, PNG,
+        WEBP)
       </p>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

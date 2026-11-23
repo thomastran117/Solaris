@@ -8,6 +8,7 @@ import { CheckCircle, AlertCircle } from "lucide-react";
 import { teamApi, type TeamInvitePreview } from "../api/team";
 import type { RootState } from "../stores";
 import { loginUrlFor } from "../lib/routes";
+import { Spinner } from "../components/ui/Spinner";
 
 export default function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>();
@@ -19,13 +20,13 @@ export default function InviteAcceptPage() {
 
   const previewQuery = useQuery<TeamInvitePreview>({
     queryKey: ["invite", token],
-    queryFn: () => teamApi.previewInvite(token!).then(r => r.data),
+    queryFn: () => teamApi.previewInvite(token!).then((r) => r.data),
     enabled: !!token,
     retry: false,
   });
 
   const acceptMutation = useMutation({
-    mutationFn: () => teamApi.acceptInvite(token!).then(r => r.data),
+    mutationFn: () => teamApi.acceptInvite(token!).then((r) => r.data),
     onSuccess: () => setAccepted(true),
   });
 
@@ -37,28 +38,34 @@ export default function InviteAcceptPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <p className="text-white/70">Invalid invite link.</p>
+      <div className="flex justify-center">
+        <p className="text-muted-foreground">Invalid invite link.</p>
       </div>
     );
   }
 
   if (previewQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <div className="w-6 h-6 rounded-full border-2 border-sky-400/40 border-t-sky-400 animate-spin" />
+      <div className="flex justify-center">
+        <Spinner
+          className="size-6 text-muted-foreground"
+          label="Loading invite"
+        />
       </div>
     );
   }
 
   if (previewQuery.error || !previewQuery.data) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <div className="max-w-md w-full rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-8 text-center">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-          <h1 className="text-lg font-semibold text-white">Invite invalid or expired</h1>
-          <p className="text-sm text-white/70 mt-2">
-            This invite link is no longer valid. Ask the company owner to send a new one.
+      <div className="flex justify-center">
+        <div className="w-full rounded-xl border bg-surface p-8 text-center shadow-xs">
+          <AlertCircle className="w-8 h-8 text-danger mx-auto mb-3" />
+          <h1 className="text-lg font-semibold text-foreground">
+            Invite invalid or expired
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            This invite link is no longer valid. Ask the company owner to send a
+            new one.
           </p>
         </div>
       </div>
@@ -69,16 +76,17 @@ export default function InviteAcceptPage() {
 
   if (accepted) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <div className="max-w-md w-full rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-8 text-center">
-          <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-3" />
-          <h1 className="text-lg font-semibold text-white">You're in!</h1>
-          <p className="text-sm text-white/70 mt-2">
-            You have joined <strong>{preview.companyName}</strong> as a {preview.role.toLowerCase()}.
+      <div className="flex justify-center">
+        <div className="w-full rounded-xl border bg-surface p-8 text-center shadow-xs">
+          <CheckCircle className="w-8 h-8 text-success mx-auto mb-3" />
+          <h1 className="text-lg font-semibold text-foreground">You're in!</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            You have joined <strong>{preview.companyName}</strong> as a{" "}
+            {preview.role.toLowerCase()}.
           </p>
           <button
             onClick={() => router.push("/dashboard")}
-            className="mt-5 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-colors"
+            className="mt-5 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold transition-colors"
           >
             Go to dashboard
           </button>
@@ -88,28 +96,34 @@ export default function InviteAcceptPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-      <div className="max-w-md w-full rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-8 text-center">
-        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-2">
-          Invitation
+    <div className="flex justify-center">
+      <div className="w-full rounded-xl border bg-surface p-8 text-center shadow-xs">
+        <p className="text-xs font-semibold text-link mb-2">Invitation</p>
+        <h1 className="text-2xl font-semibold text-foreground">
+          {preview.companyName}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+          {preview.inviterDisplayName ? (
+            <strong>{preview.inviterDisplayName}</strong>
+          ) : (
+            "Someone"
+          )}{" "}
+          invited you to join as a <strong>{preview.role.toLowerCase()}</strong>
+          .
         </p>
-        <h1 className="text-2xl font-extrabold text-white">{preview.companyName}</h1>
-        <p className="text-sm text-white/70 mt-3 leading-relaxed">
-          {preview.inviterDisplayName ? <strong>{preview.inviterDisplayName}</strong> : "Someone"}{" "}
-          invited you to join as a <strong>{preview.role.toLowerCase()}</strong>.
-        </p>
-        <p className="text-xs text-white/55 mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           Invite sent to <strong>{preview.invitedEmail}</strong>
         </p>
         {acceptMutation.error && (
-          <p className="text-sm text-red-400 mt-4">
-            {(acceptMutation.error as any)?.response?.data?.message ?? "Failed to accept invite"}
+          <p className="text-sm text-danger mt-4">
+            {(acceptMutation.error as any)?.response?.data?.message ??
+              "Failed to accept invite"}
           </p>
         )}
         <button
           onClick={() => acceptMutation.mutate()}
           disabled={acceptMutation.isPending}
-          className="mt-5 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="mt-5 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Accept invitation
         </button>

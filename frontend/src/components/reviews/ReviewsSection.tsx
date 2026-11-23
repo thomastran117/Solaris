@@ -19,7 +19,6 @@ interface Props {
   productId: string;
 }
 
-
 const DEFAULT_FILTERS: ReviewListFilters = {
   page: 0,
   size: 10,
@@ -29,8 +28,7 @@ const DEFAULT_FILTERS: ReviewListFilters = {
 
 function isNotFoundError(err: unknown): boolean {
   return (
-    axios.isAxiosError(err) &&
-    (err as AxiosError).response?.status === 404
+    axios.isAxiosError(err) && (err as AxiosError).response?.status === 404
   );
 }
 
@@ -63,7 +61,9 @@ export default function ReviewsSection({ companyId, productId }: Props) {
   const authenticated = !!accessToken;
 
   const [filters, setFilters] = useState<ReviewListFilters>(DEFAULT_FILTERS);
-  const [searchResults, setSearchResults] = useState<ReviewSearchHit[] | null>(null);
+  const [searchResults, setSearchResults] = useState<ReviewSearchHit[] | null>(
+    null
+  );
 
   const summaryQuery = useQuery({
     queryKey: ["reviews", "summary", productId],
@@ -73,7 +73,8 @@ export default function ReviewsSection({ companyId, productId }: Props) {
 
   const listQuery = useQuery({
     queryKey: ["reviews", "list", productId, filters],
-    queryFn: () => reviewsApi.list(companyId, productId, filters).then((r) => r.data),
+    queryFn: () =>
+      reviewsApi.list(companyId, productId, filters).then((r) => r.data),
     enabled: !!productId && searchResults === null,
     placeholderData: (prev) => prev,
   });
@@ -96,7 +97,10 @@ export default function ReviewsSection({ companyId, productId }: Props) {
   const totalPages = listQuery.data?.totalPages ?? 0;
 
   const goToPage = (next: number) => {
-    setFilters((f) => ({ ...f, page: Math.max(0, Math.min(totalPages - 1, next)) }));
+    setFilters((f) => ({
+      ...f,
+      page: Math.max(0, Math.min(totalPages - 1, next)),
+    }));
   };
 
   return (
@@ -110,21 +114,24 @@ export default function ReviewsSection({ companyId, productId }: Props) {
           className="space-y-8"
         >
           <motion.div variants={fadeInUp} className="flex items-center gap-3">
-            <span className="rounded-xl border border-white/10 bg-blue-500/15 p-2 text-sky-200">
+            <span className="rounded-xl border border-border bg-primary/10 p-2 text-link">
               <MessageSquareText className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
+              <p className="text-xs font-semibold text-link">
                 Customer reviews
               </p>
-              <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
+              <h2 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                 What shoppers are saying
               </h2>
             </div>
           </motion.div>
 
           <motion.div variants={fadeInUp}>
-            <ReviewSummary summary={summaryQuery.data} isLoading={summaryQuery.isLoading} />
+            <ReviewSummary
+              summary={summaryQuery.data}
+              isLoading={summaryQuery.isLoading}
+            />
           </motion.div>
 
           <motion.div variants={fadeInUp}>
@@ -149,11 +156,13 @@ export default function ReviewsSection({ companyId, productId }: Props) {
 
           <motion.div variants={stagger} className="space-y-4">
             {listQuery.isLoading && searchResults === null ? (
-              <p className="text-sm text-white/60">Loading reviews...</p>
+              <p className="text-sm text-muted-foreground">
+                Loading reviews...
+              </p>
             ) : reviewsToShow.length === 0 ? (
               <motion.div
                 variants={fadeInUp}
-                className="rounded-2xl border border-white/10 bg-white/[0.06] p-8 text-center text-sm text-white/65 backdrop-blur"
+                className="rounded-xl border border-border bg-surface p-8 text-center text-sm text-muted-foreground"
               >
                 {searchResults !== null
                   ? "No reviews matched your search."
@@ -174,23 +183,26 @@ export default function ReviewsSection({ companyId, productId }: Props) {
           </motion.div>
 
           {searchResults === null && totalPages > 1 && (
-            <motion.div variants={fadeInUp} className="flex items-center justify-center gap-2">
+            <motion.div
+              variants={fadeInUp}
+              className="flex items-center justify-center gap-2"
+            >
               <button
                 type="button"
                 onClick={() => goToPage((filters.page ?? 0) - 1)}
                 disabled={(filters.page ?? 0) === 0}
-                className="rounded-full border border-white/15 bg-white/[0.04] p-2 text-white/70 hover:text-white disabled:opacity-40"
+                className="rounded-full border border-border bg-surface p-2 text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs text-white/65">
+              <span className="text-xs text-muted-foreground">
                 Page {(filters.page ?? 0) + 1} of {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => goToPage((filters.page ?? 0) + 1)}
                 disabled={(filters.page ?? 0) >= totalPages - 1}
-                className="rounded-full border border-white/15 bg-white/[0.04] p-2 text-white/70 hover:text-white disabled:opacity-40"
+                className="rounded-full border border-border bg-surface p-2 text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

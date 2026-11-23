@@ -7,24 +7,38 @@ import { useSetSearchParams } from "../components/navigation/useSetSearchParams"
 import { useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, X, ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
+import {
+  SlidersHorizontal,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingBag,
+} from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import SearchBar from "../components/search/SearchBar";
-import FacetPanel, { type FacetSelection } from "../components/search/FacetPanel";
+import FacetPanel, {
+  type FacetSelection,
+} from "../components/search/FacetPanel";
 import ProductCard from "../components/product/ProductCard";
 import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
 import type { SearchFacets } from "../types/search";
 import { useAnims } from "../hooks/useAnims";
 import { formatCount } from "../lib/format";
-import { catalogSearchRequest, parseCatalogUrlParams } from "../lib/catalogParams";
+import {
+  catalogSearchRequest,
+  parseCatalogUrlParams,
+} from "../lib/catalogParams";
 import { catalogKeys } from "../api/keys";
 import {
   CATALOG_SORT_OPTIONS,
   selectedCatalogSortIndex,
 } from "../components/search/catalogSort";
 
-
-const EMPTY_FACETS: SearchFacets = { categories: [], brands: [], priceRanges: [] };
+const EMPTY_FACETS: SearchFacets = {
+  categories: [],
+  brands: [],
+  priceRanges: [],
+};
 
 export default function BrowsePage() {
   const searchParams = useSearchParams();
@@ -109,41 +123,44 @@ export default function BrowsePage() {
 
   const selectedSortIndex = selectedCatalogSortIndex(sortParam, directionParam);
 
-  const hasActiveFilters = !!(categoryParam || brandParam || minPriceParam || maxPriceParam);
+  const hasActiveFilters = !!(
+    categoryParam ||
+    brandParam ||
+    minPriceParam ||
+    maxPriceParam
+  );
 
   if (!marketplaceId) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-white/60 text-sm">No marketplace selected.</p>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">
+          No marketplace selected.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-      </div>
-
+    <div className="bg-background relative overflow-hidden">
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* Header */}
-        <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+        <motion.div
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          className="mb-6"
+        >
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-5"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5"
           >
             <ChevronLeft className="w-4 h-4" />
             Home
           </Link>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+          <h1 className="text-3xl md:text-4xl font-semibold text-foreground mb-4">
             {q ? (
               <>
-                Results for{" "}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-200 to-blue-400">
-                  "{q}"
-                </span>
+                Results for <span className="text-foreground">"{q}"</span>
               </>
             ) : (
               "Browse Products"
@@ -176,16 +193,25 @@ export default function BrowsePage() {
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2 flex-wrap">
                 {searchResult.isFetching && !searchResult.isLoading && (
-                  <div className="w-3.5 h-3.5 rounded-full border border-sky-400/40 border-t-sky-400 animate-spin" />
+                  <div className="w-3.5 h-3.5 rounded-full border border-primary/40 border-t-primary/40 animate-spin" />
                 )}
-                <span className="text-sm text-white/50">
-                  {searchResult.isLoading ? "Searching…" : `${formatCount(totalElements)} product${totalElements !== 1 ? "s" : ""}`}
+                <span className="text-sm text-muted-foreground">
+                  {searchResult.isLoading
+                    ? "Searching…"
+                    : `${formatCount(totalElements)} product${totalElements !== 1 ? "s" : ""}`}
                 </span>
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => handleFacetChange({ category: null, brand: null, minPrice: null, maxPrice: null })}
-                    className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                    onClick={() =>
+                      handleFacetChange({
+                        category: null,
+                        brand: null,
+                        minPrice: null,
+                        maxPrice: null,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 text-xs text-link hover:text-link transition-colors"
                   >
                     <X className="w-3 h-3" />
                     Clear filters
@@ -197,21 +223,25 @@ export default function BrowsePage() {
                 <button
                   type="button"
                   onClick={() => setMobileFacetsOpen((v) => !v)}
-                  className="lg:hidden flex items-center gap-1.5 text-sm text-white/70 border border-white/10 rounded-full px-3 py-1.5 hover:bg-white/[0.06] transition-colors"
+                  className="lg:hidden flex items-center gap-1.5 text-sm text-muted-foreground border border-border rounded-full px-3 py-1.5 hover:bg-muted transition-colors"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   Filters
                   {hasActiveFilters && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   )}
                 </button>
                 <select
                   value={selectedSortIndex}
                   onChange={handleSortChange}
-                  className="text-sm bg-white/[0.06] border border-white/10 rounded-full px-3 py-1.5 text-white/70 focus:outline-none focus:border-white/20 appearance-none cursor-pointer"
+                  className="text-sm bg-surface border border-border rounded-full px-3 py-1.5 text-muted-foreground focus:outline-none focus:border-ring appearance-none cursor-pointer"
                 >
                   {CATALOG_SORT_OPTIONS.map((o, i) => (
-                    <option key={i} value={i} className="bg-slate-900 text-white">
+                    <option
+                      key={i}
+                      value={i}
+                      className="bg-surface text-foreground"
+                    >
                       {o.label}
                     </option>
                   ))}
@@ -234,27 +264,38 @@ export default function BrowsePage() {
             {hasActiveFilters && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {categoryParam && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {categoryParam}
-                    <button type="button" onClick={() => updateParams({ category: null })}>
+                    <button
+                      type="button"
+                      onClick={() => updateParams({ category: null })}
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
                 )}
                 {brandParam && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {brandParam}
-                    <button type="button" onClick={() => updateParams({ brand: null })}>
+                    <button
+                      type="button"
+                      onClick={() => updateParams({ brand: null })}
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
                 )}
                 {(minPriceParam || maxPriceParam) && (
-                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-blue-500/30 bg-blue-600/10 px-3 py-1 text-white/80">
+                  <span className="inline-flex items-center gap-1.5 text-xs rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-foreground">
                     {minPriceParam ? `$${minPriceParam}` : ""}
                     {minPriceParam && maxPriceParam ? " – " : ""}
                     {maxPriceParam ? `$${maxPriceParam}` : "+"}
-                    <button type="button" onClick={() => updateParams({ minPrice: null, maxPrice: null })}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateParams({ minPrice: null, maxPrice: null })
+                      }
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -268,13 +309,13 @@ export default function BrowsePage() {
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div
                     key={i}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden animate-pulse"
+                    className="rounded-xl border border-border bg-surface overflow-hidden animate-pulse"
                   >
-                    <div className="aspect-square bg-white/[0.04]" />
+                    <div className="aspect-square bg-surface" />
                     <div className="p-4 space-y-2">
-                      <div className="h-2.5 bg-white/[0.06] rounded w-2/3" />
-                      <div className="h-3.5 bg-white/[0.06] rounded" />
-                      <div className="h-3.5 bg-white/[0.06] rounded w-4/5" />
+                      <div className="h-2.5 bg-surface rounded w-2/3" />
+                      <div className="h-3.5 bg-surface rounded" />
+                      <div className="h-3.5 bg-surface rounded w-4/5" />
                     </div>
                   </div>
                 ))}
@@ -289,16 +330,25 @@ export default function BrowsePage() {
                 animate="visible"
                 className="flex flex-col items-center justify-center py-24 text-center"
               >
-                <ShoppingBag className="w-12 h-12 text-white/20 mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">No products found</h3>
-                <p className="text-sm text-white/50 max-w-xs">
+                <ShoppingBag className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  No products found
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
                   Try adjusting your search term or removing filters.
                 </p>
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => handleFacetChange({ category: null, brand: null, minPrice: null, maxPrice: null })}
-                    className="mt-4 text-sm text-sky-400 hover:text-sky-300 transition-colors"
+                    onClick={() =>
+                      handleFacetChange({
+                        category: null,
+                        brand: null,
+                        minPrice: null,
+                        maxPrice: null,
+                      })
+                    }
+                    className="mt-4 text-sm text-link hover:text-link transition-colors"
                   >
                     Clear all filters
                   </button>
@@ -315,7 +365,11 @@ export default function BrowsePage() {
                 className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"
               >
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} variants={fadeInUp} />
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    variants={fadeInUp}
+                  />
                 ))}
               </motion.div>
             )}
@@ -327,13 +381,16 @@ export default function BrowsePage() {
                   type="button"
                   disabled={pageParam === 0}
                   onClick={() => handlePage(pageParam - 1)}
-                  className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
 
                 {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-                  const start = Math.max(0, Math.min(pageParam - 3, totalPages - 7));
+                  const start = Math.max(
+                    0,
+                    Math.min(pageParam - 3, totalPages - 7)
+                  );
                   const p = start + i;
                   return (
                     <button
@@ -342,8 +399,8 @@ export default function BrowsePage() {
                       onClick={() => handlePage(p)}
                       className={`w-8 h-8 rounded-full text-sm transition-colors ${
                         p === pageParam
-                          ? "bg-blue-600 text-white"
-                          : "text-white/60 hover:text-white hover:bg-white/[0.06]"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
                       }`}
                     >
                       {p + 1}
@@ -355,7 +412,7 @@ export default function BrowsePage() {
                   type="button"
                   disabled={pageParam >= totalPages - 1}
                   onClick={() => handlePage(pageParam + 1)}
-                  className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

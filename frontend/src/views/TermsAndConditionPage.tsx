@@ -41,7 +41,11 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: "easeOut" as const },
+  },
 };
 
 export default function TermsAndConditions({
@@ -88,30 +92,17 @@ export default function TermsAndConditions({
   };
 
   return (
-    <div className="min-h-screen bg-[#0B1220] text-slate-200 antialiased">
-      {/* Decorative background */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
-      >
-        <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-sky-400/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(14,165,233,0.12),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(transparent,rgba(2,6,23,0.6))]" />
-      </div>
-
+    <div className="bg-background text-foreground antialiased">
       {/* Page wrapper */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/70 backdrop-blur supports-[backdrop-filter]:bg-slate-950/50">
+      <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-sky-400/20 to-blue-500/20 ring-1 ring-inset ring-sky-500/30">
-              <ShieldCheck className="h-5 w-5 text-sky-300" />
+            <div className="grid h-9 w-9 place-items-center rounded-xl ring-1 ring-inset ring-primary/40">
+              <ShieldCheck className="h-5 w-5 text-link" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-widest text-slate-400">
-                Legal
-              </p>
-              <h1 className="text-lg font-semibold text-slate-100">
+              <p className="text-xs text-muted-foreground">Legal</p>
+              <h1 className="text-lg font-semibold text-foreground">
                 Terms & Conditions
               </h1>
             </div>
@@ -120,7 +111,7 @@ export default function TermsAndConditions({
           <div className="hidden items-center gap-2 md:flex">
             <button
               onClick={() => window.print()}
-              className="group inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-slate-200 shadow-sm ring-1 ring-inset ring-white/5 transition hover:border-sky-600/50 hover:ring-sky-500/30"
+              className="group inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-sm ring-1 ring-inset ring-border transition hover:border-primary/40 hover:ring-primary/40"
             >
               <ExternalLink className="h-4 w-4 transition group-hover:rotate-6" />
               <span>Print / Save as PDF</span>
@@ -133,8 +124,8 @@ export default function TermsAndConditions({
         {/* TOC sidebar */}
         <aside className="hidden lg:block">
           <nav className="sticky top-24 space-y-3">
-            <div className="rounded-2xl border border-slate-800/70 bg-slate-900/50 p-4 shadow-sm ring-1 ring-inset ring-white/5">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-sm ring-1 ring-inset ring-border">
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">
                 On this page
               </p>
               <ul className="space-y-1.5">
@@ -145,8 +136,8 @@ export default function TermsAndConditions({
                       className={[
                         "group flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm transition",
                         activeId === id
-                          ? "bg-sky-500/15 text-sky-200 ring-1 ring-inset ring-sky-500/30"
-                          : "text-slate-300 hover:bg-slate-800/60 hover:text-slate-100",
+                          ? "bg-primary/10 text-link ring-1 ring-inset ring-primary/40"
+                          : "text-foreground hover:bg-muted hover:text-foreground",
                       ].join(" ")}
                     >
                       <Icon className="h-4 w-4 shrink-0 opacity-80" />
@@ -158,9 +149,9 @@ export default function TermsAndConditions({
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-slate-800/70 bg-gradient-to-b from-slate-900/60 to-slate-950/60 p-4 ring-1 ring-inset ring-white/5">
-              <p className="text-xs text-slate-400">Last updated</p>
-              <p className="text-sm font-medium text-slate-100">
+            <div className="rounded-xl border border-border p-4 ring-1 ring-inset ring-border">
+              <p className="text-xs text-muted-foreground">Last updated</p>
+              <p className="text-sm font-medium text-foreground">
                 {lastUpdated}
               </p>
             </div>
@@ -169,26 +160,21 @@ export default function TermsAndConditions({
 
         {/* Content */}
         <section>
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="space-y-8"
-          >
+          <motion.div variants={containerVariants} className="space-y-8">
             <motion.div
               variants={itemVariants}
-              className="rounded-3xl border border-slate-800/70 bg-slate-900/60 p-6 shadow-xl ring-1 ring-inset ring-white/5"
+              className="rounded-xl border border-border bg-surface p-6 shadow-xl ring-1 ring-inset ring-border"
             >
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-semibold leading-tight text-slate-100">
+                  <h2 className="text-2xl font-semibold leading-tight text-foreground">
                     Terms & Conditions for {companyName}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Please read these terms carefully before using our services.
                   </p>
                 </div>
-                <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-200 ring-1 ring-inset ring-white/5">
+                <div className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-link ring-1 ring-inset ring-border">
                   <span className="font-medium">Effective:</span> {lastUpdated}
                 </div>
               </div>
@@ -198,13 +184,13 @@ export default function TermsAndConditions({
             <motion.article
               id="introduction"
               variants={itemVariants}
-              className="scroll-mt-28 rounded-3xl border border-slate-800/70 bg-gradient-to-b from-slate-900/70 to-slate-950/60 p-6 ring-1 ring-inset ring-white/5"
+              className="scroll-mt-28 rounded-xl border border-border p-6 ring-1 ring-inset ring-border"
             >
               <SectionHeading
                 title="Introduction"
                 subtitle="Who we are and what this page covers"
               />
-              <p className="mt-3 leading-7 text-slate-300">
+              <p className="mt-3 leading-7 text-foreground">
                 These Terms & Conditions (the "Terms") govern your access to and
                 use of the websites, applications, APIs, and services provided
                 by {companyName}
@@ -215,7 +201,7 @@ export default function TermsAndConditions({
 
             {/* Acceptance */}
             <Card id="acceptance" title="Acceptance of Terms" variant="warning">
-              <ul className="list-outside list-disc space-y-2 pl-5 text-slate-300">
+              <ul className="list-outside list-disc space-y-2 pl-5 text-foreground">
                 <li>
                   You must be able to form a binding contract to use the
                   Services.
@@ -234,7 +220,7 @@ export default function TermsAndConditions({
 
             {/* Changes */}
             <Card id="changes" title="Changes to These Terms" variant="info">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 We may update these Terms from time to time. Material changes
                 will be notified through the Services or by other reasonable
                 means. Changes become effective upon posting unless stated
@@ -245,7 +231,7 @@ export default function TermsAndConditions({
 
             {/* Accounts & Security */}
             <Card id="accounts" title="Accounts & Security" variant="critical">
-              <ul className="list-outside list-disc space-y-2 pl-5 text-slate-300">
+              <ul className="list-outside list-disc space-y-2 pl-5 text-foreground">
                 <li>Provide accurate and complete registration information.</li>
                 <li>
                   Maintain the security of your account credentials; you are
@@ -264,11 +250,11 @@ export default function TermsAndConditions({
               title="Acceptable Use & Conduct"
               variant="warning"
             >
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 You agree not to misuse the Services. Prohibited activities
                 include, but are not limited to:
               </p>
-              <ul className="mt-2 list-outside list-disc space-y-2 pl-5 text-slate-300">
+              <ul className="mt-2 list-outside list-disc space-y-2 pl-5 text-foreground">
                 <li>Violating any applicable law or regulation.</li>
                 <li>
                   Infringing or misappropriating intellectual property or
@@ -288,7 +274,7 @@ export default function TermsAndConditions({
 
             {/* Intellectual Property */}
             <Card id="ip" title="Intellectual Property" variant="info">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 The Services, including all content, features, and
                 functionality, are owned by {companyName} or its licensors and
                 are protected by intellectual property laws. Except as expressly
@@ -299,7 +285,7 @@ export default function TermsAndConditions({
 
             {/* Billing */}
             <Card id="billing" title="Payment & Billing" variant="warning">
-              <ul className="list-outside list-disc space-y-2 pl-5 text-slate-300">
+              <ul className="list-outside list-disc space-y-2 pl-5 text-foreground">
                 <li>
                   Fees are due as stated at purchase and are generally
                   non-refundable unless required by law.
@@ -317,12 +303,12 @@ export default function TermsAndConditions({
 
             {/* Cookies */}
             <Card id="cookies" title="Cookies & Tracking" variant="info">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 We use cookies and similar technologies (such as local storage,
                 pixels, and SDKs) to operate and personalize the Services,
                 analyze traffic, and, where applicable, support marketing.
               </p>
-              <ul className="mt-2 list-outside list-disc space-y-2 pl-5 text-slate-300">
+              <ul className="mt-2 list-outside list-disc space-y-2 pl-5 text-foreground">
                 <li>
                   <span className="font-medium">Essential cookies</span> are
                   required for core functionality such as authentication and
@@ -338,7 +324,7 @@ export default function TermsAndConditions({
                   remember your settings (e.g., language or theme).
                 </li>
               </ul>
-              <p className="mt-2 text-slate-300">
+              <p className="mt-2 text-foreground">
                 You may control non-essential cookies through your browser
                 settings or any consent tools we provide. For more details,
                 contact us at {contactEmail}.
@@ -347,7 +333,7 @@ export default function TermsAndConditions({
 
             {/* Termination */}
             <Card id="termination" title="Termination" variant="critical">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 We may suspend or terminate your access to the Services if you
                 violate these Terms or if we are investigating suspected
                 misconduct. Upon termination, your right to use the Services
@@ -357,7 +343,7 @@ export default function TermsAndConditions({
 
             {/* Disclaimers */}
             <Card id="disclaimers" title="Disclaimers" variant="warning">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 THE SERVICES ARE PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS
                 WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR
                 STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR
@@ -371,7 +357,7 @@ export default function TermsAndConditions({
               title="Limitation of Liability"
               variant="critical"
             >
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 TO THE MAXIMUM EXTENT PERMITTED BY LAW, {companyName} AND ITS
                 AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
                 SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF
@@ -382,7 +368,7 @@ export default function TermsAndConditions({
 
             {/* Governing Law */}
             <Card id="law" title="Governing Law">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 These Terms shall be governed by and construed in accordance
                 with the laws applicable in your place of residence or, if
                 specified elsewhere in your customer agreement, the laws of that
@@ -392,11 +378,11 @@ export default function TermsAndConditions({
 
             {/* Contact */}
             <Card id="contact" title="Contact Us">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 Questions about these Terms? Reach out to us at{" "}
                 <a
                   href={`mailto:${contactEmail}`}
-                  className="font-medium text-sky-300 underline decoration-sky-500/40 underline-offset-4 hover:text-sky-200"
+                  className="font-medium text-link underline decoration-current underline-offset-4 hover:text-link"
                 >
                   {contactEmail}
                 </a>
@@ -404,7 +390,7 @@ export default function TermsAndConditions({
               </p>
             </Card>
 
-            <footer className="mt-10 flex flex-col items-center justify-between gap-4 rounded-3xl border border-slate-800/70 bg-slate-900/50 px-6 py-6 text-sm text-slate-400 ring-1 ring-inset ring-white/5 md:flex-row">
+            <footer className="mt-10 flex flex-col items-center justify-between gap-4 rounded-xl border border-border bg-surface px-6 py-6 text-sm text-muted-foreground ring-1 ring-inset ring-border md:flex-row">
               <p>
                 © {year} {companyName}. All rights reserved.
               </p>
@@ -417,8 +403,8 @@ export default function TermsAndConditions({
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         className={[
-          "fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm shadow-lg transition",
-          "border-slate-800 bg-slate-900/70 text-slate-200 ring-1 ring-inset ring-white/5",
+          "fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm shadow-lg transition",
+          "border-border bg-surface text-foreground ring-1 ring-inset ring-border",
           showTop ? "opacity-100" : "opacity-0 pointer-events-none",
         ].join(" ")}
         aria-label="Back to top"
@@ -439,8 +425,10 @@ function SectionHeading({
 }) {
   return (
     <div className="mb-1">
-      <h3 className="text-xl font-semibold text-slate-100">{title}</h3>
-      {subtitle ? <p className="text-sm text-slate-400">{subtitle}</p> : null}
+      <h3 className="text-xl font-semibold text-foreground">{title}</h3>
+      {subtitle ? (
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
+      ) : null}
     </div>
   );
 }
@@ -457,32 +445,32 @@ function Card({
 }>) {
   const scheme = {
     default: {
-      border: "border-slate-800/70",
-      bg: "bg-slate-900/60",
-      ring: "ring-white/5",
-      title: "text-slate-100",
-      accent: "bg-sky-500/25",
+      border: "border-border",
+      bg: "bg-surface",
+      ring: "ring-border",
+      title: "text-foreground",
+      accent: "bg-primary/10",
     },
     info: {
-      border: "border-sky-500/30",
-      bg: "bg-sky-500/10",
-      ring: "ring-sky-500/20",
-      title: "text-sky-100",
-      accent: "bg-sky-500/40",
+      border: "border-primary/40",
+      bg: "bg-primary/10",
+      ring: "ring-primary/40",
+      title: "text-link",
+      accent: "bg-primary/10",
     },
     warning: {
-      border: "border-amber-500/30",
-      bg: "bg-amber-500/10",
-      ring: "ring-amber-500/20",
-      title: "text-amber-100",
-      accent: "bg-amber-500/40",
+      border: "border-warning/40",
+      bg: "bg-warning-subtle",
+      ring: "ring-warning/40",
+      title: "text-warning",
+      accent: "bg-warning-subtle",
     },
     critical: {
-      border: "border-rose-500/30",
-      bg: "bg-rose-500/10",
-      ring: "ring-rose-500/20",
-      title: "text-rose-100",
-      accent: "bg-rose-500/40",
+      border: "border-danger/40",
+      bg: "bg-danger-subtle",
+      ring: "ring-danger/40",
+      title: "text-danger",
+      accent: "bg-danger-subtle",
     },
   }[variant];
 
@@ -490,13 +478,13 @@ function Card({
     <motion.article
       id={id}
       variants={itemVariants}
-      className={`scroll-mt-28 rounded-3xl border ${scheme.border} ${scheme.bg} p-6 shadow-xl ring-1 ring-inset ${scheme.ring}`}
+      className={`scroll-mt-28 rounded-xl border ${scheme.border} ${scheme.bg} p-6 shadow-xl ring-1 ring-inset ${scheme.ring}`}
     >
       <div className="mb-1 flex items-center gap-2">
         <span className={`h-2 w-2 rounded-full ${scheme.accent}`} />
         <h3 className={`text-xl font-semibold ${scheme.title}`}>{title}</h3>
       </div>
-      <div className="mt-3 space-y-4 leading-7 text-slate-200">{children}</div>
+      <div className="mt-3 space-y-4 leading-7 text-foreground">{children}</div>
     </motion.article>
   );
 }

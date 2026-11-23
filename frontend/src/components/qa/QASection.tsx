@@ -13,7 +13,6 @@ interface Props {
   productId: string;
 }
 
-
 export default function QASection({ productId }: Props) {
   const { fadeInUp, stagger } = useAnims();
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
@@ -23,35 +22,41 @@ export default function QASection({ productId }: Props) {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["qa", "questions", productId, page],
-    queryFn: () => qaApi.listQuestions(productId, { page, size: 10 }).then((r) => r.data),
+    queryFn: () =>
+      qaApi.listQuestions(productId, { page, size: 10 }).then((r) => r.data),
     enabled: !!productId,
   });
 
   return (
-    <section className="py-16 bg-white/[0.04] backdrop-blur border-y border-white/10">
+    <section className="py-16 bg-surface border-y border-border">
       <div className="mx-auto max-w-6xl px-4 space-y-8">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/15 border border-white/10">
-            <MessageCircleQuestion className="w-5 h-5 text-sky-200" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 border border-border">
+            <MessageCircleQuestion className="w-5 h-5 text-link" />
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
-              Community
-            </p>
-            <h2 className="text-2xl font-extrabold text-white">Questions &amp; Answers</h2>
+            <p className="text-xs font-semibold text-link">Community</p>
+            <h2 className="text-2xl font-semibold text-foreground">
+              Questions &amp; Answers
+            </h2>
           </div>
         </div>
 
         {/* Ask a question */}
         {authenticated ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
-            <p className="text-sm font-semibold text-white mb-3">Ask a Question</p>
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <p className="text-sm font-semibold text-foreground mb-3">
+              Ask a Question
+            </p>
             <AskQuestionForm productId={productId} />
           </div>
         ) : (
-          <p className="text-sm text-white/50">
-            <a href="/login" className="text-sky-200 hover:underline">Sign in</a> to ask a question.
+          <p className="text-sm text-muted-foreground">
+            <a href="/login" className="text-link hover:underline">
+              Sign in
+            </a>{" "}
+            to ask a question.
           </p>
         )}
 
@@ -59,18 +64,25 @@ export default function QASection({ productId }: Props) {
         {isLoading && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.06] h-24 animate-pulse" />
+              <div
+                key={i}
+                className="rounded-xl border border-border bg-surface h-24 animate-pulse"
+              />
             ))}
           </div>
         )}
 
         {isError && (
-          <p className="text-sm text-red-400">Failed to load questions. Please try again.</p>
+          <p className="text-sm text-danger">
+            Failed to load questions. Please try again.
+          </p>
         )}
 
         {data && data.items.length === 0 && !isLoading && (
           <div className="text-center py-12">
-            <p className="text-white/50 text-sm">No questions yet. Be the first to ask!</p>
+            <p className="text-muted-foreground text-sm">
+              No questions yet. Be the first to ask!
+            </p>
           </div>
         )}
 
@@ -100,17 +112,17 @@ export default function QASection({ productId }: Props) {
             <button
               disabled={!data.hasPrevious}
               onClick={() => setPage((p) => p - 1)}
-              className="px-4 py-2 rounded-full border border-white/20 hover:bg-white/10 text-sm text-white/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 rounded-full border border-input hover:bg-muted text-sm text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
-            <span className="text-sm text-white/50">
+            <span className="text-sm text-muted-foreground">
               Page {data.page + 1} of {data.totalPages}
             </span>
             <button
               disabled={!data.hasNext}
               onClick={() => setPage((p) => p + 1)}
-              className="px-4 py-2 rounded-full border border-white/20 hover:bg-white/10 text-sm text-white/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 rounded-full border border-input hover:bg-muted text-sm text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>

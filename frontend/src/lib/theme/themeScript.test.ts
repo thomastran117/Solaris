@@ -25,7 +25,8 @@ function run(
 describe("buildThemeScript", () => {
   const script = buildThemeScript({
     forceAll: false,
-    forcedPrefixes: ["/admin"],
+    forcedPrefixes: ["/admin", "/lists"],
+    exceptions: ["/lists/public"],
     storageKey: KEY,
   });
 
@@ -81,6 +82,20 @@ describe("buildThemeScript", () => {
     expect(
       run(script, {
         path: "/administrator",
+        stored: "light",
+      }).classList.contains("dark")
+    ).toBe(false);
+  });
+
+  it("leaves migrated exceptions under a forced prefix alone", () => {
+    expect(
+      run(script, { path: "/lists/abc", stored: "light" }).classList.contains(
+        "dark"
+      )
+    ).toBe(true);
+    expect(
+      run(script, {
+        path: "/lists/public/sam-wish",
         stored: "light",
       }).classList.contains("dark")
     ).toBe(false);

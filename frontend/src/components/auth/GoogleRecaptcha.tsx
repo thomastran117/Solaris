@@ -42,7 +42,10 @@ const GoogleRecaptcha = forwardRef<CaptchaRef, GoogleRecaptchaProps>(
       async execute() {
         if (!captchaRef.current) {
           const error = new Error("reCAPTCHA not initialized");
-          updateStatus({ state: "error", message: "Verification unavailable. Please refresh the page." });
+          updateStatus({
+            state: "error",
+            message: "Verification unavailable. Please refresh the page.",
+          });
           onError?.(error);
           throw error;
         }
@@ -67,10 +70,14 @@ const GoogleRecaptcha = forwardRef<CaptchaRef, GoogleRecaptchaProps>(
             const isLastAttempt = attempt === MAX_RETRIES;
 
             if (isLastAttempt) {
-              const error = err instanceof Error ? err : new Error("reCAPTCHA verification failed");
+              const error =
+                err instanceof Error
+                  ? err
+                  : new Error("reCAPTCHA verification failed");
               updateStatus({
                 state: "error",
-                message: "Unable to verify you're human. Please try again later.",
+                message:
+                  "Unable to verify you're human. Please try again later.",
               });
               onError?.(error);
               throw error;
@@ -104,7 +111,8 @@ const GoogleRecaptcha = forwardRef<CaptchaRef, GoogleRecaptchaProps>(
             const error = new Error("reCAPTCHA failed to load");
             updateStatus({
               state: "error",
-              message: "Verification service unavailable. Please refresh the page.",
+              message:
+                "Verification service unavailable. Please refresh the page.",
             });
             onError?.(error);
           }}
@@ -125,13 +133,17 @@ const CaptchaStatusMessage = ({ status }: { status: CaptchaStatus }) => {
   };
 
   const styles: Record<string, string> = {
-    verifying: "text-gray-500",
-    retrying: "text-yellow-600",
-    error: "text-red-600",
+    verifying: "text-muted-foreground",
+    retrying: "text-warning",
+    error: "text-danger",
   };
 
   return (
-    <p role="status" aria-live="polite" className={`text-sm mt-1 ${styles[status.state]}`}>
+    <p
+      role="status"
+      aria-live="polite"
+      className={`text-sm mt-1 ${styles[status.state]}`}
+    >
       {messages[status.state]}
     </p>
   );

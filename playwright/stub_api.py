@@ -18,11 +18,15 @@ import base64
 import json
 import re
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 LOG = Path(__file__).with_name("stub_api_requests.log")
+# ThreadingHTTPServer handles requests concurrently; serialise log appends so
+# each request stays on its own line.
+LOG_LOCK = threading.Lock()
 
 MARKETPLACE_ID = "11111111-1111-1111-1111-111111111111"
 COMPANY_ID = "22222222-2222-2222-2222-222222222222"
@@ -133,27 +137,47 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def _record(self, path):
-        with LOG.open("a", encoding="utf-8") as f:
+    def _record(self, path, body=None):
+        with LOG_LOCK, LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps({
                 "method": self.command, "path": path,
                 "cookie": self.headers.get("Cookie"), "authorization": self.headers.get("Authorization"),
+                "body": body,
             }) + "\n")
 
+    def _read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        try:
+            return json.loads(raw) if raw else None
+        except ValueError:
+            return None
+
     def _route(self):
-        path = urlparse(self.path).path
-        self._record(self.path)
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+        body = self._read_json() if self.command in ("POST", "PATCH", "PUT") else None
+        # Auth bodies are recorded so tests can assert the request shape; the stub
+        # only ever sees fixture credentials.
+        self._record(self.path, body if path.startswith("/api/auth/") else None)
         cookie = self.headers.get("Cookie") or ""
         if path == "/api/auth/refresh":
             if "refreshToken=valid" in cookie:
                 return self._send(*ok({"accessToken": SESSION_TOKEN, "email": "sam@example.test", "role": "USER", "tier": "FREE"}),
                                   {"Set-Cookie": "refreshToken=valid; Path=/; HttpOnly; SameSite=Strict"})
             return self._send(*err(401, "UNAUTHORIZED"))
-        if path == "/api/auth/login" and self.command == "POST":
-            length = int(self.headers.get("Content-Length") or 0)
-            self.rfile.read(length)
+        if path in ("/api/auth/login", "/api/auth/verify-device") and self.command == "POST":
+            if path == "/api/auth/verify-device" and query.get("token") != ["good"]:
+                return self._send(*err(400, "This device link has expired."))
             return self._send(*ok({"token": SESSION_TOKEN, "email": "sam@example.test", "usertype": "USER", "tier": "FREE"}),
                               {"Set-Cookie": "refreshToken=valid; Path=/; HttpOnly; SameSite=Strict"})
+        if path == "/api/auth/signup" and self.command == "POST":
+            return self._send(201, ok({"message": "Verification email sent"})[1])
+        if path == "/api/auth/verify" and self.command == "POST":
+            if query.get("token") == ["good"]:
+                return self._send(*ok({"message": "Email verified successfully."}))
+            return self._send(*err(400, "This verification link has expired."))
         if path == "/api/health":
             return self._send(*ok({"status": "UP"}))
         for pattern, handler in ROUTES:
