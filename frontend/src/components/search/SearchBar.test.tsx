@@ -29,7 +29,9 @@ function makeStore() {
   });
 }
 
-function makeSuggestions(overrides: Partial<SearchSuggestionsResponse> = {}): SearchSuggestionsResponse {
+function makeSuggestions(
+  overrides: Partial<SearchSuggestionsResponse> = {}
+): SearchSuggestionsResponse {
   return { products: [], categories: [], brands: [], ...overrides };
 }
 
@@ -68,7 +70,7 @@ describe("SearchBar", () => {
     const fetcher = makeFetcher(makeSuggestions());
     renderSearchBar({ suggestionsFetcher: fetcher });
 
-    await userEvent.type(screen.getByRole("textbox"), "a");
+    await userEvent.type(screen.getByRole("searchbox"), "a");
     // Wait well past the 250ms debounce to confirm no call was made
     await new Promise((r) => setTimeout(r, 350));
 
@@ -78,16 +80,36 @@ describe("SearchBar", () => {
   it("shows 3 product tiles after typing a query", async () => {
     const suggestions = makeSuggestions({
       products: [
-        { id: "p1", name: "Widget Pro", price: 29.99, discountedPrice: null, thumbnailUrl: "https://cdn/w.jpg" },
-        { id: "p2", name: "Widget Lite", price: 9.99, discountedPrice: 7.99, thumbnailUrl: null },
-        { id: "p3", name: "Widget Max", price: 49.99, discountedPrice: null, thumbnailUrl: null },
+        {
+          id: "p1",
+          name: "Widget Pro",
+          price: 29.99,
+          discountedPrice: null,
+          thumbnailUrl: "https://cdn/w.jpg",
+        },
+        {
+          id: "p2",
+          name: "Widget Lite",
+          price: 9.99,
+          discountedPrice: 7.99,
+          thumbnailUrl: null,
+        },
+        {
+          id: "p3",
+          name: "Widget Max",
+          price: 49.99,
+          discountedPrice: null,
+          thumbnailUrl: null,
+        },
       ],
     });
     renderSearchBar({ suggestionsFetcher: makeFetcher(suggestions) });
 
-    await userEvent.type(screen.getByRole("textbox"), "wi");
+    await userEvent.type(screen.getByRole("searchbox"), "wi");
 
-    await waitFor(() => expect(screen.getByText("Widget Pro")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Widget Pro")).toBeInTheDocument()
+    );
     expect(screen.getByText("Widget Lite")).toBeInTheDocument();
     expect(screen.getByText("Widget Max")).toBeInTheDocument();
     // Original price shown
@@ -98,11 +120,19 @@ describe("SearchBar", () => {
 
   it("clicking a product tile navigates to /products/:id", async () => {
     const suggestions = makeSuggestions({
-      products: [{ id: "prod-abc", name: "Gadget", price: 19.99, discountedPrice: null, thumbnailUrl: null }],
+      products: [
+        {
+          id: "prod-abc",
+          name: "Gadget",
+          price: 19.99,
+          discountedPrice: null,
+          thumbnailUrl: null,
+        },
+      ],
     });
     renderSearchBar({ suggestionsFetcher: makeFetcher(suggestions) });
 
-    await userEvent.type(screen.getByRole("textbox"), "ga");
+    await userEvent.type(screen.getByRole("searchbox"), "ga");
     await waitFor(() => screen.getByText("Gadget"));
 
     fireEvent.mouseDown(screen.getByText("Gadget"));
@@ -111,10 +141,12 @@ describe("SearchBar", () => {
   });
 
   it("submitting the form calls onSearch, not navigate", async () => {
-    const { onSearch } = renderSearchBar({ suggestionsFetcher: makeFetcher(makeSuggestions()) });
+    const { onSearch } = renderSearchBar({
+      suggestionsFetcher: makeFetcher(makeSuggestions()),
+    });
 
-    await userEvent.type(screen.getByRole("textbox"), "headphones");
-    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+    await userEvent.type(screen.getByRole("searchbox"), "headphones");
+    fireEvent.submit(screen.getByRole("searchbox").closest("form")!);
 
     expect(onSearch).toHaveBeenCalledWith("headphones");
     expect(mockRouter.push).not.toHaveBeenCalled();
@@ -124,21 +156,31 @@ describe("SearchBar", () => {
     const suggestions = makeSuggestions({ categories: ["Electronics"] });
     renderSearchBar({ suggestionsFetcher: makeFetcher(suggestions) });
 
-    await userEvent.type(screen.getByRole("textbox"), "el");
+    await userEvent.type(screen.getByRole("searchbox"), "el");
     await waitFor(() => screen.getByText("Electronics"));
 
     fireEvent.mouseDown(screen.getByText("Electronics"));
 
-    expect(mockRouter.push).toHaveBeenCalledWith("/browse?category=Electronics");
+    expect(mockRouter.push).toHaveBeenCalledWith(
+      "/browse?category=Electronics"
+    );
   });
 
   it("closes the dropdown on outside click", async () => {
     const suggestions = makeSuggestions({
-      products: [{ id: "p1", name: "Test Product", price: 10, discountedPrice: null, thumbnailUrl: null }],
+      products: [
+        {
+          id: "p1",
+          name: "Test Product",
+          price: 10,
+          discountedPrice: null,
+          thumbnailUrl: null,
+        },
+      ],
     });
     renderSearchBar({ suggestionsFetcher: makeFetcher(suggestions) });
 
-    await userEvent.type(screen.getByRole("textbox"), "te");
+    await userEvent.type(screen.getByRole("searchbox"), "te");
     await waitFor(() => screen.getByText("Test Product"));
 
     fireEvent.mouseDown(document.body);
@@ -150,13 +192,25 @@ describe("SearchBar", () => {
 
   it("uses catalogApi.getSuggestions when no suggestionsFetcher prop is given", async () => {
     mockGetSuggestions.mockResolvedValue({
-      data: makeSuggestions({ products: [{ id: "x", name: "API Product", price: 5, discountedPrice: null, thumbnailUrl: null }] }),
+      data: makeSuggestions({
+        products: [
+          {
+            id: "x",
+            name: "API Product",
+            price: 5,
+            discountedPrice: null,
+            thumbnailUrl: null,
+          },
+        ],
+      }),
     } as never);
 
     renderSearchBar(); // no suggestionsFetcher → falls back to catalogApi
 
-    await userEvent.type(screen.getByRole("textbox"), "ap");
-    await waitFor(() => expect(screen.getByText("API Product")).toBeInTheDocument());
+    await userEvent.type(screen.getByRole("searchbox"), "ap");
+    await waitFor(() =>
+      expect(screen.getByText("API Product")).toBeInTheDocument()
+    );
 
     expect(mockGetSuggestions).toHaveBeenCalled();
   });

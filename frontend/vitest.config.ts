@@ -10,6 +10,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",
+    // userEvent-driven form tests can exceed the 5 s default when every worker
+    // is busy (CI runners, full local runs); they pass well under it alone.
+    testTimeout: 15_000,
     exclude: ["node_modules/**", ".next/**"],
   },
   resolve: {

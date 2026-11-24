@@ -129,7 +129,7 @@ export default function TermsAndConditions({
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-[18rem,1fr]">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-[18rem,1fr]">
         {/* TOC sidebar */}
         <aside className="hidden lg:block">
           <nav className="sticky top-24 space-y-3">
@@ -411,7 +411,7 @@ export default function TermsAndConditions({
             </footer>
           </motion.div>
         </section>
-      </main>
+      </div>
 
       {/* Back to top */}
       <button

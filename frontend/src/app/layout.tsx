@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import FeedbackButton from "../components/feedback/FeedbackButton";
 import { getDefaultMarketplaceId } from "../configuration/server";
 import Providers from "./providers";
 import { FORCE_ALL_DARK } from "../lib/theme/themeConfig";
@@ -24,7 +21,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Keep in step with --background in globals.css.
   themeColor: [
+    // eslint-disable-next-line shopwave/no-raw-palette -- browser meta tags can't read CSS variables
     { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    // eslint-disable-next-line shopwave/no-raw-palette -- browser meta tags can't read CSS variables
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
 };
@@ -51,15 +50,17 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      {/* bg-slate-950 is the legacy page colour; the app shell PR removes it. */}
-      <body className="bg-slate-950 antialiased">
+      <body>
+        <a
+          href="#main"
+          className="sr-only rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60]"
+        >
+          Skip to content
+        </a>
+        {/* Route-group layouts add the chrome: SiteShell for storefront, auth
+            and account pages, AdminShell for the seller workspace. */}
         <Providers defaultMarketplaceId={getDefaultMarketplaceId()}>
-          <Navbar />
-          <div className="min-h-screen overflow-y-auto overflow-x-hidden">
-            {children}
-          </div>
-          <FeedbackButton />
-          <Footer />
+          {children}
         </Providers>
       </body>
     </html>

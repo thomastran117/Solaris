@@ -239,7 +239,7 @@ export default function DashboardPage() {
   } as const;
 
   return (
-    <main className="relative min-h-screen text-white bg-slate-950 px-4 sm:px-6 py-10">
+    <div className="relative min-h-screen text-white bg-slate-950 px-4 sm:px-6 py-10">
       {/* Background glow */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-slate-950" />
@@ -750,7 +750,7 @@ export default function DashboardPage() {
         </motion.div>
 
       </div>
-    </main>
+    </div>
   );
 }
 

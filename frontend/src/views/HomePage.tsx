@@ -427,7 +427,7 @@ export default function Home() {
   }, [query]);
 
   return (
-    <main className="relative min-h-screen text-white">
+    <div className="relative min-h-screen text-white">
       <NavyGridGlowBackground />
       <ScrollProgressBar />
 
@@ -914,6 +914,6 @@ export default function Home() {
 
       {/* bottom spacing */}
       <div className="h-12" />
-    </main>
+    </div>
   );
 }
