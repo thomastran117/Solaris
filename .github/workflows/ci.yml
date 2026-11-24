@@ -44,8 +44,25 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Make mvnw executable
-        run: chmod +x mvnw
+      # setup-java caches ~/.m2/repository only; the wrapper downloads Maven itself.
+      - name: Cache Maven distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
+
+      # Every backend job fetches the distribution from Maven Central at once, and
+      # Central occasionally refuses one. mvnw only installs a completed download,
+      # so retrying is safe.
+      - name: Prepare Maven wrapper
+        run: |
+          chmod +x mvnw
+          for attempt in 1 2 3 4 5; do
+            ./mvnw --version --batch-mode && exit 0
+            echo "::warning::Maven download failed (attempt $attempt of 5); retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Run unit tests with coverage gate
         run: ./mvnw verify -Dtest="**/*Test" -Dspring-boot.repackage.skip=true --batch-mode
@@ -122,8 +139,25 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Make mvnw executable
-        run: chmod +x mvnw
+      # setup-java caches ~/.m2/repository only; the wrapper downloads Maven itself.
+      - name: Cache Maven distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
+
+      # Every backend job fetches the distribution from Maven Central at once, and
+      # Central occasionally refuses one. mvnw only installs a completed download,
+      # so retrying is safe.
+      - name: Prepare Maven wrapper
+        run: |
+          chmod +x mvnw
+          for attempt in 1 2 3 4 5; do
+            ./mvnw --version --batch-mode && exit 0
+            echo "::warning::Maven download failed (attempt $attempt of 5); retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Run integration tests
         env:
