@@ -8,8 +8,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  ChevronLeft, Save, AlertCircle, History as HistoryIcon, Pencil, Eye,
-  Image as ImageIcon, Layers, Tag, Plus, Trash2, ArrowUp, ArrowDown,
+  ChevronLeft,
+  Save,
+  AlertCircle,
+  History as HistoryIcon,
+  Pencil,
+  Eye,
+  Image as ImageIcon,
+  Layers,
+  Tag,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { useCompanyCapabilities } from "../../hooks/useCompanyRole";
 import {
@@ -27,7 +38,6 @@ import {
 } from "../../schemas/product";
 import type { RootState } from "../../stores";
 import { useAnims } from "../../hooks/useAnims";
-
 
 /**
  * Converts an ISO/Instant string from the API into the local-naive format that
@@ -74,9 +84,10 @@ function buildPayload(values: ProductFormValues): AdminProductWritePayload {
     purchasable: values.purchasable,
     listed: values.listed,
     preorderEnabled: values.preorderEnabled,
-    preorderExpectedDate: values.preorderEnabled && values.preorderExpectedDate
-      ? new Date(values.preorderExpectedDate).toISOString()
-      : null,
+    preorderExpectedDate:
+      values.preorderEnabled && values.preorderExpectedDate
+        ? new Date(values.preorderExpectedDate).toISOString()
+        : null,
     boostWeight: intOrNull(values.boostWeight),
     pinnedUntil: values.pinnedUntil
       ? new Date(values.pinnedUntil).toISOString()
@@ -121,11 +132,15 @@ interface FieldProps {
 function Field({ label, hint, error, children }: FieldProps) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs uppercase tracking-[0.2em] font-semibold text-white/65">{label}</span>
+      <span className="text-xs font-semibold text-muted-foreground">
+        {label}
+      </span>
       {children}
-      {hint && !error && <span className="text-xs text-white/45">{hint}</span>}
+      {hint && !error && (
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      )}
       {error && (
-        <span className="inline-flex items-center gap-1 text-xs text-red-400">
+        <span className="inline-flex items-center gap-1 text-xs text-danger">
           <AlertCircle className="w-3 h-3" />
           {error}
         </span>
@@ -135,7 +150,7 @@ function Field({ label, hint, error, children }: FieldProps) {
 }
 
 const inputBase =
-  "w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 focus:bg-white/[0.06] transition-colors";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus:bg-muted transition-colors";
 
 export default function AdminProductEditor() {
   const router = useRouter();
@@ -145,7 +160,9 @@ export default function AdminProductEditor() {
   const companyId = useSelector((s: RootState) => s.auth.companyId);
   const queryClient = useQueryClient();
   const { fadeInUp } = useAnims();
-  const [tab, setTab] = useState<"edit" | "images" | "variants" | "attributes" | "history">("edit");
+  const [tab, setTab] = useState<
+    "edit" | "images" | "variants" | "attributes" | "history"
+  >("edit");
   const { can } = useCompanyCapabilities(companyId);
   const canEdit = can("MANAGE_PRODUCTS");
 
@@ -156,7 +173,8 @@ export default function AdminProductEditor() {
 
   const { data: existing, isLoading: isLoadingExisting } = useQuery({
     queryKey,
-    queryFn: () => adminProductsApi.get(companyId!, productId!).then(r => r.data),
+    queryFn: () =>
+      adminProductsApi.get(companyId!, productId!).then((r) => r.data),
     enabled: !!companyId && isEdit && productId !== null,
   });
 
@@ -177,8 +195,9 @@ export default function AdminProductEditor() {
   const status = form.watch("status");
 
   const createMutation = useMutation({
-    mutationFn: (payload: AdminProductWritePayload) => adminProductsApi.create(companyId!, payload).then(r => r.data),
-    onSuccess: created => {
+    mutationFn: (payload: AdminProductWritePayload) =>
+      adminProductsApi.create(companyId!, payload).then((r) => r.data),
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["admin-products", "list"] });
       router.replace(`/admin/products/${created.id}`);
     },
@@ -186,14 +205,16 @@ export default function AdminProductEditor() {
 
   const updateMutation = useMutation({
     mutationFn: (payload: AdminProductWritePayload) =>
-      adminProductsApi.update(companyId!, productId!, payload).then(r => r.data),
-    onSuccess: updated => {
+      adminProductsApi
+        .update(companyId!, productId!, payload)
+        .then((r) => r.data),
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["admin-products", "list"] });
       queryClient.setQueryData(queryKey, updated);
     },
   });
 
-  const onSubmit = form.handleSubmit(values => {
+  const onSubmit = form.handleSubmit((values) => {
     const payload = buildPayload(values);
     if (isEdit) updateMutation.mutate(payload);
     else createMutation.mutate(payload);
@@ -201,37 +222,36 @@ export default function AdminProductEditor() {
 
   if (!companyId) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <p className="text-white/60 text-sm">Sign in with a vendor account to manage products.</p>
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <p className="text-muted-foreground text-sm">
+          Sign in with a vendor account to manage products.
+        </p>
       </div>
     );
   }
 
   if (isEdit && isLoadingExisting) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-sky-400/40 border-t-sky-400 animate-spin" />
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary animate-spin" />
       </div>
     );
   }
 
   const submitting = createMutation.isPending || updateMutation.isPending;
   const submitError =
-    (createMutation.error as Error | null)?.message ?? (updateMutation.error as Error | null)?.message ?? null;
+    (createMutation.error as Error | null)?.message ??
+    (updateMutation.error as Error | null)?.message ??
+    null;
   const errors = form.formState.errors;
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-      </div>
-
-      <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 py-10">
+    <div>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
         <button
           type="button"
           onClick={() => router.push("/admin/products")}
-          className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-6"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
         >
           <ChevronLeft className="w-4 h-4" />
           Back to products
@@ -243,17 +263,19 @@ export default function AdminProductEditor() {
           animate="visible"
           className="mb-6"
         >
-          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-2">
+          <p className="text-xs font-semibold text-link mb-2">
             {isEdit ? "Edit product" : "New product"}
           </p>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
-            {isEdit ? existing?.name ?? "Loading…" : "Add a new product"}
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {isEdit ? (existing?.name ?? "Loading…") : "Add a new product"}
           </h1>
         </motion.header>
 
         {isEdit && (
-          <div className="mb-6 flex flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur p-1 w-fit">
-            {(["edit", "images", "variants", "attributes", "history"] as const).map(t => {
+          <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl border border-border bg-surface p-1 w-fit">
+            {(
+              ["edit", "images", "variants", "attributes", "history"] as const
+            ).map((t) => {
               const icon = {
                 edit: <Pencil className="w-3.5 h-3.5" />,
                 images: <ImageIcon className="w-3.5 h-3.5" />,
@@ -268,7 +290,9 @@ export default function AdminProductEditor() {
                   type="button"
                   onClick={() => setTab(t)}
                   className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                    tab === t ? "bg-white/10 text-white" : "text-white/65 hover:text-white"
+                    tab === t
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {icon}
@@ -290,255 +314,332 @@ export default function AdminProductEditor() {
         )}
 
         {isEdit && tab === "images" && productId !== null && (
-          <ImagesTab companyId={companyId} productId={productId} canEdit={canEdit} />
+          <ImagesTab
+            companyId={companyId}
+            productId={productId}
+            canEdit={canEdit}
+          />
         )}
 
         {isEdit && tab === "variants" && productId !== null && (
-          <VariantsTab companyId={companyId} productId={productId} canEdit={canEdit} />
+          <VariantsTab
+            companyId={companyId}
+            productId={productId}
+            canEdit={canEdit}
+          />
         )}
 
         {isEdit && tab === "attributes" && productId !== null && (
-          <AttributesTab companyId={companyId} productId={productId} canEdit={canEdit} />
+          <AttributesTab
+            companyId={companyId}
+            productId={productId}
+            canEdit={canEdit}
+          />
         )}
 
         {(!isEdit || tab === "edit") && (
-        <motion.form
-          variants={fadeInUp}
-          initial="hidden"
-          animate="visible"
-          onSubmit={onSubmit}
-          className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 sm:p-8 space-y-6"
-        >
-          <Field label="Name" error={errors.name?.message}>
-            <input type="text" className={inputBase} placeholder="Black Friday Bundle" {...form.register("name")} />
-          </Field>
-
-          <Field label="Description" error={errors.description?.message}>
-            <textarea
-              rows={4}
-              className={inputBase}
-              placeholder="Optional"
-              {...form.register("description")}
-            />
-          </Field>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <Field label="SKU" error={errors.sku?.message}>
-              <input type="text" className={inputBase} placeholder="BLK-FRI-001" {...form.register("sku")} />
-            </Field>
-            <Field label="Currency" error={errors.currency?.message}>
-              <input type="text" className={inputBase} maxLength={3} {...form.register("currency")} />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <Field label="Price" error={errors.price?.message}>
+          <motion.form
+            variants={fadeInUp}
+            initial="hidden"
+            animate="visible"
+            onSubmit={onSubmit}
+            className="rounded-xl border border-border bg-surface shadow-sm p-6 sm:p-8 space-y-6"
+          >
+            <Field label="Name" error={errors.name?.message}>
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
                 className={inputBase}
-                {...form.register("price")}
+                placeholder="Black Friday Bundle"
+                {...form.register("name")}
               />
             </Field>
-            <Field
-              label="Compare-at"
-              hint="Original price; rendered as strikethrough next to the live price."
-              error={errors.compareAtPrice?.message as string | undefined}
-            >
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+
+            <Field label="Description" error={errors.description?.message}>
+              <textarea
+                rows={4}
                 className={inputBase}
-                {...form.register("compareAtPrice")}
-              />
-            </Field>
-            <Field label="Stock" hint="Leave blank for untracked inventory." error={errors.stock?.message as string | undefined}>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                className={inputBase}
-                {...form.register("stock")}
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <Field label="Category" error={errors.category?.message}>
-              <input type="text" className={inputBase} placeholder="Electronics" {...form.register("category")} />
-            </Field>
-            <Field label="Brand" error={errors.brand?.message}>
-              <input type="text" className={inputBase} placeholder="Acme" {...form.register("brand")} />
-            </Field>
-          </div>
-
-          <Field label="Tags" hint="Comma or space separated." error={errors.tags?.message}>
-            <input type="text" className={inputBase} placeholder="sale, holiday" {...form.register("tags")} />
-          </Field>
-
-          <Field label="Thumbnail URL" error={errors.thumbnailUrl?.message}>
-            <input
-              type="url"
-              className={inputBase}
-              placeholder="https://…"
-              {...form.register("thumbnailUrl")}
-            />
-          </Field>
-
-          {/* Lifecycle */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5 space-y-5">
-            <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Lifecycle</p>
-
-            <Field label="Status" error={errors.status?.message}>
-              <select className={inputBase} {...form.register("status")}>
-                <option value="DRAFT">Draft — invisible to customers</option>
-                <option value="SCHEDULED">Scheduled — auto-publish at a future time</option>
-                <option value="ACTIVE">Active — live in the catalogue</option>
-                <option value="INACTIVE">Inactive — temporarily hidden</option>
-                <option value="DISCONTINUED">Discontinued — permanently retired</option>
-                <option value="ARCHIVED">Archived — hidden, not deleted</option>
-              </select>
-            </Field>
-
-            {status === "SCHEDULED" && (
-              <Field
-                label="Publish at"
-                hint="The product flips to Active automatically at this time. Use your local timezone."
-                error={errors.scheduledPublishAt?.message}
-              >
-                <input
-                  type="datetime-local"
-                  className={inputBase}
-                  {...form.register("scheduledPublishAt")}
-                />
-              </Field>
-            )}
-          </div>
-
-          {/* Visibility flags */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="inline-flex items-center gap-2 text-sm text-white/80">
-              <input type="checkbox" {...form.register("listed")} className="accent-sky-400" />
-              Listed in catalogue
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-white/80">
-              <input type="checkbox" {...form.register("featured")} className="accent-sky-400" />
-              Featured
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-white/80">
-              <input type="checkbox" {...form.register("purchasable")} className="accent-sky-400" />
-              Purchasable
-            </label>
-          </div>
-
-          {/* Preorders */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="inline-flex items-center gap-2 text-sm text-white/80">
-              <input type="checkbox" {...form.register("preorderEnabled")} className="accent-sky-400" />
-              Allow preorders
-            </label>
-            {form.watch("preorderEnabled") && (
-              <label className="flex flex-col gap-1 text-sm text-white/80">
-                Expected availability
-                <input
-                  type="datetime-local"
-                  {...form.register("preorderExpectedDate")}
-                  className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-white placeholder:text-white/45 focus:outline-none focus:ring-1 focus:ring-sky-400/50"
-                />
-              </label>
-            )}
-          </div>
-
-          {/* Merchandising */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5 space-y-5">
-            <div className="flex items-baseline justify-between">
-              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
-                Merchandising
-              </p>
-              <p className="text-xs text-white/45">
-                Boost ranks higher in search; pin forces to the top until expiry.
-              </p>
-            </div>
-
-            <Field
-              label="Boost weight"
-              hint="1–10. Multiplies relevance — leave blank for neutral."
-              error={errors.boostWeight?.message as string | undefined}
-            >
-              <input
-                type="number"
-                step="1"
-                min="1"
-                max="10"
-                className={inputBase}
-                placeholder="e.g. 5"
-                {...form.register("boostWeight")}
+                placeholder="Optional"
+                {...form.register("description")}
               />
             </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <Field
-                label="Pin until"
-                hint="Local time. Empty = not pinned."
-                error={errors.pinnedUntil?.message as string | undefined}
-              >
+              <Field label="SKU" error={errors.sku?.message}>
                 <input
-                  type="datetime-local"
+                  type="text"
                   className={inputBase}
-                  {...form.register("pinnedUntil")}
+                  placeholder="BLK-FRI-001"
+                  {...form.register("sku")}
+                />
+              </Field>
+              <Field label="Currency" error={errors.currency?.message}>
+                <input
+                  type="text"
+                  className={inputBase}
+                  maxLength={3}
+                  {...form.register("currency")}
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              <Field label="Price" error={errors.price?.message}>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputBase}
+                  {...form.register("price")}
                 />
               </Field>
               <Field
-                label="Pin order"
-                hint="Lower wins among pinned products. Optional."
-                error={errors.pinnedRank?.message as string | undefined}
+                label="Compare-at"
+                hint="Original price; rendered as strikethrough next to the live price."
+                error={errors.compareAtPrice?.message as string | undefined}
+              >
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputBase}
+                  {...form.register("compareAtPrice")}
+                />
+              </Field>
+              <Field
+                label="Stock"
+                hint="Leave blank for untracked inventory."
+                error={errors.stock?.message as string | undefined}
               >
                 <input
                   type="number"
                   step="1"
                   min="0"
                   className={inputBase}
-                  placeholder="0"
-                  {...form.register("pinnedRank")}
+                  {...form.register("stock")}
                 />
               </Field>
             </div>
-          </div>
 
-          {submitError && (
-            <p className="inline-flex items-center gap-2 text-sm text-red-400">
-              <AlertCircle className="w-4 h-4" />
-              {submitError}
-            </p>
-          )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field label="Category" error={errors.category?.message}>
+                <input
+                  type="text"
+                  className={inputBase}
+                  placeholder="Electronics"
+                  {...form.register("category")}
+                />
+              </Field>
+              <Field label="Brand" error={errors.brand?.message}>
+                <input
+                  type="text"
+                  className={inputBase}
+                  placeholder="Acme"
+                  {...form.register("brand")}
+                />
+              </Field>
+            </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
-            <button
-              type="button"
-              onClick={() => router.push("/admin/products")}
-              className="px-4 py-2 rounded-full border border-white/20 text-sm font-semibold text-white/80 hover:bg-white/10 transition-colors"
+            <Field
+              label="Tags"
+              hint="Comma or space separated."
+              error={errors.tags?.message}
             >
-              {canEdit ? "Cancel" : "Back"}
-            </button>
-            {canEdit ? (
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              <input
+                type="text"
+                className={inputBase}
+                placeholder="sale, holiday"
+                {...form.register("tags")}
+              />
+            </Field>
+
+            <Field label="Thumbnail URL" error={errors.thumbnailUrl?.message}>
+              <input
+                type="url"
+                className={inputBase}
+                placeholder="https://…"
+                {...form.register("thumbnailUrl")}
+              />
+            </Field>
+
+            {/* Lifecycle */}
+            <div className="rounded-xl border border-border bg-surface p-5 space-y-5">
+              <p className="text-xs font-semibold text-link">Lifecycle</p>
+
+              <Field label="Status" error={errors.status?.message}>
+                <select className={inputBase} {...form.register("status")}>
+                  <option value="DRAFT">Draft — invisible to customers</option>
+                  <option value="SCHEDULED">
+                    Scheduled — auto-publish at a future time
+                  </option>
+                  <option value="ACTIVE">Active — live in the catalogue</option>
+                  <option value="INACTIVE">
+                    Inactive — temporarily hidden
+                  </option>
+                  <option value="DISCONTINUED">
+                    Discontinued — permanently retired
+                  </option>
+                  <option value="ARCHIVED">
+                    Archived — hidden, not deleted
+                  </option>
+                </select>
+              </Field>
+
+              {status === "SCHEDULED" && (
+                <Field
+                  label="Publish at"
+                  hint="The product flips to Active automatically at this time. Use your local timezone."
+                  error={errors.scheduledPublishAt?.message}
+                >
+                  <input
+                    type="datetime-local"
+                    className={inputBase}
+                    {...form.register("scheduledPublishAt")}
+                  />
+                </Field>
+              )}
+            </div>
+
+            {/* Visibility flags */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  {...form.register("listed")}
+                  className="accent-primary"
+                />
+                Listed in catalogue
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  {...form.register("featured")}
+                  className="accent-primary"
+                />
+                Featured
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  {...form.register("purchasable")}
+                  className="accent-primary"
+                />
+                Purchasable
+              </label>
+            </div>
+
+            {/* Preorders */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  {...form.register("preorderEnabled")}
+                  className="accent-primary"
+                />
+                Allow preorders
+              </label>
+              {form.watch("preorderEnabled") && (
+                <label className="flex flex-col gap-1 text-sm text-foreground">
+                  Expected availability
+                  <input
+                    type="datetime-local"
+                    {...form.register("preorderExpectedDate")}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/40"
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Merchandising */}
+            <div className="rounded-xl border border-border bg-surface p-5 space-y-5">
+              <div className="flex items-baseline justify-between">
+                <p className="text-xs font-semibold text-link">Merchandising</p>
+                <p className="text-xs text-muted-foreground">
+                  Boost ranks higher in search; pin forces to the top until
+                  expiry.
+                </p>
+              </div>
+
+              <Field
+                label="Boost weight"
+                hint="1–10. Multiplies relevance — leave blank for neutral."
+                error={errors.boostWeight?.message as string | undefined}
               >
-                <Save className="w-4 h-4" />
-                {submitting ? "Saving…" : isEdit ? "Save changes" : "Create product"}
-              </button>
-            ) : (
-              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/20 text-xs font-semibold text-white/65">
-                <Eye className="w-3.5 h-3.5" />
-                Read-only
-              </span>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="10"
+                  className={inputBase}
+                  placeholder="e.g. 5"
+                  {...form.register("boostWeight")}
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <Field
+                  label="Pin until"
+                  hint="Local time. Empty = not pinned."
+                  error={errors.pinnedUntil?.message as string | undefined}
+                >
+                  <input
+                    type="datetime-local"
+                    className={inputBase}
+                    {...form.register("pinnedUntil")}
+                  />
+                </Field>
+                <Field
+                  label="Pin order"
+                  hint="Lower wins among pinned products. Optional."
+                  error={errors.pinnedRank?.message as string | undefined}
+                >
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    className={inputBase}
+                    placeholder="0"
+                    {...form.register("pinnedRank")}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {submitError && (
+              <p className="inline-flex items-center gap-2 text-sm text-danger">
+                <AlertCircle className="w-4 h-4" />
+                {submitError}
+              </p>
             )}
-          </div>
-        </motion.form>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => router.push("/admin/products")}
+                className="px-4 py-2 rounded-full border border-input text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+              >
+                {canEdit ? "Cancel" : "Back"}
+              </button>
+              {canEdit ? (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4" />
+                  {submitting
+                    ? "Saving…"
+                    : isEdit
+                      ? "Save changes"
+                      : "Create product"}
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-input text-xs font-semibold text-muted-foreground">
+                  <Eye className="w-3.5 h-3.5" />
+                  Read-only
+                </span>
+              )}
+            </div>
+          </motion.form>
         )}
       </div>
     </div>
@@ -547,25 +648,39 @@ export default function AdminProductEditor() {
 
 // ─── Images Tab ──────────────────────────────────────────────────────────────
 
-function ImagesTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+function ImagesTab({
+  companyId,
+  productId,
+  canEdit,
+}: {
+  companyId: string;
+  productId: string;
+  canEdit: boolean;
+}) {
   const queryClient = useQueryClient();
   const [newUrl, setNewUrl] = useState("");
   const qk = ["product-images", productId];
 
   const { data: images = [], isLoading } = useQuery({
     queryKey: qk,
-    queryFn: () => adminProductsApi.getImages(companyId, productId).then(r => r.data),
+    queryFn: () =>
+      adminProductsApi.getImages(companyId, productId).then((r) => r.data),
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk });
 
   const addMutation = useMutation({
-    mutationFn: () => adminProductsApi.addImage(companyId, productId, newUrl.trim()),
-    onSuccess: () => { invalidate(); setNewUrl(""); },
+    mutationFn: () =>
+      adminProductsApi.addImage(companyId, productId, newUrl.trim()),
+    onSuccess: () => {
+      invalidate();
+      setNewUrl("");
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (imageId: string) => adminProductsApi.deleteImage(companyId, productId, imageId),
+    mutationFn: (imageId: string) =>
+      adminProductsApi.deleteImage(companyId, productId, imageId),
     onSuccess: invalidate,
   });
 
@@ -574,28 +689,77 @@ function ImagesTab({ companyId, productId, canEdit }: { companyId: string; produ
     const swap = index + direction;
     if (swap < 0 || swap >= reordered.length) return;
     [reordered[index], reordered[swap]] = [reordered[swap], reordered[index]];
-    adminProductsApi.reorderImages(companyId, productId, reordered.map(i => i.id)).then(invalidate);
+    adminProductsApi
+      .reorderImages(
+        companyId,
+        productId,
+        reordered.map((i) => i.id)
+      )
+      .then(invalidate);
   }
 
-  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
-  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
+  const panelCls =
+    "rounded-xl border border-border bg-surface shadow-sm p-6 space-y-4";
+  const inputBase =
+    "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
 
-  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading images…</p></div>;
+  if (isLoading)
+    return (
+      <div className={panelCls}>
+        <p className="text-muted-foreground text-sm">Loading images…</p>
+      </div>
+    );
 
   return (
     <div className={panelCls}>
-      <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Images ({images.length}/5)</p>
-      {images.length === 0 && <p className="text-sm text-white/50">No images yet.</p>}
+      <p className="text-xs font-semibold text-link">
+        Images ({images.length}/5)
+      </p>
+      {images.length === 0 && (
+        <p className="text-sm text-muted-foreground">No images yet.</p>
+      )}
       <div className="space-y-2">
         {images.map((img, i) => (
-          <div key={img.id} className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.04]">
-            <img src={img.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover border border-white/10 bg-white/5" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <span className="flex-1 text-xs text-white/60 truncate">{img.imageUrl}</span>
+          <div
+            key={img.id}
+            className="flex items-center gap-3 p-3 rounded-xl border border-border bg-surface"
+          >
+            <img
+              src={img.imageUrl}
+              alt=""
+              className="w-12 h-12 rounded-lg object-cover border border-border bg-surface"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+            <span className="flex-1 text-xs text-muted-foreground truncate">
+              {img.imageUrl}
+            </span>
             {canEdit && (
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 rounded text-white/40 hover:text-white disabled:opacity-20"><ArrowUp className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => move(i, 1)} disabled={i === images.length - 1} className="p-1.5 rounded text-white/40 hover:text-white disabled:opacity-20"><ArrowDown className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => deleteMutation.mutate(img.id)} className="p-1.5 rounded text-white/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button
+                  type="button"
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  className="p-1.5 rounded text-muted-foreground hover:text-foreground disabled:opacity-20"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(i, 1)}
+                  disabled={i === images.length - 1}
+                  className="p-1.5 rounded text-muted-foreground hover:text-foreground disabled:opacity-20"
+                >
+                  <ArrowDown className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteMutation.mutate(img.id)}
+                  className="p-1.5 rounded text-muted-foreground hover:text-danger"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
@@ -606,8 +770,10 @@ function ImagesTab({ companyId, productId, canEdit }: { companyId: string; produ
           <input
             type="url"
             value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && newUrl.trim() && addMutation.mutate()}
+            onChange={(e) => setNewUrl(e.target.value)}
+            onKeyDown={(e) =>
+              e.key === "Enter" && newUrl.trim() && addMutation.mutate()
+            }
             placeholder="https://… image URL"
             className={`flex-1 ${inputBase}`}
           />
@@ -615,7 +781,7 @@ function ImagesTab({ companyId, productId, canEdit }: { companyId: string; produ
             type="button"
             onClick={() => addMutation.mutate()}
             disabled={!newUrl.trim() || addMutation.isPending}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground disabled:opacity-50"
           >
             <Plus className="w-4 h-4" /> Add
           </button>
@@ -627,107 +793,317 @@ function ImagesTab({ companyId, productId, canEdit }: { companyId: string; produ
 
 // ─── Variants Tab ─────────────────────────────────────────────────────────────
 
-function VariantsTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+function VariantsTab({
+  companyId,
+  productId,
+  canEdit,
+}: {
+  companyId: string;
+  productId: string;
+  canEdit: boolean;
+}) {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<CreateVariantPayload>({ price: 0 });
-  const [editForms, setEditForms] = useState<Record<string, UpdateVariantPayload>>({});
+  const [editForms, setEditForms] = useState<
+    Record<string, UpdateVariantPayload>
+  >({});
   const qk = ["product-variants", productId];
 
   const { data: variants = [], isLoading } = useQuery({
     queryKey: qk,
-    queryFn: () => adminProductsApi.getVariants(companyId, productId).then(r => r.data),
+    queryFn: () =>
+      adminProductsApi.getVariants(companyId, productId).then((r) => r.data),
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk });
 
   const createMutation = useMutation({
-    mutationFn: () => adminProductsApi.createVariant(companyId, productId, addForm),
-    onSuccess: () => { invalidate(); setAddOpen(false); setAddForm({ price: 0 }); },
+    mutationFn: () =>
+      adminProductsApi.createVariant(companyId, productId, addForm),
+    onSuccess: () => {
+      invalidate();
+      setAddOpen(false);
+      setAddForm({ price: 0 });
+    },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateVariantPayload }) =>
-      adminProductsApi.updateVariant(companyId, productId, id, payload),
-    onSuccess: (_, { id }) => { invalidate(); setExpandedId(null); setEditForms(f => { const n = { ...f }; delete n[id]; return n; }); },
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: UpdateVariantPayload;
+    }) => adminProductsApi.updateVariant(companyId, productId, id, payload),
+    onSuccess: (_, { id }) => {
+      invalidate();
+      setExpandedId(null);
+      setEditForms((f) => {
+        const n = { ...f };
+        delete n[id];
+        return n;
+      });
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => adminProductsApi.deleteVariant(companyId, productId, id),
+    mutationFn: (id: string) =>
+      adminProductsApi.deleteVariant(companyId, productId, id),
     onSuccess: invalidate,
   });
 
-  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
-  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
+  const inputBase =
+    "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
+  const panelCls =
+    "rounded-xl border border-border bg-surface shadow-sm p-6 space-y-4";
 
-  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading variants…</p></div>;
+  if (isLoading)
+    return (
+      <div className={panelCls}>
+        <p className="text-muted-foreground text-sm">Loading variants…</p>
+      </div>
+    );
 
   return (
     <div className={panelCls}>
       <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Variants ({variants.length})</p>
+        <p className="text-xs font-semibold text-link">
+          Variants ({variants.length})
+        </p>
         {canEdit && (
-          <button type="button" onClick={() => setAddOpen(o => !o)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/10 text-xs font-semibold text-white transition-colors">
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-input hover:bg-muted text-xs font-semibold text-foreground transition-colors"
+          >
             <Plus className="w-3.5 h-3.5" /> Add variant
           </button>
         )}
       </div>
 
       {addOpen && canEdit && (
-        <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 space-y-3">
-          <p className="text-xs font-semibold text-sky-200/80">New variant</p>
+        <div className="rounded-xl border border-primary/40 bg-primary/10 p-4 space-y-3">
+          <p className="text-xs font-semibold text-link">New variant</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {(["option1", "option2", "option3"] as const).map(k => (
-              <input key={k} type="text" placeholder={k} value={addForm[k] ?? ""} onChange={e => setAddForm(f => ({ ...f, [k]: e.target.value || null }))} className={inputBase} />
+            {(["option1", "option2", "option3"] as const).map((k) => (
+              <input
+                key={k}
+                type="text"
+                placeholder={k}
+                value={addForm[k] ?? ""}
+                onChange={(e) =>
+                  setAddForm((f) => ({ ...f, [k]: e.target.value || null }))
+                }
+                className={inputBase}
+              />
             ))}
-            <input type="number" step="0.01" min="0" placeholder="Price *" value={addForm.price ?? ""} onChange={e => setAddForm(f => ({ ...f, price: Number(e.target.value) }))} className={inputBase} />
-            <input type="text" placeholder="SKU (optional)" value={addForm.sku ?? ""} onChange={e => setAddForm(f => ({ ...f, sku: e.target.value || null }))} className={inputBase} />
-            <input type="number" step="1" min="0" placeholder="Stock" value={addForm.stock ?? ""} onChange={e => setAddForm(f => ({ ...f, stock: e.target.value ? Number(e.target.value) : null }))} className={inputBase} />
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Price *"
+              value={addForm.price ?? ""}
+              onChange={(e) =>
+                setAddForm((f) => ({ ...f, price: Number(e.target.value) }))
+              }
+              className={inputBase}
+            />
+            <input
+              type="text"
+              placeholder="SKU (optional)"
+              value={addForm.sku ?? ""}
+              onChange={(e) =>
+                setAddForm((f) => ({ ...f, sku: e.target.value || null }))
+              }
+              className={inputBase}
+            />
+            <input
+              type="number"
+              step="1"
+              min="0"
+              placeholder="Stock"
+              value={addForm.stock ?? ""}
+              onChange={(e) =>
+                setAddForm((f) => ({
+                  ...f,
+                  stock: e.target.value ? Number(e.target.value) : null,
+                }))
+              }
+              className={inputBase}
+            />
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => createMutation.mutate()} disabled={!addForm.price || createMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">Save</button>
-            <button type="button" onClick={() => setAddOpen(false)} className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 text-sm text-white/70">Cancel</button>
+            <button
+              type="button"
+              onClick={() => createMutation.mutate()}
+              disabled={!addForm.price || createMutation.isPending}
+              className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddOpen(false)}
+              className="px-4 py-2 rounded-xl border border-input hover:bg-muted text-sm text-muted-foreground"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
-      {variants.length === 0 && !addOpen && <p className="text-sm text-white/50">No variants yet.</p>}
+      {variants.length === 0 && !addOpen && (
+        <p className="text-sm text-muted-foreground">No variants yet.</p>
+      )}
 
       <div className="space-y-2">
-        {variants.map(v => {
-          const label = [v.option1, v.option2, v.option3].filter(Boolean).join(" / ") || "Default";
+        {variants.map((v) => {
+          const label =
+            [v.option1, v.option2, v.option3].filter(Boolean).join(" / ") ||
+            "Default";
           const isExpanded = expandedId === v.id;
           const ef = editForms[v.id] ?? {};
           return (
-            <div key={v.id} className="rounded-xl border border-white/10 bg-white/[0.04]">
+            <div
+              key={v.id}
+              className="rounded-xl border border-border bg-surface"
+            >
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-white">{label}</span>
-                  <span className="text-xs text-white/50">{v.sku ?? "no SKU"}</span>
-                  <span className="text-xs text-white/70">${v.price.toFixed(2)}</span>
-                  {v.stock != null && <span className="text-xs text-white/50">stock: {v.stock}</span>}
+                  <span className="text-sm font-medium text-foreground">
+                    {label}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {v.sku ?? "no SKU"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ${v.price.toFixed(2)}
+                  </span>
+                  {v.stock != null && (
+                    <span className="text-xs text-muted-foreground">
+                      stock: {v.stock}
+                    </span>
+                  )}
                 </div>
                 {canEdit && (
                   <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => { setExpandedId(isExpanded ? null : v.id); setEditForms(f => ({ ...f, [v.id]: { sku: v.sku, price: v.price, stock: v.stock, option1: v.option1, option2: v.option2, option3: v.option3 } })); }} className="p-1.5 rounded text-white/50 hover:text-sky-200"><Pencil className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => confirm(`Delete this variant?`) && deleteMutation.mutate(v.id)} className="p-1.5 rounded text-white/50 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedId(isExpanded ? null : v.id);
+                        setEditForms((f) => ({
+                          ...f,
+                          [v.id]: {
+                            sku: v.sku,
+                            price: v.price,
+                            stock: v.stock,
+                            option1: v.option1,
+                            option2: v.option2,
+                            option3: v.option3,
+                          },
+                        }));
+                      }}
+                      className="p-1.5 rounded text-muted-foreground hover:text-link"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirm(`Delete this variant?`) &&
+                        deleteMutation.mutate(v.id)
+                      }
+                      className="p-1.5 rounded text-muted-foreground hover:text-danger"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
               {isExpanded && canEdit && (
-                <div className="px-4 pb-4 space-y-3 border-t border-white/10 pt-3">
+                <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {(["option1", "option2", "option3"] as const).map(k => (
-                      <input key={k} type="text" placeholder={k} value={(ef[k] as string | null) ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], [k]: e.target.value || null } }))} className={inputBase} />
+                    {(["option1", "option2", "option3"] as const).map((k) => (
+                      <input
+                        key={k}
+                        type="text"
+                        placeholder={k}
+                        value={(ef[k] as string | null) ?? ""}
+                        onChange={(e) =>
+                          setEditForms((f) => ({
+                            ...f,
+                            [v.id]: { ...f[v.id], [k]: e.target.value || null },
+                          }))
+                        }
+                        className={inputBase}
+                      />
                     ))}
-                    <input type="number" step="0.01" min="0" placeholder="Price" value={ef.price ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], price: Number(e.target.value) } }))} className={inputBase} />
-                    <input type="text" placeholder="SKU" value={ef.sku ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], sku: e.target.value || null } }))} className={inputBase} />
-                    <input type="number" step="1" min="0" placeholder="Stock" value={ef.stock ?? ""} onChange={e => setEditForms(f => ({ ...f, [v.id]: { ...f[v.id], stock: e.target.value ? Number(e.target.value) : null } }))} className={inputBase} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Price"
+                      value={ef.price ?? ""}
+                      onChange={(e) =>
+                        setEditForms((f) => ({
+                          ...f,
+                          [v.id]: { ...f[v.id], price: Number(e.target.value) },
+                        }))
+                      }
+                      className={inputBase}
+                    />
+                    <input
+                      type="text"
+                      placeholder="SKU"
+                      value={ef.sku ?? ""}
+                      onChange={(e) =>
+                        setEditForms((f) => ({
+                          ...f,
+                          [v.id]: { ...f[v.id], sku: e.target.value || null },
+                        }))
+                      }
+                      className={inputBase}
+                    />
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="Stock"
+                      value={ef.stock ?? ""}
+                      onChange={(e) =>
+                        setEditForms((f) => ({
+                          ...f,
+                          [v.id]: {
+                            ...f[v.id],
+                            stock: e.target.value
+                              ? Number(e.target.value)
+                              : null,
+                          },
+                        }))
+                      }
+                      className={inputBase}
+                    />
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => updateMutation.mutate({ id: v.id, payload: ef })} disabled={updateMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">Save</button>
-                    <button type="button" onClick={() => setExpandedId(null)} className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 text-sm text-white/70">Cancel</button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateMutation.mutate({ id: v.id, payload: ef })
+                      }
+                      disabled={updateMutation.isPending}
+                      className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(null)}
+                      className="px-4 py-2 rounded-xl border border-input hover:bg-muted text-sm text-muted-foreground"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               )}
@@ -741,68 +1117,132 @@ function VariantsTab({ companyId, productId, canEdit }: { companyId: string; pro
 
 // ─── Attributes Tab ───────────────────────────────────────────────────────────
 
-function AttributesTab({ companyId, productId, canEdit }: { companyId: string; productId: string; canEdit: boolean }) {
+function AttributesTab({
+  companyId,
+  productId,
+  canEdit,
+}: {
+  companyId: string;
+  productId: string;
+  canEdit: boolean;
+}) {
   const queryClient = useQueryClient();
   const qk = ["product-attributes", productId];
-  const [localAttrs, setLocalAttrs] = useState<{ name: string; value: string }[]>([]);
+  const [localAttrs, setLocalAttrs] = useState<
+    { name: string; value: string }[]
+  >([]);
   const [dirty, setDirty] = useState(false);
 
   const { data: attrs = [], isLoading } = useQuery({
     queryKey: qk,
-    queryFn: () => adminProductsApi.getAttributes(companyId, productId).then(r => r.data),
+    queryFn: () =>
+      adminProductsApi.getAttributes(companyId, productId).then((r) => r.data),
   });
 
   useEffect(() => {
-    setLocalAttrs(attrs.map(a => ({ name: a.name, value: a.value })));
+    setLocalAttrs(attrs.map((a) => ({ name: a.name, value: a.value })));
     setDirty(false);
   }, [attrs]);
 
   const saveMutation = useMutation({
-    mutationFn: () => adminProductsApi.setAttributes(companyId, productId, localAttrs.filter(a => a.name.trim())),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk }); setDirty(false); },
+    mutationFn: () =>
+      adminProductsApi.setAttributes(
+        companyId,
+        productId,
+        localAttrs.filter((a) => a.name.trim())
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk });
+      setDirty(false);
+    },
   });
 
   function update(i: number, field: "name" | "value", val: string) {
-    setLocalAttrs(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: val } : a));
+    setLocalAttrs((prev) =>
+      prev.map((a, idx) => (idx === i ? { ...a, [field]: val } : a))
+    );
     setDirty(true);
   }
 
   function removeRow(i: number) {
-    setLocalAttrs(prev => prev.filter((_, idx) => idx !== i));
+    setLocalAttrs((prev) => prev.filter((_, idx) => idx !== i));
     setDirty(true);
   }
 
-  const inputBase = "rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-sky-400/60 transition-colors";
-  const panelCls = "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6 space-y-4";
+  const inputBase =
+    "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
+  const panelCls =
+    "rounded-xl border border-border bg-surface shadow-sm p-6 space-y-4";
 
-  if (isLoading) return <div className={panelCls}><p className="text-white/50 text-sm">Loading attributes…</p></div>;
+  if (isLoading)
+    return (
+      <div className={panelCls}>
+        <p className="text-muted-foreground text-sm">Loading attributes…</p>
+      </div>
+    );
 
   return (
     <div className={panelCls}>
       <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Attributes</p>
+        <p className="text-xs font-semibold text-link">Attributes</p>
         {canEdit && (
-          <button type="button" onClick={() => { setLocalAttrs(p => [...p, { name: "", value: "" }]); setDirty(true); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/10 text-xs font-semibold text-white transition-colors">
+          <button
+            type="button"
+            onClick={() => {
+              setLocalAttrs((p) => [...p, { name: "", value: "" }]);
+              setDirty(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-input hover:bg-muted text-xs font-semibold text-foreground transition-colors"
+          >
             <Plus className="w-3.5 h-3.5" /> Add
           </button>
         )}
       </div>
 
-      {localAttrs.length === 0 && <p className="text-sm text-white/50">No attributes yet.</p>}
+      {localAttrs.length === 0 && (
+        <p className="text-sm text-muted-foreground">No attributes yet.</p>
+      )}
 
       <div className="space-y-2">
         {localAttrs.map((a, i) => (
           <div key={i} className="flex gap-2 items-center">
-            <input type="text" value={a.name} onChange={e => update(i, "name", e.target.value)} placeholder="Key" className={`flex-1 ${inputBase}`} readOnly={!canEdit} />
-            <input type="text" value={a.value} onChange={e => update(i, "value", e.target.value)} placeholder="Value" className={`flex-1 ${inputBase}`} readOnly={!canEdit} />
-            {canEdit && <button type="button" onClick={() => removeRow(i)} className="p-1.5 rounded text-white/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>}
+            <input
+              type="text"
+              value={a.name}
+              onChange={(e) => update(i, "name", e.target.value)}
+              placeholder="Key"
+              className={`flex-1 ${inputBase}`}
+              readOnly={!canEdit}
+            />
+            <input
+              type="text"
+              value={a.value}
+              onChange={(e) => update(i, "value", e.target.value)}
+              placeholder="Value"
+              className={`flex-1 ${inputBase}`}
+              readOnly={!canEdit}
+            />
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => removeRow(i)}
+                className="p-1.5 rounded text-muted-foreground hover:text-danger"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>
 
       {canEdit && dirty && (
-        <div className="flex justify-end pt-2 border-t border-white/10">
-          <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white disabled:opacity-50">
+        <div className="flex justify-end pt-2 border-t border-border">
+          <button
+            type="button"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          >
             {saveMutation.isPending ? "Saving…" : "Save attributes"}
           </button>
         </div>

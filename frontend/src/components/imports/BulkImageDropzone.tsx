@@ -1,6 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 import axios from "axios";
-import { Image as ImageIcon, Upload, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Upload,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+} from "lucide-react";
 import { importsApi } from "../../api/imports";
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -67,7 +73,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
         error: null,
       });
     }
-    setItems(prev => [...prev, ...next]);
+    setItems((prev) => [...prev, ...next]);
   }, []);
 
   const onDrop = useCallback(
@@ -75,11 +81,13 @@ export default function BulkImageDropzone({ companyId }: Props) {
       e.preventDefault();
       onFiles(e.dataTransfer.files);
     },
-    [onFiles],
+    [onFiles]
   );
 
   function setItem(id: string, patch: Partial<Item>) {
-    setItems(prev => prev.map(it => (it.id === id ? { ...it, ...patch } : it)));
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, ...patch } : it))
+    );
   }
 
   async function uploadOne(item: Item): Promise<Item> {
@@ -91,7 +99,10 @@ export default function BulkImageDropzone({ companyId }: Props) {
       await axios.put(r.data.uploadUrl, item.file, {
         headers: { "Content-Type": contentType },
       });
-      const next: Partial<Item> = { status: "uploaded", imageUrl: r.data.fileUrl };
+      const next: Partial<Item> = {
+        status: "uploaded",
+        imageUrl: r.data.fileUrl,
+      };
       setItem(item.id, next);
       return { ...item, ...next };
     } catch (e: unknown) {
@@ -104,7 +115,9 @@ export default function BulkImageDropzone({ companyId }: Props) {
   async function uploadAll() {
     setBusy(true);
     setAttachResult(null);
-    const queue = items.filter(it => it.status === "pending" || it.status === "failed");
+    const queue = items.filter(
+      (it) => it.status === "pending" || it.status === "failed"
+    );
     let cursor = 0;
     async function worker() {
       while (cursor < queue.length) {
@@ -119,7 +132,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
   async function attachAll() {
     setAttaching(true);
     setAttachResult(null);
-    const ready = items.filter(it => it.status === "uploaded" && it.imageUrl);
+    const ready = items.filter((it) => it.status === "uploaded" && it.imageUrl);
     if (ready.length === 0) {
       setAttaching(false);
       setAttachResult("No uploaded images to attach yet.");
@@ -128,11 +141,11 @@ export default function BulkImageDropzone({ companyId }: Props) {
     try {
       const r = await importsApi.attachImages(
         companyId,
-        ready.map(it => ({
+        ready.map((it) => ({
           sku: it.sku,
           imageUrl: it.imageUrl as string,
           displayOrder: it.displayOrder,
-        })),
+        }))
       );
       setAttachResult(`Attached ${r.data.attached} of ${ready.length} images.`);
     } catch (e: unknown) {
@@ -144,23 +157,23 @@ export default function BulkImageDropzone({ companyId }: Props) {
   }
 
   const total = items.length;
-  const uploaded = items.filter(i => i.status === "uploaded").length;
-  const failed = items.filter(i => i.status === "failed").length;
+  const uploaded = items.filter((i) => i.status === "uploaded").length;
+  const failed = items.filter((i) => i.status === "failed").length;
 
   return (
     <div className="space-y-4">
       <div
         onDrop={onDrop}
-        onDragOver={e => e.preventDefault()}
-        className="rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.04] backdrop-blur p-10 text-center hover:border-sky-400/40 transition-colors"
+        onDragOver={(e) => e.preventDefault()}
+        className="rounded-xl border-2 border-dashed border-border bg-surface p-10 text-center hover:border-primary/40 transition-colors"
       >
-        <ImageIcon className="w-8 h-8 text-sky-200 mx-auto mb-3" />
-        <p className="text-sm text-white/80 font-medium mb-1">
+        <ImageIcon className="w-8 h-8 text-link mx-auto mb-3" />
+        <p className="text-sm text-foreground font-medium mb-1">
           Drop product images here, or click to choose files
         </p>
-        <p className="text-xs text-white/55">
-          Filename convention: <code className="text-sky-200">SKU.jpg</code> or
-          <code className="text-sky-200"> SKU-2.jpg</code> for additional positions
+        <p className="text-xs text-muted-foreground">
+          Filename convention: <code className="text-link">SKU.jpg</code> or
+          <code className="text-link"> SKU-2.jpg</code> for additional positions
         </p>
         <input
           ref={inputRef}
@@ -168,7 +181,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
           accept="image/*"
           multiple
           className="hidden"
-          onChange={e => {
+          onChange={(e) => {
             if (e.target.files) onFiles(e.target.files);
             e.target.value = "";
           }}
@@ -176,7 +189,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground transition-colors"
         >
           <Upload className="w-4 h-4" />
           Choose images
@@ -184,17 +197,22 @@ export default function BulkImageDropzone({ companyId }: Props) {
       </div>
 
       {total > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-            <div className="text-xs text-white/65">
-              {total} files · {uploaded} uploaded · <span className={failed > 0 ? "text-red-300" : "text-white/65"}>{failed} failed</span>
+        <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="text-xs text-muted-foreground">
+              {total} files · {uploaded} uploaded ·{" "}
+              <span
+                className={failed > 0 ? "text-danger" : "text-muted-foreground"}
+              >
+                {failed} failed
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={uploadAll}
                 disabled={busy}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-white/15 text-white/80 hover:bg-white/10 transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40"
               >
                 {busy ? "Uploading…" : "Upload all"}
               </button>
@@ -202,7 +220,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
                 type="button"
                 onClick={attachAll}
                 disabled={attaching || uploaded === 0}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-primary hover:bg-primary-hover text-primary-foreground transition-colors disabled:opacity-40"
               >
                 {attaching ? "Attaching…" : "Attach to products"}
               </button>
@@ -210,7 +228,7 @@ export default function BulkImageDropzone({ companyId }: Props) {
           </div>
           <div className="max-h-72 overflow-auto">
             <table className="w-full text-xs">
-              <thead className="text-left text-white/45 uppercase tracking-[0.16em] bg-white/[0.04]">
+              <thead className="text-left text-muted-foreground bg-surface">
                 <tr>
                   <th className="px-3 py-2">File</th>
                   <th className="px-3 py-2">SKU</th>
@@ -219,14 +237,18 @@ export default function BulkImageDropzone({ companyId }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {items.map(it => (
-                  <tr key={it.id} className="border-t border-white/5">
-                    <td className="px-3 py-1.5 text-white/80 truncate max-w-[260px]">{it.file.name}</td>
+                {items.map((it) => (
+                  <tr key={it.id} className="border-t border-border">
+                    <td className="px-3 py-1.5 text-foreground truncate max-w-[260px]">
+                      {it.file.name}
+                    </td>
                     <td className="px-3 py-1.5">
                       <input
                         value={it.sku}
-                        onChange={e => setItem(it.id, { sku: e.target.value })}
-                        className="px-2 py-0.5 rounded text-white text-xs bg-transparent border border-white/10 hover:border-white/20 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
+                        onChange={(e) =>
+                          setItem(it.id, { sku: e.target.value })
+                        }
+                        className="px-2 py-0.5 rounded text-foreground text-xs bg-transparent border border-border hover:border-input focus:outline-none focus:ring-1 focus:ring-ring/40"
                       />
                     </td>
                     <td className="px-3 py-1.5">
@@ -234,24 +256,34 @@ export default function BulkImageDropzone({ companyId }: Props) {
                         type="number"
                         min={0}
                         value={it.displayOrder}
-                        onChange={e => setItem(it.id, { displayOrder: parseInt(e.target.value, 10) || 0 })}
-                        className="w-14 px-2 py-0.5 rounded text-white text-xs bg-transparent border border-white/10 hover:border-white/20 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
+                        onChange={(e) =>
+                          setItem(it.id, {
+                            displayOrder: parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                        className="w-14 px-2 py-0.5 rounded text-foreground text-xs bg-transparent border border-border hover:border-input focus:outline-none focus:ring-1 focus:ring-ring/40"
                       />
                     </td>
                     <td className="px-3 py-1.5">
-                      {it.status === "pending" && <span className="text-white/55">pending</span>}
+                      {it.status === "pending" && (
+                        <span className="text-muted-foreground">pending</span>
+                      )}
                       {it.status === "uploading" && (
-                        <span className="inline-flex items-center gap-1 text-sky-200">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> uploading
+                        <span className="inline-flex items-center gap-1 text-link">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                          uploading
                         </span>
                       )}
                       {it.status === "uploaded" && (
-                        <span className="inline-flex items-center gap-1 text-green-300">
+                        <span className="inline-flex items-center gap-1 text-success">
                           <CheckCircle2 className="w-3.5 h-3.5" /> uploaded
                         </span>
                       )}
                       {it.status === "failed" && (
-                        <span className="inline-flex items-center gap-1 text-red-300" title={it.error ?? ""}>
+                        <span
+                          className="inline-flex items-center gap-1 text-danger"
+                          title={it.error ?? ""}
+                        >
                           <AlertCircle className="w-3.5 h-3.5" /> failed
                         </span>
                       )}
@@ -262,7 +294,9 @@ export default function BulkImageDropzone({ companyId }: Props) {
             </table>
           </div>
           {attachResult && (
-            <p className="px-4 py-2 text-xs text-sky-200 border-t border-white/10">{attachResult}</p>
+            <p className="px-4 py-2 text-xs text-link border-t border-border">
+              {attachResult}
+            </p>
           )}
         </div>
       )}

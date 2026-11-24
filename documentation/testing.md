@@ -167,7 +167,7 @@ The Python Playwright suite in `playwright/tests/` runs against a built frontend
 - **`test_cart_checkout.py`.** Add to cart opens the drawer and persists across reloads, `/checkout` requires a session, and placing an order sends an `Idempotency-Key` and the expected body, then shows the payment step ("Payments aren't configured" without a Stripe key).
 - **`test_signup.py`.** Signup sends the `captcha` field and shows the inbox step, the login page carries `?next=` to signup, and the `/verify-email` and `/verify-device` links handle valid and spent tokens.
 
-The storefront and auth tests expect the frontend to talk to `playwright/stub_api.py`, a standard-library fixture server for the public storefront, session, signup and verification endpoints (it records auth request bodies so tests can assert their shape), rather than the real backend. The `Frontend Smoke Tests` CI job runs exactly this setup. To reproduce it locally from the repository root:
+The storefront and auth tests expect the frontend to talk to `playwright/stub_api.py`, a standard-library fixture server for the public storefront, session, signup and verification endpoints (it records auth request bodies so tests can assert their shape). A `refreshToken=valid` cookie is a shopper session; `refreshToken=vendor` is the owner of the fixture company with every capability, for exercising the seller workspace, rather than the real backend. The `Frontend Smoke Tests` CI job runs exactly this setup. To reproduce it locally from the repository root:
 
 ```powershell
 python playwright/stub_api.py 8090          # in its own terminal

@@ -49,7 +49,7 @@ Fonts are Geist Sans (`font-sans`, the default) and Geist Mono (`font-mono`), lo
 
 ### Migration status (temporary)
 
-Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is only the seller routes (`/admin`, `/dashboard`); everything else follows the visitor's theme.
+Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is the seller routes (`/admin`, `/dashboard`) except the migrated catalog paths listed in `LEGACY_DARK_EXCEPTIONS`; everything else follows the visitor's theme.
 
 | Area                                                                          | Status  |
 | ----------------------------------------------------------------------------- | ------- |
@@ -58,7 +58,8 @@ Views are moving from the legacy navy-glass palette to tokens over several PRs. 
 | Storefront and auth routes (incl. signup and verification)                    | Done    |
 | Cart and checkout                                                             | Done    |
 | Account routes                                                                | Done    |
-| Merchant admin routes                                                         | Pending |
+| Merchant admin: catalog (products, bundles, kits, collections, bulk import)   | Done    |
+| Merchant admin: operations and settings                                       | Pending |
 
 When a group migrates, shrink the forced list, move its folders into the lint `error` block in `eslint.config.mjs`, and update this table. Delete this section, the forced-dark mechanism, `NavyGridGlowBackground` and `components/section/*` when the last group lands.
 

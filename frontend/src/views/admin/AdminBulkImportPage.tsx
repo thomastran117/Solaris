@@ -5,12 +5,24 @@ import axios from "axios";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet, Upload, Download, Image as ImageIcon, ArrowRight, RefreshCw } from "lucide-react";
+import {
+  FileSpreadsheet,
+  Upload,
+  Download,
+  Image as ImageIcon,
+  ArrowRight,
+  RefreshCw,
+} from "lucide-react";
 import Papa from "papaparse";
 import type { RootState } from "../../stores";
 import { importsApi } from "../../api/imports";
 import type { ImportJob, ImportJobType, ImportMode } from "../../types/imports";
-import CsvEditorGrid, { CSV_COLUMNS, type CsvColumn, type CsvRow, validateRow } from "../../components/imports/CsvEditorGrid";
+import CsvEditorGrid, {
+  CSV_COLUMNS,
+  type CsvColumn,
+  type CsvRow,
+  validateRow,
+} from "../../components/imports/CsvEditorGrid";
 import ImportJobProgress from "../../components/imports/ImportJobProgress";
 import BulkImageDropzone from "../../components/imports/BulkImageDropzone";
 import RecentImportsTable from "../../components/imports/RecentImportsTable";
@@ -18,17 +30,18 @@ import { useAnims } from "../../hooks/useAnims";
 
 type Tab = "import" | "images" | "export";
 
-
 function isCsvColumn(s: string): s is CsvColumn {
   return (CSV_COLUMNS as readonly string[]).includes(s);
 }
 
 function normaliseParsedRows(raw: Record<string, string>[]): CsvRow[] {
-  return raw.map(row => {
+  return raw.map((row) => {
     const next: CsvRow = {};
     for (const key of Object.keys(row)) {
       const lower = key.trim();
-      const match = CSV_COLUMNS.find(c => c.toLowerCase() === lower.toLowerCase());
+      const match = CSV_COLUMNS.find(
+        (c) => c.toLowerCase() === lower.toLowerCase()
+      );
       if (match && isCsvColumn(match)) {
         next[match] = row[key];
       }
@@ -38,7 +51,7 @@ function normaliseParsedRows(raw: Record<string, string>[]): CsvRow[] {
 }
 
 function rowsToCsv(rows: CsvRow[]): string {
-  const objects = rows.map(r => {
+  const objects = rows.map((r) => {
     const o: Record<string, string> = {};
     for (const c of CSV_COLUMNS) o[c] = r[c] ?? "";
     return o;
@@ -61,7 +74,10 @@ export default function AdminBulkImportPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const totalErrors = rows.reduce((n, r) => n + Object.keys(validateRow(r, jobType)).length, 0);
+  const totalErrors = rows.reduce(
+    (n, r) => n + Object.keys(validateRow(r, jobType)).length,
+    0
+  );
 
   function handleFile(file: File) {
     setParseError(null);
@@ -70,15 +86,17 @@ export default function AdminBulkImportPage() {
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
-      complete: results => {
+      complete: (results) => {
         if (results.errors.length > 0) {
           const first = results.errors[0];
-          setParseError(`CSV parse: ${first.message} (row ${first.row ?? "?"})`);
+          setParseError(
+            `CSV parse: ${first.message} (row ${first.row ?? "?"})`
+          );
         }
         setRows(normaliseParsedRows(results.data));
         setParsing(false);
       },
-      error: err => {
+      error: (err) => {
         setParseError(err.message);
         setParsing(false);
       },
@@ -104,59 +122,61 @@ export default function AdminBulkImportPage() {
     },
     onSuccess: (job: ImportJob) => {
       setActiveJobId(job.id);
-      queryClient.invalidateQueries({ queryKey: ["imports", companyId, "list"] });
+      queryClient.invalidateQueries({
+        queryKey: ["imports", companyId, "list"],
+      });
     },
   });
 
   const exportMutation = useMutation({
     mutationFn: async () => {
       if (!companyId) throw new Error("No company in scope");
-      return importsApi.export(companyId).then(r => r.data);
+      return importsApi.export(companyId).then((r) => r.data);
     },
-    onSuccess: download => {
+    onSuccess: (download) => {
       window.open(download.url, "_blank");
     },
   });
 
   if (!companyId) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
-        <p className="text-white/60 text-sm">Sign in with a vendor account to bulk-edit products.</p>
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <p className="text-muted-foreground text-sm">
+          Sign in with a vendor account to bulk-edit products.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-      </div>
-
+    <div>
       <motion.div
         variants={stagger}
         initial="hidden"
         animate="visible"
-        className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-10"
+        className="max-w-6xl mx-auto px-4 sm:px-6 py-10"
       >
         <motion.header variants={fadeInUp} className="mb-6">
-          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-2">
+          <p className="text-xs font-semibold text-link mb-2">
             Admin · Catalogue
           </p>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Bulk Import &amp; Export
           </h1>
-          <p className="text-sm text-white/60 mt-1">
-            Round-trip your catalogue through a spreadsheet, sync stock, and attach product images in bulk.
+          <p className="text-sm text-muted-foreground mt-1">
+            Round-trip your catalogue through a spreadsheet, sync stock, and
+            attach product images in bulk.
           </p>
         </motion.header>
 
         <motion.div variants={fadeInUp} className="flex flex-wrap gap-2 mb-6">
-          {([
-            { value: "import", label: "Import CSV", icon: FileSpreadsheet },
-            { value: "images", label: "Bulk Images", icon: ImageIcon },
-            { value: "export", label: "Export & History", icon: Download },
-          ] as const).map(t => {
+          {(
+            [
+              { value: "import", label: "Import CSV", icon: FileSpreadsheet },
+              { value: "images", label: "Bulk Images", icon: ImageIcon },
+              { value: "export", label: "Export & History", icon: Download },
+            ] as const
+          ).map((t) => {
             const active = tab === t.value;
             const Icon = t.icon;
             return (
@@ -167,8 +187,8 @@ export default function AdminBulkImportPage() {
                 className={[
                   "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition-colors",
                   active
-                    ? "border-sky-400/50 bg-sky-400/15 text-sky-100"
-                    : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/10",
+                    ? "border-primary/40 bg-primary/10 text-link"
+                    : "border-border bg-surface text-muted-foreground hover:bg-muted",
                 ].join(" ")}
               >
                 <Icon className="w-4 h-4" />
@@ -180,10 +200,13 @@ export default function AdminBulkImportPage() {
 
         {tab === "import" && (
           <motion.div variants={fadeInUp} className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-white mb-1">1. Pick mode</h2>
-              <p className="text-xs text-white/60 mb-4">
-                Match by SKU. Choose how the worker treats existing vs. new SKUs.
+            <div className="rounded-xl border border-border bg-surface shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                1. Pick mode
+              </h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Match by SKU. Choose how the worker treats existing vs. new
+                SKUs.
               </p>
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
@@ -192,13 +215,16 @@ export default function AdminBulkImportPage() {
                   className={[
                     "text-left rounded-xl border p-4 transition-colors",
                     jobType === "PRODUCT_UPSERT"
-                      ? "border-sky-400/50 bg-sky-400/10"
-                      : "border-white/10 bg-white/[0.04] hover:bg-white/10",
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-border bg-surface hover:bg-muted",
                   ].join(" ")}
                 >
-                  <p className="text-sm font-semibold text-white">Products (upsert)</p>
-                  <p className="text-xs text-white/60 mt-1">
-                    Full product fields. New SKUs are created, existing SKUs are updated in place.
+                  <p className="text-sm font-semibold text-foreground">
+                    Products (upsert)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Full product fields. New SKUs are created, existing SKUs are
+                    updated in place.
                   </p>
                 </button>
                 <button
@@ -207,62 +233,72 @@ export default function AdminBulkImportPage() {
                   className={[
                     "text-left rounded-xl border p-4 transition-colors",
                     jobType === "INVENTORY_SYNC"
-                      ? "border-sky-400/50 bg-sky-400/10"
-                      : "border-white/10 bg-white/[0.04] hover:bg-white/10",
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-border bg-surface hover:bg-muted",
                   ].join(" ")}
                 >
-                  <p className="text-sm font-semibold text-white">Inventory sync (stock only)</p>
-                  <p className="text-xs text-white/60 mt-1">
-                    Two columns: <code className="text-sky-200">sku, stock</code>. Generates
-                    inventory adjustments with the difference from current stock.
+                  <p className="text-sm font-semibold text-foreground">
+                    Inventory sync (stock only)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Two columns: <code className="text-link">sku, stock</code>.
+                    Generates inventory adjustments with the difference from
+                    current stock.
                   </p>
                 </button>
               </div>
               {jobType === "PRODUCT_UPSERT" && (
                 <div className="flex flex-wrap gap-2 mt-4">
-                  {(["UPSERT", "CREATE_ONLY", "UPDATE_ONLY"] as const).map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMode(m)}
-                      className={[
-                        "px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
-                        mode === m
-                          ? "border-sky-400/50 bg-sky-400/15 text-sky-100"
-                          : "border-white/10 bg-white/[0.04] text-white/65 hover:bg-white/10",
-                      ].join(" ")}
-                    >
-                      {m.replace(/_/g, " ")}
-                    </button>
-                  ))}
+                  {(["UPSERT", "CREATE_ONLY", "UPDATE_ONLY"] as const).map(
+                    (m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMode(m)}
+                        className={[
+                          "px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                          mode === m
+                            ? "border-primary/40 bg-primary/10 text-link"
+                            : "border-border bg-surface text-muted-foreground hover:bg-muted",
+                        ].join(" ")}
+                      >
+                        {m.replace(/_/g, " ")}
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-white mb-1">2. Drop CSV</h2>
-              <p className="text-xs text-white/60 mb-4">
-                We parse the file in your browser so you can fix errors before any data hits the server.
+            <div className="rounded-xl border border-border bg-surface shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                2. Drop CSV
+              </h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                We parse the file in your browser so you can fix errors before
+                any data hits the server.
               </p>
               <div
-                onDrop={e => {
+                onDrop={(e) => {
                   e.preventDefault();
                   const f = e.dataTransfer.files?.[0];
                   if (f) handleFile(f);
                 }}
-                onDragOver={e => e.preventDefault()}
-                className="rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.04] backdrop-blur p-8 text-center hover:border-sky-400/40 transition-colors"
+                onDragOver={(e) => e.preventDefault()}
+                className="rounded-xl border-2 border-dashed border-border bg-surface p-8 text-center hover:border-primary/40 transition-colors"
               >
-                <Upload className="w-7 h-7 text-sky-200 mx-auto mb-2" />
-                <p className="text-sm text-white/80 font-medium mb-2">
-                  {fileName ? `Loaded: ${fileName}` : "Drop a CSV here, or choose a file"}
+                <Upload className="w-7 h-7 text-link mx-auto mb-2" />
+                <p className="text-sm text-foreground font-medium mb-2">
+                  {fileName
+                    ? `Loaded: ${fileName}`
+                    : "Drop a CSV here, or choose a file"}
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept=".csv,text/csv"
                   className="hidden"
-                  onChange={e => {
+                  onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) handleFile(f);
                     e.target.value = "";
@@ -271,29 +307,35 @@ export default function AdminBulkImportPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-full text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition-colors"
+                  className="px-4 py-2 rounded-full text-sm font-semibold border border-input text-foreground hover:bg-muted transition-colors"
                 >
                   Choose CSV
                 </button>
               </div>
-              {parsing && <p className="mt-3 text-xs text-sky-200">Parsing…</p>}
-              {parseError && <p className="mt-3 text-xs text-red-300">{parseError}</p>}
+              {parsing && <p className="mt-3 text-xs text-link">Parsing…</p>}
+              {parseError && (
+                <p className="mt-3 text-xs text-danger">{parseError}</p>
+              )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-white mb-1">3. Review &amp; edit</h2>
-              <p className="text-xs text-white/60 mb-4">
-                Cells with validation errors are highlighted. Fix them in place — the corrected
-                rows are what gets sent to the server.
+            <div className="rounded-xl border border-border bg-surface shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                3. Review &amp; edit
+              </h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Cells with validation errors are highlighted. Fix them in place
+                — the corrected rows are what gets sent to the server.
               </p>
               <CsvEditorGrid rows={rows} onChange={setRows} jobType={jobType} />
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6">
+            <div className="rounded-xl border border-border bg-surface shadow-sm p-6">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">4. Start import</h2>
-                  <p className="text-xs text-white/60 mt-1">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    4. Start import
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-1">
                     {totalErrors > 0
                       ? `Resolve ${totalErrors} validation issue${totalErrors === 1 ? "" : "s"} or proceed anyway — failed rows will appear in the error report.`
                       : "All rows pass client-side validation."}
@@ -303,15 +345,16 @@ export default function AdminBulkImportPage() {
                   type="button"
                   onClick={() => startImport.mutate()}
                   disabled={rows.length === 0 || startImport.isPending}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors disabled:opacity-40"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-40"
                 >
                   <ArrowRight className="w-4 h-4" />
                   {startImport.isPending ? "Starting…" : "Start import"}
                 </button>
               </div>
               {startImport.isError && (
-                <p className="text-xs text-red-300 mt-3">
-                  {(startImport.error as Error).message || "Import failed to start."}
+                <p className="text-xs text-danger mt-3">
+                  {(startImport.error as Error).message ||
+                    "Import failed to start."}
                 </p>
               )}
             </div>
@@ -336,17 +379,20 @@ export default function AdminBulkImportPage() {
 
         {tab === "export" && (
           <motion.div variants={fadeInUp} className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-white mb-1">Export catalogue</h2>
-              <p className="text-xs text-white/60 mb-4">
-                Download every product as a CSV. Edit it in Excel or Sheets, then drop the file back
-                in the Import tab — matching SKUs are updated, new SKUs are created.
+            <div className="rounded-xl border border-border bg-surface shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                Export catalogue
+              </h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Download every product as a CSV. Edit it in Excel or Sheets,
+                then drop the file back in the Import tab — matching SKUs are
+                updated, new SKUs are created.
               </p>
               <button
                 type="button"
                 onClick={() => exportMutation.mutate()}
                 disabled={exportMutation.isPending}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary hover:bg-primary-hover text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-40"
               >
                 {exportMutation.isPending ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -356,14 +402,16 @@ export default function AdminBulkImportPage() {
                 {exportMutation.isPending ? "Preparing…" : "Export CSV"}
               </button>
               {exportMutation.isError && (
-                <p className="text-xs text-red-300 mt-3">
+                <p className="text-xs text-danger mt-3">
                   {(exportMutation.error as Error).message || "Export failed."}
                 </p>
               )}
             </div>
 
             <div>
-              <h2 className="text-lg font-semibold text-white mb-3">Recent jobs</h2>
+              <h2 className="text-lg font-semibold text-foreground mb-3">
+                Recent jobs
+              </h2>
               <RecentImportsTable companyId={companyId} />
             </div>
           </motion.div>

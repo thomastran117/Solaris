@@ -41,7 +41,10 @@ function isBlank(v: string | undefined): boolean {
  * Mirrors the backend validation in {@code ImportServiceImpl.validatePerJobType}.
  * Catching errors here lets admins fix them before a server round-trip.
  */
-export function validateRow(row: CsvRow, jobType: ImportJobType): Record<string, string> {
+export function validateRow(
+  row: CsvRow,
+  jobType: ImportJobType
+): Record<string, string> {
   const errors: Record<string, string> = {};
   if (isBlank(row.sku)) {
     errors.sku = "SKU is required";
@@ -67,7 +70,10 @@ export function validateRow(row: CsvRow, jobType: ImportJobType): Record<string,
   if (!isBlank(stockRaw) && !/^\d+$/.test(stockRaw!)) {
     errors.stock = "must be a non-negative integer";
   }
-  if (!isBlank(row.compareAtPrice) && !/^\d+(\.\d{1,2})?$/.test(row.compareAtPrice!.trim())) {
+  if (
+    !isBlank(row.compareAtPrice) &&
+    !/^\d+(\.\d{1,2})?$/.test(row.compareAtPrice!.trim())
+  ) {
     errors.compareAtPrice = "must be a decimal";
   }
   if (!isBlank(row.currency) && !/^[A-Za-z]{3}$/.test(row.currency!.trim())) {
@@ -99,8 +105,8 @@ export default function CsvEditorGrid({ rows, onChange, jobType }: Props) {
   }, [jobType]);
 
   const rowErrors = useMemo(
-    () => rows.map(r => validateRow(r, jobType)),
-    [rows, jobType],
+    () => rows.map((r) => validateRow(r, jobType)),
+    [rows, jobType]
   );
 
   const totalErrors = rowErrors.reduce((n, e) => n + Object.keys(e).length, 0);
@@ -121,35 +127,38 @@ export default function CsvEditorGrid({ rows, onChange, jobType }: Props) {
 
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-white/55 px-4 py-8 text-center">
+      <p className="text-sm text-muted-foreground px-4 py-8 text-center">
         No rows to review yet — drop a CSV above to begin.
       </p>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-        <div className="text-xs text-white/60">
-          {rows.length} rows · <span className={totalErrors > 0 ? "text-red-300" : "text-green-300"}>
+    <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="text-xs text-muted-foreground">
+          {rows.length} rows ·{" "}
+          <span className={totalErrors > 0 ? "text-danger" : "text-success"}>
             {totalErrors} issue{totalErrors === 1 ? "" : "s"}
           </span>
         </div>
         <button
           type="button"
           onClick={addRow}
-          className="px-3 py-1.5 rounded-full text-xs font-semibold border border-white/15 text-white/80 hover:bg-white/10 transition-colors"
+          className="px-3 py-1.5 rounded-full text-xs font-semibold border border-border text-foreground hover:bg-muted transition-colors"
         >
           + Row
         </button>
       </div>
       <div className="max-h-[500px] overflow-auto">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-slate-900/95 backdrop-blur text-white/45 uppercase tracking-[0.16em]">
+          <thead className="sticky top-0 bg-surface text-muted-foreground">
             <tr>
               <th className="px-2 py-2 text-left w-10">#</th>
-              {columns.map(c => (
-                <th key={c} className="px-2 py-2 text-left whitespace-nowrap">{c}</th>
+              {columns.map((c) => (
+                <th key={c} className="px-2 py-2 text-left whitespace-nowrap">
+                  {c}
+                </th>
               ))}
               <th className="px-2 py-2 w-10" />
             </tr>
@@ -158,27 +167,31 @@ export default function CsvEditorGrid({ rows, onChange, jobType }: Props) {
             {rows.map((row, ri) => {
               const errs = rowErrors[ri];
               return (
-                <tr key={ri} className="border-t border-white/5 align-top">
-                  <td className="px-2 py-1.5 text-white/45">{ri + 1}</td>
-                  {columns.map(c => {
+                <tr key={ri} className="border-t border-border align-top">
+                  <td className="px-2 py-1.5 text-muted-foreground">
+                    {ri + 1}
+                  </td>
+                  {columns.map((c) => {
                     const err = errs[c];
                     return (
                       <td key={c} className="px-1 py-1">
                         <input
                           type="text"
                           value={row[c] ?? ""}
-                          onChange={e => updateCell(ri, c, e.target.value)}
+                          onChange={(e) => updateCell(ri, c, e.target.value)}
                           title={err}
                           className={[
-                            "w-full px-2 py-1 rounded text-white text-xs bg-transparent border placeholder:text-white/30 focus:outline-none focus:ring-1",
+                            "w-full px-2 py-1 rounded text-foreground text-xs bg-transparent border placeholder:text-muted-foreground focus:outline-none focus:ring-1",
                             err
-                              ? "border-red-400/60 bg-red-500/10 focus:ring-red-400/60"
-                              : "border-white/10 hover:border-white/20 focus:ring-sky-400/40",
+                              ? "border-danger/40 bg-danger-subtle focus:ring-ring/40"
+                              : "border-border hover:border-input focus:ring-ring/40",
                           ].join(" ")}
                           style={{ minWidth: 100 }}
                         />
                         {err && (
-                          <p className="text-[10px] text-red-300 mt-0.5 leading-tight">{err}</p>
+                          <p className="text-[10px] text-danger mt-0.5 leading-tight">
+                            {err}
+                          </p>
                         )}
                       </td>
                     );
@@ -187,7 +200,7 @@ export default function CsvEditorGrid({ rows, onChange, jobType }: Props) {
                     <button
                       type="button"
                       onClick={() => removeRow(ri)}
-                      className="text-white/40 hover:text-red-300 text-base leading-none"
+                      className="text-muted-foreground hover:text-danger text-base leading-none"
                       aria-label="Remove row"
                     >
                       ×
