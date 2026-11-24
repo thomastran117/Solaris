@@ -185,12 +185,21 @@ function DetailsStep() {
       : undefined;
   }, [method, saved, addressId, address]);
 
-  async function place(values: CheckoutValues) {
-    if (!currency || lines.length === 0) return;
+  // `target` lets the step-up resume submit the currency it saved, before the
+  // URL (and so this render's `currency`) has caught up.
+  async function place(values: CheckoutValues, target = currency) {
+    const targetLines =
+      target === currency ? lines : target ? (groups.get(target) ?? []) : [];
+    if (!target || targetLines.length === 0) {
+      setFormError(
+        "The items for this order are no longer in your cart. Review your cart and try again."
+      );
+      return;
+    }
     setFormError(null);
     const request = buildOrderRequest({
-      lines,
-      currency,
+      lines: targetLines,
+      currency: target,
       values,
       addresses: saved,
       riskVerificationToken: stepUpToken.current,
@@ -200,7 +209,7 @@ function DetailsStep() {
 
     if (outcome.kind === "stepUp") {
       stepUpToken.current = null;
-      saveCheckoutDraft({ currency, values });
+      saveCheckoutDraft({ currency: target, values });
       setStepUp(true);
       return;
     }
@@ -212,7 +221,7 @@ function DetailsStep() {
     const order: Order = outcome.order;
     clearCheckoutDraft();
     setStepUp(false);
-    dispatch(removeLines(lines.map((l) => l.lineId)));
+    dispatch(removeLines(targetLines.map((l) => l.lineId)));
     if (
       values.fulfillmentMethod === "DELIVERY" &&
       values.addressId === NEW_ADDRESS &&
@@ -238,28 +247,42 @@ function DetailsStep() {
     );
   }
 
-  const onSubmit = handleSubmit(place);
+  const onSubmit = handleSubmit((values) => place(values));
 
-  // Returning from the confirmation email: restore the draft and resubmit once.
+  // Returning from the confirmation email: restore the draft and resubmit once,
+  // after the cart and saved addresses have loaded (a draft can point at a
+  // saved address, which must not fall back to the blank new-address form).
   const resumed = useRef(false);
   useEffect(() => {
     const token = params.get("stepUpToken");
-    if (!token || resumed.current || !hydrated) return;
+    if (!token || resumed.current || !hydrated || addresses.isPending) return;
     resumed.current = true;
     stepUpToken.current = token;
     const draft = loadCheckoutDraft();
     router.replace(`/checkout${draft ? `?currency=${draft.currency}` : ""}`);
-    if (draft) {
-      reset(draft.values);
-      void handleSubmit(place)();
-    } else {
+    if (!draft) {
       setFormError(
         "Your order details weren't saved on this device. Enter them again and place your order to confirm it."
       );
+      return;
     }
-    // Runs once per token, after the cart has loaded.
+    reset(draft.values);
+    const { fulfillmentMethod, addressId: draftAddressId } = draft.values;
+    if (
+      fulfillmentMethod === "DELIVERY" &&
+      draftAddressId !== NEW_ADDRESS &&
+      !saved.some((a) => a.id === draftAddressId)
+    ) {
+      // The token is kept, so confirming the address places the order.
+      setFormError(
+        "We couldn't load the saved address for this order. Choose your delivery address and place your order to confirm it."
+      );
+      return;
+    }
+    void handleSubmit((values) => place(values, draft.currency))();
+    // Runs once per token, after the cart and addresses have loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, params]);
+  }, [hydrated, params, addresses.isPending]);
 
   if (!hydrated) {
     return <Skeleton className="h-96 w-full rounded-xl" />;

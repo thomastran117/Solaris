@@ -5,6 +5,8 @@ import { makeStore } from "../../stores";
 import { hydrateCart, type CartLine } from "../../stores/cartSlice";
 import { mockRouter, setMockUrl } from "../../test/nextNavigation";
 import { renderWithProviders, signedIn } from "../../test/renderWithProviders";
+import { saveCheckoutDraft } from "../../lib/checkoutDraft";
+import type { CustomerAddress } from "../../types/address";
 
 const { create, get, listAddresses, createAddress, quote } = vi.hoisted(() => ({
   create: vi.fn(),
@@ -179,6 +181,93 @@ describe("CheckoutPage", () => {
       riskVerificationToken: "tok-12345",
     });
     expect(create.mock.calls[1][1]).not.toBe(create.mock.calls[0][1]);
+  });
+
+  describe("resuming from the step-up email", () => {
+    const cadLine: CartLine = {
+      ...line,
+      lineId: "p:p2:-",
+      productId: "p2",
+      name: "Maple Speaker",
+      currency: "CAD",
+    };
+    const home: CustomerAddress = {
+      id: "addr-1",
+      label: "Home",
+      recipientName: "Sam Shopper",
+      street: "1 Main St",
+      street2: null,
+      city: "Toronto",
+      state: "ON",
+      postalCode: "M5V 1A1",
+      country: "CA",
+      phoneNumber: null,
+    };
+    const draftValues = {
+      fulfillmentMethod: "DELIVERY" as const,
+      addressId: home.id,
+      address: {
+        recipientName: "",
+        street: "",
+        street2: "",
+        city: "",
+        state: "",
+        postalCode: "",
+        country: "",
+        phoneNumber: "",
+      },
+      saveAddress: false,
+      pickupLocationId: "",
+      couponCode: "",
+    };
+    const created = {
+      data: {
+        id: "o3",
+        status: "RESERVED",
+        items: [],
+        fulfillmentMethod: "DELIVERY",
+      },
+    };
+
+    it("resubmits the saved currency with the saved address once addresses load", async () => {
+      let loadAddresses!: (value: { data: CustomerAddress[] }) => void;
+      listAddresses.mockReturnValue(
+        new Promise((resolve) => (loadAddresses = resolve))
+      );
+      create.mockResolvedValue(created);
+      // The first currency group is USD; the draft was for the CAD items.
+      saveCheckoutDraft({ currency: "CAD", values: draftValues });
+      setMockUrl("/checkout?stepUpToken=tok-777");
+      renderCheckout([line, cadLine]);
+
+      await waitFor(() => expect(listAddresses).toHaveBeenCalled());
+      // Not before the saved address is known.
+      expect(create).not.toHaveBeenCalled();
+      loadAddresses({ data: [home] });
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(mockRouter.replace).toHaveBeenCalledWith("/checkout?currency=CAD");
+      expect(create.mock.calls[0][0]).toMatchObject({
+        currency: "CAD",
+        items: [{ productId: "p2" }],
+        riskVerificationToken: "tok-777",
+        shipRecipientName: "Sam Shopper",
+        shipStreet: "1 Main St",
+        shipCountry: "CA",
+      });
+    });
+
+    it("asks for the address instead of sending a blank one when the saved address is gone", async () => {
+      listAddresses.mockResolvedValue({ data: [] });
+      saveCheckoutDraft({ currency: "USD", values: draftValues });
+      setMockUrl("/checkout?stepUpToken=tok-777");
+      renderCheckout();
+
+      expect(
+        await screen.findByText(/couldn't load the saved address/)
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
   });
 
   it("shows payments as unavailable without a publishable key", async () => {
