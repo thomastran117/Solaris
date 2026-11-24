@@ -38,6 +38,11 @@ export const buttonVariants = cva(
   }
 );
 
+function swallowActivation(event: MouseEvent<HTMLElement>) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 export interface ButtonProps
   extends
     ButtonHTMLAttributes<HTMLButtonElement>,
@@ -67,7 +72,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     if (asChild) {
       // The slotted child may be a link, which has no `disabled` attribute, so
       // disabled/loading are expressed with ARIA, removed from the tab order
-      // and enforced by swallowing activation.
+      // and enforced by swallowing activation. A handler is only attached when
+      // needed: server components render `<Button asChild><Link/></Button>`,
+      // and a function prop can't cross into the client `Link`.
       const inert = disabled || loading;
       const { onClick, ...rest } = props;
       return (
@@ -77,16 +84,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           aria-disabled={inert || undefined}
           aria-busy={loading || undefined}
           tabIndex={inert ? -1 : undefined}
-          onClick={(event) => {
-            if (inert) {
-              event.preventDefault();
-              event.stopPropagation();
-              return;
-            }
-            // ButtonProps types handlers for <button>; the slotted element is
-            // whatever the caller rendered (usually a link).
-            onClick?.(event as MouseEvent<HTMLButtonElement>);
-          }}
+          onClick={inert ? swallowActivation : onClick}
           {...rest}
         >
           {loading && <Spinner />}
