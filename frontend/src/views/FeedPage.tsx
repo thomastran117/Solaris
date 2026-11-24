@@ -13,7 +13,6 @@ import { useAnims } from "../hooks/useAnims";
 
 const FEED_PAGE_SIZE = 20;
 
-
 export default function FeedPage() {
   const [page, setPage] = useState(0);
   const marketplaceId = useSelector(selectActiveMarketplaceId);
@@ -22,7 +21,9 @@ export default function FeedPage() {
   const feedQuery = useQuery({
     queryKey: ["catalog", "feed", marketplaceId, page],
     queryFn: () =>
-      catalogApi.getFeed(marketplaceId!, { page, size: FEED_PAGE_SIZE }).then((r) => r.data),
+      catalogApi
+        .getFeed(marketplaceId!, { page, size: FEED_PAGE_SIZE })
+        .then((r) => r.data),
     enabled: !!marketplaceId,
     placeholderData: (prev) => prev,
   });
@@ -39,40 +40,41 @@ export default function FeedPage() {
 
   if (!marketplaceId) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-white/60 text-sm">No marketplace selected.</p>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">
+          No marketplace selected.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/3 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-        <div className="absolute top-2/3 left-1/2 w-[300px] h-[300px] rounded-full bg-indigo-500/8 blur-[90px]" />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div>
+      <div>
         {/* Header */}
-        <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-8">
+        <motion.div
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          className="mb-8"
+        >
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-5"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5"
           >
             <ChevronLeft className="w-4 h-4" />
             Home
           </Link>
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
-              For You
-            </span>
+            <span className="text-xs font-semibold text-link">For You</span>
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white">Your Feed</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Your Feed
+          </h1>
           {!feedQuery.isLoading && totalElements > 0 && (
-            <p className="mt-2 text-sm text-white/50">
-              {totalElements.toLocaleString()} product{totalElements !== 1 ? "s" : ""} picked for you
+            <p className="mt-2 text-sm text-muted-foreground">
+              {totalElements.toLocaleString()} product
+              {totalElements !== 1 ? "s" : ""} picked for you
             </p>
           )}
         </motion.div>
@@ -83,13 +85,13 @@ export default function FeedPage() {
             {Array.from({ length: 12 }).map((_, i) => (
               <div
                 key={i}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden animate-pulse"
+                className="rounded-xl border border-border bg-surface overflow-hidden animate-pulse"
               >
-                <div className="aspect-square bg-white/[0.04]" />
+                <div className="aspect-square bg-surface" />
                 <div className="p-4 space-y-2">
-                  <div className="h-2.5 bg-white/[0.06] rounded w-2/3" />
-                  <div className="h-3.5 bg-white/[0.06] rounded" />
-                  <div className="h-3.5 bg-white/[0.06] rounded w-4/5" />
+                  <div className="h-2.5 bg-surface rounded w-2/3" />
+                  <div className="h-3.5 bg-surface rounded" />
+                  <div className="h-3.5 bg-surface rounded w-4/5" />
                 </div>
               </div>
             ))}
@@ -104,14 +106,16 @@ export default function FeedPage() {
             animate="visible"
             className="flex flex-col items-center justify-center py-24 text-center"
           >
-            <Sparkles className="w-12 h-12 text-white/20 mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Your feed is empty</h3>
-            <p className="text-sm text-white/50 max-w-xs">
+            <Sparkles className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Your feed is empty
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-xs">
               Browse and purchase products to personalise your feed.
             </p>
             <Link
               href="/browse"
-              className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-blue-600 hover:bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition-colors"
+              className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-primary hover:bg-primary-hover px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors"
             >
               Browse products
             </Link>
@@ -127,7 +131,11 @@ export default function FeedPage() {
             className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"
           >
             {products.map((product) => (
-              <ProductCard key={product.id} product={product} variants={fadeInUp} />
+              <ProductCard
+                key={product.id}
+                product={product}
+                variants={fadeInUp}
+              />
             ))}
           </motion.div>
         )}
@@ -139,7 +147,7 @@ export default function FeedPage() {
               type="button"
               disabled={page === 0}
               onClick={() => handlePage(page - 1)}
-              className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -154,8 +162,8 @@ export default function FeedPage() {
                   onClick={() => handlePage(p)}
                   className={`w-8 h-8 rounded-full text-sm transition-colors ${
                     p === page
-                      ? "bg-blue-600 text-white"
-                      : "text-white/60 hover:text-white hover:bg-white/[0.06]"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
                   {p + 1}
@@ -167,7 +175,7 @@ export default function FeedPage() {
               type="button"
               disabled={page >= totalPages - 1}
               onClick={() => handlePage(page + 1)}
-              className="p-2 rounded-full border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

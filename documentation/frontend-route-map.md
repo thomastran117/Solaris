@@ -61,7 +61,7 @@ Per-user data on these pages is never prefetched; it loads in the browser after 
 
 Today all of these sit inside the pathless `<ProtectedRoute/>`. That component redirects to `/login` when Redux has no access token, and it drops the original destination.
 
-Target: `(account)/layout.tsx` wraps them in the client `RequireAuth` guard and sets `noindex`. `proxy.ts` (#85) redirects to `/login?next=…` when the `refreshToken` cookie is absent.
+Target: `(account)/layout.tsx` renders `SiteShell` and `AccountShell` (account sidebar, or a tab strip on small screens) and wraps the page content in the client `RequireAuth` guard, so navigation shows while the session restores. It sets `noindex`. `proxy.ts` (#85) redirects to `/login?next=…` when the `refreshToken` cookie is absent.
 
 | # | URL | View | Segment | Access |
 |---|---|---|---|---|

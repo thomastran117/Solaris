@@ -13,7 +13,10 @@ const CARRIER_LINKS: Record<string, string> = {
   DHL: "https://www.dhl.com/en/express/tracking.html?AWB=",
 };
 
-function carrierTrackingUrl(trackingNumber: string, carrier: string | null): string | null {
+function carrierTrackingUrl(
+  trackingNumber: string,
+  carrier: string | null
+): string | null {
   if (!carrier) return null;
   const key = carrier.toUpperCase();
   const base = CARRIER_LINKS[key];
@@ -31,15 +34,27 @@ export default function TrackingPanel({ trackingNumber, carrier }: Props) {
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 space-y-3">
-      <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">Tracking</p>
+    <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
+      <p className="text-xs font-semibold text-link">Tracking</p>
       {carrier && (
-        <p className="text-sm text-white/70">Carrier: <span className="text-white font-medium">{carrier}</span></p>
+        <p className="text-sm text-muted-foreground">
+          Carrier:{" "}
+          <span className="text-foreground font-medium">{carrier}</span>
+        </p>
       )}
-      <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
-        <span className="flex-1 text-sm font-mono text-white select-all">{trackingNumber}</span>
-        <button onClick={handleCopy} className="text-white/50 hover:text-white transition">
-          {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+      <div className="flex items-center gap-2 bg-surface border border-border rounded-xl px-3 py-2">
+        <span className="flex-1 text-sm font-mono text-foreground select-all">
+          {trackingNumber}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="text-muted-foreground hover:text-foreground transition"
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-success" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
         </button>
       </div>
       {url ? (
@@ -47,12 +62,14 @@ export default function TrackingPanel({ trackingNumber, carrier }: Props) {
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-sm text-sky-300 hover:text-sky-200 transition"
+          className="flex items-center gap-1.5 text-sm text-link hover:text-link transition"
         >
           Track on {carrier} <ExternalLink className="h-3.5 w-3.5" />
         </a>
       ) : (
-        <p className="text-xs text-white/40">No direct tracking link available for this carrier.</p>
+        <p className="text-xs text-muted-foreground">
+          No direct tracking link available for this carrier.
+        </p>
       )}
     </div>
   );

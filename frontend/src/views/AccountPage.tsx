@@ -22,15 +22,16 @@ import {
   ArrowRight,
 } from "lucide-react";
 import api from "../api";
-import { getPremiumStatus, createCheckoutSession, createPortalSession } from "../api/premium";
+import {
+  getPremiumStatus,
+  createCheckoutSession,
+  createPortalSession,
+} from "../api/premium";
 import { followApi } from "../api/follow";
 import { notificationPreferencesApi } from "../api/notificationPreferences";
 import type { NotificationPreferences } from "../types/notificationPreferences";
 import type { RootState } from "../stores";
-import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
-import SectionGlow from "../components/section/SectionGlow";
-import SectionFade from "../components/section/SectionFade";
-import SectionTitle from "../components/section/SectionTitle";
+import { SectionHeader } from "../components/ui/SectionHeader";
 import { useAnims } from "../hooks/useAnims";
 
 // ── Animation helpers ────────────────────────────────────────────────────────
@@ -111,21 +112,29 @@ export default function AccountPage() {
   });
 
   const bellMutation = useMutation({
-    mutationFn: ({ companyId, enabled }: { companyId: string; enabled: boolean }) =>
-      followApi.setNotifications(companyId, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
+    mutationFn: ({
+      companyId,
+      enabled,
+    }: {
+      companyId: string;
+      enabled: boolean;
+    }) => followApi.setNotifications(companyId, enabled),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
   });
 
   const unfollowMutation = useMutation({
     mutationFn: (companyId: string) => followApi.unfollow(companyId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
   });
 
   const followedCompanies = followingQuery.data?.items ?? [];
 
   const notifPrefsQuery = useQuery({
     queryKey: ["userPreferences", "notifications"],
-    queryFn: () => notificationPreferencesApi.getPreferences().then((r) => r.data),
+    queryFn: () =>
+      notificationPreferencesApi.getPreferences().then((r) => r.data),
   });
 
   const [smsPhone, setSmsPhone] = useState("");
@@ -133,7 +142,10 @@ export default function AccountPage() {
   const notifPrefsMutation = useMutation({
     mutationFn: (data: Partial<NotificationPreferences>) =>
       notificationPreferencesApi.updatePreferences(data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["userPreferences", "notifications"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["userPreferences", "notifications"],
+      }),
   });
 
   const isPremium = (premiumStatus?.tier ?? tier) === "PREMIUM";
@@ -167,20 +179,18 @@ export default function AccountPage() {
     : null;
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-white">
-      <NavyGridGlowBackground />
-
+    <div className="text-foreground">
       {/* Success banner */}
       {successBanner && (
         <div className="fixed top-16 left-0 right-0 z-50 flex justify-center px-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 backdrop-blur px-5 py-3 shadow-lg">
-            <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
-            <span className="text-sm text-white/90">
+          <div className="flex items-center gap-3 rounded-xl border border-success/40 bg-success-subtle px-5 py-3 shadow-lg">
+            <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+            <span className="text-sm text-foreground">
               Welcome to Premium! Your benefits are now active.
             </span>
             <button
               onClick={() => setSuccessBanner(false)}
-              className="ml-2 text-white/50 hover:text-white/80 transition-colors"
+              className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
             >
               ✕
             </button>
@@ -188,7 +198,7 @@ export default function AccountPage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-4xl px-4 pb-24 pt-28">
+      <div className="max-w-4xl">
         {/* ── Page header ──────────────────────────────────────────────────── */}
         <motion.div
           variants={fadeInUp}
@@ -196,11 +206,11 @@ export default function AccountPage() {
           animate="visible"
           className="mb-12"
         >
-          <SectionTitle
+          <SectionHeader
+            as="h1"
             kicker="Your account"
             title="Account & Plan"
             subtitle="Manage your profile and Premium subscription."
-            theme="dark"
           />
         </motion.div>
 
@@ -213,25 +223,30 @@ export default function AccountPage() {
           {/* ── Profile card ─────────────────────────────────────────────── */}
           <motion.section
             variants={fadeInUp}
-            className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+            className="relative rounded-xl border border-border bg-surface p-6 shadow-sm"
           >
-            <SectionGlow variant="a" />
             <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 border border-white/10">
-                <User className="h-6 w-6 text-sky-200" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-border">
+                <User className="h-6 w-6 text-link" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   {profile?.firstName || profile?.lastName
                     ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()
                     : "Your Profile"}
                 </h3>
-                <p className="text-sm text-white/60 mt-0.5">{profile?.email ?? "—"}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {profile?.email ?? "—"}
+                </p>
                 {profile?.phoneNumber && (
-                  <p className="text-sm text-white/60">{profile.phoneNumber}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {profile.phoneNumber}
+                  </p>
                 )}
                 {profile?.address && (
-                  <p className="text-sm text-white/60 mt-0.5">{profile.address}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {profile.address}
+                  </p>
                 )}
               </div>
             </div>
@@ -240,41 +255,42 @@ export default function AccountPage() {
           {/* ── Plan card ────────────────────────────────────────────────── */}
           <motion.section
             variants={fadeInUp}
-            className={`relative rounded-2xl border backdrop-blur p-6 shadow-sm transition-colors ${
+            className={`relative rounded-xl border p-6 shadow-sm transition-colors ${
               isPremium
-                ? "border-blue-500/40 bg-blue-500/[0.08]"
-                : "border-white/10 bg-white/[0.06]"
+                ? "border-primary/40 bg-primary/10"
+                : "border-border bg-surface"
             }`}
           >
-            <SectionGlow variant="b" />
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${
                     isPremium
-                      ? "bg-blue-500/20 border-blue-400/30"
-                      : "bg-white/[0.08] border-white/10"
+                      ? "bg-primary/10 border-primary/40"
+                      : "bg-muted border-border"
                   }`}
                 >
                   <Crown
-                    className={`h-6 w-6 ${isPremium ? "text-sky-200" : "text-white/40"}`}
+                    className={`h-6 w-6 ${isPremium ? "text-link" : "text-muted-foreground"}`}
                   />
                 </div>
                 <div>
                   {isPremium ? (
-                    <p className="text-xs uppercase tracking-[0.25em] font-semibold text-transparent bg-clip-text bg-gradient-to-r from-sky-200 to-blue-400">
+                    <p className="text-xs font-semibold text-foreground">
                       Premium
                     </p>
                   ) : (
-                    <p className="text-xs uppercase tracking-[0.25em] font-semibold text-white/40">
+                    <p className="text-xs font-semibold text-muted-foreground">
                       Free
                     </p>
                   )}
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-foreground">
                     {isPremium ? "ShopWave Premium" : "ShopWave Free"}
                   </h3>
                   {renewalDate && (
-                    <p className="text-sm text-white/50 mt-0.5">Renews {renewalDate}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Renews {renewalDate}
+                    </p>
                   )}
                 </div>
               </div>
@@ -283,7 +299,7 @@ export default function AccountPage() {
                 <button
                   onClick={handleManage}
                   disabled={portalLoading}
-                  className="shrink-0 rounded-full border border-white/20 px-5 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
+                  className="shrink-0 rounded-full border border-input px-5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                 >
                   {portalLoading ? "Opening…" : "Manage Subscription"}
                 </button>
@@ -291,7 +307,7 @@ export default function AccountPage() {
                 <button
                   onClick={handleUpgrade}
                   disabled={upgradingLoading}
-                  className="shrink-0 rounded-full bg-blue-600 hover:bg-blue-500 px-6 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  className="shrink-0 rounded-full bg-primary hover:bg-primary-hover px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
                 >
                   {upgradingLoading ? "Redirecting…" : "Upgrade to Premium"}
                 </button>
@@ -303,14 +319,15 @@ export default function AccountPage() {
           {(followedCompanies.length > 0 || followingQuery.isLoading) && (
             <motion.section
               variants={fadeInUp}
-              className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+              className="relative rounded-xl border border-border bg-surface p-6 shadow-sm"
             >
-              <SectionGlow variant="c" />
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">Following</h3>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Following
+                </h3>
                 <Link
                   href="/following"
-                  className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                  className="flex items-center gap-1 text-xs text-link hover:text-link transition-colors"
                 >
                   View full feed <ArrowRight className="w-3 h-3" />
                 </Link>
@@ -319,7 +336,10 @@ export default function AccountPage() {
               {followingQuery.isLoading ? (
                 <div className="space-y-2">
                   {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-14 rounded-xl bg-white/[0.04] animate-pulse" />
+                    <div
+                      key={i}
+                      className="h-14 rounded-xl bg-surface animate-pulse"
+                    />
                   ))}
                 </div>
               ) : (
@@ -327,22 +347,22 @@ export default function AccountPage() {
                   {followedCompanies.map((fc) => (
                     <div
                       key={fc.followId}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5"
+                      className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-2.5"
                     >
                       {fc.companyLogoUrl ? (
                         <img
                           src={fc.companyLogoUrl}
                           alt={fc.companyName}
-                          className="w-8 h-8 rounded-lg object-cover border border-white/10 shrink-0"
+                          className="w-8 h-8 rounded-lg object-cover border border-border shrink-0"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-white/10 flex items-center justify-center shrink-0">
-                          <Building2 className="w-4 h-4 text-sky-300" />
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 border border-border flex items-center justify-center shrink-0">
+                          <Building2 className="w-4 h-4 text-link" />
                         </div>
                       )}
                       <Link
                         href={`/c/${fc.companyId}`}
-                        className="flex-1 min-w-0 text-sm font-medium text-white/80 hover:text-white transition-colors truncate"
+                        className="flex-1 min-w-0 text-sm font-medium text-foreground hover:text-foreground transition-colors truncate"
                       >
                         {fc.companyName}
                       </Link>
@@ -359,8 +379,8 @@ export default function AccountPage() {
                           disabled={bellMutation.isPending}
                           className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
                             fc.notificationsEnabled
-                              ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
-                              : "border-white/10 text-white/35 hover:text-white/60"
+                              ? "border-primary/40 bg-primary/10 text-link hover:bg-primary/10"
+                              : "border-border text-muted-foreground hover:text-muted-foreground"
                           }`}
                         >
                           {fc.notificationsEnabled ? (
@@ -374,7 +394,7 @@ export default function AccountPage() {
                           title="Unfollow"
                           onClick={() => unfollowMutation.mutate(fc.companyId)}
                           disabled={unfollowMutation.isPending}
-                          className="p-1.5 rounded-lg border border-white/10 text-white/35 hover:text-red-400 hover:border-red-400/30 transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-danger hover:border-danger/40 transition-colors disabled:opacity-50"
                         >
                           <UserMinus className="w-3 h-3" />
                         </button>
@@ -388,9 +408,12 @@ export default function AccountPage() {
                 <div className="mt-3 text-center">
                   <Link
                     href="/following"
-                    className="text-xs text-white/45 hover:text-white/70 transition-colors"
+                    className="text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
                   >
-                    +{(followingQuery.data!.totalElements) - followedCompanies.length} more — view all
+                    +
+                    {followingQuery.data!.totalElements -
+                      followedCompanies.length}{" "}
+                    more — view all
                   </Link>
                 </div>
               )}
@@ -400,31 +423,41 @@ export default function AccountPage() {
           {/* ── Notification preferences ─────────────────────────────────── */}
           <motion.section
             variants={fadeInUp}
-            className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+            className="relative rounded-xl border border-border bg-surface p-6 shadow-sm"
           >
-            <SectionFade />
-            <SectionGlow variant="b" />
-            <h3 className="text-lg font-semibold text-white mb-5">Notification Preferences</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-5">
+              Notification Preferences
+            </h3>
 
             <div className="space-y-4">
               {/* Push toggle */}
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-white">Push notifications</p>
-                  <p className="text-xs text-white/50 mt-0.5">Order updates delivered to your device</p>
+                  <p className="text-sm font-medium text-foreground">
+                    Push notifications
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Order updates delivered to your device
+                  </p>
                 </div>
                 <button
                   type="button"
                   disabled={notifPrefsMutation.isPending}
                   onClick={() =>
-                    notifPrefsMutation.mutate({ pushEnabled: !notifPrefsQuery.data?.pushEnabled })
+                    notifPrefsMutation.mutate({
+                      pushEnabled: !notifPrefsQuery.data?.pushEnabled,
+                    })
                   }
                   className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
                     notifPrefsQuery.data?.pushEnabled
-                      ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
-                      : "border-white/10 text-white/35 hover:text-white/60"
+                      ? "border-primary/40 bg-primary/10 text-link hover:bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-muted-foreground"
                   }`}
-                  title={notifPrefsQuery.data?.pushEnabled ? "Disable push" : "Enable push"}
+                  title={
+                    notifPrefsQuery.data?.pushEnabled
+                      ? "Disable push"
+                      : "Enable push"
+                  }
                 >
                   {notifPrefsQuery.data?.pushEnabled ? (
                     <Bell className="w-4 h-4" />
@@ -437,21 +470,31 @@ export default function AccountPage() {
               {/* SMS toggle */}
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-white">SMS notifications</p>
-                  <p className="text-xs text-white/50 mt-0.5">Shipped and delivered alerts via text</p>
+                  <p className="text-sm font-medium text-foreground">
+                    SMS notifications
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Shipped and delivered alerts via text
+                  </p>
                 </div>
                 <button
                   type="button"
                   disabled={notifPrefsMutation.isPending}
                   onClick={() =>
-                    notifPrefsMutation.mutate({ smsEnabled: !notifPrefsQuery.data?.smsEnabled })
+                    notifPrefsMutation.mutate({
+                      smsEnabled: !notifPrefsQuery.data?.smsEnabled,
+                    })
                   }
                   className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
                     notifPrefsQuery.data?.smsEnabled
-                      ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
-                      : "border-white/10 text-white/35 hover:text-white/60"
+                      ? "border-primary/40 bg-primary/10 text-link hover:bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-muted-foreground"
                   }`}
-                  title={notifPrefsQuery.data?.smsEnabled ? "Disable SMS" : "Enable SMS"}
+                  title={
+                    notifPrefsQuery.data?.smsEnabled
+                      ? "Disable SMS"
+                      : "Enable SMS"
+                  }
                 >
                   {notifPrefsQuery.data?.smsEnabled ? (
                     <Bell className="w-4 h-4" />
@@ -464,31 +507,37 @@ export default function AccountPage() {
               {/* Phone number input — shown when SMS is enabled */}
               {notifPrefsQuery.data?.smsEnabled && (
                 <div className="pt-1">
-                  <label className="block text-xs font-medium text-white/60 mb-1">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
                     Mobile number
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="tel"
                       placeholder="+1 555 000 0000"
-                      value={smsPhone || notifPrefsQuery.data?.smsPhoneNumber || ""}
+                      value={
+                        smsPhone || notifPrefsQuery.data?.smsPhoneNumber || ""
+                      }
                       onChange={(e) => setSmsPhone(e.target.value)}
-                      className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors"
+                      className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors"
                     />
                     <button
                       type="button"
-                      disabled={notifPrefsMutation.isPending || !smsPhone.trim()}
+                      disabled={
+                        notifPrefsMutation.isPending || !smsPhone.trim()
+                      }
                       onClick={() => {
-                        notifPrefsMutation.mutate({ smsPhoneNumber: smsPhone.trim() });
+                        notifPrefsMutation.mutate({
+                          smsPhoneNumber: smsPhone.trim(),
+                        });
                         setSmsPhone("");
                       }}
-                      className="rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                      className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
                     >
                       Save
                     </button>
                   </div>
                   {notifPrefsQuery.data?.smsPhoneNumber && !smsPhone && (
-                    <p className="mt-1.5 text-xs text-white/45">
+                    <p className="mt-1.5 text-xs text-muted-foreground">
                       Current: {notifPrefsQuery.data.smsPhoneNumber}
                     </p>
                   )}
@@ -500,11 +549,11 @@ export default function AccountPage() {
           {/* ── Benefits comparison ───────────────────────────────────────── */}
           <motion.section
             variants={fadeInUp}
-            className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+            className="relative rounded-xl border border-border bg-surface p-6 shadow-sm"
           >
-            <SectionFade />
-            <SectionGlow variant="c" />
-            <h3 className="text-lg font-semibold text-white mb-5">Premium Benefits</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-5">
+              Premium Benefits
+            </h3>
 
             <motion.ul
               variants={stagger}
@@ -522,24 +571,26 @@ export default function AccountPage() {
                     variants={fadeInUp}
                     className="flex items-start gap-4"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 border border-white/10 mt-0.5">
-                      <Icon className="h-4 w-4 text-sky-200" />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-border mt-0.5">
+                      <Icon className="h-4 w-4 text-link" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white">{b.label}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {b.label}
+                      </p>
                       <div className="flex flex-wrap gap-4 mt-1">
-                        <span className="flex items-center gap-1.5 text-xs text-white/50">
-                          <XCircle className="h-3.5 w-3.5 text-white/30 shrink-0" />
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           Free: {b.freeValue ?? "Not included"}
                         </span>
                         <span
                           className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                            unlocked ? "text-sky-300" : "text-white/40"
+                            unlocked ? "text-link" : "text-muted-foreground"
                           }`}
                         >
                           <CheckCircle2
                             className={`h-3.5 w-3.5 shrink-0 ${
-                              unlocked ? "text-sky-400" : "text-white/25"
+                              unlocked ? "text-link" : "text-muted-foreground"
                             }`}
                           />
                           Premium: {b.premiumValue}
@@ -556,7 +607,7 @@ export default function AccountPage() {
                 <button
                   onClick={handleUpgrade}
                   disabled={upgradingLoading}
-                  className="rounded-full bg-blue-600 hover:bg-blue-500 px-8 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  className="rounded-full bg-primary hover:bg-primary-hover px-8 py-2.5 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
                 >
                   {upgradingLoading ? "Redirecting…" : "Upgrade to Premium"}
                 </button>

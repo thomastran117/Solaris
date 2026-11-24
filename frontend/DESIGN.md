@@ -49,7 +49,7 @@ Fonts are Geist Sans (`font-sans`, the default) and Geist Mono (`font-mono`), lo
 
 ### Migration status (temporary)
 
-Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is the account and seller routes; everything else follows the visitor's theme.
+Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is only the seller routes (`/admin`, `/dashboard`); everything else follows the visitor's theme.
 
 | Area                                                                          | Status  |
 | ----------------------------------------------------------------------------- | ------- |
@@ -57,7 +57,7 @@ Views are moving from the legacy navy-glass palette to tokens over several PRs. 
 | App shell (site header and footer, seller sidebar, not-found and error pages) | Done    |
 | Storefront and auth routes (incl. signup and verification)                    | Done    |
 | Cart and checkout                                                             | Done    |
-| Account routes                                                                | Pending |
+| Account routes                                                                | Done    |
 | Merchant admin routes                                                         | Pending |
 
 When a group migrates, shrink the forced list, move its folders into the lint `error` block in `eslint.config.mjs`, and update this table. Delete this section, the forced-dark mechanism, `NavyGridGlowBackground` and `components/section/*` when the last group lands.
@@ -80,7 +80,7 @@ One `<h1>` per page. Don't skip heading levels for visual size; restyle the corr
 ## Layout
 
 - **Containers:** `Container` (`max-w-7xl`, `px-4 sm:px-6 lg:px-8`) for storefront pages; `size="narrow"` (`max-w-3xl`) for forms, auth and legal text.
-- **Shells:** route-group layouts own the chrome; the root layout renders only `<html>`, the theme script, a skip link and providers. `components/layout/SiteShell` (sticky `SiteHeader`, `<main id="main">`, `SiteFooter`) wraps storefront, auth and account routes. `components/admin/AdminShell` wraps `/admin/*` and `/dashboard`. Views render content only: never their own `<main>`, header or page background.
+- **Shells:** route-group layouts own the chrome; the root layout renders only `<html>`, the theme script, a skip link and providers. `components/layout/SiteShell` (sticky `SiteHeader`, `<main id="main">`, `SiteFooter`) wraps storefront and account routes; account pages add `AccountShell` (sidebar of account links, a tab strip on small screens). Auth routes use `AuthShell` and checkout uses `CheckoutShell`. `components/admin/AdminShell` wraps `/admin/*` and `/dashboard`. Views render content only: never their own `<main>`, header or page background.
 - **Admin:** full width, `w-60` sidebar from `lg`, `h-14` top bar; the sidebar becomes a Sheet on smaller screens. Sidebar entries live in `components/admin/adminNav.ts`, gated by the same company capability or platform role the backend checks. Add new admin areas there, and the overview page and sidebar pick them up.
 - **Spacing:** Tailwind's 4px scale. Stack page sections with `space-y-12`/`py-12` on the storefront and `space-y-6` in app pages; use `gap-4`/`gap-6` inside grids.
 - **Radii:** `rounded-lg` for controls (buttons, inputs, menu items), `rounded-xl` for cards, dialogs and table containers, `rounded-full` for badges and avatars. Don't use `rounded-2xl`/`rounded-3xl`.

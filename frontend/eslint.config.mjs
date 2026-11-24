@@ -103,6 +103,10 @@ export default defineConfig([
       "src/stores/{cartSlice,cartPersistence}.ts",
       "src/api/{addresses,pricing}.ts",
       "src/schemas/checkout.ts",
+      // Customer account (redesign PR 5)
+      "src/views/{AccountPage,B2BQuotesPage,FeedPage,FeedbackPage,FollowingPage,LoyaltyPage,OrderDetailPage,OrdersPage,PriceWatchesPage,SavedListDetailPage,SavedListsPage}.tsx",
+      "src/app/(account)/**/*.{ts,tsx}",
+      "src/components/order/{DeliverySlotPanel,DeliverySlotStatusBadge,DriverLocationIndicator,OrderCard,OrderStatusHistoryTimeline,OrderStatusTimeline,PickupPanel,TrackingPanel,TrackingTimeline}.tsx",
       "src/hooks/useLogout.ts",
       "src/lib/**/*.{ts,tsx}",
       "src/test/**/*.{ts,tsx}",
@@ -112,8 +116,6 @@ export default defineConfig([
       "src/components/layout/NavyGridGlowBackground.tsx",
       // Only used by account/admin views; migrate with them.
       "src/components/product/ProductHistoryTimeline.tsx",
-      "src/components/savedlist/SavedListCard.tsx",
-      "src/components/savedlist/SavedListItemRow.tsx",
     ],
     rules: {
       "shopwave/no-raw-palette": "error",
