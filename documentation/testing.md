@@ -163,8 +163,10 @@ The Python Playwright suite in `playwright/tests/` runs against a built frontend
   - the restored-session bounce, which is the Stripe-return case
   - open-redirect rejection
   - the revoked-cookie path
+- **`test_theme.py`.** The `dark` class is set before hydration from the system preference, a stored choice overrides it, the toggle persists across reloads, account and seller routes stay forced dark while they migrate (but `/lists/public/*` does not), and pages hydrate without console errors in both themes.
+- **`test_signup.py`.** Signup sends the `captcha` field and shows the inbox step, the login page carries `?next=` to signup, and the `/verify-email` and `/verify-device` links handle valid and spent tokens.
 
-The storefront and auth tests expect the frontend to talk to `playwright/stub_api.py`, a standard-library fixture server for the public storefront and session endpoints, rather than the real backend. The `Frontend Smoke Tests` CI job runs exactly this setup. To reproduce it locally from the repository root:
+The storefront and auth tests expect the frontend to talk to `playwright/stub_api.py`, a standard-library fixture server for the public storefront, session, signup and verification endpoints (it records auth request bodies so tests can assert their shape), rather than the real backend. The `Frontend Smoke Tests` CI job runs exactly this setup. To reproduce it locally from the repository root:
 
 ```powershell
 python playwright/stub_api.py 8090          # in its own terminal

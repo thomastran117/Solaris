@@ -5,7 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import { useSelector, useDispatch } from "react-redux";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Bell, BellOff, ShoppingCart, CheckCircle, ChevronLeft, Package, Bookmark, Star, Flag, TrendingDown } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  ShoppingCart,
+  CheckCircle,
+  ChevronLeft,
+  Package,
+  Bookmark,
+  Star,
+  Flag,
+  TrendingDown,
+} from "lucide-react";
 import { catalogApi } from "../api/catalog";
 import { notificationsApi } from "../api/notifications";
 import { priceWatchersApi } from "../api/priceWatchers";
@@ -25,10 +36,13 @@ import { productKeys } from "../api/keys";
 import { loginUrlFor } from "../lib/routes";
 import { useIsClient } from "../hooks/useIsClient";
 import { useAnims } from "../hooks/useAnims";
+import { formatMoney } from "../lib/format";
 
-function buildVariantLabel(
-  v: { option1: string | null; option2: string | null; option3: string | null }
-) {
+function buildVariantLabel(v: {
+  option1: string | null;
+  option2: string | null;
+  option3: string | null;
+}) {
   return [v.option1, v.option2, v.option3].filter(Boolean).join(" / ");
 }
 
@@ -44,27 +58,36 @@ export default function ProductPage() {
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const dispatch = useDispatch<AppDispatch>();
 
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
+    null
+  );
   const [addedToCart, setAddedToCart] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const router = useRouter();
 
-  const { data: product, isLoading, isError } = useQuery({
+  const {
+    data: product,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: productKeys.detail(marketplaceId, productId),
-    queryFn: () => catalogApi.getProduct(marketplaceId!, productId).then(r => r.data),
+    queryFn: () =>
+      catalogApi.getProduct(marketplaceId!, productId).then((r) => r.data),
     enabled: !!marketplaceId && !!productId,
   });
 
   const { data: myNotifications } = useQuery({
     queryKey: ["stock-notifications"],
-    queryFn: () => notificationsApi.listBackInStock().then(r => r.data),
+    queryFn: () => notificationsApi.listBackInStock().then((r) => r.data),
     enabled: !!accessToken,
   });
 
   const subscribeMutation = useMutation({
     mutationFn: (variantId?: string) =>
-      notificationsApi.subscribeBackInStock(productId, variantId).then(r => r.data),
+      notificationsApi
+        .subscribeBackInStock(productId, variantId)
+        .then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-notifications"] });
     },
@@ -80,17 +103,17 @@ export default function ProductPage() {
 
   const { data: priceWatches } = useQuery({
     queryKey: ["price-watches"],
-    queryFn: () => priceWatchersApi.list().then(r => r.data),
+    queryFn: () => priceWatchersApi.list().then((r) => r.data),
     enabled: !!accessToken,
   });
 
   const activeWatch: PriceWatcher | undefined = priceWatches?.content.find(
-    w => w.productId === productId
+    (w) => w.productId === productId
   );
   const isWatching = !!activeWatch;
 
   const watchMutation = useMutation({
-    mutationFn: () => priceWatchersApi.watch(productId!).then(r => r.data),
+    mutationFn: () => priceWatchersApi.watch(productId!).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["price-watches"] });
     },
@@ -121,7 +144,8 @@ export default function ProductPage() {
 
   const { data: loyaltyAccount } = useQuery({
     queryKey: ["loyalty", "account", product?.companyId],
-    queryFn: () => loyaltyApi.getAccount(product!.companyId).then((r) => r.data),
+    queryFn: () =>
+      loyaltyApi.getAccount(product!.companyId).then((r) => r.data),
     enabled: !!accessToken && !!product?.companyId,
     retry: false,
   });
@@ -133,23 +157,32 @@ export default function ProductPage() {
     retry: false,
   });
 
-  const selectedVariant = product?.variants.find(v => v.id === selectedVariantId) ?? null;
+  const selectedVariant =
+    product?.variants.find((v) => v.id === selectedVariantId) ?? null;
   // When a variant is selected, use its stock directly (null = unlimited, 0 = depleted).
   // Only fall back to product-level stock when no variant is selected, to avoid a
   // null-stock variant (unlimited) incorrectly inheriting a depleted product stock of 0.
-  const effectiveStock = selectedVariant ? selectedVariant.stock : (product?.stock ?? null);
+  const effectiveStock = selectedVariant
+    ? selectedVariant.stock
+    : (product?.stock ?? null);
   const isOutOfStock = effectiveStock === 0;
-  const isPurchasable = selectedVariant?.purchasable ?? product?.purchasable ?? true;
+  const isPurchasable =
+    selectedVariant?.purchasable ?? product?.purchasable ?? true;
   const unavailable = isOutOfStock || !isPurchasable;
-  const effectivePreorderEnabled = selectedVariant?.preorderEnabled ?? product?.preorderEnabled ?? false;
+  const effectivePreorderEnabled =
+    selectedVariant?.preorderEnabled ?? product?.preorderEnabled ?? false;
   const isPreorderEligible = isOutOfStock && effectivePreorderEnabled;
-  const preorderExpectedDate = selectedVariant?.preorderExpectedDate ?? product?.preorderExpectedDate ?? null;
+  const preorderExpectedDate =
+    selectedVariant?.preorderExpectedDate ??
+    product?.preorderExpectedDate ??
+    null;
 
-  const activeNotification: StockNotification | undefined = myNotifications?.find(n => {
-    if (n.productId !== productId) return false;
-    if (selectedVariantId !== null) return n.variantId === selectedVariantId;
-    return n.variantId === null;
-  });
+  const activeNotification: StockNotification | undefined =
+    myNotifications?.find((n) => {
+      if (n.productId !== productId) return false;
+      if (selectedVariantId !== null) return n.variantId === selectedVariantId;
+      return n.variantId === null;
+    });
 
   const hasNotification = activeNotification?.status === "PENDING";
 
@@ -164,9 +197,14 @@ export default function ProductPage() {
 
   function handleAddToCart() {
     if (!product || !marketplaceId) return;
-    const selectedVariant = product.variants.find((v) => v.id === selectedVariantId) ?? null;
+    const selectedVariant =
+      product.variants.find((v) => v.id === selectedVariantId) ?? null;
     const variantLabel = selectedVariant
-      ? [selectedVariant.option1, selectedVariant.option2, selectedVariant.option3]
+      ? [
+          selectedVariant.option1,
+          selectedVariant.option2,
+          selectedVariant.option3,
+        ]
           .filter(Boolean)
           .join(" / ") || null
       : null;
@@ -179,7 +217,8 @@ export default function ProductPage() {
         price: selectedVariant?.price ?? product.price,
         currency: product.currency?.toUpperCase() ?? "USD",
         quantity: 1,
-        thumbnailUrl: product.thumbnailUrl ?? product.images?.[0]?.imageUrl ?? null,
+        thumbnailUrl:
+          product.thumbnailUrl ?? product.images?.[0]?.imageUrl ?? null,
         marketplaceId,
         companyId: product.companyId,
       })
@@ -190,24 +229,26 @@ export default function ProductPage() {
 
   if (!marketplaceId) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-white/60 text-sm">No marketplace selected.</p>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">
+          No marketplace selected.
+        </p>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-sky-400/40 border-t-sky-400 animate-spin" />
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary/40 animate-spin" />
       </div>
     );
   }
 
   if (isError || !product) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-red-400 text-sm">Product not found.</p>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-danger text-sm">Product not found.</p>
       </div>
     );
   }
@@ -218,15 +259,16 @@ export default function ProductPage() {
   const currency = product.currency?.toUpperCase() ?? "USD";
   const promo = product.activePromotion;
   const showStrikethrough =
-    !!promo || (product.compareAtPrice != null && product.compareAtPrice > product.price);
+    !!promo ||
+    (product.compareAtPrice != null && product.compareAtPrice > product.price);
   const saleLabel =
     promo?.percentOff != null
       ? `-${Math.round(promo.percentOff)}%`
       : promo?.amountOff != null
-      ? `-${currency} ${promo.amountOff.toFixed(2)}`
-      : promo
-      ? "Sale"
-      : null;
+        ? `-${formatMoney(promo.amountOff, currency)}`
+        : promo
+          ? "Sale"
+          : null;
   // Show "Sale ends …" only when the window closes within the next 14 days — beyond that
   // the deadline is too far off to feel urgent and the line just adds noise.
   const saleEndsLabel = (() => {
@@ -235,7 +277,10 @@ export default function ProductPage() {
     const ms = end.getTime() - Date.now();
     const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
     if (ms <= 0 || ms > fourteenDaysMs) return null;
-    return end.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    return end.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   })();
 
   // Plain computation: this runs after the loading/error early returns above, so it
@@ -243,23 +288,15 @@ export default function ProductPage() {
   const earnablePts = (() => {
     if (!loyaltyPolicy || loyaltyPolicy.earnMode === "CASHBACK") return null;
     if (typeof price !== "number") return null;
-    const currentTier = loyaltyTiers?.find((t) => t.id === loyaltyAccount?.currentTierId);
+    const currentTier = loyaltyTiers?.find(
+      (t) => t.id === loyaltyAccount?.currentTierId
+    );
     const multiplier = currentTier?.earnMultiplier ?? 1;
     return Math.floor(price * loyaltyPolicy.earnRatePerDollar * multiplier);
   })();
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0"
-        style={{ zIndex: 0 }}
-      >
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/8 blur-[100px]" />
-      </div>
-
+    <div className="bg-background relative overflow-hidden">
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-10">
         {/* Back link */}
         <motion.a
@@ -267,7 +304,7 @@ export default function ProductPage() {
           variants={fadeIn}
           initial="hidden"
           animate="visible"
-          className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-8 group"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 group"
         >
           <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
           Back to catalogue
@@ -280,7 +317,7 @@ export default function ProductPage() {
           className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12"
         >
           {/* Product image */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur overflow-hidden aspect-square flex items-center justify-center">
+          <div className="rounded-xl border border-border bg-surface overflow-hidden aspect-square flex items-center justify-center">
             {thumbnailUrl ? (
               <img
                 src={thumbnailUrl}
@@ -288,9 +325,9 @@ export default function ProductPage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="flex flex-col items-center gap-3 text-white/30">
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 <Package className="w-16 h-16" />
-                <span className="text-xs uppercase tracking-[0.2em]">No image</span>
+                <span className="text-xs">No image</span>
               </div>
             )}
           </div>
@@ -299,19 +336,19 @@ export default function ProductPage() {
           <div className="flex flex-col gap-5">
             {/* Kicker */}
             {product.category && (
-              <span className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
+              <span className="text-xs font-semibold text-link">
                 {product.category}
               </span>
             )}
 
             {/* Name */}
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight">
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground leading-tight">
               {product.name}
             </h1>
 
             {/* Brand / vendor */}
             {(product.brand || product.vendorName) && (
-              <p className="text-sm text-white/60">
+              <p className="text-sm text-muted-foreground">
                 {product.brand ?? product.vendorName}
               </p>
             )}
@@ -319,30 +356,33 @@ export default function ProductPage() {
             {/* Price */}
             <div className="flex flex-col gap-1">
               <div className="flex items-baseline gap-3 flex-wrap">
-                <p className="text-2xl font-extrabold text-white">
-                  {currency}{" "}
-                  {typeof price === "number" ? price.toFixed(2) : "—"}
+                <p className="text-2xl font-semibold tabular-nums text-foreground">
+                  {typeof price === "number"
+                    ? formatMoney(price, currency)
+                    : "—"}
                 </p>
                 {showStrikethrough && product.compareAtPrice != null && (
-                  <p className="text-sm font-medium text-white/45 line-through">
-                    {currency} {product.compareAtPrice.toFixed(2)}
+                  <p className="text-sm font-medium text-muted-foreground line-through">
+                    {formatMoney(product.compareAtPrice, currency)}
                   </p>
                 )}
                 {saleLabel && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide bg-blue-500/15 border border-white/10 text-sky-200">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide bg-primary/10 border border-border text-link">
                     {saleLabel}
                   </span>
                 )}
               </div>
               {saleEndsLabel && (
-                <p className="text-xs text-white/55">Sale ends {saleEndsLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  Sale ends {saleEndsLabel}
+                </p>
               )}
             </div>
 
             {/* Points-earning indicator */}
             {earnablePts !== null && earnablePts > 0 && (
-              <div className="flex items-center gap-1.5 text-sky-300 text-xs font-medium">
-                <Star className="h-3.5 w-3.5 fill-sky-300" />
+              <div className="flex items-center gap-1.5 text-link text-xs font-medium">
+                <Star className="h-3.5 w-3.5 fill-link" />
                 Earn ~{earnablePts.toLocaleString()} pts on this purchase
               </div>
             )}
@@ -350,30 +390,34 @@ export default function ProductPage() {
             {/* Variant selector */}
             {hasVariants && (
               <div className="flex flex-col gap-2">
-                <p className="text-xs uppercase tracking-[0.2em] font-semibold text-white/60">
+                <p className="text-xs font-semibold text-muted-foreground">
                   Variant
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {product.variants.map(v => {
+                  {product.variants.map((v) => {
                     const label = buildVariantLabel(v);
                     const outOfVariant = v.stock === 0;
                     const isSelected = selectedVariantId === v.id;
                     return (
                       <button
                         key={v.id}
-                        onClick={() => setSelectedVariantId(isSelected ? null : v.id)}
+                        onClick={() =>
+                          setSelectedVariantId(isSelected ? null : v.id)
+                        }
                         className={[
                           "px-3 py-1.5 rounded-xl text-sm font-medium border transition-all",
                           isSelected
-                            ? "border-sky-400/70 bg-sky-400/15 text-sky-200"
+                            ? "border-primary/40 bg-primary/10 text-link"
                             : outOfVariant
-                            ? "border-white/10 bg-white/[0.03] text-white/35 cursor-pointer"
-                            : "border-white/20 bg-white/[0.06] text-white/80 hover:border-white/40 hover:bg-white/10",
+                              ? "border-border bg-surface text-muted-foreground cursor-pointer"
+                              : "border-input bg-surface text-foreground hover:border-input hover:bg-muted",
                         ].join(" ")}
                       >
                         {label || `Variant ${v.id}`}
                         {outOfVariant && (
-                          <span className="ml-1.5 text-white/35 text-xs">(OOS)</span>
+                          <span className="ml-1.5 text-muted-foreground text-xs">
+                            (OOS)
+                          </span>
                         )}
                       </button>
                     );
@@ -386,25 +430,29 @@ export default function ProductPage() {
             <div className="flex flex-wrap items-center gap-2">
               {unavailable ? (
                 isPreorderEligible ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/15 border border-sky-400/30 text-sky-200">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 border border-primary/40 text-link">
                     Preorder
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-danger-subtle border border-danger/40 text-danger">
                     Out of stock
                   </span>
                 )
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/15 border border-green-500/30 text-green-400">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-success-subtle border border-success/40 text-success">
                   <CheckCircle className="w-3.5 h-3.5" />
                   In stock
-                  {effectiveStock !== null && effectiveStock <= 5 && effectiveStock > 0 && (
-                    <span className="text-yellow-400 ml-0.5">— only {effectiveStock} left</span>
-                  )}
+                  {effectiveStock !== null &&
+                    effectiveStock <= 5 &&
+                    effectiveStock > 0 && (
+                      <span className="text-warning ml-0.5">
+                        — only {effectiveStock} left
+                      </span>
+                    )}
                 </span>
               )}
               {isPreorderEligible && preorderExpectedDate && (
-                <span className="text-xs text-white/60">
+                <span className="text-xs text-muted-foreground">
                   Expected {formatCalendarDate(preorderExpectedDate)}
                 </span>
               )}
@@ -420,7 +468,7 @@ export default function ProductPage() {
 
             {/* Description */}
             {product.description && (
-              <p className="text-sm text-white/70 leading-relaxed line-clamp-4">
+              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">
                 {product.description}
               </p>
             )}
@@ -433,16 +481,20 @@ export default function ProductPage() {
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold text-sm transition-colors"
                   >
                     <ShoppingCart className="w-4 h-4" />
                     {addedToCart ? "Added!" : "Add to Cart"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => (accessToken ? setSaveOpen(true) : router.push(loginUrlFor(window.location.pathname)))}
+                    onClick={() =>
+                      accessToken
+                        ? setSaveOpen(true)
+                        : router.push(loginUrlFor(window.location.pathname))
+                    }
                     aria-label="Save to list"
-                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
+                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-input bg-surface text-foreground hover:bg-muted hover:text-link transition-colors text-sm font-semibold"
                   >
                     <Bookmark className="w-4 h-4" />
                     Save
@@ -454,39 +506,46 @@ export default function ProductPage() {
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-sky-400/40 bg-sky-400/10 text-sky-200 font-semibold text-sm transition-colors hover:bg-sky-400/20"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-primary/40 bg-primary/10 text-link font-semibold text-sm transition-colors hover:bg-primary/20"
                   >
                     <Package className="w-4 h-4" />
                     {addedToCart ? "Added!" : "Preorder"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => (accessToken ? setSaveOpen(true) : router.push(loginUrlFor(window.location.pathname)))}
+                    onClick={() =>
+                      accessToken
+                        ? setSaveOpen(true)
+                        : router.push(loginUrlFor(window.location.pathname))
+                    }
                     aria-label="Save to list"
-                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-sky-200 transition-colors text-sm font-semibold"
+                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-full border border-input bg-surface text-foreground hover:bg-muted hover:text-link transition-colors text-sm font-semibold"
                   >
                     <Bookmark className="w-4 h-4" />
                     Save
                   </button>
                 </div>
+              ) : /* Out of stock → Notify Me */
+              accessToken ? (
+                <NotifyButton
+                  hasNotification={hasNotification}
+                  isLoading={
+                    subscribeMutation.isPending || cancelMutation.isPending
+                  }
+                  onToggle={handleNotify}
+                />
               ) : (
-                /* Out of stock → Notify Me */
-                accessToken ? (
-                  <NotifyButton
-                    hasNotification={hasNotification}
-                    isLoading={subscribeMutation.isPending || cancelMutation.isPending}
-                    onToggle={handleNotify}
-                  />
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-center">
-                    <p className="text-white/60 text-sm mb-2">
-                      <a href="/login" className="text-sky-300 hover:text-sky-200 underline underline-offset-2">
-                        Sign in
-                      </a>{" "}
-                      to be notified when this is back in stock.
-                    </p>
-                  </div>
-                )
+                <div className="rounded-xl border border-border bg-surface p-4 text-center">
+                  <p className="text-muted-foreground text-sm mb-2">
+                    <a
+                      href="/login"
+                      className="text-link hover:text-link underline underline-offset-2"
+                    >
+                      Sign in
+                    </a>{" "}
+                    to be notified when this is back in stock.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -504,7 +563,7 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => setReportOpen(true)}
-                className="mt-1 flex items-center gap-1.5 text-xs text-white/40 hover:text-red-400 transition-colors"
+                className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-danger transition-colors"
               >
                 <Flag className="h-3 w-3" />
                 Report this product
@@ -521,14 +580,18 @@ export default function ProductPage() {
             animate="visible"
             className="mt-10 flex flex-wrap gap-2"
           >
-            {product.tags.split(",").map(tag => tag.trim()).filter(Boolean).map(tag => (
-              <span
-                key={tag}
-                className="px-3 py-1 rounded-full text-xs font-medium border border-white/10 bg-white/[0.05] text-white/60"
-              >
-                {tag}
-              </span>
-            ))}
+            {product.tags
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+              .map((tag) => (
+                <span
+                  key={tag}
+                  className="px-3 py-1 rounded-full text-xs font-medium border border-border bg-surface text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
           </motion.div>
         )}
       </div>
@@ -562,18 +625,22 @@ interface WatchPriceButtonProps {
   onToggle: () => void;
 }
 
-function WatchPriceButton({ isWatching, isLoading, onToggle }: WatchPriceButtonProps) {
+function WatchPriceButton({
+  isWatching,
+  isLoading,
+  onToggle,
+}: WatchPriceButtonProps) {
   if (isWatching) {
     return (
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl border border-sky-400/20 bg-sky-400/[0.07]">
-        <div className="flex items-center gap-2 text-sky-200 text-sm">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-primary/40 bg-primary/10">
+        <div className="flex items-center gap-2 text-link text-sm">
           <TrendingDown className="w-4 h-4" />
           Watching for price drops
         </div>
         <button
           onClick={onToggle}
           disabled={isLoading}
-          className="text-xs text-white/45 hover:text-white/70 transition-colors disabled:opacity-40"
+          className="text-xs text-muted-foreground hover:text-muted-foreground transition-colors disabled:opacity-40"
         >
           Unwatch
         </button>
@@ -585,10 +652,10 @@ function WatchPriceButton({ isWatching, isLoading, onToggle }: WatchPriceButtonP
     <button
       onClick={onToggle}
       disabled={isLoading}
-      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-full border border-white/15 bg-transparent hover:bg-white/[0.06] text-white/65 hover:text-white/90 text-sm transition-all disabled:opacity-40"
+      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-full border border-border bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground text-sm transition-all disabled:opacity-40"
     >
       {isLoading ? (
-        <div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white/80 animate-spin" />
+        <div className="w-3.5 h-3.5 rounded-full border-2 border-input border-t-input animate-spin" />
       ) : (
         <TrendingDown className="w-3.5 h-3.5" />
       )}
@@ -603,18 +670,22 @@ interface NotifyButtonProps {
   onToggle: () => void;
 }
 
-function NotifyButton({ hasNotification, isLoading, onToggle }: NotifyButtonProps) {
+function NotifyButton({
+  hasNotification,
+  isLoading,
+  onToggle,
+}: NotifyButtonProps) {
   if (hasNotification) {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-sky-400/30 bg-sky-400/10 text-sky-200 text-sm font-medium">
-          <Bell className="w-4 h-4 fill-sky-200" />
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-primary/40 bg-primary/10 text-link text-sm font-medium">
+          <Bell className="w-4 h-4 fill-link" />
           You'll be notified when it's back
         </div>
         <button
           onClick={onToggle}
           disabled={isLoading}
-          className="flex items-center justify-center gap-1.5 text-xs text-white/45 hover:text-white/70 transition-colors disabled:opacity-40"
+          className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors disabled:opacity-40"
         >
           <BellOff className="w-3.5 h-3.5" />
           Cancel notification
@@ -627,10 +698,10 @@ function NotifyButton({ hasNotification, isLoading, onToggle }: NotifyButtonProp
     <button
       onClick={onToggle}
       disabled={isLoading}
-      className="flex items-center justify-center gap-2 w-full py-3 rounded-full border border-white/20 bg-transparent hover:bg-white/10 text-white/90 font-semibold text-sm transition-all disabled:opacity-40"
+      className="flex items-center justify-center gap-2 w-full py-3 rounded-full border border-input bg-transparent hover:bg-muted text-foreground font-semibold text-sm transition-all disabled:opacity-40"
     >
       {isLoading ? (
-        <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white/80 animate-spin" />
+        <div className="w-4 h-4 rounded-full border-2 border-input border-t-input animate-spin" />
       ) : (
         <Bell className="w-4 h-4" />
       )}

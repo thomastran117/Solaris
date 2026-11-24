@@ -39,7 +39,7 @@ async def test_public_paths_are_not_redirected(context, base_url, path):
 async def test_login_returns_to_the_deep_link(page, base_url):
     await page.goto(base_url + DEEP_LINK)
     await page.wait_for_url(f"**/login?next={ENCODED}")
-    await page.locator("input[name=username]").fill("sam@example.test")
+    await page.locator("input[name=email]").fill("sam@example.test")
     await page.locator("input[name=password]").fill("correct horse battery")
     await page.locator("form button[type=submit]").first.click()
     await page.wait_for_url(f"{base_url}{DEEP_LINK}")
@@ -58,7 +58,8 @@ async def test_restored_session_bounces_to_next(context, page, base_url):
 async def test_unsafe_next_never_leaves_the_site(context, page, base_url, evil):
     await context.add_cookies([{"name": "refreshToken", "value": "valid", "url": base_url}])
     await page.goto(f"{base_url}/login?next={evil}")
-    await page.wait_for_url(f"{base_url}/dashboard")
+    # Unsafe targets fall back to DEFAULT_AFTER_LOGIN, the storefront home.
+    await page.wait_for_url(f"{base_url}/")
 
 
 @pytest.mark.asyncio(loop_scope="session")

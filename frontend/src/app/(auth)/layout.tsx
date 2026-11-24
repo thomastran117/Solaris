@@ -1,11 +1,11 @@
-import { SiteShell } from "../../components/layout/SiteShell";
+import { AuthShell } from "../../components/auth/AuthShell";
 
-// Sign-in screens keep the site chrome for now; the auth redesign replaces this
-// with a focused layout.
+// Sign-in, sign-up, verification and invite screens use a focused layout
+// without the site navigation.
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <SiteShell>{children}</SiteShell>;
+  return <AuthShell>{children}</AuthShell>;
 }

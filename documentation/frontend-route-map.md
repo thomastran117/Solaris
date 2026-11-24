@@ -53,7 +53,7 @@ Per-user data on these pages is never prefetched; it loads in the browser after 
 
 | # | URL | View | Segment | Mode | PR | Notes |
 |---|---|---|---|---|---|---|
-| 13 | `/login` | `LoginPage.tsx` | `(auth)/login/page.tsx` | Shell | #83, #85 | #85 reads a validated `next` parameter and returns there after login. It also bounces automatically when a session is restored on arrival. Today the page always navigates to `/dashboard`. |
+| 13 | `/login` | `LoginPage.tsx` | `(auth)/login/page.tsx` | Shell | #83, #85 | #85 reads a validated `next` parameter and returns there after login. It also bounces automatically when a session is restored on arrival. Without a valid `next` it goes to `DEFAULT_AFTER_LOGIN`, the storefront home `/` (it was `/dashboard`, the merchant analytics page). The form sends the reCAPTCHA token the backend requires. |
 | 14 | `/auth/google` | `AuthCallback.tsx` | `(auth)/auth/google/page.tsx` | Shell | #83 | Google OAuth popup redirect target. It reads `id_token` from the URL fragment, which never reaches the server, so the page stays client-only. The path must not change because it is the registered redirect URI. Fix: the fallback currently sends the user to the unrouted `/auth`; it becomes `/login`. |
 | 15 | `/invite/accept/:token` | `InviteAcceptPage.tsx` | `(auth)/invite/accept/[token]/page.tsx` | Shell | #83 | Already redirects anonymous users to `/login?next=<path>`. The round-trip starts working once #85 makes the login page honor `next`. `noindex`. |
 
@@ -125,9 +125,12 @@ The sidebar column records which signed-in users see each link. Company items ne
 |---|---|---|---|
 | Any unmatched URL | `app/not-found.tsx` | #83 | 404 page with a real `404` status. It renders outside every route group, so it brings its own `SiteShell`. |
 | `/admin` | `(merchant)/admin/page.tsx` | Redesign | Seller dashboard overview: cards for every area the sidebar shows this user, or an empty state without seller access. |
-| Route-group chrome | `(storefront)`, `(auth)`, `(account)` layouts → `SiteShell`; `(merchant)` → `AdminShell` | Redesign | The root layout renders only `<html>`, the theme script, a skip link and providers. Each group adds its own header, `<main id="main">` and footer. |
+| Route-group chrome | `(storefront)` and `(account)` layouts → `SiteShell`; `(auth)` → the focused `AuthShell`; `(merchant)` → `AdminShell` | Redesign | The root layout renders only `<html>`, the theme script, a skip link and providers. Each group adds its own header, `<main id="main">` and footer. |
 | Storefront entity misses | `(storefront)/not-found.tsx` | #84 | Product, company, collection, kit, or list not found. |
 | `/robots.txt` | `app/robots.ts` | #84 | Disallows the account and merchant prefixes. |
+| `/signup` | `(auth)/signup/page.tsx` → `SignupPage.tsx` | Redesign | Account creation (`POST /auth/signup` with captcha), then a "check your inbox" step. The login page linked here before it existed. |
+| `/verify-email` | `(auth)/verify-email/page.tsx` → `VerifyTokenPage.tsx` | Redesign | Target of the verification email (`EmailSender`); consumes the single-use token once via `POST /auth/verify`. `noindex`. |
+| `/verify-device` | `(auth)/verify-device/page.tsx` → `VerifyTokenPage.tsx` | Redesign | Target of the new-device email; `POST /auth/verify-device` signs the device in. `noindex`. |
 | `/healthz` | `app/healthz/route.ts` | #86 | Container health check. It sits outside `/api/*`, which is rewritten to the backend. |
 | `/api/*` | `next.config.ts` rewrite | #83 | Forwards same-origin API calls to `API_INTERNAL_URL`. It replaces the Vite dev proxy and Nginx `location /api/`. |
 

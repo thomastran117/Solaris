@@ -2,6 +2,8 @@ import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { Layers, Sparkles } from "lucide-react";
 import type { Collection } from "../../types/collection";
+import { useAnims } from "../../hooks/useAnims";
+import { Badge } from "../ui/Badge";
 
 interface Props {
   collection: Collection;
@@ -9,47 +11,52 @@ interface Props {
 }
 
 /**
- * Storefront tile for a featured collection. Mirrors the visual rhythm of
- * {@code ProductCard}: same border, surface, hover lift, and aspect-square media slot.
+ * Storefront tile for a featured collection. Shares ProductCard's surface,
+ * media slot and hover so the two sit together in one grid.
  */
 export default function CollectionCard({ collection, variants }: Props) {
+  const { hoverLift } = useAnims();
   return (
-    <Link href={`/collections/${collection.slug}`} className="group block">
-      <motion.div
-        variants={variants}
-        whileHover={{ y: -4 }}
-        className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+    <motion.div variants={variants} whileHover={hoverLift} className="h-full">
+      <Link
+        href={`/collections/${collection.slug}`}
+        className="group flex h-full flex-col overflow-hidden rounded-xl border bg-surface shadow-xs transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        {collection.type === "DYNAMIC" && (
-          <span className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold tracking-wide bg-blue-500/15 border border-white/10 text-sky-200 backdrop-blur">
-            <Sparkles className="w-3 h-3" />
-            Curated
-          </span>
-        )}
-        <div className="aspect-square bg-white/[0.04] flex items-center justify-center overflow-hidden">
+        <div className="relative aspect-square overflow-hidden bg-muted">
           {collection.imageUrl ? (
             <img
               src={collection.imageUrl}
               alt={collection.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+              className="size-full object-cover transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
             />
           ) : (
-            <Layers className="w-10 h-10 text-white/20" />
+            <div className="flex size-full items-center justify-center">
+              <Layers className="size-10 text-muted-foreground" aria-hidden />
+            </div>
+          )}
+          {collection.type === "DYNAMIC" && (
+            <Badge variant="info" className="absolute left-2 top-2">
+              <Sparkles aria-hidden />
+              Curated
+            </Badge>
           )}
         </div>
-        <div className="p-4">
-          <h3 className="text-base font-semibold text-white leading-snug line-clamp-2 mb-1">
+        <div className="flex flex-1 flex-col gap-1 p-4">
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">
             {collection.name}
           </h3>
           {collection.description && (
-            <p className="text-xs text-white/55 line-clamp-2 mb-2">{collection.description}</p>
+            <p className="line-clamp-2 text-sm text-muted-foreground">
+              {collection.description}
+            </p>
           )}
-          <p className="text-xs text-sky-200/80 font-semibold">
+          <p className="mt-auto pt-2 text-xs font-medium text-link">
             {collection.productCount}{" "}
             {collection.productCount === 1 ? "product" : "products"}
           </p>
         </div>
-      </motion.div>
-    </Link>
+      </Link>
+    </motion.div>
   );
 }

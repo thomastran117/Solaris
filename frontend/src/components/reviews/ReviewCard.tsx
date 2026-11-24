@@ -32,24 +32,29 @@ export default function ReviewCard({
   isOwn = false,
 }: Props) {
   const [reportOpen, setReportOpen] = useState(false);
-  const reviewerName = [review.reviewerFirstName, review.reviewerLastName]
-    .filter(Boolean)
-    .join(" ") || "Reviewer";
+  const reviewerName =
+    [review.reviewerFirstName, review.reviewerLastName]
+      .filter(Boolean)
+      .join(" ") || "Reviewer";
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur shadow-sm hover:shadow-md transition-shadow">
+    <article className="rounded-xl border border-border bg-surface p-5 shadow-sm hover:shadow-md transition-shadow">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-sm font-semibold text-white">{reviewerName}</span>
+            <span className="text-sm font-semibold text-foreground">
+              {reviewerName}
+            </span>
             {review.verifiedPurchase && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-green-500/20 bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold text-green-400">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success-subtle px-2 py-0.5 text-[10px] font-semibold text-success">
                 <CheckCircle className="h-3 w-3" />
                 Verified purchase
               </span>
             )}
-            <span className="text-white/55">·</span>
-            <span className="text-white/55">{formatDate(review.createdAt)}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">
+              {formatDate(review.createdAt)}
+            </span>
           </div>
           <div className="mt-1">
             <RatingStars rating={review.rating} size="sm" />
@@ -58,10 +63,12 @@ export default function ReviewCard({
       </header>
 
       {review.title && (
-        <h4 className="mt-3 text-base font-semibold text-white">{review.title}</h4>
+        <h4 className="mt-3 text-base font-semibold text-foreground">
+          {review.title}
+        </h4>
       )}
       {review.body && (
-        <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-white/80">
+        <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground">
           {review.body}
         </p>
       )}
@@ -84,7 +91,7 @@ export default function ReviewCard({
           <button
             type="button"
             onClick={() => setReportOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:border-red-400/40 hover:text-red-300"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-danger/40 hover:text-danger"
           >
             <Flag className="h-3.5 w-3.5" />
             Report

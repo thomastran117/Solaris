@@ -56,6 +56,15 @@ export function parseCatalogUrlParams(source: ParamSource): CatalogUrlParams {
   };
 }
 
+/**
+ * Unfiltered first page, as `/browse` requests it with no query string. The
+ * home page reuses it so its "Popular picks" share the browse cache entry and
+ * its server prefetch.
+ */
+export const DEFAULT_CATALOG_PARAMS: CatalogUrlParams = parseCatalogUrlParams(
+  {}
+);
+
 /** The catalog search request for the given URL filters. */
 export function catalogSearchRequest(p: CatalogUrlParams): CatalogSearchParams {
   return {

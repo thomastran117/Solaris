@@ -84,7 +84,7 @@ Blank values disable or limit the corresponding local feature; they do not provi
 | Google OAuth          | `GOOGLE_CLIENT_ID`                                                                                       |
 | Microsoft OAuth       | `MICROSOFT_CLIENT_ID`, `MICROSOFT_JWKS_URI`                                                              |
 | Apple OAuth           | `APPLE_CLIENT_ID`, `APPLE_JWKS_URI`                                                                      |
-| reCAPTCHA             | `RECAPTCHA_SECRET_KEY` and `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`                                                     |
+| reCAPTCHA             | `RECAPTCHA_SECRET_KEY` and `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`; both are required for login and signup against a real backend, because verification fails closed                                                     |
 | Stripe orders         | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`                                   |
 | Stripe premium        | `STRIPE_PREMIUM_PRICE_ID`, `STRIPE_PREMIUM_WEBHOOK_SECRET`, premium success/cancel/portal URLs           |
 | S3-compatible uploads | `AWS_S3_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_PUBLIC_URL_BASE` |

@@ -42,7 +42,9 @@ export default function ReviewForm({
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["reviews", "list", productId] });
-    queryClient.invalidateQueries({ queryKey: ["reviews", "summary", productId] });
+    queryClient.invalidateQueries({
+      queryKey: ["reviews", "summary", productId],
+    });
     queryClient.invalidateQueries({ queryKey: ["reviews", "me", productId] });
   };
 
@@ -102,12 +104,16 @@ export default function ReviewForm({
 
   if (!authenticated) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-6 text-sm text-white/65 backdrop-blur">
+      <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted-foreground">
         <p>
-          <a href="/login" className="font-semibold text-sky-200 underline-offset-2 hover:underline">
+          <a
+            href="/login"
+            className="font-semibold text-link underline-offset-2 hover:underline"
+          >
             Sign in
           </a>{" "}
-          to leave a review. You'll need a delivered or shipped order for this product.
+          to leave a review. You'll need a delivered or shipped order for this
+          product.
         </p>
       </div>
     );
@@ -130,14 +136,14 @@ export default function ReviewForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.06] p-6 backdrop-blur shadow-sm"
+      className="space-y-5 rounded-xl border border-border bg-surface p-6 shadow-sm"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
+          <p className="text-xs font-semibold text-link">
             {existing ? "Your review" : "Share your experience"}
           </p>
-          <h3 className="mt-1 text-lg font-semibold text-white">
+          <h3 className="mt-1 text-lg font-semibold text-foreground">
             {existing ? "Edit review" : "Write a review"}
           </h3>
         </div>
@@ -145,10 +151,11 @@ export default function ReviewForm({
           <button
             type="button"
             onClick={() => {
-              if (window.confirm("Delete your review?")) deleteMutation.mutate();
+              if (window.confirm("Delete your review?"))
+                deleteMutation.mutate();
             }}
             disabled={deleteMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:border-red-400/40 hover:text-red-300 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-danger/40 hover:text-danger disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
@@ -157,14 +164,17 @@ export default function ReviewForm({
       </div>
 
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
-          Rating
-        </span>
-        <RatingStars rating={rating} interactive size="lg" onChange={setRating} />
+        <span className="text-xs font-semibold text-link">Rating</span>
+        <RatingStars
+          rating={rating}
+          interactive
+          size="lg"
+          onChange={setRating}
+        />
       </div>
 
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
+        <span className="text-xs font-semibold text-link">
           Title (optional)
         </span>
         <input
@@ -173,12 +183,12 @@ export default function ReviewForm({
           onChange={(e) => setTitle(e.target.value)}
           maxLength={TITLE_MAX}
           placeholder="Summarise your experience"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 text-sm text-white placeholder:text-white/45 focus:border-blue-400/40 focus:outline-none"
+          className="mt-2 w-full rounded-xl border border-border bg-surface p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
         />
       </label>
 
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
+        <span className="text-xs font-semibold text-link">
           Details (optional)
         </span>
         <textarea
@@ -187,18 +197,16 @@ export default function ReviewForm({
           maxLength={BODY_MAX}
           rows={4}
           placeholder="Tell other shoppers what you liked or didn't"
-          className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] p-3 text-sm text-white placeholder:text-white/45 focus:border-blue-400/40 focus:outline-none"
+          className="mt-2 w-full resize-none rounded-xl border border-border bg-surface p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
         />
-        <span className="mt-1 block text-right text-[10px] text-white/45">
+        <span className="mt-1 block text-right text-[10px] text-muted-foreground">
           {body.length}/{BODY_MAX}
         </span>
       </label>
 
       {existing && (
         <div className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-200/90">
-            Photos
-          </span>
+          <span className="text-xs font-semibold text-link">Photos</span>
           <ReviewPhotoUploader
             companyId={companyId}
             productId={productId}
@@ -213,21 +221,25 @@ export default function ReviewForm({
       )}
 
       {!existing && (
-        <p className="text-xs text-white/55">
+        <p className="text-xs text-muted-foreground">
           You can attach photos after saving your review.
         </p>
       )}
 
-      {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
+      {errorMessage && <p className="text-xs text-danger">{errorMessage}</p>}
 
       <div className="flex justify-end">
         <button
           type="submit"
           disabled={submitting || rating === 0}
-          className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {existing ? <Pencil className="h-3.5 w-3.5" /> : null}
-          {submitting ? "Saving..." : existing ? "Save changes" : "Submit review"}
+          {submitting
+            ? "Saving..."
+            : existing
+              ? "Save changes"
+              : "Submit review"}
         </button>
       </div>
     </form>
@@ -236,7 +248,9 @@ export default function ReviewForm({
 
 function extractMessage(err: unknown): string {
   if (typeof err === "object" && err !== null) {
-    const maybe = err as { response?: { data?: { message?: string; detail?: string } } };
+    const maybe = err as {
+      response?: { data?: { message?: string; detail?: string } };
+    };
     return (
       maybe.response?.data?.detail ??
       maybe.response?.data?.message ??

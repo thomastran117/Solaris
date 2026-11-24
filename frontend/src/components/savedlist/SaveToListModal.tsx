@@ -1,10 +1,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Check } from "lucide-react";
 import Modal from "../ui/Modal";
-import {
-  useAddSavedListItem,
-  useSavedLists,
-} from "../../hooks/useSavedLists";
+import { useAddSavedListItem, useSavedLists } from "../../hooks/useSavedLists";
 import { savedListsApi } from "../../api/savedLists";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import CreateListModal from "./CreateListModal";
@@ -18,7 +15,12 @@ interface Props {
   productName: string;
 }
 
-export default function SaveToListModal({ open, onClose, productId, productName }: Props) {
+export default function SaveToListModal({
+  open,
+  onClose,
+  productId,
+  productName,
+}: Props) {
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lists = useSavedLists(undefined, open);
@@ -55,9 +57,10 @@ export default function SaveToListModal({ open, onClose, productId, productName 
         title="Save to list"
         maxWidth="max-w-md"
       >
-        <p className="text-sm text-white/70 mb-4 line-clamp-2">
-          Save <span className="text-white font-medium">{productName}</span> to one of
-          your lists.
+        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+          Save{" "}
+          <span className="text-foreground font-medium">{productName}</span> to
+          one of your lists.
         </p>
 
         {lists.isLoading && (
@@ -65,21 +68,21 @@ export default function SaveToListModal({ open, onClose, productId, productName 
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="h-12 rounded-xl border border-white/10 bg-white/[0.04] animate-pulse"
+                className="h-12 rounded-xl border border-border bg-surface animate-pulse"
               />
             ))}
           </div>
         )}
 
         {!lists.isLoading && (lists.data?.length ?? 0) === 0 && (
-          <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-5 text-center mb-3">
-            <p className="text-sm text-white/70 mb-3">
+          <div className="rounded-xl border border-dashed border-border bg-surface p-5 text-center mb-3">
+            <p className="text-sm text-muted-foreground mb-3">
               You don't have any lists yet.
             </p>
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary hover:bg-primary-hover px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors"
             >
               <Plus className="w-4 h-4" />
               Create your first list
@@ -115,15 +118,13 @@ export default function SaveToListModal({ open, onClose, productId, productName 
           </ul>
         )}
 
-        {error && (
-          <p className="text-sm text-red-400 mb-3">{error}</p>
-        )}
+        {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {(lists.data?.length ?? 0) > 0 && (
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 text-sm text-sky-300 hover:text-sky-200 transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-link hover:text-link transition-colors"
           >
             <Plus className="w-4 h-4" />
             Create new list
@@ -142,10 +143,14 @@ export default function SaveToListModal({ open, onClose, productId, productName 
               queryClient.invalidateQueries({
                 queryKey: ["savedLists", "detail", list.id],
               });
-              queryClient.invalidateQueries({ queryKey: ["savedLists", "list"] });
+              queryClient.invalidateQueries({
+                queryKey: ["savedLists", "list"],
+              });
             })
             .catch((err: unknown) => {
-              setError(extractErrorMessage(err) ?? "Could not add to the new list.");
+              setError(
+                extractErrorMessage(err) ?? "Could not add to the new list."
+              );
             });
         }}
       />
@@ -192,24 +197,24 @@ function SaveTargetRow({
       disabled={disabled}
       className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
         already
-          ? "border-green-400/30 bg-green-500/10 cursor-default"
-          : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
+          ? "border-success/40 bg-success-subtle cursor-default"
+          : "border-border bg-surface hover:bg-muted"
       }`}
     >
-      <div className="bg-blue-500/15 border border-white/10 rounded-lg p-1.5 flex-shrink-0">
-        <Icon className="w-4 h-4 text-sky-200" />
+      <div className="bg-primary/10 border border-border rounded-lg p-1.5 flex-shrink-0">
+        <Icon className="w-4 h-4 text-link" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{name}</p>
-        <p className="text-xs text-white/50">{typeLabel}</p>
+        <p className="text-sm font-semibold text-foreground truncate">{name}</p>
+        <p className="text-xs text-muted-foreground">{typeLabel}</p>
       </div>
       {already ? (
-        <span className="inline-flex items-center gap-1 text-xs text-green-300">
+        <span className="inline-flex items-center gap-1 text-xs text-success">
           <Check className="w-3.5 h-3.5" />
           Saved
         </span>
       ) : (
-        <span className="text-xs text-sky-300">
+        <span className="text-xs text-link">
           {add.isPending ? "Saving…" : "Save"}
         </span>
       )}
@@ -219,8 +224,12 @@ function SaveTargetRow({
 
 function extractErrorMessage(err: unknown): string | null {
   if (typeof err === "object" && err !== null) {
-    const maybe = err as { response?: { data?: { detail?: string; message?: string } } };
-    return maybe.response?.data?.detail ?? maybe.response?.data?.message ?? null;
+    const maybe = err as {
+      response?: { data?: { detail?: string; message?: string } };
+    };
+    return (
+      maybe.response?.data?.detail ?? maybe.response?.data?.message ?? null
+    );
   }
   return null;
 }

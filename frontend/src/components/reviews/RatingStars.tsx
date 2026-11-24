@@ -14,7 +14,13 @@ const SIZE_CLASS: Record<NonNullable<Props["size"]>, string> = {
   lg: "h-5 w-5",
 };
 
-export default function RatingStars({ rating, size = "md", interactive, onChange, label }: Props) {
+export default function RatingStars({
+  rating,
+  size = "md",
+  interactive,
+  onChange,
+  label,
+}: Props) {
   const stars = [1, 2, 3, 4, 5];
   const sizeClass = SIZE_CLASS[size];
 
@@ -29,7 +35,7 @@ export default function RatingStars({ rating, size = "md", interactive, onChange
         const Icon = (
           <Star
             className={`${sizeClass} ${
-              filled ? "fill-blue-400 text-blue-400" : "text-white/25"
+              filled ? "fill-link text-link" : "text-muted-foreground"
             } transition`}
           />
         );
@@ -41,7 +47,7 @@ export default function RatingStars({ rating, size = "md", interactive, onChange
             role="radio"
             aria-checked={s === rating}
             onClick={() => onChange?.(s)}
-            className="rounded p-0.5 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
+            className="rounded p-0.5 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             {Icon}
           </button>

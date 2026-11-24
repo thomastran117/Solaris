@@ -49,13 +49,13 @@ Fonts are Geist Sans (`font-sans`, the default) and Geist Mono (`font-mono`), lo
 
 ### Migration status (temporary)
 
-Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `FORCE_ALL_DARK` / `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pin those routes to dark and hide the toggle there.
+Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is the account and seller routes; everything else follows the visitor's theme.
 
 | Area                                                                          | Status  |
 | ----------------------------------------------------------------------------- | ------- |
 | Tokens, theme, primitives (`components/ui`, `components/theme`)               | Done    |
 | App shell (site header and footer, seller sidebar, not-found and error pages) | Done    |
-| Storefront and auth routes                                                    | Pending |
+| Storefront and auth routes (incl. signup and verification)                    | Done    |
 | Cart and checkout                                                             | Pending |
 | Account routes                                                                | Pending |
 | Merchant admin routes                                                         | Pending |

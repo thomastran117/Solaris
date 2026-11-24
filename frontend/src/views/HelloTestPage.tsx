@@ -46,16 +46,16 @@ export default function HelloTestPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen text-white bg-gray-900">
+    <div className="flex flex-col items-center justify-center h-screen text-foreground bg-surface">
       <h1 className="text-2xl font-bold mb-4">Test /auth/hello</h1>
 
       <div className="mb-4">
         <p>
           <strong>Current Token:</strong>{" "}
           {auth.accessToken ? (
-            <span className="text-green-400">{auth.accessToken}</span>
+            <span className="text-success">{auth.accessToken}</span>
           ) : (
-            <span className="text-red-400">No token</span>
+            <span className="text-danger">No token</span>
           )}
         </p>
         <p>
@@ -68,15 +68,19 @@ export default function HelloTestPage() {
 
       <button
         onClick={callHello}
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md"
+        className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary-hover rounded-lg shadow-md"
       >
         Call /auth/hello
       </button>
 
       {message && (
-        <p className="mt-4 p-2 bg-green-800 rounded-lg">✅ {message}</p>
+        <p className="mt-4 p-2 bg-success-subtle rounded-lg">✅ {message}</p>
       )}
-      {error && <p className="mt-4 p-2 bg-red-800 rounded-lg">❌ {error}</p>}
+      {error && (
+        <p className="mt-4 p-2 bg-danger-subtle text-danger rounded-lg">
+          ❌ {error}
+        </p>
+      )}
     </div>
   );
 }

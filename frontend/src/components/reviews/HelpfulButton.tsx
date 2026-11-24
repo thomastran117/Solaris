@@ -55,7 +55,9 @@ export default function HelpfulButton({
     onSuccess: (vote) => {
       setOptimistic(vote);
       onChange?.(vote);
-      queryClient.invalidateQueries({ queryKey: ["reviews", "list", productId] });
+      queryClient.invalidateQueries({
+        queryKey: ["reviews", "list", productId],
+      });
     },
   });
 
@@ -69,8 +71,8 @@ export default function HelpfulButton({
   const baseClasses =
     "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition";
   const activeClasses = optimistic.userHasVoted
-    ? "border-blue-400/40 bg-blue-500/15 text-blue-300"
-    : "border-white/15 bg-white/[0.04] text-white/70 hover:border-white/30 hover:text-white";
+    ? "border-primary/40 bg-primary/10 text-link"
+    : "border-border bg-surface text-muted-foreground hover:border-input hover:text-foreground";
   const disabledClasses = disabled ? "opacity-60 cursor-not-allowed" : "";
 
   return (
@@ -82,9 +84,11 @@ export default function HelpfulButton({
       title={!accessToken ? "Sign in to vote" : undefined}
       className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
     >
-      <ThumbsUp className={`h-3.5 w-3.5 ${optimistic.userHasVoted ? "fill-blue-300" : ""}`} />
+      <ThumbsUp
+        className={`h-3.5 w-3.5 ${optimistic.userHasVoted ? "fill-link" : ""}`}
+      />
       <span>Helpful</span>
-      <span className="text-white/60">·</span>
+      <span className="text-muted-foreground">·</span>
       <span>{optimistic.helpfulCount}</span>
     </button>
   );
