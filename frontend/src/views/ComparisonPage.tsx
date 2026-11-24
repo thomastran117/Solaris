@@ -430,7 +430,7 @@ export default function ComparisonPage() {
         {/* Loading */}
         {selectedIds.length >= 2 && isLoading && (
           <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/40 border-t-primary/40" />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
           </div>
         )}
 

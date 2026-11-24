@@ -7,6 +7,7 @@ describe("isProtectedPath", () => {
     "/admin/products",
     "/admin/orders/1",
     "/b2b/quotes",
+    "/checkout",
     "/dashboard",
     "/feed",
     "/feedback",
@@ -31,6 +32,8 @@ describe("isProtectedPath", () => {
     "/kits/c/k",
     "/lists/public/sam-wish",
     "/gift-cards",
+    "/cart", // anonymous visitors can build a cart; checkout asks them to sign in
+    "/checkouts",
     "/login",
     "/auth/google",
     "/invite/accept/tok",

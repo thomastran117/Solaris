@@ -30,7 +30,8 @@ import type { RootState, AppDispatch } from "../stores";
 import { selectActiveMarketplaceId } from "../stores/marketplaceSlice";
 import type { StockNotification } from "../types/notifications";
 import type { PriceWatcher } from "../types/priceWatchers";
-import { addItem } from "../stores/cartSlice";
+import { addLine } from "../stores/cartSlice";
+import { useCartDrawer } from "../components/cart/CartDrawer";
 import { formatCalendarDate } from "../lib/format";
 import { productKeys } from "../api/keys";
 import { loginUrlFor } from "../lib/routes";
@@ -61,7 +62,7 @@ export default function ProductPage() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     null
   );
-  const [addedToCart, setAddedToCart] = useState(false);
+  const { openCart } = useCartDrawer();
   const [saveOpen, setSaveOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const router = useRouter();
@@ -209,7 +210,8 @@ export default function ProductPage() {
           .join(" / ") || null
       : null;
     dispatch(
-      addItem({
+      addLine({
+        kind: "product",
         productId: product.id,
         variantId: selectedVariantId,
         name: product.name,
@@ -223,8 +225,7 @@ export default function ProductPage() {
         companyId: product.companyId,
       })
     );
-    setAddedToCart(true);
-    setTimeout(() => setAddedToCart(false), 2000);
+    openCart();
   }
 
   if (!marketplaceId) {
@@ -240,7 +241,7 @@ export default function ProductPage() {
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary/40 animate-spin" />
+        <div className="w-8 h-8 rounded-full border-2 border-primary/40 border-t-primary animate-spin" />
       </div>
     );
   }
@@ -484,7 +485,7 @@ export default function ProductPage() {
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground font-semibold text-sm transition-colors"
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    {addedToCart ? "Added!" : "Add to Cart"}
+                    {"Add to cart"}
                   </button>
                   <button
                     type="button"
@@ -509,7 +510,7 @@ export default function ProductPage() {
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full border border-primary/40 bg-primary/10 text-link font-semibold text-sm transition-colors hover:bg-primary/20"
                   >
                     <Package className="w-4 h-4" />
-                    {addedToCart ? "Added!" : "Preorder"}
+                    {"Preorder"}
                   </button>
                   <button
                     type="button"

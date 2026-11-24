@@ -14,6 +14,17 @@ public interface EmailVerificationService {
     void initiateVerification(UUID userId, String email);
 
     /**
+     * Risk step-up at checkout. Issues a token in the same store as
+     * {@link #initiateVerification} (so {@link #consumeVerificationToken} accepts it
+     * when the order is resubmitted), but emails a link back to the checkout
+     * instead of to account verification.
+     *
+     * @param userId the buyer's id
+     * @param email  the buyer's email address
+     */
+    void initiateCheckoutStepUp(UUID userId, String email);
+
+    /**
      * Atomically consumes the verification token from Redis and returns the associated userId.
      * Throws {@link backend.exceptions.http.BadRequestException} if the token is missing,
      * expired, or malformed.

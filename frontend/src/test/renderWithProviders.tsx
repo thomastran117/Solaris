@@ -4,6 +4,7 @@ import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { makeStore, type AppStore, type RootState } from "../stores";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
+import { CartDrawerProvider } from "../components/cart/CartDrawer";
 
 type AuthOverrides = Partial<RootState["auth"]>;
 
@@ -27,7 +28,7 @@ export function signedIn(overrides: AuthOverrides = {}): AuthOverrides {
 
 /**
  * Renders with the app's client providers: a fresh Redux store, a TanStack
- * Query client with retries off, and the theme provider.
+ * Query client with retries off, the theme provider and the cart drawer.
  */
 export function renderWithProviders(
   ui: ReactElement,
@@ -42,7 +43,9 @@ export function renderWithProviders(
   const result = render(
     <Provider store={appStore}>
       <QueryClientProvider client={client}>
-        <ThemeProvider>{ui}</ThemeProvider>
+        <ThemeProvider>
+          <CartDrawerProvider>{ui}</CartDrawerProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </Provider>
   );

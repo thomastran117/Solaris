@@ -56,7 +56,7 @@ Views are moving from the legacy navy-glass palette to tokens over several PRs. 
 | Tokens, theme, primitives (`components/ui`, `components/theme`)               | Done    |
 | App shell (site header and footer, seller sidebar, not-found and error pages) | Done    |
 | Storefront and auth routes (incl. signup and verification)                    | Done    |
-| Cart and checkout                                                             | Pending |
+| Cart and checkout                                                             | Done    |
 | Account routes                                                                | Pending |
 | Merchant admin routes                                                         | Pending |
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Package, X } from "lucide-react";
@@ -15,6 +15,7 @@ import TrackingTimeline from "../components/order/TrackingTimeline";
 import PickupPanel from "../components/order/PickupPanel";
 import DeliverySlotPanel from "../components/order/DeliverySlotPanel";
 import ShippingRatePanel from "../components/order/ShippingRatePanel";
+import { PaymentPanel } from "../components/checkout/PaymentPanel";
 import { ordersApi } from "../api/orders";
 import { useOrderStream } from "../hooks/useOrderStream";
 import { useAnims } from "../hooks/useAnims";
@@ -22,15 +23,27 @@ import DriverLocationIndicator from "../components/order/DriverLocationIndicator
 
 const CANCELLABLE = new Set(["RESERVED", "PAID", "PACKED"]);
 
-export default function OrderDetailPage() {
+export default function OrderDetailPage({
+  stripePublishableKey = null,
+}: {
+  /** From the server; enables completing payment for a RESERVED order. */
+  stripePublishableKey?: string | null;
+}) {
   const { id } = useParams<{ id: string }>();
+  const search = useSearchParams();
+  const justPlaced =
+    search.get("placed") === "1" || search.get("payment") === "return";
   const router = useRouter();
   const qc = useQueryClient();
   const { fadeInUp, stagger } = useAnims();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  const { data: order, isLoading, isError } = useQuery({
+  const {
+    data: order,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["order", id],
     queryFn: () => ordersApi.get(id!).then((r) => r.data),
     enabled: !!id,
@@ -50,7 +63,8 @@ export default function OrderDetailPage() {
 
   const { connected, driverLocation } = useOrderStream(id);
 
-  const hasPickupReady = order?.items.some((i) => i.fulfillmentStatus === "PICKUP_READY") ?? false;
+  const hasPickupReady =
+    order?.items.some((i) => i.fulfillmentStatus === "PICKUP_READY") ?? false;
 
   return (
     <div className="relative min-h-screen bg-slate-950 text-white">
@@ -66,31 +80,60 @@ export default function OrderDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Back to Orders
         </button>
 
+        {justPlaced && order && order.status === "RESERVED" && (
+          <div
+            role="status"
+            className="mb-6 rounded-xl border border-success/30 bg-success-subtle px-4 py-3 text-sm text-success"
+          >
+            Thanks! We&apos;re confirming your payment with the bank. This page
+            updates on its own when your order is placed.
+          </div>
+        )}
+
         {isLoading && (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] h-24 animate-pulse" />
+              <div
+                key={i}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] h-24 animate-pulse"
+              />
             ))}
           </div>
         )}
 
         {isError && (
-          <p className="text-red-400 text-sm">Failed to load order. Please try again.</p>
+          <p className="text-red-400 text-sm">
+            Failed to load order. Please try again.
+          </p>
         )}
 
         {order && (
-          <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-6">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={stagger}
+            className="space-y-6"
+          >
             {/* Header */}
-            <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
+            <motion.div
+              variants={fadeInUp}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="bg-blue-500/15 border border-white/10 rounded-xl p-2">
                     <Package className="h-5 w-5 text-sky-200" />
                   </div>
                   <div>
-                    <p className="text-xs text-white/50 uppercase tracking-wide">Order</p>
-                    <p className="text-base font-mono font-bold text-white">#{order.id.slice(0, 8).toUpperCase()}</p>
-                    <p className="text-xs text-white/50">{new Date(order.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-white/50 uppercase tracking-wide">
+                      Order
+                    </p>
+                    <p className="text-base font-mono font-bold text-white">
+                      #{order.id.slice(0, 8).toUpperCase()}
+                    </p>
+                    <p className="text-xs text-white/50">
+                      {new Date(order.createdAt).toLocaleString()}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -100,14 +143,23 @@ export default function OrderDetailPage() {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
                       </span>
-                      <span className="text-xs text-blue-400 font-medium">Live</span>
+                      <span className="text-xs text-blue-400 font-medium">
+                        Live
+                      </span>
                     </div>
                   )}
-                  <p className="text-xl font-extrabold text-white">{order.currency} {order.totalAmount.toFixed(2)}</p>
-                  <p className="text-xs text-white/50 capitalize">{order.status.toLowerCase().replace(/_/g, " ")}</p>
+                  <p className="text-xl font-extrabold text-white">
+                    {order.currency} {order.totalAmount.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-white/50 capitalize">
+                    {order.status.toLowerCase().replace(/_/g, " ")}
+                  </p>
                   {CANCELLABLE.has(order.status) && (
                     <button
-                      onClick={() => { setCancelError(null); setShowCancelModal(true); }}
+                      onClick={() => {
+                        setCancelError(null);
+                        setShowCancelModal(true);
+                      }}
                       className="mt-2 text-xs text-red-400 hover:text-red-300 transition underline underline-offset-2"
                     >
                       Cancel order
@@ -118,8 +170,13 @@ export default function OrderDetailPage() {
             </motion.div>
 
             {/* Status timeline */}
-            <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
-              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">Status</p>
+            <motion.div
+              variants={fadeInUp}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5"
+            >
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">
+                Status
+              </p>
               <OrderStatusTimeline
                 status={order.status}
                 fulfillmentMethod={order.fulfillmentMethod}
@@ -138,10 +195,18 @@ export default function OrderDetailPage() {
             {order.fulfillmentMethod === "DELIVERY" && order.trackingNumber && (
               <>
                 <motion.div variants={fadeInUp}>
-                  <TrackingPanel trackingNumber={order.trackingNumber} carrier={order.carrier} />
+                  <TrackingPanel
+                    trackingNumber={order.trackingNumber}
+                    carrier={order.carrier}
+                  />
                 </motion.div>
-                <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
-                  <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">Tracking Updates</p>
+                <motion.div
+                  variants={fadeInUp}
+                  className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5"
+                >
+                  <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">
+                    Tracking Updates
+                  </p>
                   <TrackingTimeline orderId={order.id} />
                 </motion.div>
               </>
@@ -161,46 +226,88 @@ export default function OrderDetailPage() {
             )}
 
             {/* Shipping rate selection — only before payment on a delivery order */}
-            {order.fulfillmentMethod === "DELIVERY" && order.status === "RESERVED" && (
+            {order.fulfillmentMethod === "DELIVERY" &&
+              order.status === "RESERVED" && (
+                <motion.div variants={fadeInUp}>
+                  <ShippingRatePanel order={order} />
+                </motion.div>
+              )}
+            {order.status === "RESERVED" && order.paymentClientSecret && (
               <motion.div variants={fadeInUp}>
-                <ShippingRatePanel order={order} />
+                <PaymentPanel
+                  order={order}
+                  publishableKey={stripePublishableKey}
+                  title="Complete payment"
+                />
               </motion.div>
             )}
 
             {/* Shipping address */}
             {order.fulfillmentMethod === "DELIVERY" && order.shipStreet && (
-              <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
-                <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-3">Shipping To</p>
+              <motion.div
+                variants={fadeInUp}
+                className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5"
+              >
+                <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-3">
+                  Shipping To
+                </p>
                 <div className="text-sm text-white/70 space-y-0.5">
-                  {order.shipRecipientName && <p className="text-white font-medium">{order.shipRecipientName}</p>}
+                  {order.shipRecipientName && (
+                    <p className="text-white font-medium">
+                      {order.shipRecipientName}
+                    </p>
+                  )}
                   <p>{order.shipStreet}</p>
                   {order.shipStreet2 && <p>{order.shipStreet2}</p>}
-                  <p>{order.shipCity}{order.shipState ? `, ${order.shipState}` : ""} {order.shipPostalCode}</p>
+                  <p>
+                    {order.shipCity}
+                    {order.shipState ? `, ${order.shipState}` : ""}{" "}
+                    {order.shipPostalCode}
+                  </p>
                   <p>{order.shipCountry}</p>
                 </div>
               </motion.div>
             )}
 
             {/* Items */}
-            <motion.div variants={fadeInUp} className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5">
-              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">Items</p>
+            <motion.div
+              variants={fadeInUp}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5"
+            >
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-4">
+                Items
+              </p>
               <div className="space-y-3">
                 {order.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3">
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3"
+                  >
                     <div>
-                      <p className="text-sm font-medium text-white">{item.productName}</p>
-                      {item.variantTitle && <p className="text-xs text-white/50">{item.variantTitle}</p>}
+                      <p className="text-sm font-medium text-white">
+                        {item.productName}
+                      </p>
+                      {item.variantTitle && (
+                        <p className="text-xs text-white/50">
+                          {item.variantTitle}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm text-white">×{item.quantity}</p>
-                      <p className="text-xs text-white/50">{order.currency} {(item.unitPrice * item.quantity).toFixed(2)}</p>
+                      <p className="text-xs text-white/50">
+                        {order.currency}{" "}
+                        {(item.unitPrice * item.quantity).toFixed(2)}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="border-t border-white/10 mt-4 pt-4 flex justify-between">
                 <span className="text-sm text-white/60">Total</span>
-                <span className="text-base font-extrabold text-white">{order.currency} {order.totalAmount.toFixed(2)}</span>
+                <span className="text-base font-extrabold text-white">
+                  {order.currency} {order.totalAmount.toFixed(2)}
+                </span>
               </div>
             </motion.div>
 
@@ -215,19 +322,34 @@ export default function OrderDetailPage() {
 
       {/* Cancel confirmation modal */}
       {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowCancelModal(false)}>
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowCancelModal(false)}
+        >
+          <div
+            className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">Cancel this order?</h3>
-              <button onClick={() => setShowCancelModal(false)} className="text-white/40 hover:text-white transition">
+              <h3 className="text-lg font-semibold text-white">
+                Cancel this order?
+              </h3>
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="text-white/40 hover:text-white transition"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <p className="text-sm text-white/60">
               This will cancel your order and release any stock reservation.
-              {order && ["RESERVED", "PAID", "PACKED"].includes(order.status) && " A full refund will be issued to your original payment method if payment was already captured."}
+              {order &&
+                ["RESERVED", "PAID", "PACKED"].includes(order.status) &&
+                " A full refund will be issued to your original payment method if payment was already captured."}
             </p>
-            {cancelError && <p className="text-sm text-red-400">{cancelError}</p>}
+            {cancelError && (
+              <p className="text-sm text-red-400">{cancelError}</p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCancelModal(false)}
@@ -240,7 +362,11 @@ export default function OrderDetailPage() {
                 disabled={cancel.isPending}
                 className="flex-1 rounded-full bg-red-600 hover:bg-red-500 disabled:opacity-50 py-2 text-sm text-white font-medium transition"
               >
-                {cancel.isPending ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm cancel"}
+                {cancel.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                ) : (
+                  "Confirm cancel"
+                )}
               </button>
             </div>
           </div>

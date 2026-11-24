@@ -34,6 +34,11 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    public void sendCheckoutVerificationEmail(String toEmail, String token) {
+        publish(new EmailEvent.CheckoutVerificationEmail(toEmail, token));
+    }
+
+    @Override
     public void sendDeviceVerificationEmail(String toEmail, String token,
                                             String browser, String os, String ip) {
         publish(new EmailEvent.DeviceVerificationEmail(toEmail, token, browser, os, ip));

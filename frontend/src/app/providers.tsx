@@ -8,6 +8,8 @@ import AuthInitializer from "../components/auth/AuthInitializer";
 import StoreProvider from "./StoreProvider";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
 import { Toaster } from "../components/ui/Toaster";
+import { CartDrawerProvider } from "../components/cart/CartDrawer";
+import { CartPersistence } from "../components/cart/CartPersistence";
 
 export default function Providers({
   defaultMarketplaceId,
@@ -27,7 +29,10 @@ export default function Providers({
       <QueryClientProvider client={queryClient}>
         <AuthInitializer>
           <ThemeProvider>
-            {children}
+            <CartDrawerProvider>
+              {children}
+              <CartPersistence />
+            </CartDrawerProvider>
             <Toaster />
           </ThemeProvider>
         </AuthInitializer>

@@ -91,6 +91,43 @@ def _jwt() -> str:
 
 SESSION_TOKEN = _jwt()
 
+ORDER_ID = "77777777-7777-7777-7777-777777777777"
+ORDERS: dict[str, dict] = {}
+
+
+def quote_for(body):
+    """A /pricing/quote answer: every product line priced like PRODUCT."""
+    items = (body or {}).get("items") or []
+    subtotal = round(sum(199.99 * int(i.get("quantity", 1)) for i in items), 2)
+    return {
+        "lines": [], "appliedPromotions": [], "subtotal": subtotal, "promotionSavings": 0,
+        "couponSavings": 0, "appliedCouponCode": None, "shippingAmount": 0, "shippingSavings": 0,
+        "taxableAmount": subtotal, "taxRate": 0, "taxAmount": 0, "taxSource": "NONE",
+        "finalTotal": subtotal, "currency": (body or {}).get("currency") or "USD", "warnings": [],
+    }
+
+
+def order_from(body):
+    """A RESERVED order echoing the request (no PaymentIntent: payments unconfigured)."""
+    items = [{
+        "id": f"item-{n}", "productId": i.get("productId"), "productName": PRODUCT["name"],
+        "variantId": i.get("variantId"), "variantTitle": None, "variantSku": None,
+        "quantity": int(i.get("quantity", 1)), "unitPrice": 199.99, "discountAmount": 0,
+        "fulfillmentStatus": "PENDING", "fulfillmentMethod": body.get("fulfillmentMethod", "DELIVERY"),
+        "fulfillmentLocationName": None, "bundleName": None,
+    } for n, i in enumerate(body.get("items") or [])]
+    total = round(sum(i["unitPrice"] * i["quantity"] for i in items), 2)
+    order = {
+        "id": ORDER_ID, "userId": "u1", "items": items, "totalAmount": total,
+        "currency": body.get("currency", "USD"), "status": "RESERVED",
+        "fulfillmentMethod": body.get("fulfillmentMethod", "DELIVERY"),
+        "shippingCostCents": 0, "shippingRateId": None, "paymentIntentId": None,
+        "paymentClientSecret": None, "createdAt": NOW, "updatedAt": NOW,
+    }
+    for key in ("shipRecipientName", "shipStreet", "shipCity", "shipState", "shipPostalCode", "shipCountry"):
+        order[key] = body.get(key)
+    return order
+
 
 def paged(items, size=24, **extra):
     return {"items": items, "page": 0, "size": size, "totalElements": len(items), "totalPages": 1,
@@ -142,6 +179,7 @@ class Handler(BaseHTTPRequestHandler):
             f.write(json.dumps({
                 "method": self.command, "path": path,
                 "cookie": self.headers.get("Cookie"), "authorization": self.headers.get("Authorization"),
+                "idempotencyKey": self.headers.get("Idempotency-Key"),
                 "body": body,
             }) + "\n")
 
@@ -158,9 +196,10 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         body = self._read_json() if self.command in ("POST", "PATCH", "PUT") else None
-        # Auth bodies are recorded so tests can assert the request shape; the stub
-        # only ever sees fixture credentials.
-        self._record(self.path, body if path.startswith("/api/auth/") else None)
+        # Auth and order bodies are recorded so tests can assert the request shape;
+        # the stub only ever sees fixture data.
+        recorded = path.startswith("/api/auth/") or path == "/api/orders"
+        self._record(self.path, body if recorded else None)
         cookie = self.headers.get("Cookie") or ""
         if path == "/api/auth/refresh":
             if "refreshToken=valid" in cookie:
@@ -178,6 +217,24 @@ class Handler(BaseHTTPRequestHandler):
             if query.get("token") == ["good"]:
                 return self._send(*ok({"message": "Email verified successfully."}))
             return self._send(*err(400, "This verification link has expired."))
+        if path == "/api/pricing/quote" and self.command == "POST":
+            return self._send(*ok(quote_for(body)))
+        if path == "/api/addresses":
+            if self.command == "POST":
+                return self._send(201, ok({**(body or {}), "id": "addr-1"})[1])
+            return self._send(*ok([]))
+        if path == "/api/orders" and self.command == "POST":
+            if "refreshToken=valid" not in cookie and not self.headers.get("Authorization"):
+                return self._send(*err(401, "UNAUTHORIZED"))
+            order = order_from(body or {})
+            ORDERS[order["id"]] = order
+            return self._send(201, ok(order)[1])
+        match = re.match(r"^/api/orders/([^/]+)(/shipping-rates)?$", path)
+        if match and self.command == "GET":
+            order = ORDERS.get(match.group(1))
+            if not order:
+                return self._send(*err(404, "NOT_FOUND"))
+            return self._send(*ok([] if match.group(2) else order))
         if path == "/api/health":
             return self._send(*ok({"status": "UP"}))
         for pattern, handler in ROUTES:

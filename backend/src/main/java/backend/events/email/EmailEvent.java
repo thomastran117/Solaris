@@ -34,6 +34,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = EmailEvent.InvoiceIssuedEmail.class,           name = "INVOICE_ISSUED"),
     @JsonSubTypes.Type(value = EmailEvent.MfaOtpEmail.class,                  name = "MFA_OTP"),
     @JsonSubTypes.Type(value = EmailEvent.DisputeAlertEmail.class,            name = "DISPUTE_ALERT"),
+    @JsonSubTypes.Type(value = EmailEvent.CheckoutVerificationEmail.class,    name = "CHECKOUT_VERIFICATION"),
 })
 public sealed interface EmailEvent
         permits EmailEvent.VerificationEmail,
@@ -58,9 +59,20 @@ public sealed interface EmailEvent
                 EmailEvent.QuoteRespondedEmail,
                 EmailEvent.InvoiceIssuedEmail,
                 EmailEvent.MfaOtpEmail,
-                EmailEvent.DisputeAlertEmail {
+                EmailEvent.DisputeAlertEmail,
+                EmailEvent.CheckoutVerificationEmail {
 
     record VerificationEmail(
+        String toEmail,
+        String token
+    ) implements EmailEvent {}
+
+    /**
+     * Risk step-up at checkout: links back to the checkout with the token so the
+     * buyer can resubmit. Uses the same single-use token store as account
+     * verification, but must not land on /verify-email, which would consume it.
+     */
+    record CheckoutVerificationEmail(
         String toEmail,
         String token
     ) implements EmailEvent {}

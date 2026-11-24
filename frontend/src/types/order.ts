@@ -120,8 +120,45 @@ export interface Order {
   shippingEstimatedDays: number | null;
   shippingCostCents: number;
   shippingRateQuotedAt: string | null;
+  /** Stripe PaymentIntent for this order (null once captured or when not card-paid). */
+  paymentIntentId?: string | null;
+  /** Client secret for completing payment with Stripe Elements while RESERVED. */
+  paymentClientSecret?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** `CreateOrderRequest` (POST /orders). Address fields are required for DELIVERY. */
+export interface CreateOrderItem {
+  productId?: string;
+  variantId?: string | null;
+  bundleId?: string;
+  kitId?: string;
+  kitSelections?: {
+    slotId: string;
+    productId: string;
+    variantId: string | null;
+    quantity: number;
+  }[];
+  quantity: number;
+}
+
+export interface CreateOrderRequest {
+  items: CreateOrderItem[];
+  currency: string;
+  couponCode?: string;
+  fulfillmentMethod: FulfillmentMethod;
+  pickupLocationId?: string;
+  /** Single-use step-up token from the risk verification email. */
+  riskVerificationToken?: string;
+  shipRecipientName?: string;
+  shipStreet?: string;
+  shipStreet2?: string;
+  shipCity?: string;
+  shipState?: string;
+  shipPostalCode?: string;
+  shipCountry?: string;
+  shipPhoneNumber?: string;
 }
 
 export interface ShippingRate {

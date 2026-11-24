@@ -6,7 +6,6 @@ For implemented capabilities, use the [domain guide](domain-guide.md).
 
 ## Checkout and Order Experience
 
-- Build a cohesive customer checkout route that joins cart, address, shipping, tax, payment, and review steps already represented across backend services.
 - Expose complete customer self-service UI for returns and subscription management.
 - Explore gift wrap/messages, charity round-up, driver tipping, delivery instructions, split-address shipping, and safe pre-fulfillment order edits.
 - Complete preorder deposit and later balance-capture behavior with explicit failure compensation.

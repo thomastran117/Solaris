@@ -34,6 +34,44 @@ class EmailVerificationServiceImplTest {
         service = new EmailVerificationServiceImpl(cache, emailService, env);
     }
 
+    // ─── initiateCheckoutStepUp ─────────────────────────────────────────────
+
+    @Test
+    void initiateCheckoutStepUp_storesTokenInVerificationStore() {
+        UUID userId = TestIds.uuid(2);
+
+        service.initiateCheckoutStepUp(userId, "buyer@example.com");
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(cache).set(keyCaptor.capture(), eq(userId.toString()), eq(86400L));
+        assertTrue(keyCaptor.getValue().startsWith("email:verify:"));
+    }
+
+    @Test
+    void initiateCheckoutStepUp_sendsCheckoutEmailNotAccountVerification() {
+        UUID userId = TestIds.uuid(2);
+
+        service.initiateCheckoutStepUp(userId, "buyer@example.com");
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(cache).set(keyCaptor.capture(), anyString(), anyLong());
+        String token = keyCaptor.getValue().substring("email:verify:".length());
+        verify(emailService).sendCheckoutVerificationEmail("buyer@example.com", token);
+        verify(emailService, never()).sendVerificationEmail(anyString(), anyString());
+    }
+
+    @Test
+    void initiateCheckoutStepUp_tokenIsConsumableForTheSameUser() {
+        UUID userId = TestIds.uuid(2);
+        service.initiateCheckoutStepUp(userId, "buyer@example.com");
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(cache).set(keyCaptor.capture(), anyString(), anyLong());
+        when(cache.getAndDelete(keyCaptor.getValue())).thenReturn(userId.toString());
+
+        String token = keyCaptor.getValue().substring("email:verify:".length());
+        assertEquals(userId, service.consumeVerificationToken(token));
+    }
+
     // ─── initiateVerification ────────────────────────────────────────────────
 
     @Test

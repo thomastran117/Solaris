@@ -59,6 +59,15 @@ The root layout (`src/app/layout.tsx`) renders the Navbar, Footer, and feedback 
 
 Unknown URLs render `src/app/not-found.tsx` with HTTP `404`.
 
+### Cart and Checkout
+
+- **Cart.** Client-only Redux state (`stores/cartSlice.ts`) persisted to `localStorage` (`shopwave.cart.v1`, validated with Zod on load, synced across tabs). Lines are products or configured kits; prices on lines are display-only, because the backend re-prices every order. `/cart` and the header drawer preview totals with `POST /pricing/quote` (kits are shown as estimates).
+- **Checkout** (`/checkout`, the `(checkout)` group: focused layout, `RequireAuth`, protected by `proxy.ts`):
+  1. Delivery (saved `/addresses` or a new address) or pickup (single-store carts only), plus coupon.
+  2. `POST /orders` with an `Idempotency-Key` from `hooks/useCheckoutSubmit.ts`. The key is reused only when the outcome is unknown (no response, or `409` after a lost response) and rotated after any definite answer, because a claimed key stays claimed for ten minutes. It is mirrored to `sessionStorage` per cart so a reload doesn't create a second order. The ordered lines leave the cart and the URL becomes `/checkout?order=<id>`.
+  3. Shipping rate (`ShippingRatePanel`) for delivery, then Stripe Payment Element (`PaymentPanel`) with the order's `paymentClientSecret`. After `confirmPayment` the buyer lands on `/orders/<id>`; the order shows `PAID` only when the backend has processed Stripe's webhook (live over SSE). Unpaid `RESERVED` orders, including B2B immediate-payment quotes, can be paid from the order page.
+- **Risk step-up.** A `VERIFY` decision returns `428`; `RiskEngineImpl` emails a dedicated "Confirm your ShopWave order" link to `/checkout?stepUpToken=…` (`EmailVerificationService.initiateCheckoutStepUp`, same single-use token store). Checkout saves the form on this device for 30 minutes, and the link restores it and resubmits with `riskVerificationToken` under a new idempotency key. The buyer can also paste the link. `BLOCK` creates the order as `UNDER_REVIEW` and checkout sends the buyer to the order page.
+
 ### Server Rendering and Caching
 
 Public storefront pages render their content on the server, so the HTML is useful before (and without) JavaScript:

@@ -128,6 +128,8 @@ The sidebar column records which signed-in users see each link. Company items ne
 | Route-group chrome | `(storefront)` and `(account)` layouts → `SiteShell`; `(auth)` → the focused `AuthShell`; `(merchant)` → `AdminShell` | Redesign | The root layout renders only `<html>`, the theme script, a skip link and providers. Each group adds its own header, `<main id="main">` and footer. |
 | Storefront entity misses | `(storefront)/not-found.tsx` | #84 | Product, company, collection, kit, or list not found. |
 | `/robots.txt` | `app/robots.ts` | #84 | Disallows the account and merchant prefixes. |
+| `/cart` | `(storefront)/cart/page.tsx` → `CartPage.tsx` | Redesign | The browser-persisted cart grouped by currency, with server-priced estimates. Public (anonymous carts are allowed); `noindex`. |
+| `/checkout` | `(checkout)/checkout/page.tsx` → `CheckoutPage.tsx` | Redesign | Guarded (`proxy.ts` + `RequireAuth`), dynamic (reads `STRIPE_PUBLISHABLE_KEY` per request). Query: `currency`, `order` (resume at shipping and payment), `stepUpToken` (risk confirmation link). Focused `CheckoutShell` layout. |
 | `/signup` | `(auth)/signup/page.tsx` → `SignupPage.tsx` | Redesign | Account creation (`POST /auth/signup` with captcha), then a "check your inbox" step. The login page linked here before it existed. |
 | `/verify-email` | `(auth)/verify-email/page.tsx` → `VerifyTokenPage.tsx` | Redesign | Target of the verification email (`EmailSender`); consumes the single-use token once via `POST /auth/verify`. `noindex`. |
 | `/verify-device` | `(auth)/verify-device/page.tsx` → `VerifyTokenPage.tsx` | Redesign | Target of the new-device email; `POST /auth/verify-device` signs the device in. `noindex`. |
