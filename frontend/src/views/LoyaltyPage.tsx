@@ -30,6 +30,7 @@ import {
   type LoyaltyTier,
 } from "../api/loyalty";
 import { useAnims } from "../hooks/useAnims";
+import { Progress } from "../components/ui/Progress";
 
 function txLabel(type: LoyaltyTransaction["type"]): string {
   switch (type) {
@@ -326,12 +327,13 @@ export default function LoyaltyPage() {
                 <span>{currentTier?.name ?? "No tier"}</span>
                 {nextTier && <span>{nextTier.name}</span>}
               </div>
-              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
+              <Progress
+                value={progressPct}
+                label={
+                  nextTier ? `Progress to ${nextTier.name}` : "Tier progress"
+                }
+                valueText={`${Math.round(progressPct)}%`}
+              />
               <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                 <span>
                   {(account?.lifetimePoints ?? 0).toLocaleString()} pts
