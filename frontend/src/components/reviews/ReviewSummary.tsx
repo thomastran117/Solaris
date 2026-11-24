@@ -1,5 +1,6 @@
 import RatingStars from "./RatingStars";
 import type { ReviewSummary as ReviewSummaryT } from "../../types/review";
+import { Progress } from "../ui/Progress";
 
 interface Props {
   summary: ReviewSummaryT | undefined;
@@ -43,12 +44,13 @@ export default function ReviewSummary({ summary, isLoading }: Props) {
                 <span className="w-8 shrink-0 text-muted-foreground">
                   {s} star
                 </span>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface">
-                  <div
-                    className="h-full transition-[width] duration-300"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
+                <Progress
+                  value={pct}
+                  label={`${s}-star reviews`}
+                  valueText={`${count} of ${total}`}
+                  className="flex-1"
+                  indicatorClassName="bg-warning"
+                />
                 <span className="w-10 shrink-0 text-right text-muted-foreground">
                   {count}
                 </span>
