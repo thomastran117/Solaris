@@ -97,6 +97,37 @@ describe("useCheckoutSubmit", () => {
     expect(keysUsed()[0]).toBe(first);
   });
 
+  it("keeps an unresolved key on a 409 after a reload instead of rotating", async () => {
+    create.mockRejectedValue(networkError());
+    const { result } = setup();
+    await act(async () => {
+      await result.current.submit(request);
+    });
+    const first = keysUsed()[0];
+
+    // After the reload the earlier attempt is still running on the server.
+    create.mockReset().mockRejectedValue(httpError(409));
+    const reloaded = setup();
+    let outcome;
+    await act(async () => {
+      outcome = await reloaded.result.current.submit(request);
+    });
+    expect(outcome).toMatchObject({
+      kind: "error",
+      message: expect.stringContaining("still being processed"),
+    });
+    expect(new Set(keysUsed())).toEqual(new Set([first]));
+
+    // A later submit must still not mint a new key and risk a second order.
+    create.mockReset().mockResolvedValue({ data: ORDER });
+    const again = setup();
+    await act(async () => {
+      await again.result.current.submit(request);
+    });
+    expect(keysUsed()).toEqual([first]);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
   it("treats a 409 on a fresh key as a business conflict and rotates", async () => {
     create.mockRejectedValueOnce(httpError(409));
     const { result } = setup();

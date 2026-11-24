@@ -1,9 +1,10 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockRouter } from "../../test/nextNavigation";
 import { renderWithProviders } from "../../test/renderWithProviders";
+import { sessionRestoreSettled } from "../../stores/authSlice";
 
 const { post, get } = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn() }));
 vi.mock("../../api", () => ({ default: { post, get } }));
@@ -223,6 +224,22 @@ describe("VerifyTokenPage", () => {
       await screen.findByText(/missing its verification code/)
     ).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("waits for the page-load session restore before consuming a device link", async () => {
+    window.history.replaceState({}, "", "/verify-device?token=dev");
+    post.mockResolvedValue({ data: SESSION });
+    const { store } = renderWithProviders(<VerifyTokenPage kind="device" />, {
+      auth: { sessionRestored: false },
+    });
+    // A late refresh failure would otherwise wipe the session this creates.
+    expect(post).not.toHaveBeenCalled();
+    act(() => {
+      store.dispatch(sessionRestoreSettled());
+    });
+    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/"));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(store.getState().auth.accessToken).toBe(ACCESS_TOKEN);
   });
 
   it("signs the device in after approval", async () => {

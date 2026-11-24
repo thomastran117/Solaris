@@ -3,6 +3,7 @@ import { motion, type Variants } from "framer-motion";
 import { Globe, Lock } from "lucide-react";
 import type { SavedListSummary } from "../../types/savedList";
 import { LIST_TYPE_META, showsProgress } from "./listTypeMeta";
+import { Progress } from "../ui/Progress";
 
 interface Props {
   list: SavedListSummary;
@@ -63,12 +64,12 @@ export default function SavedListCard({ list, variants }: Props) {
             )}
           </div>
           {showProgress && (
-            <div className="h-1 rounded-full bg-surface overflow-hidden">
-              <div
-                className="h-full transition-all"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
+            <Progress
+              value={progressPct}
+              label={`${list.name} purchased`}
+              valueText={`${list.purchasedCount} of ${list.itemCount} purchased`}
+              className="h-1"
+            />
           )}
         </div>
       </motion.div>

@@ -27,6 +27,7 @@ import {
   showsProgress,
 } from "../components/savedlist/listTypeMeta";
 import { useAnims } from "../hooks/useAnims";
+import { Progress } from "../components/ui/Progress";
 
 export default function SavedListDetailPage() {
   const router = useRouter();
@@ -285,12 +286,12 @@ export default function SavedListDetailPage() {
                   {purchased} / {total} done
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-surface overflow-hidden">
-                <div
-                  className="h-full transition-all"
-                  style={{ width: `${(purchased / total) * 100}%` }}
-                />
-              </div>
+              <Progress
+                value={(purchased / total) * 100}
+                label="Items purchased"
+                valueText={`${purchased} of ${total} purchased`}
+                className="h-1.5"
+              />
             </div>
           )}
         </motion.div>
