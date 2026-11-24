@@ -8,10 +8,8 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import { usePathname } from "next/navigation";
 import {
   THEME_STORAGE_KEY,
-  isForcedDarkPath,
   isThemePreference,
   type ResolvedTheme,
   type ThemePreference,
@@ -22,8 +20,6 @@ interface ThemeContextValue {
   preference: ThemePreference;
   /** The theme actually applied to the document. */
   resolved: ResolvedTheme;
-  /** True on routes pinned to dark while their views migrate. */
-  forced: boolean;
   setTheme: (preference: ThemePreference) => void;
 }
 
@@ -90,7 +86,6 @@ export function applyTheme(theme: ResolvedTheme): void {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname() ?? "/";
   const preference = useSyncExternalStore<ThemePreference>(
     subscribePreference,
     readPreference,
@@ -101,15 +96,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     readSystemDark,
     () => false
   );
-  const forced = isForcedDarkPath(pathname);
 
-  const resolved: ResolvedTheme = forced
-    ? "dark"
-    : preference === "system"
-      ? systemDark
-        ? "dark"
-        : "light"
-      : preference;
+  const resolved: ResolvedTheme =
+    preference === "system" ? (systemDark ? "dark" : "light") : preference;
 
   useEffect(() => {
     applyTheme(resolved);
@@ -130,8 +119,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ preference, resolved, forced, setTheme }),
-    [preference, resolved, forced, setTheme]
+    () => ({ preference, resolved, setTheme }),
+    [preference, resolved, setTheme]
   );
 
   return (

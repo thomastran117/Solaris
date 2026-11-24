@@ -103,7 +103,7 @@ The mock URL and router spies reset after every test. The setup file also stubs 
 Design-system tests:
 
 - `src/lib/theme/tokens.test.ts` parses `src/app/globals.css` and checks WCAG AA contrast for every semantic token pair in both themes. Fix a failing token value rather than relaxing the threshold.
-- `src/lib/theme/themeScript.test.ts` runs the inline theme script in jsdom (stored choice, OS preference, forced-dark routes, blocked storage).
+- `src/lib/theme/themeScript.test.ts` runs the inline theme script in jsdom (stored choice, OS preference, blocked storage).
 - `eslint-rules/no-raw-palette.test.mjs` covers the colour lint rule with ESLint's `RuleTester`.
 
 Useful focused commands:
@@ -126,7 +126,7 @@ npm run build
 
 `npm run typecheck` runs `tsc --noEmit` over application and test files. `npm run build` runs `next build`, which also type-checks and prerenders static routes, so it catches type and production-bundle failures. Run `npx next typegen` once before `npm run typecheck` in a fresh clone so that `next-env.d.ts` and the route types exist.
 
-`npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. The project rule `shopwave/no-raw-palette` (`eslint-rules/no-raw-palette.mjs`) and a `no-restricted-imports` ban on `react-icons` and the legacy navy-glass components are errors in folders that have moved to the [design system](../frontend/DESIGN.md) and warnings elsewhere; don't add warnings in files you touch. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
+`npm run lint` uses `eslint-config-next`. Rules introduced with it, such as the React Compiler hook rules and `@next/next/no-img-element`, are warnings for now; errors fail the command. The project rule `shopwave/no-raw-palette` (`eslint-rules/no-raw-palette.mjs`) and a `no-restricted-imports` ban on `react-icons` are errors across `src/`; see the [design system](../frontend/DESIGN.md) for the token to use instead. `npm run format:check` currently reports files that were never formatted on `main`; format files you touch rather than the whole tree. `npm run format` rewrites files and should only be used when you intend to format the working tree.
 
 ## Server-Rendered Pages
 
@@ -163,7 +163,7 @@ The Python Playwright suite in `playwright/tests/` runs against a built frontend
   - the restored-session bounce, which is the Stripe-return case
   - open-redirect rejection
   - the revoked-cookie path
-- **`test_theme.py`.** The `dark` class is set before hydration from the system preference, a stored choice overrides it, the toggle persists across reloads, account and seller routes stay forced dark while they migrate (but `/lists/public/*` does not), and pages hydrate without console errors in both themes.
+- **`test_theme.py`.** The `dark` class is set before hydration from the system preference, a stored choice overrides it, the toggle persists across reloads, account and seller routes respect the visitor's choice, and pages hydrate without console errors in both themes.
 - **`test_cart_checkout.py`.** Add to cart opens the drawer and persists across reloads, `/checkout` requires a session, and placing an order sends an `Idempotency-Key` and the expected body, then shows the payment step ("Payments aren't configured" without a Stripe key).
 - **`test_signup.py`.** Signup sends the `captcha` field and shows the inbox step, the login page carries `?next=` to signup, and the `/verify-email` and `/verify-device` links handle valid and spent tokens.
 

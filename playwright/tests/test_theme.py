@@ -1,4 +1,4 @@
-"""Light/dark theming: no flash of the wrong theme, persistence, forced-dark routes.
+"""Light/dark theming: no flash of the wrong theme, persistence, every route themed.
 
 The inline script in <head> (frontend/src/lib/theme/themeScript.ts) must set the
 `dark` class before first paint, so every check reads <html> at
@@ -52,34 +52,17 @@ async def test_toggle_switches_and_persists(browser, base_url):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_unmigrated_routes_stay_dark(browser, base_url):
-    """Account and seller views still use the legacy palette and are pinned dark."""
-    context = await browser.new_context(color_scheme="light")
-    await context.add_init_script(SET_LIGHT)
-    await context.add_cookies([{"name": "refreshToken", "value": "valid", "url": base_url}])
-    page = await context.new_page()
-    await page.goto(f"{base_url}/admin/orders", wait_until="domcontentloaded")
-    assert await _is_dark(page) is True
-    await context.close()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("path", ["/orders", "/account", "/lists", "/admin/products", "/admin/kits/new"])
-async def test_migrated_routes_follow_the_visitor_theme(browser, base_url, path):
+@pytest.mark.parametrize(
+    "path",
+    ["/orders", "/account", "/lists", "/admin", "/admin/products", "/admin/orders", "/dashboard"],
+)
+async def test_signed_in_routes_follow_the_visitor_theme(browser, base_url, path):
+    """Account and seller pages respect a stored light choice on a dark system."""
     context = await browser.new_context(color_scheme="dark")
     await context.add_init_script(SET_LIGHT)
     await context.add_cookies([{"name": "refreshToken", "value": "valid", "url": base_url}])
     page = await context.new_page()
     await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
-    assert await _is_dark(page) is False
-    await context.close()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_shared_public_lists_are_not_forced_dark(browser, base_url):
-    context = await browser.new_context(color_scheme="light")
-    page = await context.new_page()
-    await page.goto(f"{base_url}/lists/public/sam-wish", wait_until="domcontentloaded")
     assert await _is_dark(page) is False
     await context.close()
 

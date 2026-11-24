@@ -5,7 +5,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CheckCircle, Loader2, X } from "lucide-react";
 import { companyOrdersApi } from "../../api/companyOrders";
 import { DELIVERY_WINDOWS, type CompanyOrder } from "../../types/order";
-import { markSlotUnavailableSchema, type MarkSlotUnavailableValues } from "../../schemas/order";
+import {
+  markSlotUnavailableSchema,
+  type MarkSlotUnavailableValues,
+} from "../../schemas/order";
 import DeliverySlotStatusBadge from "./DeliverySlotStatusBadge";
 
 interface Props {
@@ -22,7 +25,11 @@ function extractErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }: Props) {
+export default function DeliverySlotVendorPanel({
+  order,
+  companyId,
+  onRefresh,
+}: Props) {
   const qc = useQueryClient();
   const [showUnavailableModal, setShowUnavailableModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,14 +46,18 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["company-orders", companyId] });
-    qc.invalidateQueries({ queryKey: ["company-order", companyId, order.orderId] });
+    qc.invalidateQueries({
+      queryKey: ["company-order", companyId, order.orderId],
+    });
     onRefresh?.();
   };
 
   const confirm = useMutation({
-    mutationFn: () => companyOrdersApi.confirmDeliverySlot(companyId, order.orderId),
+    mutationFn: () =>
+      companyOrdersApi.confirmDeliverySlot(companyId, order.orderId),
     onSuccess: invalidate,
-    onError: (err) => setError(extractErrorMessage(err, "Failed to confirm slot")),
+    onError: (err) =>
+      setError(extractErrorMessage(err, "Failed to confirm slot")),
   });
 
   const markUnavailable = useMutation({
@@ -59,7 +70,8 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
       reset({ reason: "" });
       invalidate();
     },
-    onError: (err) => setError(extractErrorMessage(err, "Failed to update slot")),
+    onError: (err) =>
+      setError(extractErrorMessage(err, "Failed to update slot")),
   });
 
   const openUnavailableModal = () => {
@@ -75,48 +87,60 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
   const canMarkUnavailable = order.deliverySlotStatus !== "UNAVAILABLE";
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 space-y-4">
+    <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
+        <p className="text-xs font-semibold text-link">
           Requested Delivery Slot
         </p>
         <DeliverySlotStatusBadge status={order.deliverySlotStatus} />
       </div>
 
       <div className="flex items-start gap-2">
-        <CalendarClock className="h-4 w-4 text-sky-200 mt-0.5 shrink-0" />
-        <p className="text-sm text-white">
+        <CalendarClock className="h-4 w-4 text-link mt-0.5 shrink-0" />
+        <p className="text-sm text-foreground">
           {order.preferredDeliveryDate
-            ? new Date(order.preferredDeliveryDate + "T00:00:00").toLocaleDateString(undefined, {
+            ? new Date(
+                order.preferredDeliveryDate + "T00:00:00"
+              ).toLocaleDateString(undefined, {
                 weekday: "long",
                 day: "numeric",
                 month: "long",
               })
             : "No date set"}
           {order.preferredDeliveryWindow && (
-            <span className="text-white/60"> · {DELIVERY_WINDOWS[order.preferredDeliveryWindow]}</span>
+            <span className="text-muted-foreground">
+              {" "}
+              · {DELIVERY_WINDOWS[order.preferredDeliveryWindow]}
+            </span>
           )}
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {(canConfirm || canMarkUnavailable) && (
         <div className="flex flex-wrap items-center gap-3">
           {canConfirm && (
             <button
-              onClick={() => { setError(null); confirm.mutate(); }}
+              onClick={() => {
+                setError(null);
+                confirm.mutate();
+              }}
               disabled={confirm.isPending}
-              className="flex items-center gap-2 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm text-white font-medium transition"
+              className="flex items-center gap-2 rounded-full bg-primary hover:bg-primary-hover disabled:opacity-50 px-4 py-2 text-sm text-primary-foreground font-medium transition"
             >
-              {confirm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              {confirm.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4" />
+              )}
               Confirm Slot
             </button>
           )}
           {canMarkUnavailable && (
             <button
               onClick={openUnavailableModal}
-              className="flex items-center gap-2 rounded-full border border-white/20 hover:bg-white/10 px-4 py-2 text-sm text-white/70 hover:text-white transition"
+              className="flex items-center gap-2 rounded-full border border-input hover:bg-muted px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition"
             >
               <X className="h-4 w-4" /> Mark Unavailable
             </button>
@@ -125,43 +149,59 @@ export default function DeliverySlotVendorPanel({ order, companyId, onRefresh }:
       )}
 
       {showUnavailableModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay">
           <form
-            onSubmit={handleSubmit((values) => { setError(null); markUnavailable.mutate(values.reason); })}
-            className="rounded-2xl border border-white/10 bg-slate-900 p-6 w-full max-w-sm space-y-4"
+            onSubmit={handleSubmit((values) => {
+              setError(null);
+              markUnavailable.mutate(values.reason);
+            })}
+            className="rounded-xl border border-border bg-surface-raised p-6 w-full max-w-sm space-y-4 shadow-lg"
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">Mark slot unavailable?</h3>
-              <button type="button" onClick={() => setShowUnavailableModal(false)} className="text-white/40 hover:text-white transition">
+              <h3 className="text-lg font-semibold text-foreground">
+                Mark slot unavailable?
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowUnavailableModal(false)}
+                className="text-muted-foreground hover:text-foreground transition"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-sm text-white/60">
-              The customer will be emailed that you can't make their requested slot.
+            <p className="text-sm text-muted-foreground">
+              The customer will be emailed that you can't make their requested
+              slot.
             </p>
             <textarea
-              className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20"
+              className="w-full rounded-xl bg-surface border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring"
               placeholder="Reason (optional)"
               rows={3}
               maxLength={500}
               {...register("reason")}
             />
-            {errors.reason && <p className="text-sm text-red-400">{errors.reason.message}</p>}
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {errors.reason && (
+              <p className="text-sm text-danger">{errors.reason.message}</p>
+            )}
+            {error && <p className="text-sm text-danger">{error}</p>}
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setShowUnavailableModal(false)}
-                className="flex-1 rounded-full border border-white/20 py-2 text-sm text-white/70 hover:bg-white/10 transition"
+                className="flex-1 rounded-full border border-input py-2 text-sm text-muted-foreground hover:bg-muted transition"
               >
                 Go back
               </button>
               <button
                 type="submit"
                 disabled={markUnavailable.isPending}
-                className="flex-1 rounded-full bg-red-600 hover:bg-red-500 disabled:opacity-50 py-2 text-sm text-white font-medium transition"
+                className="flex-1 rounded-full bg-danger hover:bg-danger-hover disabled:opacity-50 py-2 text-sm text-danger-foreground font-medium transition"
               >
-                {markUnavailable.isPending ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm"}
+                {markUnavailable.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                ) : (
+                  "Confirm"
+                )}
               </button>
             </div>
           </form>

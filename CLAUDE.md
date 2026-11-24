@@ -83,8 +83,7 @@ These paths prioritize correctness:
 - Style with the semantic tokens in `frontend/src/app/globals.css` (`bg-surface`, `text-foreground`, `text-muted-foreground`, `border`, `bg-primary`, …); never hard-code palette colours or hex values. Every view must work in light and dark mode.
 - Build from the primitives in `frontend/src/components/ui` (`Button`, `Field`, `Card`, `Badge`, `Dialog`, `DropdownMenu`, `Sheet`, `PageHeader`, `SectionHeader`, table shells, state components) before writing new markup.
 - Clean neutral surfaces with one blue accent; no glassmorphism, gradients, or glows. Use `lucide-react` icons only.
-- The `shopwave/no-raw-palette` lint rule enforces this; it is an error in migrated folders. Don't silence it without a stated reason.
-- Legacy navy-glass views (`NavyGridGlowBackground`, `components/section/*`) are being migrated; don't add new uses. See the migration status in DESIGN.md.
+- The `shopwave/no-raw-palette` lint rule enforces this across `src/`. Don't silence it without a stated reason.
 - Extract a reusable component when a new pattern appears in more than one place.
 
 ### Motion and Accessibility

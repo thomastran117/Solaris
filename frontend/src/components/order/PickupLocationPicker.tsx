@@ -10,8 +10,14 @@ interface Props {
   onSelect: (locationId: string) => void;
 }
 
-export default function PickupLocationPicker({ companyId, selectedId, onSelect }: Props) {
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+export default function PickupLocationPicker({
+  companyId,
+  selectedId,
+  onSelect,
+}: Props) {
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [geoError, setGeoError] = useState(false);
   const [geoLoading, setGeoLoading] = useState(true);
 
@@ -36,14 +42,16 @@ export default function PickupLocationPicker({ companyId, selectedId, onSelect }
   const { data: locations, isLoading: queryLoading } = useQuery({
     queryKey: ["nearby-pickup", companyId, coords?.lat, coords?.lng],
     queryFn: () =>
-      locationsApi.nearbyPickup(companyId, coords!.lat, coords!.lng).then((r) => r.data),
+      locationsApi
+        .nearbyPickup(companyId, coords!.lat, coords!.lng)
+        .then((r) => r.data),
     enabled: !!coords,
     staleTime: 5 * 60_000,
   });
 
   if (geoLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-white/60 py-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
         <Loader2 className="h-4 w-4 animate-spin" /> Detecting your location…
       </div>
     );
@@ -51,23 +59,28 @@ export default function PickupLocationPicker({ companyId, selectedId, onSelect }
 
   if (geoError) {
     return (
-      <div className="flex items-center gap-2 text-sm text-yellow-400/80 py-4 rounded-xl border border-yellow-400/20 bg-yellow-400/5 px-4">
+      <div className="flex items-center gap-2 text-sm text-warning py-4 rounded-xl border border-warning/40 bg-warning-subtle px-4">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        Location permission denied. Please enable location access or enter your postcode to find nearby stores.
+        Location permission denied. Please enable location access or enter your
+        postcode to find nearby stores.
       </div>
     );
   }
 
   if (queryLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-white/60 py-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
         <Loader2 className="h-4 w-4 animate-spin" /> Finding nearby stores…
       </div>
     );
   }
 
   if (!locations || locations.length === 0) {
-    return <p className="text-sm text-white/50 py-4">No pickup locations found near you.</p>;
+    return (
+      <p className="text-sm text-muted-foreground py-4">
+        No pickup locations found near you.
+      </p>
+    );
   }
 
   return (
@@ -79,28 +92,34 @@ export default function PickupLocationPicker({ companyId, selectedId, onSelect }
             key={loc.id}
             type="button"
             onClick={() => onSelect(loc.id)}
-            className={`w-full text-left rounded-2xl border p-4 transition ${
+            className={`w-full text-left rounded-xl border p-4 transition ${
               isSelected
-                ? "border-blue-400/50 bg-blue-500/15 shadow-md"
-                : "border-white/10 bg-white/[0.06] hover:bg-white/[0.09]"
+                ? "border-primary/40 bg-primary/10 shadow-md"
+                : "border-border bg-surface hover:bg-muted"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-sky-200 mt-0.5 shrink-0" />
+                <MapPin className="h-4 w-4 text-link mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-white">{loc.name}</p>
-                  {loc.address && <p className="text-xs text-white/60">{loc.address}, {loc.city}</p>}
+                  <p className="text-sm font-semibold text-foreground">
+                    {loc.name}
+                  </p>
+                  {loc.address && (
+                    <p className="text-xs text-muted-foreground">
+                      {loc.address}, {loc.city}
+                    </p>
+                  )}
                 </div>
               </div>
-              <span className="text-xs font-medium text-white/60 shrink-0">
+              <span className="text-xs font-medium text-muted-foreground shrink-0">
                 {loc.distanceKm < 1
                   ? `${Math.round(loc.distanceKm * 1000)} m`
                   : `${loc.distanceKm.toFixed(1)} km`}
               </span>
             </div>
             {loc.pickupReadyHours != null && (
-              <div className="flex items-center gap-1.5 mt-2 text-xs text-white/50">
+              <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" />
                 Ready in ~{loc.pickupReadyHours}h
               </div>

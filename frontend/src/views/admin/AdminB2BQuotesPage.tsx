@@ -34,7 +34,9 @@ import { useAnims } from "../../hooks/useAnims";
 function apiErrorMessage(error: unknown, fallback: string): string {
   const e = error as {
     apiMessage?: string;
-    response?: { data?: { message?: string; error?: { details?: { detail?: string } } } };
+    response?: {
+      data?: { message?: string; error?: { details?: { detail?: string } } };
+    };
   };
   return (
     e?.response?.data?.error?.details?.detail ??
@@ -45,23 +47,23 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 }
 
 const QUOTE_STATUS_COLORS: Record<QuoteStatus, string> = {
-  PENDING_VENDOR: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
-  PENDING_BUYER: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  CONVERTED: "bg-green-500/15 text-green-400 border-green-500/20",
-  REJECTED: "bg-red-500/15 text-red-400 border-red-500/20",
-  EXPIRED: "bg-white/10 text-white/50 border-white/10",
+  PENDING_VENDOR: "bg-warning-subtle text-warning border-warning/40",
+  PENDING_BUYER: "bg-primary/10 text-link border-primary/40",
+  CONVERTED: "bg-success-subtle text-success border-success/40",
+  REJECTED: "bg-danger-subtle text-danger border-danger/40",
+  EXPIRED: "bg-muted text-muted-foreground border-border",
 };
 
 const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
-  ISSUED: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  PAID: "bg-green-500/15 text-green-400 border-green-500/20",
-  OVERDUE: "bg-red-500/15 text-red-400 border-red-500/20",
-  CANCELLED: "bg-white/10 text-white/50 border-white/10",
+  ISSUED: "bg-primary/10 text-link border-primary/40",
+  PAID: "bg-success-subtle text-success border-success/40",
+  OVERDUE: "bg-danger-subtle text-danger border-danger/40",
+  CANCELLED: "bg-muted text-muted-foreground border-border",
 };
 
 const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.06] backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/25";
-const labelCls = "block text-xs font-semibold text-white/60 mb-1 uppercase tracking-widest";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring";
+const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 function Pager({
@@ -79,17 +81,17 @@ function Pager({
       <button
         disabled={!meta.hasPrevious}
         onClick={() => onPage(Math.max(0, page - 1))}
-        className="p-2 rounded-full border border-white/10 text-white/70 disabled:opacity-30 hover:bg-white/10"
+        className="p-2 rounded-full border border-border text-muted-foreground disabled:opacity-30 hover:bg-muted"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
-      <span className="text-xs text-white/50">
+      <span className="text-xs text-muted-foreground">
         {page + 1} / {meta.totalPages}
       </span>
       <button
         disabled={!meta.hasNext}
         onClick={() => onPage(page + 1)}
-        className="p-2 rounded-full border border-white/10 text-white/70 disabled:opacity-30 hover:bg-white/10"
+        className="p-2 rounded-full border border-border text-muted-foreground disabled:opacity-30 hover:bg-muted"
       >
         <ChevronRight className="w-4 h-4" />
       </button>
@@ -163,20 +165,32 @@ export default function AdminB2BQuotesPage() {
       invalidateQuotes();
       setRespondTo(null);
     },
-    onError: (e) => window.alert(apiErrorMessage(e, "Could not submit response.")),
+    onError: (e) =>
+      window.alert(apiErrorMessage(e, "Could not submit response.")),
   });
 
   const markPaidMutation = useMutation({
-    mutationFn: ({ invoiceId, reference }: { invoiceId: string; reference?: string }) =>
-      markInvoicePaid(companyId!, invoiceId, reference),
+    mutationFn: ({
+      invoiceId,
+      reference,
+    }: {
+      invoiceId: string;
+      reference?: string;
+    }) => markInvoicePaid(companyId!, invoiceId, reference),
     onSuccess: invalidateInvoices,
-    onError: (e) => window.alert(apiErrorMessage(e, "Could not mark invoice paid.")),
+    onError: (e) =>
+      window.alert(apiErrorMessage(e, "Could not mark invoice paid.")),
   });
 
   const onMarkPaid = (invoiceId: string) => {
-    const reference = window.prompt("Payment reference (e.g. wire / check #), or leave blank:");
+    const reference = window.prompt(
+      "Payment reference (e.g. wire / check #), or leave blank:"
+    );
     if (reference === null) return; // cancelled
-    markPaidMutation.mutate({ invoiceId, reference: reference.trim() || undefined });
+    markPaidMutation.mutate({
+      invoiceId,
+      reference: reference.trim() || undefined,
+    });
   };
 
   const openRespond = (q: Quote) => {
@@ -191,19 +205,19 @@ export default function AdminB2BQuotesPage() {
         quantity: it.quantity,
         unitPriceCents: it.unitPriceCents,
         productName: it.productName,
-      })),
+      }))
     );
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-10">
+    <div className="px-6 py-10">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90 mb-1">
-            Admin
-          </p>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white">B2B Quotes & Invoices</h1>
-          <p className="text-white/60 text-sm mt-1">
+          <p className="text-xs font-semibold text-link mb-1">Admin</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            B2B Quotes & Invoices
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Review inbound wholesale quotes and track net-terms invoices.
           </p>
         </div>
@@ -215,8 +229,8 @@ export default function AdminB2BQuotesPage() {
               onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-full text-sm font-semibold transition border ${
                 tab === t
-                  ? "bg-blue-600 border-blue-500 text-white"
-                  : "border-white/10 text-white/60 hover:bg-white/10"
+                  ? "bg-primary border-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:bg-muted"
               }`}
             >
               {t === "quotes" ? "Inbound Quotes" : "Invoices"}
@@ -226,19 +240,28 @@ export default function AdminB2BQuotesPage() {
 
         {tab === "quotes" &&
           (quotesLoading ? (
-            <div className="text-white/50 text-sm py-12 text-center">Loading…</div>
+            <div className="text-muted-foreground text-sm py-12 text-center">
+              Loading…
+            </div>
           ) : quotes.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-12 text-center">
-              <FileText className="w-10 h-10 text-sky-200 mx-auto mb-3 opacity-50" />
-              <p className="text-white/60 text-sm">No inbound quotes.</p>
+            <div className="rounded-xl border border-border bg-surface p-12 text-center">
+              <FileText className="w-10 h-10 text-link mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground text-sm">
+                No inbound quotes.
+              </p>
             </div>
           ) : (
-            <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              animate="visible"
+              className="space-y-4"
+            >
               {quotes.map((q: Quote) => (
                 <motion.div
                   key={q.id}
                   variants={fadeInUp}
-                  className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-5"
+                  className="rounded-xl border border-border bg-surface shadow-sm p-5"
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
@@ -248,29 +271,38 @@ export default function AdminB2BQuotesPage() {
                         >
                           {q.status.replace("_", " ")}
                         </span>
-                        <span className="text-xs text-white/50">{q.paymentTerms}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {q.paymentTerms}
+                        </span>
                       </div>
-                      <p className="text-white font-semibold text-lg">{fmt(q.totalCents)}</p>
-                      <p className="text-white/55 text-xs mt-0.5">
+                      <p className="text-foreground font-semibold text-lg">
+                        {fmt(q.totalCents)}
+                      </p>
+                      <p className="text-muted-foreground text-xs mt-0.5">
                         {q.items.length} item{q.items.length !== 1 ? "s" : ""} ·{" "}
                         {new Date(q.createdAt).toLocaleDateString()}
                       </p>
                       {q.buyerMessage && (
-                        <p className="text-white/60 text-sm mt-2 italic">“{q.buyerMessage}”</p>
+                        <p className="text-muted-foreground text-sm mt-2 italic">
+                          “{q.buyerMessage}”
+                        </p>
                       )}
                     </div>
                     {q.status === "PENDING_VENDOR" && (
                       <button
                         onClick={() => openRespond(q)}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-full transition"
+                        className="bg-primary hover:bg-primary-hover text-primary-foreground text-sm font-semibold px-4 py-2 rounded-full transition"
                       >
                         Respond
                       </button>
                     )}
                   </div>
-                  <div className="mt-3 border-t border-white/10 pt-3 space-y-1">
+                  <div className="mt-3 border-t border-border pt-3 space-y-1">
                     {q.items.map((it) => (
-                      <div key={it.id} className="flex justify-between text-sm text-white/70">
+                      <div
+                        key={it.id}
+                        className="flex justify-between text-sm text-muted-foreground"
+                      >
                         <span>
                           {it.productName ?? it.productId} × {it.quantity}
                         </span>
@@ -285,45 +317,56 @@ export default function AdminB2BQuotesPage() {
 
         {tab === "invoices" &&
           (invoicesLoading ? (
-            <div className="text-white/50 text-sm py-12 text-center">Loading…</div>
+            <div className="text-muted-foreground text-sm py-12 text-center">
+              Loading…
+            </div>
           ) : invoices.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-12 text-center">
-              <ReceiptText className="w-10 h-10 text-sky-200 mx-auto mb-3 opacity-50" />
-              <p className="text-white/60 text-sm">No invoices.</p>
+            <div className="rounded-xl border border-border bg-surface p-12 text-center">
+              <ReceiptText className="w-10 h-10 text-link mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground text-sm">No invoices.</p>
             </div>
           ) : (
-            <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-3">
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              animate="visible"
+              className="space-y-3"
+            >
               {invoices.map((inv: B2BInvoice) => {
-                const isOverdue = overdueIds.has(inv.id) || inv.status === "OVERDUE";
+                const isOverdue =
+                  overdueIds.has(inv.id) || inv.status === "OVERDUE";
                 return (
                   <motion.div
                     key={inv.id}
                     variants={fadeInUp}
-                    className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-sm p-5 flex items-center justify-between gap-4 flex-wrap"
+                    className="rounded-xl border border-border bg-surface shadow-sm p-5 flex items-center justify-between gap-4 flex-wrap"
                   >
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-white font-semibold">{inv.invoiceNumber}</span>
+                        <span className="text-foreground font-semibold">
+                          {inv.invoiceNumber}
+                        </span>
                         <span
                           className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${INVOICE_STATUS_COLORS[inv.status]}`}
                         >
                           {inv.status}
                         </span>
                         {isOverdue && inv.status !== "PAID" && (
-                          <span className="flex items-center gap-1 text-[11px] text-red-400">
+                          <span className="flex items-center gap-1 text-[11px] text-danger">
                             <AlertTriangle className="w-3 h-3" /> Overdue
                           </span>
                         )}
                       </div>
-                      <p className="text-white/55 text-xs">
-                        {fmt(inv.totalCents)} · due {new Date(inv.dueDateAt).toLocaleDateString()}
+                      <p className="text-muted-foreground text-xs">
+                        {fmt(inv.totalCents)} · due{" "}
+                        {new Date(inv.dueDateAt).toLocaleDateString()}
                       </p>
                     </div>
                     {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
                       <button
                         onClick={() => onMarkPaid(inv.id)}
                         disabled={markPaidMutation.isPending}
-                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded-full transition disabled:opacity-50"
+                        className="flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-primary-foreground text-sm font-semibold px-3 py-1.5 rounded-full transition disabled:opacity-50"
                       >
                         <Check className="w-4 h-4" /> Mark Paid
                       </button>
@@ -338,16 +381,25 @@ export default function AdminB2BQuotesPage() {
           <Pager page={quotesPage} meta={quotePage} onPage={setQuotesPage} />
         )}
         {tab === "invoices" && (
-          <Pager page={invoicesPage} meta={invoicePage} onPage={setInvoicesPage} />
+          <Pager
+            page={invoicesPage}
+            meta={invoicePage}
+            onPage={setInvoicesPage}
+          />
         )}
       </div>
 
       {respondTo && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg my-8 rounded-3xl border border-white/10 bg-slate-900/95 backdrop-blur p-8 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay p-4">
+          <div className="w-full max-w-lg my-8 rounded-xl border border-border bg-overlay p-8 shadow-xl">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-extrabold text-white">Respond to Quote</h2>
-              <button onClick={() => setRespondTo(null)} className="text-white/60 hover:text-white">
+              <h2 className="text-xl font-semibold text-foreground">
+                Respond to Quote
+              </h2>
+              <button
+                onClick={() => setRespondTo(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -359,8 +411,8 @@ export default function AdminB2BQuotesPage() {
                   onClick={() => setAction(a)}
                   className={`px-4 py-2 rounded-full text-sm font-semibold transition border ${
                     action === a
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "border-white/10 text-white/60 hover:bg-white/10"
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted"
                   }`}
                 >
                   {a === "APPROVE" ? "Approve as-is" : "Counter-offer"}
@@ -388,11 +440,13 @@ export default function AdminB2BQuotesPage() {
                   <div className="space-y-2">
                     {lines.map((l, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <span className="flex-1 text-sm text-white/70 truncate">
+                        <span className="flex-1 text-sm text-muted-foreground truncate">
                           {l.productName ?? l.productId} × {l.quantity}
                         </span>
                         <div className="flex items-center gap-1">
-                          <span className="text-white/50 text-sm">$</span>
+                          <span className="text-muted-foreground text-sm">
+                            $
+                          </span>
                           <input
                             type="number"
                             min={0}
@@ -400,11 +454,20 @@ export default function AdminB2BQuotesPage() {
                             className={`${inputCls} w-28`}
                             value={(l.unitPriceCents / 100).toString()}
                             onChange={(e) => {
-                              const cents = Math.round(parseFloat(e.target.value || "0") * 100);
+                              const cents = Math.round(
+                                parseFloat(e.target.value || "0") * 100
+                              );
                               setLines((prev) =>
                                 prev.map((p, i) =>
-                                  i === idx ? { ...p, unitPriceCents: isNaN(cents) ? 0 : cents } : p,
-                                ),
+                                  i === idx
+                                    ? {
+                                        ...p,
+                                        unitPriceCents: isNaN(cents)
+                                          ? 0
+                                          : cents,
+                                      }
+                                    : p
+                                )
                               );
                             }}
                           />
@@ -428,14 +491,14 @@ export default function AdminB2BQuotesPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setRespondTo(null)}
-                  className="border border-white/20 hover:bg-white/10 text-white text-sm font-semibold px-4 py-2 rounded-full transition"
+                  className="border border-input hover:bg-muted text-foreground text-sm font-semibold px-4 py-2 rounded-full transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => respondMutation.mutate()}
                   disabled={respondMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-full transition disabled:opacity-50"
+                  className="bg-primary hover:bg-primary-hover text-primary-foreground text-sm font-semibold px-4 py-2 rounded-full transition disabled:opacity-50"
                 >
                   {respondMutation.isPending ? "Sending…" : "Send Response"}
                 </button>

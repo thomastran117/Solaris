@@ -18,8 +18,7 @@ import { isThemePreference } from "../../lib/theme/themeConfig";
  * `.dark` class pick one, so server and client markup always match.
  */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { preference, setTheme, forced } = useTheme();
-  if (forced) return null;
+  const { preference, setTheme } = useTheme();
 
   return (
     <DropdownMenu>
