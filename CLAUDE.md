@@ -78,19 +78,20 @@ These paths prioritize correctness:
 
 ### Visual Language
 
-`frontend/src/views/HomePage.tsx` and the shared layout/section components are the current design references.
+[frontend/DESIGN.md](frontend/DESIGN.md) is the design reference: tokens, theming, components, patterns, and guardrails.
 
-- Keep page shells in the established navy/dark glassmorphism style.
-- Reuse `NavyGridGlowBackground`, `SectionTitle`, `SectionGlow`, `SectionFade`, and existing domain components.
-- Use the established blue/sky accents, translucent surfaces, and white text hierarchy before introducing new tokens.
+- Style with the semantic tokens in `frontend/src/app/globals.css` (`bg-surface`, `text-foreground`, `text-muted-foreground`, `border`, `bg-primary`, …); never hard-code palette colours or hex values. Every view must work in light and dark mode.
+- Build from the primitives in `frontend/src/components/ui` (`Button`, `Field`, `Card`, `Badge`, `Dialog`, `DropdownMenu`, `Sheet`, `PageHeader`, `SectionHeader`, table shells, state components) before writing new markup.
+- Clean neutral surfaces with one blue accent; no glassmorphism, gradients, or glows. Use `lucide-react` icons only.
+- The `shopwave/no-raw-palette` lint rule enforces this; it is an error in migrated folders. Don't silence it without a stated reason.
+- Legacy navy-glass views (`NavyGridGlowBackground`, `components/section/*`) are being migrated; don't add new uses. See the migration status in DESIGN.md.
 - Extract a reusable component when a new pattern appears in more than one place.
 
 ### Motion and Accessibility
 
-- Use Framer Motion through the shared animation patterns.
-- Respect `useReducedMotion`.
-- Keep hover and entrance motion subtle.
-- Preserve keyboard access, focus states, labels, and semantic elements.
+- Use Framer Motion through `useAnims`, keep motion subtle, and respect reduced motion.
+- Keep text visible without JavaScript on server-rendered pages.
+- Meet WCAG AA contrast in both themes; preserve keyboard access, visible focus, labels, and semantic elements. Use the Radix-based primitives for menus and dialogs.
 
 ## Validation
 

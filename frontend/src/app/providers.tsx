@@ -6,6 +6,8 @@ import { markHydrated } from "../hooks/useHydrated";
 import { getQueryClient } from "../api/queryClient";
 import AuthInitializer from "../components/auth/AuthInitializer";
 import StoreProvider from "./StoreProvider";
+import { ThemeProvider } from "../components/theme/ThemeProvider";
+import { Toaster } from "../components/ui/Toaster";
 
 export default function Providers({
   defaultMarketplaceId,
@@ -23,7 +25,12 @@ export default function Providers({
   return (
     <StoreProvider defaultMarketplaceId={defaultMarketplaceId}>
       <QueryClientProvider client={queryClient}>
-        <AuthInitializer>{children}</AuthInitializer>
+        <AuthInitializer>
+          <ThemeProvider>
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </AuthInitializer>
       </QueryClientProvider>
     </StoreProvider>
   );

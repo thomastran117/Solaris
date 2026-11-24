@@ -56,8 +56,11 @@ Server state belongs in TanStack Query; cross-cutting client state belongs in th
 
 ## UI Conventions
 
-- Preserve the established navy glassmorphism visual language used by `src/views/HomePage.tsx` and shared layout/section components.
-- Reuse `NavyGridGlowBackground`, `SectionTitle`, `SectionGlow`, `SectionFade`, and existing domain components before creating a new pattern.
+[DESIGN.md](DESIGN.md) is the design system reference. In short:
+
+- Style with semantic tokens (`bg-surface`, `text-foreground`, `text-muted-foreground`, `border`, `bg-primary`); every view must work in light and dark mode. The theme is set before first paint by `src/lib/theme/themeScript.ts` and managed by `components/theme/ThemeProvider`.
+- Build from `src/components/ui` primitives; use `cn()` from `src/lib/cn.ts` to merge class names.
+- `shopwave/no-raw-palette` (in `eslint-rules/`) flags hard-coded colours and is an error in migrated folders.
 - Use React Hook Form with Zod for forms.
 - Use the shared animation hook and respect reduced-motion preferences.
 - Keep API response types in `src/types` and avoid `any`.

@@ -16,6 +16,7 @@ This handbook is the tracked source of truth for understanding, running, testing
 - [Testing](testing.md) — unit, integration, frontend, browser, and CI workflows
 - [Operations](operations.md) — health, logs, migrations, resets, and troubleshooting
 - [Architecture decision records](decisions/README.md) — why major, hard-to-reverse choices were made, including the [Next.js migration](decisions/0001-nextjs-app-router.md)
+- [Frontend design system](../frontend/DESIGN.md) — tokens, light/dark theming, UI components, patterns, and lint guardrails
 - [Frontend route map](frontend-route-map.md) — every frontend URL, its auth boundary, and its App Router target during the Next.js migration
 - [Candidate roadmap](roadmap.md) — possible future directions, not committed functionality
 

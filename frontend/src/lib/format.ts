@@ -27,3 +27,26 @@ const CALENDAR_DATE: Intl.DateTimeFormatOptions = {
 export function formatCalendarDate(iso: string): string {
   return new Date(iso).toLocaleDateString(LOCALE, CALENDAR_DATE);
 }
+
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
+/**
+ * Formats an amount in major units ("19.99") for display, e.g. "$19.99" or
+ * "CA$19.99". Falls back to "19.99 XYZ" for a code Intl doesn't recognise.
+ */
+export function formatMoney(amount: number, currency = "USD"): string {
+  const code = currency.toUpperCase();
+  let formatter = moneyFormatters.get(code);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(LOCALE, {
+        style: "currency",
+        currency: code,
+      });
+    } catch {
+      return `${amount.toFixed(2)} ${code}`;
+    }
+    moneyFormatters.set(code, formatter);
+  }
+  return formatter.format(amount);
+}
