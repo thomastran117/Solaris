@@ -106,6 +106,10 @@ export default defineConfig([
       // Customer account (redesign PR 5)
       "src/views/{AccountPage,B2BQuotesPage,FeedPage,FeedbackPage,FollowingPage,LoyaltyPage,OrderDetailPage,OrdersPage,PriceWatchesPage,SavedListDetailPage,SavedListsPage}.tsx",
       "src/app/(account)/**/*.{ts,tsx}",
+      // Seller catalog (redesign PR 6a)
+      "src/views/admin/{AdminProductsPage,AdminProductEditor,AdminBundlesPage,AdminKitsPage,AdminKitEditor,AdminCollectionsPage,AdminCollectionEditor,AdminCollectionProductsPage,AdminBulkImportPage}.tsx",
+      "src/components/imports/**/*.{ts,tsx}",
+      "src/components/product/ProductHistoryTimeline.tsx",
       "src/components/order/{DeliverySlotPanel,DeliverySlotStatusBadge,DriverLocationIndicator,OrderCard,OrderStatusHistoryTimeline,OrderStatusTimeline,PickupPanel,TrackingPanel,TrackingTimeline}.tsx",
       "src/hooks/useLogout.ts",
       "src/lib/**/*.{ts,tsx}",
@@ -114,8 +118,6 @@ export default defineConfig([
     ignores: [
       // Legacy, deleted once the last view migrates.
       "src/components/layout/NavyGridGlowBackground.tsx",
-      // Only used by account/admin views; migrate with them.
-      "src/components/product/ProductHistoryTimeline.tsx",
     ],
     rules: {
       "shopwave/no-raw-palette": "error",

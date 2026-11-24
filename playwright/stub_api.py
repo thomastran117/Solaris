@@ -205,7 +205,21 @@ class Handler(BaseHTTPRequestHandler):
             if "refreshToken=valid" in cookie:
                 return self._send(*ok({"accessToken": SESSION_TOKEN, "email": "sam@example.test", "role": "USER", "tier": "FREE"}),
                                   {"Set-Cookie": "refreshToken=valid; Path=/; HttpOnly; SameSite=Strict"})
+            if "refreshToken=vendor" in cookie:
+                return self._send(*ok({"accessToken": SESSION_TOKEN, "email": "vera@example.test", "role": "USER", "tier": "FREE"}),
+                                  {"Set-Cookie": "refreshToken=vendor; Path=/; HttpOnly; SameSite=Strict"})
             return self._send(*err(401, "UNAUTHORIZED"))
+        # Opt-in seller session (cookie refreshToken=vendor): owner of COMPANY_ID with
+        # every capability, for exercising the seller workspace.
+        if path == "/api/companies/mine":
+            if "refreshToken=vendor" in cookie:
+                return self._send(*ok({"id": COMPANY_ID, "name": COMPANY["name"]}))
+            return self._send(*err(404, "NOT_FOUND"))
+        if path == f"/api/companies/{COMPANY_ID}/me" and "refreshToken=vendor" in cookie:
+            return self._send(*ok({"role": "OWNER", "capabilities": [
+                "MANAGE_COMPANY", "MANAGE_PRODUCTS", "MANAGE_INVENTORY", "MANAGE_PROMOTIONS",
+                "MANAGE_QUOTES", "FULFILL_ORDERS", "READ_PRODUCTS", "READ_ANALYTICS",
+            ]}))
         if path in ("/api/auth/login", "/api/auth/verify-device") and self.command == "POST":
             if path == "/api/auth/verify-device" and query.get("token") != ["good"]:
                 return self._send(*err(400, "This device link has expired."))

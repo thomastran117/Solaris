@@ -20,7 +20,14 @@ export const LEGACY_DARK_PREFIXES: readonly string[] = [
   "/dashboard",
 ];
 
-export const LEGACY_DARK_EXCEPTIONS: readonly string[] = [];
+export const LEGACY_DARK_EXCEPTIONS: readonly string[] = [
+  // Seller catalog (redesign PR 6a)
+  "/admin/products",
+  "/admin/bundles",
+  "/admin/kits",
+  "/admin/collections",
+  "/admin/bulk-import",
+];
 
 function underPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
