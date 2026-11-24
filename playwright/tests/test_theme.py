@@ -64,6 +64,18 @@ async def test_unmigrated_routes_stay_dark(browser, base_url):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("path", ["/orders", "/account", "/lists"])
+async def test_account_routes_follow_the_visitor_theme(browser, base_url, path):
+    context = await browser.new_context(color_scheme="dark")
+    await context.add_init_script(SET_LIGHT)
+    await context.add_cookies([{"name": "refreshToken", "value": "valid", "url": base_url}])
+    page = await context.new_page()
+    await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+    assert await _is_dark(page) is False
+    await context.close()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_shared_public_lists_are_not_forced_dark(browser, base_url):
     context = await browser.new_context(color_scheme="light")
     page = await context.new_page()

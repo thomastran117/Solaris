@@ -5,12 +5,21 @@ import type { SavedListItem } from "../../types/savedList";
 
 interface Props {
   item: SavedListItem;
-  onUpdate: (changes: { quantity?: number; note?: string; purchased?: boolean }) => void;
+  onUpdate: (changes: {
+    quantity?: number;
+    note?: string;
+    purchased?: boolean;
+  }) => void;
   onRemove: () => void;
   disabled?: boolean;
 }
 
-export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }: Props) {
+export default function SavedListItemRow({
+  item,
+  onUpdate,
+  onRemove,
+  disabled,
+}: Props) {
   const [quantity, setQuantity] = useState(item.quantity);
   const [note, setNote] = useState(item.note ?? "");
 
@@ -26,7 +35,10 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
     if (next === quantity) return;
     setQuantity(next);
     if (qtyTimer.current) window.clearTimeout(qtyTimer.current);
-    qtyTimer.current = window.setTimeout(() => onUpdate({ quantity: next }), 350);
+    qtyTimer.current = window.setTimeout(
+      () => onUpdate({ quantity: next }),
+      350
+    );
   }
 
   function handleNoteChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -38,14 +50,14 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
 
   return (
     <div
-      className={`rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-4 flex flex-col sm:flex-row gap-4 transition-opacity ${
+      className={`rounded-xl border border-border bg-surface p-4 flex flex-col sm:flex-row gap-4 transition-opacity ${
         item.purchased ? "opacity-60" : "opacity-100"
       }`}
     >
       {/* Thumbnail */}
       <Link
         href={`/products/${item.productId}`}
-        className="w-full sm:w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-white/[0.04] flex items-center justify-center"
+        className="w-full sm:w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-surface flex items-center justify-center"
       >
         {item.productThumbnailUrl ? (
           <img
@@ -54,7 +66,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
             className="w-full h-full object-cover"
           />
         ) : (
-          <ShoppingBag className="w-8 h-8 text-white/20" />
+          <ShoppingBag className="w-8 h-8 text-muted-foreground" />
         )}
       </Link>
 
@@ -63,30 +75,32 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
         <div>
           <Link
             href={`/products/${item.productId}`}
-            className={`block text-sm font-semibold text-white leading-snug hover:text-sky-200 transition-colors ${
+            className={`block text-sm font-semibold text-foreground leading-snug hover:text-link transition-colors ${
               item.purchased ? "line-through" : ""
             }`}
           >
             {item.productName}
           </Link>
           {item.variantSku && (
-            <p className="text-xs text-white/50 mt-0.5">SKU: {item.variantSku}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              SKU: {item.variantSku}
+            </p>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Quantity stepper */}
-          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04]">
+          <div className="inline-flex items-center rounded-full border border-border bg-surface">
             <button
               type="button"
               onClick={() => bumpQuantity(-1)}
               disabled={disabled || quantity <= 1}
               aria-label="Decrease quantity"
-              className="p-1.5 text-white/70 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
-            <span className="px-2 text-sm font-medium text-white tabular-nums w-7 text-center">
+            <span className="px-2 text-sm font-medium text-foreground tabular-nums w-7 text-center">
               {quantity}
             </span>
             <button
@@ -94,7 +108,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
               onClick={() => bumpQuantity(1)}
               disabled={disabled}
               aria-label="Increase quantity"
-              className="p-1.5 text-white/70 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -108,7 +122,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
             disabled={disabled}
             maxLength={500}
             placeholder="Add a note…"
-            className="flex-1 min-w-[8rem] text-sm rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/85 placeholder:text-white/45 focus:outline-none focus:border-white/25"
+            className="flex-1 min-w-[8rem] text-sm rounded-full border border-border bg-surface px-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring"
           />
         </div>
       </div>
@@ -122,8 +136,8 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
           aria-label={item.purchased ? "Mark as not done" : "Mark as done"}
           className={`flex items-center justify-center w-9 h-9 rounded-full border transition-all ${
             item.purchased
-              ? "bg-green-500 border-green-400 text-white"
-              : "border-white/15 bg-white/[0.04] text-white/40 hover:text-white hover:border-white/30"
+              ? "bg-success-subtle border-success/40 text-foreground"
+              : "border-border bg-surface text-muted-foreground hover:text-foreground hover:border-input"
           }`}
         >
           <Check className="w-4 h-4" />
@@ -133,7 +147,7 @@ export default function SavedListItemRow({ item, onUpdate, onRemove, disabled }:
           onClick={onRemove}
           disabled={disabled}
           aria-label="Remove item"
-          className="flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-white/50 hover:text-red-300 hover:border-red-400/40 transition-colors"
+          className="flex items-center justify-center w-9 h-9 rounded-full border border-border bg-surface text-muted-foreground hover:text-danger hover:border-danger/40 transition-colors"
         >
           <Trash2 className="w-4 h-4" />
         </button>

@@ -15,22 +15,12 @@ export const THEME_STORAGE_KEY = "shopwave-theme";
 export const FORCE_ALL_DARK = false;
 
 export const LEGACY_DARK_PREFIXES: readonly string[] = [
-  // Customer account
-  "/account",
-  "/b2b",
-  "/feed",
-  "/feedback",
-  "/following",
-  "/lists",
-  "/loyalty",
-  "/orders",
-  "/price-watches",
   // Seller workspace
   "/admin",
   "/dashboard",
 ];
 
-export const LEGACY_DARK_EXCEPTIONS: readonly string[] = ["/lists/public"];
+export const LEGACY_DARK_EXCEPTIONS: readonly string[] = [];
 
 function underPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);

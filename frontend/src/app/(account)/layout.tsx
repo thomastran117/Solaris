@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import RequireAuth from "../../components/auth/RequireAuth";
+import { AccountShell } from "../../components/layout/AccountShell";
 import { SiteShell } from "../../components/layout/SiteShell";
 
 // Signed-in customer screens. Their HTML is a shell with no private data; content
@@ -13,7 +14,9 @@ export default function AccountLayout({
 }) {
   return (
     <SiteShell>
-      <RequireAuth>{children}</RequireAuth>
+      <AccountShell>
+        <RequireAuth>{children}</RequireAuth>
+      </AccountShell>
     </SiteShell>
   );
 }

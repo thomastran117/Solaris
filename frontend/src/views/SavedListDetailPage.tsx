@@ -22,9 +22,11 @@ import {
   useUpdateSavedListItem,
 } from "../hooks/useSavedLists";
 import SavedListItemRow from "../components/savedlist/SavedListItemRow";
-import { LIST_TYPE_META, showsProgress } from "../components/savedlist/listTypeMeta";
+import {
+  LIST_TYPE_META,
+  showsProgress,
+} from "../components/savedlist/listTypeMeta";
 import { useAnims } from "../hooks/useAnims";
-
 
 export default function SavedListDetailPage() {
   const router = useRouter();
@@ -81,7 +83,8 @@ export default function SavedListDetailPage() {
 
   async function handleDelete() {
     if (!list.data) return;
-    if (!window.confirm(`Delete "${list.data.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${list.data.name}"? This cannot be undone.`))
+      return;
     try {
       await remove.mutateAsync(list.data.id);
       router.push("/lists");
@@ -104,11 +107,11 @@ export default function SavedListDetailPage() {
 
   if (list.isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 px-4 py-10">
+      <div className="px-4 py-10">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div className="h-8 w-1/3 rounded-lg bg-white/[0.06] animate-pulse" />
-          <div className="h-24 rounded-2xl border border-white/10 bg-white/[0.04] animate-pulse" />
-          <div className="h-24 rounded-2xl border border-white/10 bg-white/[0.04] animate-pulse" />
+          <div className="h-8 w-1/3 rounded-lg bg-surface animate-pulse" />
+          <div className="h-24 rounded-xl border border-border bg-surface animate-pulse" />
+          <div className="h-24 rounded-xl border border-border bg-surface animate-pulse" />
         </div>
       </div>
     );
@@ -116,10 +119,13 @@ export default function SavedListDetailPage() {
 
   if (list.isError || !list.data) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-white/70 mb-4">List not found.</p>
-          <Link href="/lists" className="text-sky-300 hover:text-sky-200 transition-colors text-sm">
+          <p className="text-muted-foreground mb-4">List not found.</p>
+          <Link
+            href="/lists"
+            className="text-link hover:text-link transition-colors text-sm"
+          >
             ← Back to your lists
           </Link>
         </div>
@@ -139,15 +145,11 @@ export default function SavedListDetailPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 0 }}>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px]" />
-      </div>
-
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-10">
+    <div>
+      <div className="max-w-4xl">
         <Link
           href="/lists"
-          className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white/90 transition-colors mb-5"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5"
         >
           <ChevronLeft className="w-4 h-4" />
           All lists
@@ -158,19 +160,17 @@ export default function SavedListDetailPage() {
           variants={fadeInUp}
           initial="hidden"
           animate="visible"
-          className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 mb-6"
+          className="rounded-xl border border-border bg-surface p-6 mb-6"
         >
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="bg-blue-500/15 border border-white/10 rounded-xl p-2.5">
-                <Icon className="w-5 h-5 text-sky-200" />
+              <div className="bg-primary/10 border border-border rounded-xl p-2.5">
+                <Icon className="w-5 h-5 text-link" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
-                  {meta.kicker}
-                </p>
+                <p className="text-xs font-semibold text-link">{meta.kicker}</p>
                 {!editing && (
-                  <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1 leading-tight">
+                  <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
                     {data.name}
                   </h1>
                 )}
@@ -183,9 +183,13 @@ export default function SavedListDetailPage() {
                 onClick={togglePublic}
                 disabled={update.isPending}
                 title={data.isPublic ? "Make private" : "Make public"}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors disabled:opacity-50"
               >
-                {data.isPublic ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                {data.isPublic ? (
+                  <Globe className="w-3.5 h-3.5" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5" />
+                )}
                 {data.isPublic ? "Public" : "Private"}
               </button>
 
@@ -193,7 +197,7 @@ export default function SavedListDetailPage() {
                 <button
                   type="button"
                   onClick={copyShareLink}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   {copied ? "Copied!" : "Share"}
@@ -205,7 +209,7 @@ export default function SavedListDetailPage() {
                   type="button"
                   onClick={startEdit}
                   aria-label="Edit list"
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/15 bg-white/[0.04] text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border bg-surface text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
@@ -216,7 +220,7 @@ export default function SavedListDetailPage() {
                 onClick={handleDelete}
                 disabled={remove.isPending}
                 aria-label="Delete list"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/15 bg-white/[0.04] text-white/60 hover:text-red-300 hover:border-red-400/40 transition-colors disabled:opacity-50"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border bg-surface text-muted-foreground hover:text-danger hover:border-danger/40 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -231,7 +235,7 @@ export default function SavedListDetailPage() {
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 maxLength={100}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white focus:outline-none focus:border-white/25"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
               />
               <textarea
                 value={editDescription}
@@ -239,14 +243,14 @@ export default function SavedListDetailPage() {
                 maxLength={500}
                 rows={2}
                 placeholder="Description"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/25 resize-none"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring resize-none"
               />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={saveEdit}
                   disabled={update.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 hover:bg-blue-500 px-4 py-1.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary hover:bg-primary-hover px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
                   {update.isPending ? "Saving…" : "Save"}
@@ -258,7 +262,7 @@ export default function SavedListDetailPage() {
                     setError(null);
                   }}
                   disabled={update.isPending}
-                  className="rounded-full border border-white/15 px-4 py-1.5 text-sm text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+                  className="rounded-full border border-border px-4 py-1.5 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -266,22 +270,24 @@ export default function SavedListDetailPage() {
             </div>
           ) : (
             data.description && (
-              <p className="text-sm text-white/70 leading-relaxed mt-4">{data.description}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed mt-4">
+                {data.description}
+              </p>
             )
           )}
 
           {/* Progress strip */}
           {showProgress && (
             <div className="mt-5">
-              <div className="flex items-center justify-between text-xs text-white/60 mb-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
                 <span>Progress</span>
-                <span className="text-sky-200/90 font-medium">
+                <span className="text-link font-medium">
                   {purchased} / {total} done
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-1.5 rounded-full bg-surface overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-sky-400 to-blue-500 transition-all"
+                  className="h-full transition-all"
                   style={{ width: `${(purchased / total) * 100}%` }}
                 />
               </div>
@@ -289,21 +295,21 @@ export default function SavedListDetailPage() {
           )}
         </motion.div>
 
-        {error && (
-          <p className="text-sm text-red-400 mb-3">{error}</p>
-        )}
+        {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {/* Items */}
         {sortedItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02]">
-            <Bookmark className="w-10 h-10 text-white/20 mb-3" />
-            <p className="text-white/60 text-sm mb-1">This list is empty.</p>
-            <p className="text-xs text-white/40">
+          <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-dashed border-border bg-surface">
+            <Bookmark className="w-10 h-10 text-muted-foreground mb-3" />
+            <p className="text-muted-foreground text-sm mb-1">
+              This list is empty.
+            </p>
+            <p className="text-xs text-muted-foreground">
               Browse products and tap the bookmark icon to add them here.
             </p>
             <Link
               href="/browse"
-              className="mt-4 rounded-full bg-blue-600 hover:bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition-colors"
+              className="mt-4 rounded-full bg-primary hover:bg-primary-hover px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors"
             >
               Browse products
             </Link>
@@ -320,14 +326,18 @@ export default function SavedListDetailPage() {
                     { itemId: item.id, req: changes },
                     {
                       onError: (err) =>
-                        setError(extractErrorMessage(err) ?? "Could not update item."),
+                        setError(
+                          extractErrorMessage(err) ?? "Could not update item."
+                        ),
                     }
                   )
                 }
                 onRemove={() =>
                   removeItem.mutate(item.id, {
                     onError: (err) =>
-                      setError(extractErrorMessage(err) ?? "Could not remove item."),
+                      setError(
+                        extractErrorMessage(err) ?? "Could not remove item."
+                      ),
                   })
                 }
               />
@@ -341,8 +351,12 @@ export default function SavedListDetailPage() {
 
 function extractErrorMessage(err: unknown): string | null {
   if (typeof err === "object" && err !== null) {
-    const maybe = err as { response?: { data?: { detail?: string; message?: string } } };
-    return maybe.response?.data?.detail ?? maybe.response?.data?.message ?? null;
+    const maybe = err as {
+      response?: { data?: { detail?: string; message?: string } };
+    };
+    return (
+      maybe.response?.data?.detail ?? maybe.response?.data?.message ?? null
+    );
   }
   return null;
 }

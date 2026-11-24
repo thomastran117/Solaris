@@ -4,14 +4,18 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Megaphone, Building2, Bell, BellOff, UserMinus, Rss } from "lucide-react";
+import {
+  Megaphone,
+  Building2,
+  Bell,
+  BellOff,
+  UserMinus,
+  Rss,
+} from "lucide-react";
 import { followApi } from "../api/follow";
 import type { AnnouncementType } from "../types/company";
-import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
-import SectionTitle from "../components/section/SectionTitle";
-import SectionGlow from "../components/section/SectionGlow";
+import { SectionHeader } from "../components/ui/SectionHeader";
 import { useAnims } from "../hooks/useAnims";
-
 
 const TYPE_LABELS: Record<AnnouncementType, string> = {
   GENERAL: "General",
@@ -21,10 +25,10 @@ const TYPE_LABELS: Record<AnnouncementType, string> = {
 };
 
 const TYPE_COLORS: Record<AnnouncementType, string> = {
-  GENERAL: "bg-white/10 text-white/60 border-white/15",
-  NEW_PRODUCT: "bg-blue-500/15 text-sky-300 border-blue-400/30",
-  SALE: "bg-green-500/15 text-green-300 border-green-400/30",
-  NEW_COLLECTION: "bg-indigo-500/15 text-indigo-300 border-indigo-400/30",
+  GENERAL: "bg-muted text-muted-foreground border-border",
+  NEW_PRODUCT: "bg-primary/10 text-link border-primary/40",
+  SALE: "bg-success-subtle text-success border-success/40",
+  NEW_COLLECTION: "bg-primary/10 text-link border-primary/40",
 };
 
 type Tab = "feed" | "following";
@@ -50,8 +54,13 @@ export default function FollowingPage() {
   });
 
   const bellMutation = useMutation({
-    mutationFn: ({ companyId, enabled }: { companyId: string; enabled: boolean }) =>
-      followApi.setNotifications(companyId, enabled),
+    mutationFn: ({
+      companyId,
+      enabled,
+    }: {
+      companyId: string;
+      enabled: boolean;
+    }) => followApi.setNotifications(companyId, enabled),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["me", "following"] }),
   });
@@ -68,22 +77,25 @@ export default function FollowingPage() {
   const followingTotalPages = followingQuery.data?.totalPages ?? 0;
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-white">
-      <NavyGridGlowBackground />
-
-      <div className="mx-auto max-w-3xl px-4 pb-24 pt-28">
+    <div className="text-foreground">
+      <div className="max-w-3xl">
         {/* Header */}
-        <motion.div variants={fadeInUp} initial="hidden" animate="visible" className="mb-8">
-          <SectionTitle
+        <motion.div
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          className="mb-8"
+        >
+          <SectionHeader
+            as="h1"
             kicker="Your network"
             title="Following"
             subtitle="Announcements and companies you follow."
-            theme="dark"
           />
         </motion.div>
 
         {/* Tabs */}
-        <div className="flex gap-1 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur p-1 mb-6">
+        <div className="flex gap-1 rounded-xl border border-border bg-surface p-1 mb-6">
           {(["feed", "following"] as Tab[]).map((t) => (
             <button
               key={t}
@@ -91,14 +103,18 @@ export default function FollowingPage() {
               onClick={() => setTab(t)}
               className={`flex-1 flex items-center justify-center gap-2 text-sm font-medium rounded-xl px-4 py-2 transition-colors ${
                 tab === t
-                  ? "bg-blue-600 text-white"
-                  : "text-white/55 hover:text-white hover:bg-white/[0.06]"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {t === "feed" ? (
-                <><Rss className="w-3.5 h-3.5" /> Announcement Feed</>
+                <>
+                  <Rss className="w-3.5 h-3.5" /> Announcement Feed
+                </>
               ) : (
-                <><Building2 className="w-3.5 h-3.5" /> Companies</>
+                <>
+                  <Building2 className="w-3.5 h-3.5" /> Companies
+                </>
               )}
             </button>
           ))}
@@ -110,23 +126,34 @@ export default function FollowingPage() {
             {feedQuery.isLoading && (
               <div className="space-y-3">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] h-28 animate-pulse" />
+                  <div
+                    key={i}
+                    className="rounded-xl border border-border bg-surface h-28 animate-pulse"
+                  />
                 ))}
               </div>
             )}
 
             {!feedQuery.isLoading && feedItems.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
-                <Megaphone className="w-12 h-12 text-white/20 mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">No announcements yet</h3>
-                <p className="text-sm text-white/50 max-w-xs">
-                  Follow companies to see their latest news, sales, and product launches here.
+                <Megaphone className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  No announcements yet
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Follow companies to see their latest news, sales, and product
+                  launches here.
                 </p>
               </div>
             )}
 
             {!feedQuery.isLoading && feedItems.length > 0 && (
-              <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                animate="visible"
+                className="space-y-4"
+              >
                 {feedItems.map((ann) => {
                   const type = ann.type as AnnouncementType;
                   const isExpanded = expanded === ann.id;
@@ -134,25 +161,24 @@ export default function FollowingPage() {
                     <motion.article
                       key={ann.id}
                       variants={fadeInUp}
-                      className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 shadow-sm"
+                      className="relative rounded-xl border border-border bg-surface p-5 shadow-sm"
                     >
-                      <SectionGlow variant="a" />
                       {/* Company + meta */}
                       <div className="flex items-center gap-2.5 mb-3">
                         {ann.companyLogoUrl ? (
                           <img
                             src={ann.companyLogoUrl}
                             alt={ann.companyName}
-                            className="w-7 h-7 rounded-lg object-cover border border-white/10 shrink-0"
+                            className="w-7 h-7 rounded-lg object-cover border border-border shrink-0"
                           />
                         ) : (
-                          <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-white/10 flex items-center justify-center shrink-0">
-                            <Building2 className="w-3.5 h-3.5 text-sky-300" />
+                          <div className="w-7 h-7 rounded-lg bg-primary/10 border border-border flex items-center justify-center shrink-0">
+                            <Building2 className="w-3.5 h-3.5 text-link" />
                           </div>
                         )}
                         <Link
                           href={`/c/${ann.companyId}`}
-                          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+                          className="text-sm font-medium text-foreground hover:text-foreground transition-colors"
                         >
                           {ann.companyName}
                         </Link>
@@ -164,15 +190,21 @@ export default function FollowingPage() {
                       </div>
 
                       {/* Content */}
-                      <p className="text-sm font-semibold text-white mb-1.5 leading-snug">{ann.title}</p>
-                      <p className={`text-xs text-white/60 leading-relaxed ${isExpanded ? "" : "line-clamp-3"}`}>
+                      <p className="text-sm font-semibold text-foreground mb-1.5 leading-snug">
+                        {ann.title}
+                      </p>
+                      <p
+                        className={`text-xs text-muted-foreground leading-relaxed ${isExpanded ? "" : "line-clamp-3"}`}
+                      >
                         {ann.body}
                       </p>
                       {ann.body.length > 160 && (
                         <button
                           type="button"
-                          onClick={() => setExpanded(isExpanded ? null : ann.id)}
-                          className="mt-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                          onClick={() =>
+                            setExpanded(isExpanded ? null : ann.id)
+                          }
+                          className="mt-1 text-xs text-link hover:text-link transition-colors"
                         >
                           {isExpanded ? "Show less" : "Read more"}
                         </button>
@@ -180,10 +212,15 @@ export default function FollowingPage() {
 
                       {/* Date */}
                       {ann.publishedAt && (
-                        <p className="mt-3 text-xs text-white/35">
-                          {new Date(ann.publishedAt).toLocaleDateString(undefined, {
-                            month: "short", day: "numeric", year: "numeric",
-                          })}
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          {new Date(ann.publishedAt).toLocaleDateString(
+                            undefined,
+                            {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            }
+                          )}
                         </p>
                       )}
                     </motion.article>
@@ -198,16 +235,18 @@ export default function FollowingPage() {
                   type="button"
                   disabled={feedPage === 0}
                   onClick={() => setFeedPage((p) => p - 1)}
-                  className="text-sm border border-white/10 rounded-full px-4 py-1.5 text-white/60 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="text-sm border border-border rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   Previous
                 </button>
-                <span className="text-sm text-white/50">{feedPage + 1} / {feedTotalPages}</span>
+                <span className="text-sm text-muted-foreground">
+                  {feedPage + 1} / {feedTotalPages}
+                </span>
                 <button
                   type="button"
                   disabled={!feedQuery.data?.hasNext}
                   onClick={() => setFeedPage((p) => p + 1)}
-                  className="text-sm border border-white/10 rounded-full px-4 py-1.5 text-white/60 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="text-sm border border-border rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   Next
                 </button>
@@ -222,57 +261,74 @@ export default function FollowingPage() {
             {followingQuery.isLoading && (
               <div className="space-y-3">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] h-20 animate-pulse" />
+                  <div
+                    key={i}
+                    className="rounded-xl border border-border bg-surface h-20 animate-pulse"
+                  />
                 ))}
               </div>
             )}
 
             {!followingQuery.isLoading && followedCompanies.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
-                <Building2 className="w-12 h-12 text-white/20 mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">Not following anyone yet</h3>
-                <p className="text-sm text-white/50 max-w-xs">
-                  Visit a company page and click Follow to start receiving their announcements.
+                <Building2 className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  Not following anyone yet
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Visit a company page and click Follow to start receiving their
+                  announcements.
                 </p>
               </div>
             )}
 
             {!followingQuery.isLoading && followedCompanies.length > 0 && (
-              <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-3">
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                animate="visible"
+                className="space-y-3"
+              >
                 {followedCompanies.map((fc) => (
                   <motion.div
                     key={fc.followId}
                     variants={fadeInUp}
-                    className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur px-5 py-4 flex items-center gap-4"
+                    className="rounded-xl border border-border bg-surface px-5 py-4 flex items-center gap-4"
                   >
                     {fc.companyLogoUrl ? (
                       <img
                         src={fc.companyLogoUrl}
                         alt={fc.companyName}
-                        className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0"
+                        className="w-10 h-10 rounded-xl object-cover border border-border shrink-0"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-white/10 flex items-center justify-center shrink-0">
-                        <Building2 className="w-5 h-5 text-sky-300" />
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-border flex items-center justify-center shrink-0">
+                        <Building2 className="w-5 h-5 text-link" />
                       </div>
                     )}
 
                     <div className="flex-1 min-w-0">
                       <Link
                         href={`/c/${fc.companyId}`}
-                        className="text-sm font-semibold text-white hover:text-sky-200 transition-colors"
+                        className="text-sm font-semibold text-foreground hover:text-link transition-colors"
                       >
                         {fc.companyName}
                       </Link>
                       {fc.industry && (
-                        <p className="text-xs text-white/45 mt-0.5">{fc.industry}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {fc.industry}
+                        </p>
                       )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        title={fc.notificationsEnabled ? "Mute notifications" : "Enable notifications"}
+                        title={
+                          fc.notificationsEnabled
+                            ? "Mute notifications"
+                            : "Enable notifications"
+                        }
                         onClick={() =>
                           bellMutation.mutate({
                             companyId: fc.companyId,
@@ -282,8 +338,8 @@ export default function FollowingPage() {
                         disabled={bellMutation.isPending}
                         className={`p-2 rounded-xl border transition-colors disabled:opacity-50 ${
                           fc.notificationsEnabled
-                            ? "border-blue-500/30 bg-blue-600/10 text-sky-300 hover:bg-blue-600/20"
-                            : "border-white/10 text-white/35 hover:text-white/60 hover:border-white/20"
+                            ? "border-primary/40 bg-primary/10 text-link hover:bg-primary/10"
+                            : "border-border text-muted-foreground hover:text-muted-foreground hover:border-input"
                         }`}
                       >
                         {fc.notificationsEnabled ? (
@@ -297,7 +353,7 @@ export default function FollowingPage() {
                         title="Unfollow"
                         onClick={() => unfollowMutation.mutate(fc.companyId)}
                         disabled={unfollowMutation.isPending}
-                        className="p-2 rounded-xl border border-white/10 text-white/35 hover:text-red-400 hover:border-red-400/30 transition-colors disabled:opacity-50"
+                        className="p-2 rounded-xl border border-border text-muted-foreground hover:text-danger hover:border-danger/40 transition-colors disabled:opacity-50"
                       >
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
@@ -313,16 +369,18 @@ export default function FollowingPage() {
                   type="button"
                   disabled={followingPage === 0}
                   onClick={() => setFollowingPage((p) => p - 1)}
-                  className="text-sm border border-white/10 rounded-full px-4 py-1.5 text-white/60 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="text-sm border border-border rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   Previous
                 </button>
-                <span className="text-sm text-white/50">{followingPage + 1} / {followingTotalPages}</span>
+                <span className="text-sm text-muted-foreground">
+                  {followingPage + 1} / {followingTotalPages}
+                </span>
                 <button
                   type="button"
                   disabled={!followingQuery.data?.hasNext}
                   onClick={() => setFollowingPage((p) => p + 1)}
-                  className="text-sm border border-white/10 rounded-full px-4 py-1.5 text-white/60 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="text-sm border border-border rounded-full px-4 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   Next
                 </button>

@@ -3,7 +3,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, Loader2 } from "lucide-react";
 import { ordersApi } from "../../api/orders";
-import { DELIVERY_WINDOWS, type DeliveryWindow, type Order } from "../../types/order";
+import {
+  DELIVERY_WINDOWS,
+  type DeliveryWindow,
+  type Order,
+} from "../../types/order";
 import {
   deliverySlotSchema,
   type DeliverySlotValues,
@@ -17,8 +21,8 @@ interface Props {
 }
 
 const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors";
-const labelCls = "block text-xs font-medium text-white/60 mb-1";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
+const labelCls = "block text-xs font-medium text-muted-foreground mb-1";
 
 function extractMessage(err: unknown): string {
   if (err && typeof err === "object" && "apiMessage" in err) {
@@ -55,38 +59,46 @@ export default function DeliverySlotPanel({ order }: Props) {
   });
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 space-y-4">
+    <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-sky-200/90">
-          Delivery Slot
-        </p>
-        {order.deliverySlotStatus && <DeliverySlotStatusBadge status={order.deliverySlotStatus} />}
+        <p className="text-xs font-semibold text-link">Delivery Slot</p>
+        {order.deliverySlotStatus && (
+          <DeliverySlotStatusBadge status={order.deliverySlotStatus} />
+        )}
       </div>
 
       {order.preferredDeliveryDate && (
         <div className="flex items-start gap-2">
-          <CalendarClock className="h-4 w-4 text-sky-200 mt-0.5 shrink-0" />
-          <p className="text-sm text-white">
-            {new Date(order.preferredDeliveryDate + "T00:00:00").toLocaleDateString(undefined, {
+          <CalendarClock className="h-4 w-4 text-link mt-0.5 shrink-0" />
+          <p className="text-sm text-foreground">
+            {new Date(
+              order.preferredDeliveryDate + "T00:00:00"
+            ).toLocaleDateString(undefined, {
               weekday: "long",
               day: "numeric",
               month: "long",
             })}
             {order.preferredDeliveryWindow && (
-              <span className="text-white/60"> · {DELIVERY_WINDOWS[order.preferredDeliveryWindow]}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {DELIVERY_WINDOWS[order.preferredDeliveryWindow]}
+              </span>
             )}
           </p>
         </div>
       )}
 
       {order.deliverySlotStatus === "UNAVAILABLE" && (
-        <p className="text-sm text-red-400">
+        <p className="text-sm text-danger">
           The seller can't make this slot. Please choose a different date below.
         </p>
       )}
 
       {editable ? (
-        <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-3">
+        <form
+          onSubmit={handleSubmit((v) => mutation.mutate(v))}
+          className="space-y-3"
+        >
           <div>
             <label className={labelCls} htmlFor="preferredDeliveryDate">
               Preferred date
@@ -100,7 +112,9 @@ export default function DeliverySlotPanel({ order }: Props) {
               {...register("preferredDeliveryDate")}
             />
             {errors.preferredDeliveryDate && (
-              <p className="mt-1 text-xs text-red-400">{errors.preferredDeliveryDate.message}</p>
+              <p className="mt-1 text-xs text-danger">
+                {errors.preferredDeliveryDate.message}
+              </p>
             )}
           </div>
 
@@ -108,36 +122,51 @@ export default function DeliverySlotPanel({ order }: Props) {
             <label className={labelCls} htmlFor="preferredDeliveryWindow">
               Time window
             </label>
-            <select id="preferredDeliveryWindow" className={inputCls} {...register("preferredDeliveryWindow")}>
+            <select
+              id="preferredDeliveryWindow"
+              className={inputCls}
+              {...register("preferredDeliveryWindow")}
+            >
               {WINDOW_OPTIONS.map((w) => (
-                <option key={w} value={w} className="bg-slate-900">
+                <option key={w} value={w} className="bg-surface">
                   {DELIVERY_WINDOWS[w]}
                 </option>
               ))}
             </select>
             {errors.preferredDeliveryWindow && (
-              <p className="mt-1 text-xs text-red-400">{errors.preferredDeliveryWindow.message}</p>
+              <p className="mt-1 text-xs text-danger">
+                {errors.preferredDeliveryWindow.message}
+              </p>
             )}
           </div>
 
-          {mutation.isError && <p className="text-sm text-red-400">{extractMessage(mutation.error)}</p>}
+          {mutation.isError && (
+            <p className="text-sm text-danger">
+              {extractMessage(mutation.error)}
+            </p>
+          )}
           {mutation.isSuccess && !mutation.isPending && (
-            <p className="text-sm text-green-400">Delivery slot saved.</p>
+            <p className="text-sm text-success">Delivery slot saved.</p>
           )}
 
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="flex items-center gap-2 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm text-white font-medium transition"
+            className="flex items-center gap-2 rounded-full bg-primary hover:bg-primary-hover disabled:opacity-50 px-4 py-2 text-sm text-primary-foreground font-medium transition"
           >
-            {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+            {mutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CalendarClock className="h-4 w-4" />
+            )}
             {order.preferredDeliveryDate ? "Update slot" : "Request slot"}
           </button>
         </form>
       ) : (
         !order.preferredDeliveryDate && (
-          <p className="text-sm text-white/60">
-            A delivery slot can only be requested while your order is reserved or paid.
+          <p className="text-sm text-muted-foreground">
+            A delivery slot can only be requested while your order is reserved
+            or paid.
           </p>
         )
       )}

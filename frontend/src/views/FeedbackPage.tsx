@@ -7,12 +7,15 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Star, CheckCircle, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import {
+  Star,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  MessageSquare,
+} from "lucide-react";
 import type { RootState } from "../stores";
-import NavyGridGlowBackground from "../components/layout/NavyGridGlowBackground";
-import SectionGlow from "../components/section/SectionGlow";
-import SectionFade from "../components/section/SectionFade";
-import SectionTitle from "../components/section/SectionTitle";
+import { SectionHeader } from "../components/ui/SectionHeader";
 import { feedbackApi } from "../api/feedback";
 import type { FeedbackStatus } from "../types/feedback";
 import { useAnims } from "../hooks/useAnims";
@@ -23,28 +26,29 @@ import {
   type FeedbackFormValues,
 } from "../schemas/feedback";
 
-
 const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:border-white/20 transition-colors";
-const labelCls = "block text-xs font-medium text-white/60 mb-1";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors";
+const labelCls = "block text-xs font-medium text-muted-foreground mb-1";
 
 const STATUS_COLORS: Record<FeedbackStatus, string> = {
-  OPEN:         "border-blue-400/40 bg-blue-500/10 text-blue-300",
-  UNDER_REVIEW: "border-yellow-400/40 bg-yellow-500/10 text-yellow-300",
-  RESOLVED:     "border-green-400/40 bg-green-500/10 text-green-300",
-  CLOSED:       "border-white/15 bg-white/[0.04] text-white/60",
+  OPEN: "border-primary/40 bg-primary/10 text-link",
+  UNDER_REVIEW: "border-warning/40 bg-warning-subtle text-warning",
+  RESOLVED: "border-success/40 bg-success-subtle text-success",
+  CLOSED: "border-border bg-surface text-muted-foreground",
 };
 
 const STATUS_LABELS: Record<FeedbackStatus, string> = {
-  OPEN:         "Open",
+  OPEN: "Open",
   UNDER_REVIEW: "Under Review",
-  RESOLVED:     "Resolved",
-  CLOSED:       "Closed",
+  RESOLVED: "Resolved",
+  CLOSED: "Closed",
 };
 
 function extractMessage(err: unknown): string {
   if (typeof err === "object" && err !== null) {
-    const maybe = err as { response?: { data?: { message?: string; detail?: string } } };
+    const maybe = err as {
+      response?: { data?: { message?: string; detail?: string } };
+    };
     return (
       maybe.response?.data?.detail ??
       maybe.response?.data?.message ??
@@ -113,17 +117,19 @@ export default function FeedbackPage() {
 
   if (!accessToken) {
     return (
-      <div className="relative min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <NavyGridGlowBackground />
-        <div className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-8 text-center max-w-sm mx-4">
-          <MessageSquare className="h-10 w-10 text-sky-200 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-white mb-2">Sign in to submit feedback</h2>
-          <p className="text-sm text-white/60 mb-5">
-            We'd love to hear what you think. Please sign in to share your feedback.
+      <div className="relative min-h-[60vh] text-foreground flex items-center justify-center">
+        <div className="relative rounded-xl border border-border bg-surface p-8 text-center max-w-sm mx-4">
+          <MessageSquare className="h-10 w-10 text-link mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-foreground mb-2">
+            Sign in to submit feedback
+          </h2>
+          <p className="text-sm text-muted-foreground mb-5">
+            We'd love to hear what you think. Please sign in to share your
+            feedback.
           </p>
           <Link
             href="/login"
-            className="inline-block rounded-full bg-blue-600 hover:bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition-colors"
+            className="inline-block rounded-full bg-primary hover:bg-primary-hover px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors"
           >
             Sign In
           </Link>
@@ -133,19 +139,14 @@ export default function FeedbackPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-white">
-      <NavyGridGlowBackground />
-
+    <div className="text-foreground">
       {/* Header */}
       <section className="relative px-6 pt-16 pb-8 md:px-10">
-        <SectionGlow variant="a" />
-        <SectionFade top />
-        <SectionTitle
+        <SectionHeader
+          as="h1"
           kicker="Platform"
           title="Share Your Feedback"
           subtitle="Help us make ShopWave better. Let us know what's working and what could be improved."
-          align="center"
-          theme="dark"
         />
       </section>
 
@@ -156,11 +157,15 @@ export default function FeedbackPage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center gap-3 py-10 text-center rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur"
+              className="flex flex-col items-center gap-3 py-10 text-center rounded-xl border border-border bg-surface"
             >
-              <CheckCircle className="h-12 w-12 text-green-400" />
-              <p className="text-lg font-semibold text-white">Thanks for your feedback!</p>
-              <p className="text-sm text-white/60">We appreciate you helping us improve ShopWave.</p>
+              <CheckCircle className="h-12 w-12 text-success" />
+              <p className="text-lg font-semibold text-foreground">
+                Thanks for your feedback!
+              </p>
+              <p className="text-sm text-muted-foreground">
+                We appreciate you helping us improve ShopWave.
+              </p>
             </motion.div>
           ) : (
             <motion.div
@@ -168,9 +173,12 @@ export default function FeedbackPage() {
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, amount: 0.25 }}
-              className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-6 shadow-sm"
+              className="rounded-xl border border-border bg-surface p-6 shadow-sm"
             >
-              <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+              <form
+                onSubmit={handleSubmit(onSubmit)}
+                className="flex flex-col gap-5"
+              >
                 {/* Category */}
                 <div>
                   <label className={labelCls}>Category</label>
@@ -182,7 +190,9 @@ export default function FeedbackPage() {
                     ))}
                   </select>
                   {errors.category && (
-                    <p className="mt-1 text-xs text-red-400">{errors.category.message}</p>
+                    <p className="mt-1 text-xs text-danger">
+                      {errors.category.message}
+                    </p>
                   )}
                 </div>
 
@@ -194,15 +204,17 @@ export default function FeedbackPage() {
                       <button
                         key={n}
                         type="button"
-                        onClick={() => setValue("rating", rating === n ? null : n)}
+                        onClick={() =>
+                          setValue("rating", rating === n ? null : n)
+                        }
                         className="p-0.5 transition-colors"
                         aria-label={`${n} star${n !== 1 ? "s" : ""}`}
                       >
                         <Star
                           className={`h-6 w-6 ${
                             rating != null && n <= rating
-                              ? "text-blue-400 fill-blue-400"
-                              : "text-white/25"
+                              ? "text-link fill-link"
+                              : "text-muted-foreground"
                           }`}
                         />
                       </button>
@@ -221,20 +233,24 @@ export default function FeedbackPage() {
                   />
                   <div className="flex justify-between mt-1">
                     {errors.message ? (
-                      <p className="text-xs text-red-400">{errors.message.message}</p>
+                      <p className="text-xs text-danger">
+                        {errors.message.message}
+                      </p>
                     ) : (
                       <span />
                     )}
-                    <span className="text-xs text-white/40">{message.length}/5000</span>
+                    <span className="text-xs text-muted-foreground">
+                      {message.length}/5000
+                    </span>
                   </div>
                 </div>
 
-                {errorMsg && <p className="text-xs text-red-400">{errorMsg}</p>}
+                {errorMsg && <p className="text-xs text-danger">{errorMsg}</p>}
 
                 <button
                   type="submit"
                   disabled={isSubmitting || mutation.isPending}
-                  className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  className="w-full rounded-xl bg-primary hover:bg-primary-hover px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors disabled:opacity-50"
                 >
                   {mutation.isPending ? "Submitting…" : "Submit Feedback"}
                 </button>
@@ -245,19 +261,20 @@ export default function FeedbackPage() {
       </section>
 
       {/* Past feedback */}
-      <section className="relative bg-white/[0.04] backdrop-blur border-y border-white/10 px-6 py-12 md:px-10">
-        <SectionGlow variant="b" />
-        <SectionFade top />
-        <SectionFade bottom />
+      <section className="relative bg-surface border-y border-border px-6 py-12 md:px-10">
         <div className="mx-auto max-w-xl">
-          <h2 className="text-xl font-extrabold text-white mb-6">Your Past Feedback</h2>
+          <h2 className="text-xl font-semibold text-foreground mb-6">
+            Your Past Feedback
+          </h2>
 
           {historyQuery.isLoading && (
-            <p className="text-sm text-white/50">Loading…</p>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           )}
 
           {historyQuery.data && historyQuery.data.items.length === 0 && (
-            <p className="text-sm text-white/50">You haven't submitted any feedback yet.</p>
+            <p className="text-sm text-muted-foreground">
+              You haven't submitted any feedback yet.
+            </p>
           )}
 
           {historyQuery.data && historyQuery.data.items.length > 0 && (
@@ -273,10 +290,10 @@ export default function FeedbackPage() {
                   <motion.li
                     key={f.id}
                     variants={fadeInUp}
-                    className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur p-5 shadow-sm"
+                    className="rounded-xl border border-border bg-surface p-5 shadow-sm"
                   >
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-sky-200/90">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-link">
                         {f.category.replace("_", " ")}
                       </span>
                       <span
@@ -290,17 +307,19 @@ export default function FeedbackPage() {
                             <Star
                               key={i}
                               className={`h-3.5 w-3.5 ${
-                                i < f.rating! ? "text-blue-400 fill-blue-400" : "text-white/20"
+                                i < f.rating!
+                                  ? "text-link fill-link"
+                                  : "text-muted-foreground"
                               }`}
                             />
                           ))}
                         </span>
                       )}
-                      <span className="ml-auto text-xs text-white/40">
+                      <span className="ml-auto text-xs text-muted-foreground">
                         {new Date(f.createdAt).toLocaleDateString()}
                       </span>
                     </div>
-                    <p className="text-sm text-white/80 leading-relaxed line-clamp-3">
+                    <p className="text-sm text-foreground leading-relaxed line-clamp-3">
                       {f.message}
                     </p>
                   </motion.li>
@@ -312,17 +331,17 @@ export default function FeedbackPage() {
                   <button
                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                     disabled={!historyQuery.data.hasPrevious}
-                    className="rounded-full border border-white/15 p-2 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 transition-colors"
+                    className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground hover:border-input disabled:opacity-30 transition-colors"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
-                  <span className="text-xs text-white/50">
+                  <span className="text-xs text-muted-foreground">
                     {page + 1} / {historyQuery.data.totalPages}
                   </span>
                   <button
                     onClick={() => setPage((p) => p + 1)}
                     disabled={!historyQuery.data.hasNext}
-                    className="rounded-full border border-white/15 p-2 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 transition-colors"
+                    className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground hover:border-input disabled:opacity-30 transition-colors"
                   >
                     <ChevronRight className="h-4 w-4" />
                   </button>

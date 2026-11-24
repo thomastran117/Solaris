@@ -1,5 +1,6 @@
-import { CheckCircle, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 import type { OrderStatus, FulfillmentMethod } from "../../types/order";
+import { cn } from "../../lib/cn";
 
 const DELIVERY_STEPS: { key: OrderStatus | "start"; label: string }[] = [
   { key: "RESERVED", label: "Reserved" },
@@ -31,13 +32,26 @@ const STATUS_ORDER: Record<OrderStatus, number> = {
   REFUNDED: 4,
 };
 
+type StepState = "complete" | "current" | "upcoming";
+
+const STATE_LABEL: Record<StepState, string> = {
+  complete: "completed",
+  current: "current step",
+  upcoming: "not started",
+};
+
 interface Props {
   status: OrderStatus;
   fulfillmentMethod: FulfillmentMethod;
   hasPickupReady?: boolean;
 }
 
-export default function OrderStatusTimeline({ status, fulfillmentMethod, hasPickupReady }: Props) {
+/** Order progress as an ordered list; the current step carries aria-current. */
+export default function OrderStatusTimeline({
+  status,
+  fulfillmentMethod,
+  hasPickupReady,
+}: Props) {
   const steps = fulfillmentMethod === "PICKUP" ? PICKUP_STEPS : DELIVERY_STEPS;
   const currentOrder = STATUS_ORDER[status] ?? 0;
 
@@ -47,30 +61,63 @@ export default function OrderStatusTimeline({ status, fulfillmentMethod, hasPick
       : currentOrder;
 
   return (
-    <div className="flex items-center gap-0 w-full">
+    <ol aria-label="Order progress" className="flex w-full items-start">
       {steps.map((step, idx) => {
-        const done = idx < effectiveOrder || (idx === steps.length - 1 && status === "DELIVERED");
-        const active = idx === effectiveOrder && !done;
+        const done =
+          idx < effectiveOrder ||
+          (idx === steps.length - 1 && status === "DELIVERED");
+        const state: StepState = done
+          ? "complete"
+          : idx === effectiveOrder
+            ? "current"
+            : "upcoming";
         return (
-          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+          <li
+            key={step.key}
+            data-state={state}
+            aria-current={state === "current" ? "step" : undefined}
+            className="flex flex-1 items-start last:flex-none"
+          >
             <div className="flex flex-col items-center">
-              {done ? (
-                <CheckCircle className="h-5 w-5 text-green-400" />
-              ) : active ? (
-                <div className="h-5 w-5 rounded-full border-2 border-blue-400 bg-blue-400/20" />
-              ) : (
-                <Circle className="h-5 w-5 text-white/25" />
-              )}
-              <span className={`text-xs mt-1 text-center whitespace-nowrap ${done ? "text-green-400" : active ? "text-blue-300" : "text-white/40"}`}>
+              <span
+                aria-hidden
+                className={cn(
+                  "flex size-6 items-center justify-center rounded-full border-2",
+                  state === "complete" &&
+                    "border-success bg-success text-background",
+                  state === "current" && "border-primary bg-primary/10",
+                  state === "upcoming" && "border-border bg-surface"
+                )}
+              >
+                {state === "complete" && <Check className="size-3.5" />}
+                {state === "current" && (
+                  <span className="size-2 rounded-full bg-primary" />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "mt-1.5 whitespace-nowrap text-center text-xs",
+                  state === "upcoming"
+                    ? "text-muted-foreground"
+                    : "font-medium text-foreground"
+                )}
+              >
                 {step.label}
+                <span className="sr-only"> ({STATE_LABEL[state]})</span>
               </span>
             </div>
             {idx < steps.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 mb-4 rounded ${idx < effectiveOrder ? "bg-green-400/50" : "bg-white/10"}`} />
+              <div
+                aria-hidden
+                className={cn(
+                  "mx-1 mt-3 h-0.5 flex-1 rounded",
+                  idx < effectiveOrder ? "bg-success" : "bg-border"
+                )}
+              />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
