@@ -3,7 +3,6 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { getDefaultMarketplaceId } from "../configuration/server";
 import Providers from "./providers";
-import { FORCE_ALL_DARK } from "../lib/theme/themeConfig";
 import { themeScript } from "../lib/theme/themeScript";
 import { cn } from "../lib/cn";
 import "./globals.css";
@@ -39,13 +38,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(
-        GeistSans.variable,
-        GeistMono.variable,
-        // While every route is forced dark, render it on the server too so
-        // pages look right before (or without) JavaScript.
-        FORCE_ALL_DARK && "dark"
-      )}
+      className={cn(GeistSans.variable, GeistMono.variable)}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

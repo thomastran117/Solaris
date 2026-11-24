@@ -41,27 +41,11 @@ Fonts are Geist Sans (`font-sans`, the default) and Geist Mono (`font-mono`), lo
 
 ## Theming
 
-- `src/lib/theme/themeScript.ts` runs inline in `<head>` before first paint. It resolves the theme (forced-dark route → stored choice → OS preference), then sets the `dark` class and `color-scheme` on `<html>`. Nothing flashes.
-- `components/theme/ThemeProvider.tsx` keeps that in sync after hydration (storage changes in other tabs, OS changes, client navigation) and exposes `useTheme()` → `{ preference, resolved, forced, setTheme }`.
+- `src/lib/theme/themeScript.ts` runs inline in `<head>` before first paint. It resolves the theme (stored choice → OS preference), then sets the `dark` class and `color-scheme` on `<html>`. Nothing flashes.
+- `components/theme/ThemeProvider.tsx` keeps that in sync after hydration (storage changes in other tabs, OS changes, client navigation) and exposes `useTheme()` → `{ preference, resolved, setTheme }`.
 - `components/theme/ThemeToggle.tsx` is the Light / Dark / System menu used in the headers. The choice is stored in `localStorage` under `shopwave-theme`; "System" removes the key.
 - The `dark:` variant is for things tokens can't express: swapping an illustration or a logo, or inverting `prose`. Don't write `text-zinc-900 dark:text-zinc-100`; write `text-foreground`.
 - Third-party widgets that can't read CSS variables (Stripe Elements, chart tooltips) take literal values for the resolved theme from `useTheme().resolved`.
-
-### Migration status (temporary)
-
-Views are moving from the legacy navy-glass palette to tokens over several PRs. Until a view migrates it hard-codes dark colours, so `LEGACY_DARK_PREFIXES` in `src/lib/theme/themeConfig.ts` pins those routes to dark and hides the toggle there (`LEGACY_DARK_EXCEPTIONS` carves out migrated paths under a forced prefix, such as `/lists/public`). Today that is the seller routes (`/admin`, `/dashboard`) except the migrated catalog paths listed in `LEGACY_DARK_EXCEPTIONS`; everything else follows the visitor's theme.
-
-| Area                                                                          | Status  |
-| ----------------------------------------------------------------------------- | ------- |
-| Tokens, theme, primitives (`components/ui`, `components/theme`)               | Done    |
-| App shell (site header and footer, seller sidebar, not-found and error pages) | Done    |
-| Storefront and auth routes (incl. signup and verification)                    | Done    |
-| Cart and checkout                                                             | Done    |
-| Account routes                                                                | Done    |
-| Merchant admin: catalog (products, bundles, kits, collections, bulk import)   | Done    |
-| Merchant admin: operations and settings                                       | Pending |
-
-When a group migrates, shrink the forced list, move its folders into the lint `error` block in `eslint.config.mjs`, and update this table. Delete this section, the forced-dark mechanism, `NavyGridGlowBackground` and `components/section/*` when the last group lands.
 
 ## Typography
 
@@ -114,7 +98,7 @@ Everything below lives in `src/components/ui` and is the default way to build UI
 | `Skeleton`, `Spinner`                                                                                  | Loading                              | Skeletons for content regions; spinners inside buttons or tiny areas.                                                                                                                                                                 |
 | `EmptyState`, `ErrorState`                                                                             | No data / failed load                | `ErrorState` takes `onRetry` (usually a query's `refetch`).                                                                                                                                                                           |
 | `PageHeader`                                                                                           | Top of account and admin pages       | Title, description, eyebrow (breadcrumb/back link), actions.                                                                                                                                                                          |
-| `SectionHeader`                                                                                        | Storefront sections                  | Replaces `SectionTitle`.                                                                                                                                                                                                              |
+| `SectionHeader`                                                                                        | Storefront sections                  | Kicker, title, subtitle and an optional action.                                                                                                                                                                                       |
 | `TableContainer`, `Table`, `THead`, `TBody`, `TRow`, `TH`, `TD`, `TableLoadingRows`, `TableMessageRow` | Data lists                           | Styling shells only; fetching, sorting and paging stay in the view.                                                                                                                                                                   |
 | `Pagination`                                                                                           | Paged lists                          | Zero-based `page` to match the API.                                                                                                                                                                                                   |
 | `Container`, `Separator`, `Prose`                                                                      | Layout and long-form text            | `Prose` styles legal pages and rich descriptions.                                                                                                                                                                                     |
@@ -153,26 +137,26 @@ Extract a new shared component when the same pattern appears in a second place. 
 
 ## Guardrails
 
-`shopwave/no-raw-palette` (`eslint-rules/no-raw-palette.mjs`) flags raw Tailwind palette colours (`text-white`, `bg-slate-950`, `border-sky-400/30`), arbitrary hex colours (`bg-[#0b1221]`), `backdrop-blur` outside the site header, and bare hex strings. `no-restricted-imports` bans `react-icons` and the legacy navy-glass components. Both are errors in migrated folders and warnings elsewhere until the migration completes.
+`shopwave/no-raw-palette` (`eslint-rules/no-raw-palette.mjs`) flags raw Tailwind palette colours (`text-white`, `bg-slate-950`, `border-sky-400/30`), arbitrary hex colours (`bg-[#0b1221]`), `backdrop-blur` outside the site header, and bare hex strings. `no-restricted-imports` bans `react-icons`. Both are errors across `src/`.
 
 Replacing legacy classes:
 
-| Legacy                                                                                 | Use instead                                 |
-| -------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `bg-slate-950` page background, `NavyGridGlowBackground`, `SectionGlow`, `SectionFade` | Nothing; `body` already has `bg-background` |
-| `text-white`                                                                           | `text-foreground`                           |
-| `text-white/40` … `text-white/70`                                                      | `text-muted-foreground`                     |
-| `text-sky-*`, `text-blue-400` links                                                    | `text-link`                                 |
-| `border-white/*`                                                                       | `border` (default colour)                   |
-| `rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur`                     | `Card`                                      |
-| `bg-white/5` … `bg-white/10` hover                                                     | `hover:bg-muted`                            |
-| `bg-blue-600 hover:bg-blue-500`                                                        | `Button`                                    |
-| Red buttons                                                                            | `Button variant="destructive"`              |
-| Coloured pills                                                                         | `Badge variant=…`                           |
-| Local `inputCls` / `labelCls` / `panelCls` strings                                     | `Input` / `Field` / `Card`                  |
-| `SectionTitle theme="dark"`                                                            | `SectionHeader` or `PageHeader`             |
-| `window.alert` / `window.confirm`                                                      | `toast` / `ConfirmDialog`                   |
-| Hex chart colours                                                                      | `var(--chart-1)` … `var(--chart-5)`         |
+| Legacy                                                             | Use instead                                        |
+| ------------------------------------------------------------------ | -------------------------------------------------- |
+| `bg-slate-950` page background, glow blobs, gradient washes        | Nothing; `body` already has `bg-background`        |
+| `text-white`                                                       | `text-foreground`                                  |
+| `text-white/40` … `text-white/70`                                  | `text-muted-foreground`                            |
+| `text-sky-*`, `text-blue-400` links                                | `text-link`                                        |
+| `border-white/*`                                                   | `border` (default colour)                          |
+| `rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur` | `Card`                                             |
+| `bg-white/5` … `bg-white/10` hover                                 | `hover:bg-muted`                                   |
+| `bg-blue-600 hover:bg-blue-500`                                    | `Button`                                           |
+| Red buttons                                                        | `Button variant="destructive"`                     |
+| Coloured pills                                                     | `Badge variant=…`                                  |
+| Local `inputCls` / `labelCls` / `panelCls` strings                 | `Input` / `Field` / `Card`                         |
+| Centred kicker/title/subtitle blocks                               | `SectionHeader` (storefront) or `PageHeader` (app) |
+| `window.alert` / `window.confirm`                                  | `toast` / `ConfirmDialog`                          |
+| Hex chart colours                                                  | `var(--chart-1)` … `var(--chart-5)`                |
 
 If you truly need an exception, add `// eslint-disable-next-line shopwave/no-raw-palette -- <reason>` on that line.
 

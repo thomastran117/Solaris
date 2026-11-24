@@ -5,9 +5,8 @@ const KEY = "shopwave-theme";
 
 function run(
   script: string,
-  { path = "/", stored = null as string | null, systemDark = false } = {}
+  { stored = null as string | null, systemDark = false } = {}
 ) {
-  window.history.replaceState(null, "", path);
   if (stored === null) window.localStorage.removeItem(KEY);
   else window.localStorage.setItem(KEY, stored);
   vi.spyOn(window, "matchMedia").mockImplementation(
@@ -23,12 +22,7 @@ function run(
 }
 
 describe("buildThemeScript", () => {
-  const script = buildThemeScript({
-    forceAll: false,
-    forcedPrefixes: ["/admin", "/lists"],
-    exceptions: ["/lists/public"],
-    storageKey: KEY,
-  });
+  const script = buildThemeScript(KEY);
 
   beforeEach(() => {
     document.documentElement.className = "";
@@ -65,49 +59,6 @@ describe("buildThemeScript", () => {
         "dark"
       )
     ).toBe(false);
-  });
-
-  it("forces dark on legacy prefixes and their children only", () => {
-    expect(
-      run(script, {
-        path: "/admin/orders",
-        stored: "light",
-      }).classList.contains("dark")
-    ).toBe(true);
-    expect(
-      run(script, { path: "/admin", stored: "light" }).classList.contains(
-        "dark"
-      )
-    ).toBe(true);
-    expect(
-      run(script, {
-        path: "/administrator",
-        stored: "light",
-      }).classList.contains("dark")
-    ).toBe(false);
-  });
-
-  it("leaves migrated exceptions under a forced prefix alone", () => {
-    expect(
-      run(script, { path: "/lists/abc", stored: "light" }).classList.contains(
-        "dark"
-      )
-    ).toBe(true);
-    expect(
-      run(script, {
-        path: "/lists/public/sam-wish",
-        stored: "light",
-      }).classList.contains("dark")
-    ).toBe(false);
-  });
-
-  it("forces dark everywhere when forceAll is set", () => {
-    const all = buildThemeScript({
-      forceAll: true,
-      forcedPrefixes: [],
-      storageKey: KEY,
-    });
-    expect(run(all, { stored: "light" }).classList.contains("dark")).toBe(true);
   });
 
   it("does not throw when storage is unavailable", () => {

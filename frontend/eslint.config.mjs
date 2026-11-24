@@ -5,8 +5,8 @@ import noRawPalette from "./eslint-rules/no-raw-palette.mjs";
 
 const shopwave = { rules: { "no-raw-palette": noRawPalette } };
 
-// Legacy modules being retired by the redesign (see frontend/DESIGN.md).
-const legacyImports = {
+// lucide-react is the only icon set (see frontend/DESIGN.md → Icons).
+const restrictedImports = {
   paths: [
     {
       name: "react-icons",
@@ -17,16 +17,6 @@ const legacyImports = {
     {
       group: ["react-icons/*"],
       message: "Use lucide-react; it is the only icon set.",
-    },
-    {
-      group: [
-        "**/layout/NavyGridGlowBackground",
-        "**/section/SectionTitle",
-        "**/section/SectionGlow",
-        "**/section/SectionFade",
-      ],
-      message:
-        "Legacy navy-glass component. Use SectionHeader / PageHeader from components/ui and plain token backgrounds.",
     },
   ],
 };
@@ -63,65 +53,13 @@ export default defineConfig([
     },
   },
   {
-    // Design-system guard. Warns everywhere while views migrate; each migration
-    // PR adds its folders to the "error" block below.
+    // Design-system guard: colours come from semantic tokens so every view
+    // works in light and dark mode (frontend/DESIGN.md → Guardrails).
     files: ["src/**/*.{ts,tsx}"],
     plugins: { shopwave },
     rules: {
-      "shopwave/no-raw-palette": "warn",
-      "no-restricted-imports": ["warn", legacyImports],
-    },
-  },
-  {
-    // Migrated to semantic tokens: regressions fail lint.
-    files: [
-      "src/components/ui/**/*.{ts,tsx}",
-      "src/components/theme/**/*.{ts,tsx}",
-      "src/components/layout/**/*.{ts,tsx}",
-      "src/components/admin/**/*.{ts,tsx}",
-      "src/app/layout.tsx",
-      "src/app/not-found.tsx",
-      "src/app/*/layout.tsx",
-      "src/app/(storefront)/not-found.tsx",
-      "src/app/(storefront)/error.tsx",
-      "src/views/admin/AdminOverviewPage.tsx",
-      // Storefront and auth (redesign PR 3)
-      "src/views/{HomePage,BrowsePage,ProductPage,CompanyPage,ComparisonPage,CollectionPage,KitPage,PublicSavedListPage,GiftCardsPage,PrivacyPage,TermsAndConditionPage,HelloTestPage}.tsx",
-      "src/views/{LoginPage,SignupPage,VerifyTokenPage,AuthCallback,InviteAcceptPage}.tsx",
-      "src/app/(storefront)/**/*.{ts,tsx}",
-      "src/app/(auth)/**/*.{ts,tsx}",
-      "src/components/{auth,collection,company,kit,product,qa,report,reviews,savedlist,search,feedback}/**/*.{ts,tsx}",
-      "src/hooks/{useCaptcha,useCompleteSignIn,useGoogleSignIn}.{ts,tsx}",
-      "src/api/auth.ts",
-      "src/schemas/auth.ts",
-      // Cart and checkout (redesign PR 4)
-      "src/views/{CartPage,CheckoutPage}.tsx",
-      "src/app/(checkout)/**/*.{ts,tsx}",
-      "src/components/{cart,checkout}/**/*.{ts,tsx}",
-      "src/components/order/ShippingRatePanel.tsx",
-      "src/hooks/useCheckoutSubmit.ts",
-      "src/stores/{cartSlice,cartPersistence}.ts",
-      "src/api/{addresses,pricing}.ts",
-      "src/schemas/checkout.ts",
-      // Customer account (redesign PR 5)
-      "src/views/{AccountPage,B2BQuotesPage,FeedPage,FeedbackPage,FollowingPage,LoyaltyPage,OrderDetailPage,OrdersPage,PriceWatchesPage,SavedListDetailPage,SavedListsPage}.tsx",
-      "src/app/(account)/**/*.{ts,tsx}",
-      // Seller catalog (redesign PR 6a)
-      "src/views/admin/{AdminProductsPage,AdminProductEditor,AdminBundlesPage,AdminKitsPage,AdminKitEditor,AdminCollectionsPage,AdminCollectionEditor,AdminCollectionProductsPage,AdminBulkImportPage}.tsx",
-      "src/components/imports/**/*.{ts,tsx}",
-      "src/components/product/ProductHistoryTimeline.tsx",
-      "src/components/order/{DeliverySlotPanel,DeliverySlotStatusBadge,DriverLocationIndicator,OrderCard,OrderStatusHistoryTimeline,OrderStatusTimeline,PickupPanel,TrackingPanel,TrackingTimeline}.tsx",
-      "src/hooks/useLogout.ts",
-      "src/lib/**/*.{ts,tsx}",
-      "src/test/**/*.{ts,tsx}",
-    ],
-    ignores: [
-      // Legacy, deleted once the last view migrates.
-      "src/components/layout/NavyGridGlowBackground.tsx",
-    ],
-    rules: {
       "shopwave/no-raw-palette": "error",
-      "no-restricted-imports": ["error", legacyImports],
+      "no-restricted-imports": ["error", restrictedImports],
     },
   },
   {

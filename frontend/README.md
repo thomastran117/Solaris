@@ -24,31 +24,31 @@ Environment variables are documented in [configuration](../documentation/configu
 
 ## Commands
 
-| Command                 | Purpose                                                    |
-| ----------------------- | ---------------------------------------------------------- |
-| `npm run dev`           | Start the Next.js development server on port 3090          |
-| `npm run build`         | Type-check and create the production build (`next build`)  |
+| Command                 | Purpose                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`           | Start the Next.js development server on port 3090                                                                                     |
+| `npm run build`         | Type-check and create the production build (`next build`)                                                                             |
 | `npm run start`         | Serve a production build on port 3000 (local use; it prints a standalone warning, and the Docker image runs `node server.js` instead) |
-| `npm run lint`          | Run ESLint (`eslint-config-next`)                          |
-| `npm run typecheck`     | Run `tsc --noEmit`; run `npx next typegen` first if needed |
-| `npm run format:check`  | Check Prettier formatting                                  |
-| `npm run format`        | Rewrite files with Prettier                                |
-| `npm run test -- --run` | Run Vitest once                                            |
+| `npm run lint`          | Run ESLint (`eslint-config-next`)                                                                                                     |
+| `npm run typecheck`     | Run `tsc --noEmit`; run `npx next typegen` first if needed                                                                            |
+| `npm run format:check`  | Check Prettier formatting                                                                                                             |
+| `npm run format`        | Rewrite files with Prettier                                                                                                           |
+| `npm run test -- --run` | Run Vitest once                                                                                                                       |
 
 ## Structure
 
-| Path                | Responsibility                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
+| Path                | Responsibility                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `src/app`           | App Router segments, layouts, providers, and the 404 page; see the [route map](../documentation/frontend-route-map.md) |
-| `src/views`         | Route-level client screens rendered by `src/app/**/page.tsx`, including the merchant/admin workspace |
-| `src/components`    | Shared and domain components; `components/navigation` holds `NavLink` and `useSetSearchParams`   |
-| `src/api`           | Backend client modules, session refresh, and the query-client factory                             |
-| `src/types`         | API and domain TypeScript types                                                                   |
-| `src/schemas`       | Zod validation schemas                                                                            |
-| `src/stores`        | Redux Toolkit slices, `makeStore()`, and typed hooks                                              |
-| `src/hooks`         | Shared React hooks                                                                                |
-| `src/configuration` | Public environment (`Environment.ts`) and server-only settings (`server.ts`)                      |
-| `src/test`          | Vitest setup and the `next/navigation` / `next/link` test doubles                                 |
+| `src/views`         | Route-level client screens rendered by `src/app/**/page.tsx`, including the merchant/admin workspace                   |
+| `src/components`    | Shared and domain components; `components/navigation` holds `NavLink` and `useSetSearchParams`                         |
+| `src/api`           | Backend client modules, session refresh, and the query-client factory                                                  |
+| `src/types`         | API and domain TypeScript types                                                                                        |
+| `src/schemas`       | Zod validation schemas                                                                                                 |
+| `src/stores`        | Redux Toolkit slices, `makeStore()`, and typed hooks                                                                   |
+| `src/hooks`         | Shared React hooks                                                                                                     |
+| `src/configuration` | Public environment (`Environment.ts`) and server-only settings (`server.ts`)                                           |
+| `src/test`          | Vitest setup and the `next/navigation` / `next/link` test doubles                                                      |
 
 Do not recreate `src/pages`: Next.js treats that directory as Pages Router routes.
 
@@ -60,7 +60,7 @@ Server state belongs in TanStack Query; cross-cutting client state belongs in th
 
 - Style with semantic tokens (`bg-surface`, `text-foreground`, `text-muted-foreground`, `border`, `bg-primary`); every view must work in light and dark mode. The theme is set before first paint by `src/lib/theme/themeScript.ts` and managed by `components/theme/ThemeProvider`.
 - Build from `src/components/ui` primitives; use `cn()` from `src/lib/cn.ts` to merge class names.
-- `shopwave/no-raw-palette` (in `eslint-rules/`) flags hard-coded colours and is an error in migrated folders.
+- `shopwave/no-raw-palette` (in `eslint-rules/`) flags hard-coded colours and fails lint.
 - Use React Hook Form with Zod for forms.
 - Use the shared animation hook and respect reduced-motion preferences.
 - Keep API response types in `src/types` and avoid `any`.
