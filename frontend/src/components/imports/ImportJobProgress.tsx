@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "framer-motion";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -9,6 +8,7 @@ import {
   Download,
 } from "lucide-react";
 import { importsApi } from "../../api/imports";
+import { Progress } from "../ui/Progress";
 import {
   TERMINAL_STATUSES,
   type ImportJob,
@@ -52,7 +52,6 @@ export default function ImportJobProgress({
   jobId,
   onTerminal,
 }: Props) {
-  const prefersReducedMotion = useReducedMotion();
   const queryClient = useQueryClient();
 
   const { data: job } = useQuery({
@@ -110,16 +109,11 @@ export default function ImportJobProgress({
         </div>
       </div>
 
-      <div className="h-2 rounded-full bg-muted overflow-hidden">
-        <motion.div
-          className="h-full"
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={
-            prefersReducedMotion ? { duration: 0 } : { duration: 0.4 }
-          }
-        />
-      </div>
+      <Progress
+        value={pct}
+        label="Import progress"
+        valueText={`${job.processedRows} of ${job.totalRows || "unknown"} rows processed`}
+      />
 
       <div className="flex items-center justify-between mt-3 text-xs">
         <div className="flex items-center gap-4">
