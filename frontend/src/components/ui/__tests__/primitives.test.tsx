@@ -15,6 +15,7 @@ import {
 } from "../DropdownMenu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../Tabs";
 import { Pagination } from "../Pagination";
+import { Progress } from "../Progress";
 
 describe("Button", () => {
   it("defaults to type=button so it never submits a form by accident", () => {
@@ -48,6 +49,40 @@ describe("Button", () => {
     const link = screen.getByRole("link", { name: "Browse" });
     expect(link).toHaveAttribute("href", "/browse");
     expect(link.className).toContain("bg-primary");
+  });
+
+  it("keeps an asChild link inert while disabled or loading", async () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <Button asChild disabled onClick={onClick}>
+        <a href="/checkout">Checkout</a>
+      </Button>
+    );
+    const link = screen.getByRole("link", { name: "Checkout" });
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    expect(link).toHaveAttribute("tabindex", "-1");
+    await userEvent.click(link);
+    expect(onClick).not.toHaveBeenCalled();
+
+    rerender(
+      <Button asChild loading onClick={onClick}>
+        <a href="/checkout">Checkout</a>
+      </Button>
+    );
+    const busy = screen.getByRole("link", { name: "Checkout" });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    // The spinner renders inside the slotted element.
+    expect(busy.querySelector("svg")).not.toBeNull();
+    await userEvent.click(busy);
+    expect(onClick).not.toHaveBeenCalled();
+
+    rerender(
+      <Button asChild onClick={onClick}>
+        <a href="/checkout">Checkout</a>
+      </Button>
+    );
+    await userEvent.click(screen.getByRole("link", { name: "Checkout" }));
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it("lets a caller's className override defaults", () => {
@@ -224,5 +259,34 @@ describe("Pagination", () => {
     expect(screen.getByRole("button", { name: /Previous/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("Progress", () => {
+  it("exposes progressbar semantics and clamps the value", () => {
+    const { rerender } = render(
+      <Progress
+        value={42.4}
+        label="Import progress"
+        valueText="42 of 100 rows"
+      />
+    );
+    const bar = screen.getByRole("progressbar", { name: "Import progress" });
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+    expect(bar).toHaveAttribute("aria-valuetext", "42 of 100 rows");
+    const fill = bar.firstElementChild as HTMLElement;
+    expect(fill.className).toContain("bg-primary");
+    expect(fill.style.width).toBe("42.4%");
+
+    rerender(<Progress value={250} label="Import progress" />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "100"
+    );
+    rerender(<Progress value={Number.NaN} label="Import progress" />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "0"
+    );
   });
 });

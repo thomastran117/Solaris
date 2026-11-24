@@ -9,6 +9,7 @@ import { Button } from "../components/ui/Button";
 import { Spinner } from "../components/ui/Spinner";
 import { useCompleteSignIn } from "../hooks/useCompleteSignIn";
 import { apiErrorMessage } from "../lib/apiError";
+import { useAppSelector } from "../stores/hooks";
 
 type Kind = "email" | "device";
 type State =
@@ -38,12 +39,16 @@ const COPY = {
  */
 export default function VerifyTokenPage({ kind }: { kind: Kind }) {
   const completeSignIn = useCompleteSignIn();
+  // AuthInitializer refreshes the session on page load and clears credentials
+  // when that fails (no refresh cookie yet). Signing the device in before it
+  // settles would let that late failure wipe the new session, so wait for it.
+  const sessionRestored = useAppSelector((s) => s.auth.sessionRestored);
   const [state, setState] = useState<State>({ status: "verifying" });
   const started = useRef(false);
   const copy = COPY[kind];
 
   useEffect(() => {
-    if (started.current) return;
+    if (started.current || !sessionRestored) return;
     started.current = true;
     const token = new URLSearchParams(window.location.search).get("token");
 
@@ -79,7 +84,7 @@ export default function VerifyTokenPage({ kind }: { kind: Kind }) {
       }
     };
     void run();
-  }, [kind, completeSignIn]);
+  }, [kind, completeSignIn, sessionRestored]);
 
   if (state.status === "verifying") {
     return (

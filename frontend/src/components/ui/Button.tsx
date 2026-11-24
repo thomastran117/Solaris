@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type MouseEvent } from "react";
 import { Slot } from "radix-ui";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/cn";
@@ -65,9 +65,32 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const classes = cn(buttonVariants({ variant, size }), className);
     if (asChild) {
+      // The slotted child may be a link, which has no `disabled` attribute, so
+      // disabled/loading are expressed with ARIA, removed from the tab order
+      // and enforced by swallowing activation.
+      const inert = disabled || loading;
+      const { onClick, ...rest } = props;
       return (
-        <Slot.Root ref={ref} className={classes} {...props}>
-          {children}
+        <Slot.Root
+          ref={ref}
+          className={classes}
+          aria-disabled={inert || undefined}
+          aria-busy={loading || undefined}
+          tabIndex={inert ? -1 : undefined}
+          onClick={(event) => {
+            if (inert) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            // ButtonProps types handlers for <button>; the slotted element is
+            // whatever the caller rendered (usually a link).
+            onClick?.(event as MouseEvent<HTMLButtonElement>);
+          }}
+          {...rest}
+        >
+          {loading && <Spinner />}
+          <Slot.Slottable>{children}</Slot.Slottable>
         </Slot.Root>
       );
     }

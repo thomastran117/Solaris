@@ -61,7 +61,7 @@ const sleep = (ms: number) =>
  * - After any definite answer (success, 4xx, 5xx, 428) the key is rotated, so
  *   the next attempt isn't rejected as a duplicate.
  * - It is mirrored to sessionStorage per cart, so reloading mid-request and
- *   resubmitting the same cart reuses it.
+ *   resubmitting the same cart reuses it, still treated as unresolved.
  * - Concurrent submits are ignored.
  */
 export function useCheckoutSubmit({
@@ -77,10 +77,15 @@ export function useCheckoutSubmit({
       setPending(true);
 
       const storageKey = KEY_PREFIX + checkoutFingerprint(request);
-      const key = readKey(storageKey) ?? crypto.randomUUID();
+      const persisted = readKey(storageKey);
+      const key = persisted ?? crypto.randomUUID();
       writeKey(storageKey, key);
       const rotate = () => writeKey(storageKey, null);
-      let outcomeUnknown = false;
+      // Every definite answer rotates the key, so a key that survived in
+      // storage belongs to an attempt whose outcome we never learned (lost
+      // response, or a reload mid-request). Its 409 means that attempt is still
+      // in flight, not a conflict, so the key must be kept.
+      let outcomeUnknown = persisted !== null;
 
       try {
         for (let attempt = 0; ; attempt++) {
