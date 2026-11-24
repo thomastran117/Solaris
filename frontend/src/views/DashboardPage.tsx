@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import type { RootState } from "../stores";
 import { useAnims } from "../hooks/useAnims";
+import { Progress } from "../components/ui/Progress";
 import {
   companyAnalyticsApi,
   type CompanyRevenueSummary,
@@ -420,14 +421,12 @@ export default function DashboardPage() {
                         {c.revenueSharePercent.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary/10 rounded-full"
-                        style={{
-                          width: `${Math.min(c.revenueSharePercent, 100)}%`,
-                        }}
-                      />
-                    </div>
+                    <Progress
+                      value={c.revenueSharePercent}
+                      label={`${c.category} revenue share`}
+                      valueText={`${c.revenueSharePercent.toFixed(1)}%`}
+                      className="h-1.5"
+                    />
                   </div>
                 ))}
                 {othersShare > 0 && (
@@ -440,12 +439,14 @@ export default function DashboardPage() {
                         {othersShare.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-muted rounded-full"
-                        style={{ width: `${Math.min(othersShare, 100)}%` }}
-                      />
-                    </div>
+                    {/* Neutral fill marks the remainder apart from named categories. */}
+                    <Progress
+                      value={othersShare}
+                      label="Other categories revenue share"
+                      valueText={`${othersShare.toFixed(1)}%`}
+                      className="h-1.5"
+                      indicatorClassName="bg-muted-foreground"
+                    />
                   </div>
                 )}
               </div>
